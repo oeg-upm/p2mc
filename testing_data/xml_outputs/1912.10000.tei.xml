@@ -1,0 +1,1183 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">PROBABILITY CALIBRATION FOR KNOWLEDGE GRAPH EMBEDDING MODELS</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2020-02-13">13 Feb 2020</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Pedro</forename><surname>Tabacof</surname></persName>
+							<email>pedro.tabacof@accenture.com</email>
+							<affiliation key="aff0">
+								<orgName type="laboratory">Accenture Labs Dublin</orgName>
+								<address>
+									<country key="IE">Ireland</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><surname>Luca Costabello</surname></persName>
+							<email>luca.costabello@accenture.com</email>
+							<affiliation key="aff0">
+								<orgName type="laboratory">Accenture Labs Dublin</orgName>
+								<address>
+									<country key="IE">Ireland</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">PROBABILITY CALIBRATION FOR KNOWLEDGE GRAPH EMBEDDING MODELS</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2020-02-13">13 Feb 2020</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">E0FE516450D7864A3F7B82D69FE32333</idno>
+					<idno type="arXiv">arXiv:1912.10000v2[cs.AI]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T09:32+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Knowledge graph embedding research has overlooked the problem of probability calibration. We show popular embedding models are indeed uncalibrated. That means probability estimates associated to predicted triples are unreliable. We present a novel method to calibrate a model when ground truth negatives are not available, which is the usual case in knowledge graphs. We propose to use Platt scaling and isotonic regression alongside our method. Experiments on three datasets with ground truth negatives show our contribution leads to well calibrated models when compared to the gold standard of using negatives. We get significantly better results than the uncalibrated models from all calibration methods. We show isotonic regression offers the best the performance overall, not without trade-offs. We also show that calibrated models reach state-of-the-art accuracy without the need to define relation-specific decision thresholds.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>Knowledge graph embedding models are neural architectures that learn vector representations (i.e. embeddings) of nodes and edges of a knowledge graph. Such knowledge graph embeddings have applications in knowledge graph completion, knowledge discovery, entity resolution, and link-based clustering, just to cite a few <ref type="bibr">(Nickel et al., 2016a)</ref>.</p><p>Despite burgeoning research, the problem of calibrating such models has been overlooked, and existing knowledge graph embedding models do not offer any guarantee on the probability estimates they assign to predicted facts. Probability calibration is important whenever you need the predictions to make probabilistic sense, i.e., if the model predicts a fact is true with 80% confidence, it should to be correct 80% of the times. Prior art suggests to use a sigmoid layer to turn logits returned by models into probabilities <ref type="bibr">(Nickel et al., 2016a)</ref> (also called the expit transform), but we show that this provides poor calibration. Figure <ref type="figure" target="#fig_0">1</ref> shows reliability diagrams for off-the-shelf TransE and ComplEx. The identity function represents perfect calibration. Both models are miscalibrated: all TransE combinations in Figure <ref type="figure" target="#fig_0">1a</ref> under-forecast the probabilities (i.e. probabilities are too small), whereas ComplEx under-forecasts or over-forecasts according to which loss is used (Figure1b).</p><p>Calibration is crucial in high-stakes scenarios such as drug-target discovery from biological networks, where end-users need trustworthy and interpretable decisions. Moreover, since probabilities are not calibrated, when classifying triples (i.e. facts) as true or false, users must define relationspecific thresholds, which can be awkward for graphs with a great number of relation types.</p><p>To the best of our knowledge, this is the first work to focus on calibration for knowledge embeddings. Our contribution is two-fold: First, we use Platt Scaling and isotonic regression to calibrate knowledge graph embedding models on datasets that include ground truth negatives. One peculiar feature of knowledge graphs is that they usually rely on the open world assumption (facts not present are not necessarily false, they are simply unknown). This makes calibration troublesome because of the lack of ground truth negatives. For this reason, our second and main contribution is a calibration heuristics that combines Platt-scaling or isotonic regression with synthetically generated negatives.</p><p>Experimental results show that we obtain better-calibrated models and that it is possible to calibrate knowledge graph embedding models even when ground truth negatives are not present. We </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">RELATED WORK</head><p>A comprehensive survey of knowledge graph embedding models is out of the scope of this paper. Recent surveys such as <ref type="bibr">(Nickel et al., 2016a)</ref> and <ref type="bibr" target="#b5">(Cai et al., 2017)</ref> summarize recent literature.</p><p>TransE <ref type="bibr" target="#b3">(Bordes et al., 2013)</ref> is the forerunner of distance-based methods, and spun a number of models commonly referred to as TransX. The intuition behind the symmetric bilinear-diagonal model DistMult <ref type="bibr" target="#b38">(Yang et al., 2015)</ref> paved the way for its asymmetric evolutions in the complex space, RotatE <ref type="bibr" target="#b35">(Sun et al., 2019)</ref> and ComplEx <ref type="bibr" target="#b37">(Trouillon et al., 2016)</ref> (a generalization of which uses hypercomplex representations <ref type="bibr" target="#b40">(Zhang et al., 2019)</ref>). HolE relies instead on circular correlation <ref type="bibr">(Nickel et al., 2016b)</ref>. The recent TorusE <ref type="bibr" target="#b11">(Ebisu &amp; Ichise, 2018)</ref> operates on a lie group and not in the Euclidean space. While the above models can be interpreted as multilayer perceptrons, others such as ConvE <ref type="bibr" target="#b9">(Dettmers et al., 2018)</ref> or ConvKB <ref type="bibr" target="#b27">(Nguyen et al., 2018)</ref> include convolutional layers. More recent works adopt capsule networks architectures <ref type="bibr" target="#b28">(Nguyen et al., 2019)</ref>. Adversarial learning is used by KBGAN <ref type="bibr" target="#b6">(Cai &amp; Wang, 2018)</ref>, whereas attention mechanisms are instead used by <ref type="bibr" target="#b26">(Nathani et al., 2019)</ref>. Some models such as RESCAL <ref type="bibr" target="#b29">(Nickel et al., 2011)</ref>, TuckER <ref type="bibr" target="#b1">(Balažević et al., 2019), and</ref><ref type="bibr">SimplE (Kazemi &amp;</ref><ref type="bibr" target="#b16">Poole, 2018)</ref> rely on tensor decomposition techniques. More recently, ANALOGY adopts a differentiable version of analogical reasoning <ref type="bibr" target="#b21">(Liu et al., 2017)</ref>. In this paper we limit our analysis to four popular models: TransE, DistMult, ComplEx and HolE. They do not address the problem of assessing the reliability of predictions, leave aside calibrating probabilities.</p><p>Besides well-established techniques such as Platt scaling <ref type="bibr" target="#b33">(Platt et al., 1999)</ref> and isotonic regression <ref type="bibr" target="#b39">(Zadrozny &amp; Elkan, 2002)</ref>, recent interest in neural architectures calibration show that modern neural architectures are poorly calibrated and that calibration can be improved with novel methods. For example, <ref type="bibr" target="#b12">(Guo et al., 2017)</ref> successfully proposes to use temperature scaling for calibrating modern neural networks in classification problems. On the same line, <ref type="bibr" target="#b18">(Kuleshov et al., 2018)</ref> proposes a procedure based on Platt scaling to calibrate deep neural networks in regression problems.</p><p>The Knowledge Vault pipeline in <ref type="bibr" target="#b10">(Dong et al., 2014)</ref> extracts triples from unstructured knowledge and is equipped with Platt scaling calibration, but this is not applied to knowledge graph embedding models. KG2E <ref type="bibr" target="#b14">(He et al., 2015)</ref> proposes to use normally-distributed embeddings to account for the uncertainty, but their model does not provide the probability of a triple being true, so KG2E would also benefit from the output calibration we propose here. To the best of our knowledge, the only work that adopts probability calibration to knowledge graph embedding models is <ref type="bibr" target="#b17">Krompaß &amp; Tresp (2015)</ref>. The authors propose to use ensembles in order to improve the results of knowledge graph embedding tasks. For that, they propose to calibrate the models with Platt scaling, so they Since the learned models are not calibrated, multiple decision thresholds τ i must be picked, where 0 &lt; i &lt; |R|, i.e. one for each relation type. This is done using a validation set <ref type="bibr" target="#b3">(Bordes et al., 2013)</ref>. Classification metrics apply (e.g. accuracy).</p><p>Link Prediction. Given a training set G that includes only positive triples, the goal is assigning a score f (t) ∈ R proportional to the likelihood that each unlabeled triple t included in a held-out set S is true. Note S does not have ground truth positives or negatives. This task is cast as a learning to rank problem, and uses metrics such as mean rank (MR), mean reciprocal rank (MRR) or Hits@N.</p><p>Knowledge Graph Embeddings. Knowledge graph embedding models are neural architectures that encode concepts from a knowledge graph G (i.e. entities E and relation types R) into lowdimensional, continuous vectors ∈ R k (i.e, the embeddings). Embeddings are learned by training a neural architecture over G. Although such architectures vary, the training phase always consists in minimizing a loss function L that includes a scoring function f m (t), i.e. a model-specific function that assigns a score to a triple t = (s, p, o) (more precisely, the input of f m are the embeddings of the subject e s , the predicate r p , and the object e o ). The goal of the optimization procedure is learning optimal embeddings, such that the scoring function f m assigns high scores to positive triples t + and low scores to triples unlikely to be true t -. Existing models propose scoring functions that combine the embeddings e s , r p , e o ∈ R k using different intuitions. Table <ref type="table">1b</ref> lists the scoring functions of the most common models. For example, the scoring function of TransE computes a similarity between the embedding of the subject e s translated by the embedding of the predicate e p and the embedding of the object e o , using the L 1 or L 2 norm || • ||. Such scoring function is then used on positive and negative triples t + ∈ G, t -∈ N in the loss function. This is usually a pairwise margin-based loss <ref type="bibr" target="#b3">(Bordes et al., 2013)</ref>, negative log-likelihood, or multi-class log-likelihood <ref type="bibr" target="#b20">(Lacroix et al., 2018)</ref>.</p><p>Since the training set usually includes positive statements, we generate synthetic negatives t -∈ N required for training. We do so by corrupting one side of the triple at a time (i.e. either the subject or the object), following the protocol proposed by <ref type="bibr" target="#b3">(Bordes et al., 2013)</ref>.</p><p>Calibration. Given a knowledge graph embedding model identified by its scoring function f m , with f m (t) = p, where p is the estimated confidence level that a triple t = (s, p, o) is true, we define f m to be calibrated if p represents a true probability. For example, if f m (•) predicts 100 triples all with confidence p = 0.7, we expect exactly 70 to be actually true. Calibrating a model requires reliable metrics to detect miscalibration, and effective techniques to fix such distortion. Appendix A.1 includes definitions and background on the calibration metrics adopted in the paper.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">CALIBRATING KNOWLEDGE GRAPH EMBEDDING MODELS PREDICTIONS</head><p>We propose two scenario-dependent calibration techniques: we first address the case with ground truth negatives t -∈ N . The second deals with the absence of ground truth negatives.</p><p>Calibration with Ground Truth Negatives. We propose to use off-the-shelf Platt scaling and isotonic regression, techniques proved to be effective in literature. It is worth reiterating that to calibrate a model negative triples N are required from a held-out dataset (which could be the validation set). Such negatives are usually available in triple classification datasets (FB13, WN11, YAGO39K)</p><p>Calibration with Synthetic Negatives. Our main contribution is for the case where no ground truth negatives are provided at all, which is in fact the usual scenario for link prediction tasks.</p><p>We propose to adopt Platt scaling or isotonic regression and to synthetically generate corrupted triples as negatives, while using sample weights to guarantee that the frequencies adhere to the base rate of the population (which is problem-dependent and must be user-specified). It is worth noting that it is not possible to calibrate a model without implicit or explicit base rate. If it is not implicit on the dataset (the ratio of positives to totals), it must be explicitly provided.</p><p>We generate synthetic negatives N following the standard protocol proposed by <ref type="bibr" target="#b3">(Bordes et al., 2013)</ref> <ref type="foot" target="#foot_0">1</ref> : for every positive triple t = (s, p, o), we corrupt one side of the triple at a time (i.e. either the subject s or the object o) by replacing it with other entities in E. The number of corruptions generated per positive is defined by the user-defined corruption rate η ∈ N. Since the number of negatives N = |N | can be much greater than the number of positive triples P = |G|, when dealing with calibration with synthetically generated corruptions, we weigh the positive and negative triples to make the calibrated model match the population base rate α = P/(P + N ) ∈ [0, 1], otherwise the base rate would depend on the arbitrary choice of η.</p><p>Given a positive base rate α, we propose the following weighting scheme:</p><formula xml:id="formula_0">ω + = η for positive triples G ω -= 1 α -1 for negative triples N<label>(1)</label></formula><p>where ω + ∈ R is the weight associated to the positive triples and ω -∈ R to the negatives. The ω + weight removes the imbalance determined by having a higher number of corruptions than positive triples in each batch. The ω -weight guarantees that the given positive base rate α is respected.</p><p>The above can be verified as follows. For the unweighted problem, the positive base rate is simply the ratio of positive examples to the total number of examples:</p><formula xml:id="formula_1">α = P P + N<label>(2)</label></formula><p>If we add uniform weights to each class, we have:</p><formula xml:id="formula_2">α = ω + P ω -N + ω + P<label>(3)</label></formula><p>By defining ω + = η, i.e. adopting the ratio of negatives to positives (corruption rate), we then have:</p><formula xml:id="formula_3">α = P N P N ω -+ P N P = N ω -N + N = 1 ω -+ 1 (4)</formula><p>Thus, the negative weights is:</p><formula xml:id="formula_4">ω -= 1 α -1 (5)</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">RESULTS</head><p>We compute the calibration quality of our heuristics, showing that we achieve calibrated predictions even when ground truth negative triples are not available. We then show the impact of calibrated predictions on the task of triple classification.</p><p>Datasets. We run experiments on triple classification datasets that include ground truth negatives (Table <ref type="table">1</ref>). We train on the training set, calibrate on the validation set, and evaluate on the test set.</p><p>• WN11 <ref type="bibr" target="#b34">(Socher et al., 2013)</ref>. A subset of Wordnet <ref type="bibr" target="#b24">(Miller, 1995)</ref>, it includes a large number of hyponym and hypernym relations thus including hierarchical structures. • FB13 <ref type="bibr" target="#b34">(Socher et al., 2013)</ref>. A subset of Freebase <ref type="bibr" target="#b2">(Bollacker et al., 2008)</ref>, it includes facts on famous people (place of birth and/or death, profession, nationality, etc). • YAGO39K <ref type="bibr" target="#b22">(Lv et al., 2018)</ref>. This recently released dataset has been carved out of YAGO3 <ref type="bibr" target="#b23">(Mahdisoltani et al., 2013)</ref>, and includes a mixture of facts about famous people, events, places, and sports teams.</p><p>We also use two standard link prediction benchmark datasets, WN18RR Hyperparameter Tuning. For each dataset in Table <ref type="table">1a</ref>, we train a TransE, DistMult, and a ComplEx knowledge graph embedding model. We rely on typical hyperparameter values: we train the embeddings with dimensionality k = 100, Adam optimizer, initial learning rate α 0 = 1e-4, negatives per positive ratio η = 20, epochs = 1000. We train all models on four different loss functions: Selfadversarial <ref type="bibr" target="#b35">(Sun et al., 2019)</ref>, pairwise <ref type="bibr" target="#b3">(Bordes et al., 2013)</ref>, NLL, and Multiclass-NLL <ref type="bibr" target="#b20">(Lacroix et al., 2018)</ref>. Different losses are used in different experiments.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">CALIBRATION RESULTS</head><p>Calibration Success. Table <ref type="table" target="#tab_2">2</ref> reports Brier scores and log losses for all our calibration methods, grouped by the type of negative triples they deal with (ground truth or synthetic). All calibration methods show better-calibrated results than the uncalibrated case, by a considerable margin and for all datasets. In particular, to put the results of the synthetic strategy in perspective, if we suppose to predict the positive base rate as a baseline, for each of the cases in Table <ref type="table" target="#tab_2">2</ref> (the three datasets share the same positive base rate α = 0.5), we would get Brier score B = 0.25 and log loss L log = 0.69, results that are always worse than our methods. There is considerable variance of results between models given a dataset, which also happens when varying losses given a particular combination of model and dataset (Table <ref type="table" target="#tab_4">3</ref>). TransE provides the best results for WN11 and FB13, while DistMult works best for YAGO39K. We later propose that this variance comes from the quality of the embeddings themselves, that is, better embeddings allow for better calibration.</p><p>In Figure <ref type="figure" target="#fig_1">2</ref>, we also evaluate just the frequencies themselves, ignoring sharpness (i.e. whether probabilities are close to 0 or 1), using reliability diagrams for a single model-loss combination, for all datasets (ComplEx+NLL). Calibration plots show a remarkable difference between the uncalibrated baseline (s-shaped blue line on the left-hand side) and all calibrated models (curves closer to the identity function are better). A visual comparison of uncalibrated curves in Figure <ref type="figure" target="#fig_0">1</ref> with those in Figure <ref type="figure" target="#fig_1">2</ref> also gives a sense of the effectiveness of calibration.</p><p>Ground Truth vs Synthetic. As expected, the ground truth method generally performs better than the synthetic calibration, since it has more data in both quantity (twice as much) and quality (two classes instead of one). Even so, the synthetic method is much closer to the ground truth than to the uncalibrated scores, as highlighted by the calibration plots in Figure <ref type="figure" target="#fig_1">2</ref>. For WN11, it is actually as good as the calibration with the ground truth. This shows that our proposed method works as intended and could be used in situations where we do not have access to the ground truth, as is the case for most knowledge graph datasets.</p><p>Isotonic vs Platt. Isotonic regression performs better than Platt scaling in general, but in practice Isotonic regression has the disadvantage of not being a convex or differentiable algorithm <ref type="bibr" target="#b39">Zadrozny &amp; Elkan (2002)</ref>. This is particularly problematic for the synthetic calibration, as it requires the generation of the synthetic corruptions, which can only be made to scale via a mini-batch based   <ref type="bibr" target="#b35">(Sun et al., 2019)</ref>). Low score = better. Best results in bold for each combination of dataset and metric.</p><p>optimization procedure. Platt scaling, given that it is a convex and differentiable loss, can be made part of a computational graph and optimized with mini-batches, thus it can rely on the modern computational infrastructure designed to train deep neural networks.</p><p>Influence of Loss Function. We experiment with different losses, to assess how calibration affects each of them (Table <ref type="table" target="#tab_4">3</ref>). We choose to work with TransE, which is reported as a strong baseline in <ref type="bibr" target="#b13">(Hamaguchi et al., 2017)</ref>. Self-adversarial loss obtains the best calibration results for all calibra-  tion methods, across all datasets. Experiments also show the choice of the loss has a big impact, greater than the choice of calibration method or embedding model. We assess whether such variability is determined by the quality of the embeddings. To verify whether better embeddings lead to sharper calibration, we report the mean reciprocal rank (MRR), which, for each true test triple, computes the (inverse) rank of the triple against synthetic corruptions, then averages the inverse rank (Table <ref type="table" target="#tab_4">3</ref>). In fact, we notice no correlation between calibration results and MRR. In other words, embeddings that lead to the best predictive power are not necessary the best calibrated.</p><p>Positive Base Rate. We apply our synthetic calibration method to two link prediction benchmark datasets, FB15K-237 and WN18RR. As they only provide positive examples, we apply our method with varying base rates α i , linearly spaced from 0.05 to 0.95. We evaluate results relying on the closed-world assumption, i.e. triples not present in training, validation or test sets are considered negative. For each α i we calibrate the model using the synthetic method with both isotonic regression and Platt scaling. We sample negatives from the negative set under the implied negative rate, and calculate a baseline which is simply having all probability predictions equal to α i . Figure <ref type="figure" target="#fig_2">3</ref> shows that isotonic regression and Platt scaling perform similarly and always considerably below the baseline. As expected from the previous results, the uncalibrated scores perform poorly, only reaching acceptable levels around some particular base rates.</p><p>Triple Classification and Decision Threshold. To overcome the need to learn |R| decision thresholds τ i from the validation set, we propose to rely on calibrated probabilities, and use the natural threshold of τ = 0.5. Table <ref type="table" target="#tab_5">4</ref> shows how calibration affects the triple classification task, comparing with the literature standard of per-relation thresholds (last column). For simplicity, note we use the same self-adversarial loss in Table <ref type="table" target="#tab_2">2</ref> and<ref type="table" target="#tab_5">Table 4</ref>. We learn thresholds τ i on validation sets, resulting in 11, 7, and 33 thresholds for WN11, FB13 and YAGO39K respectively.</p><p>Using a single τ = 0.5 and calibration provides competitive results compared to multiple learned thresholds (note uncalibrated results with τ = 0.5 are poor, as expected). It is worth mentioning that   <ref type="bibr" target="#b41">(Zhang et al., 2018)</ref>; from <ref type="bibr" target="#b15">(Ji et al., 2016)</ref>; † from <ref type="bibr" target="#b22">(Lv et al., 2018)</ref>.</p><p>we are at par with state-of-the-art results for WN11. Isotonic regression is again the best method, but there is more variance in the model choice. Our proposed calibration method with synthetic negatives performs well overall, even though calibration is performed only using half of the validation set (negatives examples are replaced by synthetic negatives).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">CONCLUSION</head><p>We propose a method to calibrate knowledge graph embedding models. We target datasets with and without ground truth negatives. We experiment on triple classification datasets and apply Platt scaling and isotonic regression with and without synthetic negatives controlled by our heuristics. All calibration methods perform significantly better than uncalibrated scores. We show that isotonic regression brings better calibration performance, but it is computationally more expensive. Additional experiments on triple classification shows that calibration allows to use a single decision threshold, reaching state-of-the-art results without the need to learn per-relation thresholds.</p><p>Future work will evaluate additional calibration algorithms, such as beta calibration <ref type="bibr" target="#b19">(Kull et al., 2017)</ref> or Bayesian binning <ref type="bibr" target="#b25">(Naeini et al., 2015)</ref>. We will also experiment on ensembling of knowledge graph embedding models, inspired by <ref type="bibr" target="#b17">(Krompaß &amp; Tresp, 2015)</ref>. The rationale is that different models operate on different scales, but calibrating brings them all to the same probability scale, so their output can be easily combined.    </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Reliability diagrams of uncalibrated models. Probabilities are generated by a logistic sigmoid layer. The larger the deviation from the diagonal, the more uncalibrated is the model. We present four different common loss functions used to train knowledge graph embedding models. (a) Uncalibrated TransE on WN11. (b) Uncalibrated ComplEx on FB13. Best viewed in colors.</figDesc><graphic coords="2,307.25,81.86,194.05,133.89" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Calibration plots for the best calibrated model-loss combinations. Isotonic regression delivers the best results, getting very close to the perfectly calibrated line, both when used with the ground truth method or our proposed synthetic method. Best viewed in colors.</figDesc><graphic coords="6,147.60,81.86,316.82,315.55" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Synthetic calibration on FB15K-237 and WN18RR, with varying positive base rates. The baseline stands for using the positive base rate as the probability prediction. Results are evaluated under the closed-world assumption, using the same positive base rate used to calibrate the models.</figDesc><graphic coords="8,108.00,81.86,396.02,132.27" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Histograms show the total count instances for each bin used by calibration plots presented in Figure 2. Best viewed in colors.</figDesc><graphic coords="13,108.00,182.37,396.01,415.10" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Impact of η (eta) and k (embedding size) on the Brier score. We used TransE and the Self-Adversarial loss for all datasets. Best viewed in colors.</figDesc><graphic coords="14,108.00,86.97,396.02,375.43" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc><ref type="bibr" target="#b9">(Dettmers et al., 2018)</ref> (a subset of Wordnet) and FB15K-237<ref type="bibr" target="#b36">(Toutanova et al., 2015)</ref> (a subset of Freebase). Their test sets do not include ground truth negatives.Implementation Details. The knowledge graph embedding models are implemented with the AmpliGraph library<ref type="bibr" target="#b7">(Costabello et al., 2019)</ref> version 1.1, using TensorFlow 1.13<ref type="bibr" target="#b0">(Abadi et al., 2016)</ref> and Python 3.6 on the backend. All experiments were run under Ubuntu 16.04 on an Intel Xeon Gold 6142, 64 GB, equipped with a Tesla V100 16GB. Code and experiments are available at https://github.com/Accenture/AmpliGraph.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Calibration test results (self-adversarial loss</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell cols="2">Brier Score</cell><cell></cell><cell></cell><cell></cell><cell cols="2">Log Loss</cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell cols="2">Ground Truth</cell><cell cols="2">Synthetic</cell><cell></cell><cell cols="2">Ground Truth</cell><cell cols="2">Synthetic</cell></row><row><cell></cell><cell></cell><cell>Uncalib</cell><cell>Platt</cell><cell>Iso</cell><cell>Platt</cell><cell>Iso</cell><cell>Uncalib</cell><cell>Platt</cell><cell>Iso</cell><cell>Platt</cell><cell>Iso</cell></row><row><cell></cell><cell>TransE</cell><cell>.443</cell><cell>.089</cell><cell>.087</cell><cell>.092</cell><cell>.088</cell><cell>1.959</cell><cell>.302</cell><cell>.295</cell><cell>.311</cell><cell>.296</cell></row><row><cell>WN11</cell><cell cols="2">DistMult .488 ComplEx .490</cell><cell>.213 .240</cell><cell>.208 .227</cell><cell>.214 .240</cell><cell>.208 .228</cell><cell>5.625 6.061</cell><cell>.618 .674</cell><cell>.604 .651</cell><cell>.618 .674</cell><cell>.601 .650</cell></row><row><cell></cell><cell>HolE</cell><cell>.474</cell><cell>.235</cell><cell>.235</cell><cell>.235</cell><cell>.236</cell><cell>2.731</cell><cell>.663</cell><cell>.661</cell><cell>.663</cell><cell>.668</cell></row><row><cell></cell><cell>TransE</cell><cell>.446</cell><cell>.124</cell><cell>.124</cell><cell>.148</cell><cell>.141</cell><cell>1.534</cell><cell>.390</cell><cell>.391</cell><cell>.459</cell><cell>.442</cell></row><row><cell>FB13</cell><cell cols="2">DistMult .473 ComplEx .481</cell><cell>.178 .177</cell><cell>.170 .170</cell><cell>.185 .182</cell><cell>.192 .189</cell><cell>2.177 2.393</cell><cell>.533 .534</cell><cell>.518 .516</cell><cell>.549 .544</cell><cell>.567 .565</cell></row><row><cell></cell><cell>HolE</cell><cell>.452</cell><cell>.229</cell><cell>.228</cell><cell>.242</cell><cell>.263</cell><cell>1.681</cell><cell>.650</cell><cell>.651</cell><cell>.677</cell><cell>.725</cell></row><row><cell></cell><cell>TransE</cell><cell>.363</cell><cell>.095</cell><cell>.093</cell><cell>.106</cell><cell>.110</cell><cell>1.062</cell><cell>.319</cell><cell>.309</cell><cell>.370</cell><cell>.376</cell></row><row><cell>YAGO</cell><cell cols="2">DistMult .284</cell><cell>.081</cell><cell>.079</cell><cell>.093</cell><cell>.089</cell><cell>1.043</cell><cell>.279</cell><cell>.266</cell><cell>.311</cell><cell>.308</cell></row><row><cell>39K</cell><cell cols="2">ComplEx .264</cell><cell>.089</cell><cell>.084</cell><cell>.097</cell><cell>.095</cell><cell>1.199</cell><cell>.305</cell><cell>.278</cell><cell>.323</cell><cell>.313</cell></row><row><cell></cell><cell>HolE</cell><cell>.345</cell><cell>.141</cell><cell>.140</cell><cell>.166</cell><cell>.162</cell><cell>1.065</cell><cell>.444</cell><cell>.438</cell><cell>.581</cell><cell>.537</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 3 :</head><label>3</label><figDesc>Calibration test results using different losses L with TransE. Lower calibration metrics = better. We compute MRR only on positive test triples. Self-adversarial loss achieves better calibrated results across the board. Results show no correlation between MRR and calibration performance, i.e. embeddings that bring higher MRR are not necessarily easier to calibrate. Best results in bold.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 4 :</head><label>4</label><figDesc>Effect of calibration on triple classification accuracy. Best results in bold. For all calibration methods there is one single threshold, τ = 0.5. For the per-relation τ , we learned multiple thresholds from validation sets (Appendix A.5). We did not carry out additional model selection, and used Table2hyperparameters instead. Isotonic regression reaches state-of-the-art results for WN11. Results of * from</figDesc><table><row><cell>Uncalib. (Per-Relation τ )</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 5 :</head><label>5</label><figDesc>Standard filtered metrics for knowledge graph embeddings models. The models are implemented in the same codebase and share the same evaluation protocol. Note that we do not include results from reciprocal evaluation protocols.A.5 PER-RELATION DECISION THRESHOLDSWe report in Table6the per-relation decision thresholds τ used in Table4, under the 'Reproduced' column. Note that the thresholds reported here are not probabilities, as they have been applied to the raw scores returned by the model-dependent scoring function f m (t).</figDesc><table><row><cell></cell><cell></cell><cell>MR</cell><cell>MRR</cell><cell>Hits@10</cell></row><row><cell></cell><cell cols="2">TransE 2289</cell><cell>.155</cell><cell>.309</cell></row><row><cell>WN11</cell><cell cols="2">DistMult 10000 ComplEx 13815</cell><cell>.045 .054</cell><cell>.081 .094</cell></row><row><cell></cell><cell>HolE</cell><cell>13355</cell><cell>.017</cell><cell>.035</cell></row><row><cell></cell><cell cols="2">TransE 3431</cell><cell>.296</cell><cell>.394</cell></row><row><cell>FB13</cell><cell cols="2">DistMult 6667 ComplEx 8937</cell><cell>.183 .018</cell><cell>.337 .039</cell></row><row><cell></cell><cell>HolE</cell><cell>8937</cell><cell>.018</cell><cell>.039</cell></row><row><cell></cell><cell>TransE</cell><cell>244</cell><cell>.169</cell><cell>.319</cell></row><row><cell>YAGO39K</cell><cell cols="2">DistMult 635 ComplEx 1074</cell><cell>.306 .531</cell><cell>.620 .753</cell></row><row><cell></cell><cell>HolE</cell><cell>922</cell><cell>.101</cell><cell>.189</cell></row><row><cell>WN18RR</cell><cell cols="2">ComplEx 4111</cell><cell>.506</cell><cell>.583</cell></row><row><cell cols="3">FB15K-237 ComplEx 183</cell><cell>.320</cell><cell>.499</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 6 :</head><label>6</label><figDesc>Relation-specific decision thresholds learned on uncalibrated raw scores (See also Table4for a report on triple classification results.)</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>We also experimented with per-batch entities only, without any significant changes to the results. Future work will experiments with additional techniques as proposed byKotnis &amp; Nastase (2017).</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A APPENDIX</head><p>A.1 CALIBRATION METRICS Reliability Diagram <ref type="bibr" target="#b8">(DeGroot &amp; Fienberg, 1983;</ref><ref type="bibr" target="#b32">Niculescu-Mizil &amp; Caruana, 2005)</ref>. Also known as calibration plot, this diagram is a visual depiction of the calibration of a model (see Figure <ref type="figure">1</ref> for an example). It shows the expected sample accuracy as a function of the estimated confidence. A hypothetical perfectly calibrated model is represented by the diagonal line (i.e. the identity function). Divergence from such diagonal indicates calibration issues <ref type="bibr" target="#b12">(Guo et al., 2017)</ref>.</p><p>Brier Score <ref type="bibr" target="#b4">(Brier, 1950)</ref>. It is a popular metric used to measure how well a binary classifier is calibrated. It is defined as the mean squared error between n probability estimates p and the corresponding actual outcomes y ∈ 0, 1. The smaller the Brier score, the better calibrated is the model. Note that the Brier score B ∈ [0, 1].</p><p>Log Loss is another effective and popular metric to measure the reliability of the probabilities returned by a classifier. The logarithmic loss measures the relative uncertainty between the probability estimates produced by the model and the corresponding true labels.</p><p>Platt Scaling. Proposed by <ref type="bibr" target="#b33">(Platt et al., 1999)</ref> for support vector machines, Platt scaling is a popular parametric calibration techniques for binary classifiers. The method consists in fitting a logistic regression model to the scores returned by a binary classifier, such that q = σ(ap + b), where p ∈ R is the uncalibrated score of the classifier, a, b ∈ R are trained scalar weights. and q is the calibrated probability returned as output. Such model can be trained be trained by optimizing the NLL loss with non-binary targets derived by the Bayes rule under an uninformative prior, resulting in an Maximum a Posteriori estimate.</p><p>Isotonic Regression <ref type="bibr" target="#b39">(Zadrozny &amp; Elkan, 2002)</ref>. This popular non-parametric calibration techniques consists in fitting a non-decreasing piecewise constant function to the output of an uncalibrated classifier. As for Platt scaling, the goal is learning a function q = g(p), such that q is a calibrated probability. Isotonic regression learns g by minimizing the square loss n i=1 ( qi -y i ) 2 under the constraint that g must be piecewise constant <ref type="bibr" target="#b12">(Guo et al., 2017)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 CALIBRATION DIAGRAMS: INSTANCES PER BIN</head><p>We present in Figure <ref type="figure">4</ref> the total count of instances for each bin used in the calibration plots included in Figure <ref type="figure">2</ref>. As expected, calibration considerably helps spreading out instances across bins, whereas in uncalibrated scenarios instances are squeezed in the first or last bins.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3 IMPACT OF MODEL HYPERPARAMETERS: η AND EMBEDDING DIMENSIONALITY</head><p>In Figure <ref type="figure">5</ref> we report the impact of negative/positive ratio η and the embedding dimensionality k. Results show that the embedding size k has higher impact than the negative/positive ratio η. We observe that calibrated and uncalibrated low-dimensional embeddings have worse Brier score. Results also show that any k &gt; 50 does not improve calibration anymore. The negative/positive ratio η follows a similar pattern: choosing η &gt; 10 does not have any effect on the calibration score.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.4 POSITIVE BASE RATE EXPERIMENTS: LINK PREDICTION PERFORMANCE</head><p>In Table <ref type="table">5</ref>, we present the traditional knowledge graph embedding rank metrics: MRR (mean reciprocal rank), MR (mean rank) and Hits@10 (precision at the top-10 results). We report the results for all datasets and models used in the main text, which appear in Table <ref type="table">2</ref>, Table <ref type="table">4</ref> and<ref type="table">Figure 3.</ref> </p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Tensorflow: A system for largescale machine learning</title>
+		<author>
+			<persName><forename type="first">Martín</forename><surname>Abadi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Barham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianmin</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhifeng</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andy</forename><surname>Davis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Dean</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthieu</forename><surname>Devin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanjay</forename><surname>Ghemawat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><surname>Irving</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Isard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">12th {USENIX} Symposium on Operating Systems Design and Implementation</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="265" to="283" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<author>
+			<persName><forename type="first">Ivana</forename><surname>Balažević</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carl</forename><surname>Allen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothy</forename><forename type="middle">M</forename><surname>Hospedales</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Tucker</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1901.09590</idno>
+		<title level="m">Tensor factorization for knowledge graph completion</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Freebase: a collaboratively created graph database for structuring human knowledge</title>
+		<author>
+			<persName><forename type="first">Kurt</forename><surname>Bollacker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Colin</forename><surname>Evans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Praveen</forename><surname>Paritosh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Sturge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jamie</forename><surname>Taylor</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2008 ACM SIGMOD international conference on Management of data</title>
+		<meeting>the 2008 ACM SIGMOD international conference on Management of data</meeting>
+		<imprint>
+			<publisher>AcM</publisher>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="1247" to="1250" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multi-relational data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="2787" to="2795" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Verification of forecasts expressed in terms of probability</title>
+		<author>
+			<persName><forename type="first">Glenn</forename><forename type="middle">W</forename><surname>Brier</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Monthly weather review</title>
+		<imprint>
+			<biblScope unit="volume">78</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="3" />
+			<date type="published" when="1950">1950</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<author>
+			<persName><forename type="first">Hongyun</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vincent</forename><forename type="middle">W</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">-Chuan</forename><surname>Chang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1709.07604</idno>
+		<title level="m">A comprehensive survey of graph embedding: Problems, techniques and applications</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Kbgan: Adversarial learning for knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Liwei</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wang</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long Papers</title>
+		<meeting>the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="1470" to="1480" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">AmpliGraph: a Library for Representation Learning on Knowledge Graphs</title>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Costabello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sumit</forename><surname>Pai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chan</forename><forename type="middle">Le</forename><surname>Van</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rory</forename><surname>Mcgrath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicholas</forename><surname>Mccarthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pedro</forename><surname>Tabacof</surname></persName>
+		</author>
+		<idno type="DOI">10.5281/zenodo.2595043</idno>
+		<ptr target="https://doi.org/10.5281/zenodo.2595043" />
+		<imprint>
+			<date type="published" when="2019-03">March 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">The comparison and evaluation of forecasters</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Morris</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephen</forename><forename type="middle">E</forename><surname>Degroot</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Fienberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the Royal Statistical Society: Series D (The Statistician)</title>
+		<imprint>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="issue">1-2</biblScope>
+			<biblScope unit="page" from="12" to="22" />
+			<date type="published" when="1983">1983</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pontus</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<ptr target="https://www.aaai.org/ocs/index.php/AAAI/AAAI18/paper/view/17366" />
+	</analytic>
+	<monogr>
+		<title level="m">Procs of AAAI</title>
+		<meeting>s of AAAI</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Knowledge vault: A web-scale approach to probabilistic knowledge fusion</title>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evgeniy</forename><surname>Gabrilovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geremy</forename><surname>Heitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wilko</forename><surname>Horn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ni</forename><surname>Lao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Strohmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shaohua</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="601" to="610" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Toruse: Knowledge graph embedding on a lie group</title>
+		<author>
+			<persName><forename type="first">Takuma</forename><surname>Ebisu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ryutaro</forename><surname>Ichise</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Thirty-Second AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">On calibration of modern neural networks</title>
+		<author>
+			<persName><forename type="first">Chuan</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geoff</forename><surname>Pleiss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kilian</forename><forename type="middle">Q</forename><surname>Weinberger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 34th International Conference on Machine Learning</title>
+		<meeting>the 34th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">70</biblScope>
+			<biblScope unit="page" from="1321" to="1330" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Knowledge transfer for out-of-knowledge-base entities: a graph neural network approach</title>
+		<author>
+			<persName><forename type="first">Takuo</forename><surname>Hamaguchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hidekazu</forename><surname>Oiwa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Masashi</forename><surname>Shimbo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuji</forename><surname>Matsumoto</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th International Joint Conference on Artificial Intelligence</title>
+		<meeting>the 26th International Joint Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1802" to="1808" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Learning to represent knowledge graphs with gaussian embedding</title>
+		<author>
+			<persName><forename type="first">Shizhu</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guoliang</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Zhao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 24th ACM International on Conference on Information and Knowledge Management</title>
+		<meeting>the 24th ACM International on Conference on Information and Knowledge Management</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="623" to="632" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Knowledge graph completion with adaptive sparse transfer matrix</title>
+		<author>
+			<persName><forename type="first">Guoliang</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shizhu</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Zhao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Thirtieth AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">embedding-for-link-prediction-in-knowledge-graphs. pdf. Bhushan Kotnis and Vivi Nastase. Analysis of the impact of negative sampling on link prediction in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Seyed</forename><surname>Mehran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kazemi</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Poole</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1708.06816</idno>
+		<ptr target="http://papers.nips.cc/paper/7682-simple-" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Bengio</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Grauman</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">N</forename><surname>Cesa-Bianchi</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Garnett</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2017">2018. 2017</date>
+			<biblScope unit="volume">31</biblScope>
+			<biblScope unit="page" from="4284" to="4295" />
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+	<note>Simple embedding for link prediction in knowledge graphs</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Ensemble solutions for link-prediction in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Denis</forename><surname>Krompaß</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Volker Tresp</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2nd Workshop</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Accurate uncertainties for deep learning using calibrated regression</title>
+		<author>
+			<persName><forename type="first">Volodymyr</forename><surname>Kuleshov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nathan</forename><surname>Fenner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefano</forename><surname>Ermon</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1807.00263</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Beyond sigmoids: How to obtain wellcalibrated probabilities from binary classifiers with beta calibration</title>
+		<author>
+			<persName><forename type="first">Meelis</forename><surname>Kull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Telmo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Silva Filho</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Flach</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Electronic Journal of Statistics</title>
+		<imprint>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="5052" to="5080" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Canonical tensor decomposition for knowledge base completion</title>
+		<author>
+			<persName><forename type="first">Timothee</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Obozinski</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="2869" to="2878" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Analogical inference for multi-relational embeddings</title>
+		<author>
+			<persName><forename type="first">Hanxiao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuexin</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yiming</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 34th International Conference on Machine Learning</title>
+		<meeting>the 34th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">70</biblScope>
+			<biblScope unit="page" from="2168" to="2178" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Differentiating concepts and instances for knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Lv</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Hou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juanzi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2018 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1971" to="1979" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<author>
+			<persName><forename type="first">Farzaneh</forename><surname>Mahdisoltani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joanna</forename><surname>Biega</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabian</forename><forename type="middle">M</forename><surname>Suchanek</surname></persName>
+		</author>
+		<title level="m">A knowledge base from multilingual wikipedias</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">3</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Wordnet: a lexical database for english</title>
+		<author>
+			<persName><forename type="first">George</forename><forename type="middle">A</forename><surname>Miller</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Communications of the ACM</title>
+		<imprint>
+			<biblScope unit="volume">38</biblScope>
+			<biblScope unit="issue">11</biblScope>
+			<biblScope unit="page" from="39" to="41" />
+			<date type="published" when="1995">1995</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Obtaining well calibrated probabilities using bayesian binning</title>
+		<author>
+			<persName><forename type="first">Gregory</forename><surname>Mahdi Pakdaman Naeini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Milos</forename><surname>Cooper</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hauskrecht</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Twenty-Ninth AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Learning attention-based embeddings for relation prediction in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Deepak</forename><surname>Nathani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jatin</forename><surname>Chauhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charu</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manohar</forename><surname>Kaul</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1906.01195</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">A novel embedding model for knowledge base completion based on convolutional neural network</title>
+		<author>
+			<persName><forename type="first">Tu</forename><surname>Dai Quoc Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dat</forename><surname>Dinh Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dinh</forename><surname>Quoc Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Phung</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference of the North American Chapter</title>
+		<meeting>the 2018 Conference of the North American Chapter</meeting>
+		<imprint>
+			<publisher>Short Papers</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="327" to="333" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">A capsule network-based embedding model for knowledge graph completion and search personalization</title>
+		<author>
+			<persName><forename type="first">Thanh</forename><surname>Dai Quoc Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tu</forename><surname>Vu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dat</forename><surname>Dinh Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dinh</forename><surname>Quoc Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Phung</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter</title>
+		<title level="s">Long and Short Papers</title>
+		<meeting>the 2019 Conference of the North American Chapter</meeting>
+		<imprint>
+			<publisher>the Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="2180" to="2189" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">A three-way model for collective learning on multi-relational data</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hans-Peter</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kriegel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="page" from="809" to="816" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">A review of relational machine learning for knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evgeniy</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gabrilovich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Procs of the IEEE</title>
+		<imprint>
+			<biblScope unit="volume">104</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="11" to="33" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Holographic embeddings of knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lorenzo</forename><surname>Rosasco</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Tomaso</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Poggio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="1955" to="1961" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Predicting good probabilities with supervised learning</title>
+		<author>
+			<persName><forename type="first">Alexandru</forename><surname>Niculescu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">-Mizil</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rich</forename><surname>Caruana</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd international conference on Machine learning</title>
+		<meeting>the 22nd international conference on Machine learning</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2005">2005</date>
+			<biblScope unit="page" from="625" to="632" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Probabilistic outputs for support vector machines and comparisons to regularized likelihood methods</title>
+		<author>
+			<persName><forename type="first">John</forename><surname>Platt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in large margin classifiers</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="61" to="74" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Reasoning with neural tensor networks for knowledge base completion</title>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">D</forename><surname>Manning</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Ng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems (NIPS)</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<monogr>
+		<title level="m" type="main">Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Zhiqing</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhi-Hong</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian-Yun</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1902.10197</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Representing text for joint embedding of text and knowledge bases</title>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Pantel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hoifung</forename><surname>Poon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pallavi</forename><surname>Choudhury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Gamon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2015 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2015 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="1499" to="1509" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Complex embeddings for simple link prediction</title>
+		<author>
+			<persName><forename type="first">Théo</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Éric</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">procs of ICML</title>
+		<meeting>s of ICML</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2071" to="2080" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">Bishan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Wen-Tau Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Deng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Procs of ICLR</title>
+		<meeting>s of ICLR</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Transforming classifier scores into accurate multiclass probability estimates</title>
+		<author>
+			<persName><forename type="first">Bianca</forename><surname>Zadrozny</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><surname>Elkan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the eighth ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the eighth ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2002">2002</date>
+			<biblScope unit="page" from="694" to="699" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<author>
+			<persName><forename type="first">Shuai</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Tay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lina</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Liu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1904.10281</idno>
+		<title level="m">Quaternion knowledge graph embedding</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding with hierarchical relation structure</title>
+		<author>
+			<persName><forename type="first">Zhao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fuzhen</forename><surname>Zhuang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fen</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qing</forename><surname>He</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2018 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="3198" to="3207" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

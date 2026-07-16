@@ -1,0 +1,1546 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Graph Machine Learning through the Lens of Bilevel Optimization</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Amber</forename><forename type="middle">Yijia</forename><surname>Zheng</surname></persName>
+							<affiliation key="aff2">
+								<orgName type="laboratory">Contribution during AWS Shanghai AI Lab internship</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Tong</forename><surname>He</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Yixuan</forename><surname>Qiu</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Minjie</forename><surname>Wang</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">David</forename><surname>Wipf</surname></persName>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution">Purdue University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="department">Shanghai University of Finance and Economics</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Graph Machine Learning through the Lens of Bilevel Optimization</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="MD5">18B0E0302371C74F2002BFE02252E479</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:07+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Bilevel optimization refers to scenarios whereby the optimal solution of a lower-level energy function serves as input features to an upper-level objective of interest. These optimal features typically depend on tunable parameters of the lower-level energy in such a way that the entire bilevel pipeline can be trained end-to-end. Although not generally presented as such, this paper demonstrates how a variety of graph learning techniques can be recast as special cases of bilevel optimization or simplifications thereof. In brief, building on prior work we first derive a more flexible class of energy functions that, when paired with various descent steps (e.g., gradient descent, proximal methods, momentum, etc.), form graph neural network (GNN) messagepassing layers; critically, we also carefully unpack where any residual approximation error lies with respect to the underlying constituent message-passing functions. We then probe several simplifications of this framework to derive close connections with non-GNN-based graph learning approaches, including knowledge graph embeddings, various forms of label propagation, and efficient graph-regularized MLP models. And finally, we present supporting empirical results that demonstrate the versatility of the proposed bilevel lens, which we refer to as BloomGML, referencing that BiLevel Optimization Offers More Graph Machine Learning. Our code is available at https://github.com/amberyzheng/ BloomGML. Let graph ML bloom.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Graph machine learning covers a wide range of modeling tasks involving graph-structured data, where crossinstance/node dependencies are reflected by edges. As a classical example, label propagation <ref type="bibr" target="#b50">(Zhou et al., 2003)</ref> and its many offshoots represent a semi-supervised learning approach whereby observed node labels are iteratively spread across the graph to unlabeled nodes. In a related vein, various forms of graph-regularized MLP models <ref type="bibr" target="#b1">(Ando and Zhang, 2006;</ref><ref type="bibr" target="#b16">Hu et al., 2021;</ref><ref type="bibr" target="#b47">Zhang et al., 2023)</ref> share node representations across edges to penalize misalignment with network structure during training. And as a third example more narrowly focused on certain heterogeneous graphs, non-parametric knowledge graph embedding (KGE) models <ref type="bibr" target="#b3">(Bordes et al., 2013)</ref> produce node and relation-type embeddings that have been trained to differentiate factual knowledge triplets, composed of head and tail nodes connected by an edge relation, from spurious ones.</p><p>More recently, graph neural networks (GNNs) have emerged as a promising class of predictive models for handling tasks such as node classification or link prediction <ref type="bibr" target="#b22">(Kipf and Welling, 2016;</ref><ref type="bibr" target="#b13">Hamilton et al., 2017;</ref><ref type="bibr" target="#b38">Xu et al., 2019;</ref><ref type="bibr" target="#b34">Veličković et al., 2017;</ref><ref type="bibr" target="#b51">Zhou et al., 2020)</ref>. Central to a wide variety of GNN architectures are layers composed of three components: a message function, which bundles information for sharing with neighbors, an aggregation function that fuses all the messages from neighbors, and an update function that computes the layer-wise output embedding for each node. Collectively, these functions enable the layer-bylayer propagation of information across the graph to facilitate downstream tasks <ref type="bibr" target="#b22">(Kipf and Welling, 2016;</ref><ref type="bibr" target="#b13">Hamilton et al., 2017;</ref><ref type="bibr" target="#b20">Kearnes et al., 2016)</ref>.</p><p>In the past, the graph ML models described above have primarily been motivated from diverse perspectives, without necessarily a single, transparent lens with which to evaluate their commonalities. To make strides towards a more cohesive graph ML narrative, we propose to operate from a unifying vantage point afforded by bilevel optimization <ref type="bibr" target="#b32">(Sinha et al., 2018;</ref><ref type="bibr" target="#b37">Wang et al., 2016)</ref>. The latter refers to an optimization problem characterized by two interconnected levels, whereby the optimal solution of a lower-level objective serves as input features to an upper-level loss. Within the context of graph ML, we will demonstrate how the lower-level in particular can induce interpretable model architectures, while exposing underappreciated similarities across seemingly disparate paradigms. After providing relevant background material in Section 2, our primary contributions throughout the remainder of the paper can be summarized as follows:</p><p>• In Section 3 we introduce a broad class of lowerlevel energy functions that, when combined with appropriate optimization steps, give rise to efficient GNN message-passing layers inheriting interpretable inductive biases of energy minimizers. Moreover, subject to certain technical assumptions, we demonstrate that these optimizationinduced layers can replicate arbitrary message and aggregation functions, while providing a flexible approximation for the update function. Hence we conditionally isolate any appreciable approximation error to the latter, and in doing so, articulate a transparent design space for GNN architectures produced by bilevel optimization.</p><p>• Based on the above, in Section 4 we propose a broadly-applicable bilevel optimization framework called BloomGML, and establish that several notable special cases effectively reproduce and unify non-GNN-based graph learning approaches. In particular, we demonstrate an equivalence between traditional KGE learning and the training of an implicit GNN, with parameters given by relational embeddings and a graph formed from positive and negative knowledge triplets. This association explains recent empirical findings in the literature while motivating new interpretable approaches to modeling over knowledge graphs.</p><p>• Finally, in Section 5 we present experiments that highlight the flexibility and explanatory power of candidate models motivated by our proposed bilevel optimization framework and attendant analysis thereof.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Background</head><p>In this section, we first introduce GNN architectures and their constituent message-passing layers as applied to node classification tasks (more general tasks will be addressed later). We then describe an existing, popular special case induced by bilevel optimization, followed by a discussion of both advantages and limitations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Message Passing Graph Neural Networks</head><p>Let G = {V, R, E} denote a heterogeneous graph with n = |V| nodes and m = |R| edge types. Each edge e ∈ E is composed of a triplet via e = (u, r, v), with nodes u, v ∈ V and relation type r ∈ R. The more general heterogeneous case defaults to a homogeneous graph when m = 1. For any given node v, we also define the set of (1-hop) neighbors as N v := {(u, r) : (u, r, v) ∈ E}. Additionally, associated with each node is a ddimensional feature vector and a c-dimensional label vector which stack to form X ∈ R n×d and Y ∈ R n×c , respectively. The latter reflects our focus on node classification tasks within this section for simplicity of exposition; the extension to link prediction (whereby labels correspond with supervision over edges rather than individual nodes) follows naturally.</p><p>When presented with a graph G so defined, a messagepassing GNN (or MP-GNN) of depth L produces a layer-wise sequence of node embeddings {H (l) } L l=1 , where</p><formula xml:id="formula_0">H (l) = {h (l) v } v∈V ∈ R n×d represents the aggre- gated set of embeddings h (l)</formula><p>v at the l-th layer. Moreover, for each l, H (l) is computed from H (l-1) using a composition of three functions characteristic of MP-GNN architectures <ref type="bibr" target="#b11">(Gilmer et al., 2017;</ref><ref type="bibr" target="#b14">Hamilton, 2020)</ref>. We formalize this composition via the following definition:</p><p>Definition 1 An MP-GNN layer is formed via the composition of three functions:</p><formula xml:id="formula_1">1. A message function f M that computes µ (l) (u,r,v) := f M (h (l-1) u , r, h (l-1) v</formula><p>) ∈ R d for any edge e = (u, r, v) ∈ E, i.e., given the head and tail nodes and the relation type, f M produces an embedding for the corresponding edge;</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">A permutation-invariant aggregation function f</head><formula xml:id="formula_2">A that computes a (l) v := f A ({µ (l) (u,r,v) : (u, r) ∈ N v }) ∈ R d for all v ∈ V</formula><p>, meaning for each node the set function f A aggregates all messages associated with other nodes sharing an edge;</p><p>3. An update function f U that computes the embeddings of the next layer as h</p><formula xml:id="formula_3">(l) v = f U (h (l-1) v , a (l) v , x v )</formula><p>for all v ∈ V, i.e., the embeddings from the previous layer are combined with the aggregated messages and (optionally) the original input node features x v ∈ X.</p><p>The permutation-invariance of f A notwithstanding, all three components defining the MP-GNN layer can in principle be any parameterized differentiable (almost everywhere) functions suitable for learning with SGD, etc. Hence different MP-GNN architectures are moreor-less tantamount to different selections for f M , f A , and f U . We adopt W to denote the bundled set of all trainable parameters within {f M , f A , f U }.</p><p>Conditioned on executing L layers per the schema of Definition 1 culminating in the embeddings H (L) , model training proceeds by minimizing the loss</p><formula xml:id="formula_4">ℓ up (W, Θ) := v∈V ′ D g h (L) v (W); Θ , y v ,<label>(1)</label></formula><p>where h</p><formula xml:id="formula_5">(L) v (W) ≡ h (L) v</formula><p>reflects the explicit dependency of H (L) on W. In this expression, the output layer g : R d → R c is a differentiable node-wise function parameterized by Θ, V ′ ⊂ V indicates the subset of training instances with observable labels, and D is a discriminator function, e.g., cross-entropy for classification. Finally, the "up" in ℓ up reflects the fact that this function will later serve as an upper-level loss when embedded within a bilevel optimization setting to be described next.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Graph-Centric Bilevel Optimization</head><p>Our generic MP-GNN setting thus far narrows to the realm of bilevel optimization <ref type="bibr" target="#b32">(Sinha et al., 2018)</ref> when we infuse the latent embeddings {H (l) } L l=1 from above with additional layer-wise structure determined by a second, lower-level loss ℓ low ( • ; W, G), which likewise depends on W and G. Specifically, suppose that for all layers l, we enforce that</p><formula xml:id="formula_6">ℓ low H (l) ; W, G ≤ ℓ low H (l-1) ; W, G ,</formula><p>and ideally H (L) ≈ arg min</p><formula xml:id="formula_7">H ℓ low (H; W, G)<label>(2)</label></formula><p>for L sufficiently large. In other words, at each layer the composite embedding model l) per Definition 1 dually serves as an algorithm producing descent steps along the loss surface of ℓ low ; hence the coincident dependency of both ℓ low and f U • f A • f M on W and G. When combined with (1), we arrive at our bilevel destination, with embeddings that iteratively minimize ℓ low forming predictive features for end-to-end training within ℓ up .</p><formula xml:id="formula_8">f U • f A • f M that updates H<label>(</label></formula><p>A Representative Special Case. Motivated by <ref type="bibr" target="#b50">Zhou et al. (2003)</ref> in the context of homogeneous graphs, we consider the energy</p><formula xml:id="formula_9">ℓ low (H; W, G) := v∈V 1 2 ∥h v -π(x v ; W)∥ 2 2 + λ 2 (u,v)∈E ∥h u -h v ∥ 2 2 , (<label>3</label></formula><formula xml:id="formula_10">)</formula><p>where π is a parameterized input model (e.g., an MLP with weights W), and λ &gt; 0 is a trade-off parameter. This factor balances local consistency w.r.t. the input model π and global smoothness across the graph.</p><p>Next, starting from some H (0) , we may iterate L gradient descent steps along (3) to obtain H (L) . And along this trajectory for each layer l, it is straightforward to show (see Appendix B) that the resultant updates for each node v adhere to the stipulations of Definition 1, and can be equivalently computed as <ref type="bibr">r,v)</ref> , and</p><formula xml:id="formula_11">µ (l) (u,r,v) = h (l-1) u -h (l-1) v , a (l) v = u∈Nv µ (l) (u,</formula><formula xml:id="formula_12">h (l) v = (1 -γ)h (l-1) v + γλa (l) v + γπ(x v ; W), (<label>4</label></formula><formula xml:id="formula_13">)</formula><p>where γ is the gradient step-size parameter. From this expression, we observe that the effective messagepassing layer involves weighted skip connections from the previous layer and input model, along with a permutation-invariant summation of the embeddings from neighboring nodes. And provided π is differentiable w.r.t. W, the update for h</p><formula xml:id="formula_14">(l)</formula><p>v computed via (4) is differentiable as well. Hence we can substitute into (1) and train the entire system end-to-end using SGD over W and Θ.</p><p>Using various preconditioners and reparameterizations, it has been widely noted that model layers constructed via (4), or variations thereof, directly correspond with various popular MP-GNN architectures <ref type="bibr" target="#b4">(Chen et al., 2021;</ref><ref type="bibr" target="#b24">Ma et al., 2021;</ref><ref type="bibr" target="#b26">Pan et al., 2020;</ref><ref type="bibr" target="#b39">Xue et al., 2023;</ref><ref type="bibr" target="#b44">Yang et al., 2021;</ref><ref type="bibr" target="#b48">Zhang et al., 2020;</ref><ref type="bibr">Zhu et al., 2021b;</ref><ref type="bibr" target="#b52">Zhou et al., 2021;</ref><ref type="bibr" target="#b7">Di Giovanni et al., 2023)</ref>. Hence this particular instance of bilevel optimization can be interpreted as training a GNN node classification model with layers designed to minimize (3).</p><p>Why Construct GNN Architectures this Way? As one notable example, across customer-facing applications it is often desirable to know which factors influence the output predictions of a GNN model <ref type="bibr" target="#b45">(Ying et al., 2019)</ref>. Relevant to providing such explanatory details, the embeddings produced by bilevel optimization as in Section 2.2 contain additional information when contextualized w.r.t. their role in the ℓ low . For instance, if some node embedding h (L) v within (3) is very far from π(x v ; W) relative to other nodes, it increases our confidence that subsequent predictions may be based on network effects rather than an irrelevant local feature x v . We will empirically explore this possibility in Section 5. Alternatively, in the context of heterophilic graphs, we can examine the distribution of ∥h v -h u ∥ 2 across nodes sharing an edge to loosely calibrate the degree of heterophily, and possibly counteract its impact via appropriate modifications. And as a final dimension of motivation, the bilevel perspective provides natural entry points for the scalable training of models with arbitrary depth <ref type="bibr" target="#b39">(Xue et al., 2023)</ref> or interpretable integration with offline sampling <ref type="bibr" target="#b19">(Jiang et al., 2023)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3">Unresolved Limitations</head><p>Despite the widespread use of bilevel optimization in forming and/or analyzing GNN layers, prior work is largely confined to the exploration of narrow instances that follow from quite specific (usually quadratic) choices for ℓ low paired with vanilla gradient descent, with application to homogeneous graphs; the example presented in Section 2.2 follows this paradigm. As of yet, there has been no clear delineation of a broad design space of possibilities. We take initial steps in this direction next.</p><p>3 Towards More Flexible GNNs from Bilevel Optimization</p><p>In the previous section, we applied a specific iterative algorithm, gradient descent with step-size γ, to a particular energy function, ℓ low (H; W, G) from (3), and the resulting descent updates produced the GNN messagepassing layers given by (4). Within this relatively narrow design space, the only algorithmic flexibility is in the choice of γ, and on the energy side, we are limited to tuning the trade-off parameter λ and the input model π. Not surprisingly then, (4) is far less flexible/expressive relative to the general form from Definition 1. We now seek to reduce this gap via the following formulation.</p><p>To begin we require some additional notation. Let L(G) be a function space of interest dependent on graph G, where each function ℓ low ∈ L(G) is specified as ℓ low : H → R over some node embedding domain H ⊆ R n×d . We then define A : L(G) × H → H as an arbitrary iterative mapping/algorithm that satisfies</p><formula xml:id="formula_15">ℓ low ( A[ℓ low , H] ) ≤ ℓ low (H) ∀ℓ low ∈ L(G), ∀H ∈ H.</formula><p>(5) This expression merely entails that if we apply A to ℓ low initialized at H, the resulting iteration produces embeddings that reduce (or leave unchanged) ℓ low . We are then poised to ask a central motivating question:</p><p>Can we find a sufficiently flexible pairing of some A and compatible ℓ low ∈ L(G) such that A[ℓ low , H] closely approximates, to the extent possible, any composite message-passing layer f U • f A • f M which follows from the stipulations of Definition 1?</p><p>To make initial progress in answering this question, we first convert Definition 1 to what we will refer to as a canonical form designed to minimize, without loss of generality, the non-uniqueness of the decomposition of f U • f A • f M into respective message, aggregation, and update functions. In so doing we obtain a more transparent entry point for isolating precisely where more-or-less exact alignment between A[ℓ, H] and f U • f A • f M is possible, and where non-trivial gaps remain.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Canonical Form of MP-GNN Layers</head><p>Given the composite function f U • f A • f M , there is no unique decomposition into its constituent parts, even within the constraints of Definition 1. To this end, we introduce the following simplification of MP-GNN layers that, as we will later show, leads to a unique decomposition (up to inconsequential linear transformations) while maintaining expressiveness:</p><p>Definition 2 An MP-GNN layer in canonical form is defined as the composition of three functions:</p><formula xml:id="formula_16">1. A message function f M that computes µ (l) (u,r,v) := f M (h (l-1) u , r, h (l-1) v ) ∈ R d for any edge e = (u, r, v) ∈ E; 2. The aggregation function f A that computes a (l) v := f A ({µ (l) (u,r,v) : (u, r) ∈ N v }) = (u,r)∈Nv µ (l) (u,r,v) ;</formula><p>3. An update function f U that computes the embeddings of the next layer as h</p><formula xml:id="formula_17">(l) v = f U (h (l-1) v , a (l) v , x v ) for all v ∈ V.</formula><p>We remark that there still remains a degree of nonuniqueness in Definition 2 in that a linear transformation of µ (l) <ref type="bibr">(u,r,v)</ref> introduced by f M could pass through f A and be absorbed into f U without changing the composite function f U • f A • f M . However, this ambiguity is inconsequential for our purposes, and nonlinear transformations cannot analogously pass through f A without changing the form of the resulting composite function.</p><p>Additionally, although it may superficially appear as though we have lost expressive power in moving to the canonical form, this is actually not the case:</p><formula xml:id="formula_18">Proposition 1 For any f U • f A • f M adhering to Def- inition 1, there exists a canonical form f U • f A • f M</formula><p>following Definition 2 that provides an arbitrarily close approximation.</p><p>Appendix D contains the proof. So indeed, we can work with the canonical form without any appreciable loss of generality. From here, we will first narrow our scope in Section 3.2 to reproducing f M or f M using some A[ℓ low , • ]; later in Section 3.3 we zoom out and address approximations to the full canonical form.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">A Priori Constraint Approximating</head><p>Message Functions f M or f M</p><p>To begin, we introduce the following definition:</p><p>Definition 3 We say that a message function f M satisfies a gradient representation criteria if</p><formula xml:id="formula_19">f M (h u , r, h v ) = ∂ζ(h u , h v ; r) ∂h v f M (h v , r -1 , h u ) = ∂ζ(h u , h v ; r) ∂h u (6)</formula><p>for some function ζ : R d × R d → R with Lipschitz continuous gradients, where r -1 is the inverse relation of r. Moreover, we extend this definition to the canonical form</p><formula xml:id="formula_20">f M via f M (h u , r, h v ) = ∂ ζ(Φ ⊤ h u , z; r) ∂z z=Φ ⊤ hv f M (h v , r -1 , h u ) = ∂ ζ(z, Φ ⊤ h v ; r) ∂z z=Φ ⊤ hu (7) for some Φ ∈ R d× d and function ζ : R d × R d → R with Lipschitz continuous gradients.</formula><p>This definition describes message functions that can be expressed in terms of the gradient of an energy term, i.e., ζ or ζ. Moreover, if a pair of bidirectional message functions do not satisfy this criteria, then they cannot generally be obtained with a gradient-based A applied to any possible ℓ low . To see this, consider a graph with just two nodes and no node features for simplicity. Moreover, assume that the aggregation function is identity (there is only one message in either direction) and the update function is given by f U (h</p><formula xml:id="formula_21">(l) v , µ (l) (u,r,v) ) = h (l-1) v -γµ<label>(l)</label></formula><p>(u,r,v) for some γ &gt; 0. We then observe that any possible ℓ low can be expressed w.l.o.g. as ℓ low (H; W, G) = ζ(h 1 , h 2 ; r) for some function ζ. Therefore, the only source for producing the two required message functions, meaning for 1 → 2 and 2 → 1 is taking gradients of the first and second arguments of ζ.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Approximating the Full Canonical Form via Energy Optimization</head><p>To proceed, we first require an adequately flexible form of energy function with terms that are, in a sense to be formally quantified, sufficiently aligned with the canonical form serving as our target. Intuitively, there is a trade-off here: If this energy is too complex, then iterative optimization algorithms applied to it can produce update rules that deviate from Definition 2, e.g., the update for any given node v could potentially involve all other nodes in the graph, as opposed to merely those in N v . In contrast, if the energy is too narrowly defined, we will be unable to match the expressive power of the composite</p><formula xml:id="formula_22">f U • f A • f M .</formula><p>Motivated by these considerations, we propose the family of energies given by</p><formula xml:id="formula_23">ℓ low (H; W, G) := (8) (u,r,v)∈E f (h u , h v ; r) + v∈V [κ(h v ; x v ) + η(h v )] ,</formula><p>where f : R d × R d → R and κ : R d → R are arbitrary differentiable functions, while η : R d → R has no such requirements, e.g., it can be nonsmooth and discontinuous. Additionally, W refers to all parameters that may be included within f , κ, and η.</p><p>The role of η is to allow for the introduction of nodewise constraints. For instance, if η(h)</p><formula xml:id="formula_24">:= I ∞ [h &lt; 0]</formula><p>, meaning a discontinuous indicator function with infinite weight applied element-wise to the entries of h less than zero, then we are effectively enforcing the constraint that node embeddings must be non-negative <ref type="bibr" target="#b44">(Yang et al., 2021)</ref>. To algorithmically handle this possibility, we also require the notion of a proximal operator <ref type="bibr" target="#b27">(Parikh and Boyd, 2014)</ref>, which is defined as</p><formula xml:id="formula_25">prox η,γ (h) := arg min z η(z) + 1 2γ ∥z -h∥ 2 . (9)</formula><p>Proximal operators prox η,γ : R d → R d of this form are useful for deriving descent algorithms involving constraints or nonsmooth terms such as η. We are now prepared to present our main result of this section, with discussion and interpretations to follow:</p><p>Proposition 2 For any canonical message-passing layer with constituent f U , f A , and f M abiding by Definition 2 and f U satisfying Definition 3, there exists an algorithm A and functions f , κ, and η defining ℓ low from (8) such that</p><formula xml:id="formula_26">A[ℓ low , • ] = fU • f A • f M ,<label>(10)</label></formula><p>where fU :</p><formula xml:id="formula_27">R d × R d × R d → R d is defined as fU (h, a, x) := prox η,γ (h -γσ(a) [Φa + κ ′ (h; x)])<label>(11</label></formula><p>) with σ(a) : R d → R + &gt; 0 as an arbitrary positive function, Φ ∈ R d× d as an arbitrary matrix, and κ ′ as the first-order derivative of κ. Moreover, there exists a γ ′ &gt; 0 such that for any γ ∈ (0, γ ′ ],</p><formula xml:id="formula_28">ℓ low (A[ℓ low , H]; G) ≤ ℓ low (H; G). (<label>12</label></formula><formula xml:id="formula_29">)</formula><p>Several salient points are worth highlighting as we unpack this result:</p><p>• Once we have granted that f U adheres to Definition 3, all approximation error between the target composite message passing function</p><formula xml:id="formula_30">f U • f A • f M and the proposed A[ℓ low ,</formula><p>• ] is confined to mismatch in the respective update functions f U and fU , not the message and aggregation functions f M and f A .</p><p>• While fU cannot exactly represent all possible f U , it maintains considerable degrees of freedom for replicating important special cases, including many/most commonly adopted update functions. This flexibility comes from three primary sources: namely, η, σ, and κ can all be freely chosen to widen the expressiveness of fU ; we note that η and κ are determined by ℓ low , while σ is associated with A (see Appendix E for further details).</p><p>• The function η, through its influence on prox η,γ , can introduce a wide variety of nonlinear activations into the message passing layer. And in general, since η is arbitrary, prox η,γ can be any arbitrary proximal operator. For example, prox η,γ can implement any non-decreasing function of the elements of h (Gribonval and Nikolova, 2020), such as popular ReLU activations among other things.</p><p>• The function σ allows us to introduce softmax self-attention in the message-passing layer. This capability is exactly analogous to how an optimization perspective can introduce self-attention into typical Transformer layers <ref type="bibr" target="#b42">(Yang et al., 2022a)</ref>.</p><p>• Meanwhile, the function κ provides for arbitrary interactions between node embeddings and input node features. It also allows us to directly generalize (4). More concretely, when we choose η(h) = 0 (such that prox η,γ degenerates to an identity mapping), σ(a) = 1, and κ ′ (h; x) = h -π(x; W), we exactly recover the message passing layer from (4).</p><p>• Increasing the expressiveness of fU to more tightly match an arbitrary f U is challenging and possibly infeasible (at least using standard descent methods for A). See Appendix C for further discussion.</p><p>While the proof of Proposition 2 is deferred to Appendix E, it is based on assigning A to be a form of proximal gradient descent with preconditioning. Although this class of algorithm has attractive convergence guarantees, there remains potential to improve the convergence rate. Within the present context, this is tantamount to reducing the actual number of messagepassing layers needed to approach a minimum of ℓ low . We conclude by noting that it is possible to retain the expressiveness of ( <ref type="formula" target="#formula_27">11</ref>) and the efficient message passing structure of Definition 2 while accelerating convergence through the use of momentum <ref type="bibr" target="#b30">(Polyak, 1964)</ref> and related <ref type="bibr" target="#b21">(Kingma and Ba, 2014)</ref>; see Appendix F.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">On Broader Graph ML Regimes</head><p>In the previous section, our focus was on deriving flexible MP-GNN layers obtained by applying an algorithm A to the minimization of a lower-level energy ℓ low .</p><p>Through Proposition 2, we demonstrated that the operator A[ℓ low , • ] is equivalent to a MP-GNN layer with unrestricted message function f M , aggregation function f A , and approximate update function fU as defined by ( <ref type="formula" target="#formula_27">11</ref>). Analogous to any other MP-GNN model, these components can be iterated for L steps to produce final embeddings H (L) that can be inserted into the supervised node classification loss as in (1) to complete an end-to-end bilevel optimization pipeline.</p><p>We now expand our scope to encompass other interrelated graph ML domains, building on the general optimization-based message-passing layers derived in Section 3.3. Because our motivation stems from the principle that BiLevel Optimization Offers More Graph Machine Learning, in the sequel we refer to our framework as BloomGML.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">The General BloomGML Framework</head><p>We formalize BloomGML via the optimization problem</p><formula xml:id="formula_31">min W,Θ ℓ up H (L) (W), Y ′ ; Θ, G<label>(13)</label></formula><formula xml:id="formula_32">s.t. H (l) = A ℓ low ( • ; W, G), H (l-1) , ∀l = 1, . . . , L,</formula><p>where A and ℓ low follow from Proposition 2 while ℓ up is a generic upper-level loss that can be specified on an application-specific basis, e.g., (1) is a special case of this form. Additionally, as before we assume that rows of Y ′ are labels; however, for maximum generality we need not assume that these labels correspond with nodes. In this way, we can extend BloomGML to generic GNN tasks besides node classification. More importantly though, we can also form deep connections with non-GNN regimes equally as well. In this regard, we consider three such examples next: knowledge graph embeddings (KGEs), label propagation (LP), and what are often called graph-MLP models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Knowledge Graph Embedding Models</head><p>Basics. Knowledge graphs are heterogeneous graphs, typically without node features or labels, where each triplet/edge e = (u, r, v) contains relational information between two entities, e.g., u = 'Paris', v = 'France', and r = 'capital of' <ref type="bibr" target="#b18">(Ji et al., 2021)</ref>. The goal of knowledge graph completion (KGC) is to predict unobserved/missing factual triplets given an existing knowledge graph of interest. A widely adopted approach to this fundamental problem is based on learning knowledge graph embeddings (KGEs) as follows. First, all</p><p>existing triplets E are treated as positive samples, while a complementary set of negative samples are obtained by randomly choosing triplets e -= (u -, r -, v -) / ∈ E, with u -, v -∈ V and r -∈ R; we can assemble these in a negative graph G -= {V, R, E -}, where E -denotes the set of false triplets.</p><p>We then train a KGE model by minimizing a binary cross-entropy loss of the form</p><formula xml:id="formula_33">ℓ kge (H, E) := e∈E log ρ [s (h u , e r , h v )]<label>(14)</label></formula><formula xml:id="formula_34">+ e ′ ∈E - log (1 -ρ [s (h u -, e r -, h v -)]) ,</formula><p>where ρ denotes a standard sigmoid function, H ∈ R n×d are node embeddings as before, and</p><formula xml:id="formula_35">E ∈ R m×d ′ are embeddings for each relation type r ∈ R. Fi- nally, s : R d × R d ′ × R d → R</formula><p>is a so-called score function, which evaluates the compatibility of the triplet embeddings, with a higher score indicating a greater likelihood of being a true triplet <ref type="bibr" target="#b49">(Zheng et al., 2020)</ref>. Additionally, ( <ref type="formula" target="#formula_33">14</ref>) is frequently used as a training loss for traditional heterogeneous GNN models applied to knowledge graphs <ref type="bibr" target="#b31">(Schlichtkrull et al., 2017)</ref>. Note that at inference time, a candidate triplet can be evaluated by computing the score of the corresponding output-layer embeddings produced by the GNN.</p><p>KGEs and BloomGML. We now demonstrate how the above process emerges as a special case of BloomGML, and the interpretable implications of this association, in particular relative to GNN modeling.</p><p>Let Ḡ := G ∪ G -= {V, R, Ē}, where Ē = E ∪ E -. We also define R = R ∪ R -where R -denotes a dummy set of negative relations such that, for every r ∈ R there exists a r -∈ R -representing that an original relation r is now appearing in a negative triple. It follows that | R| = 2m. Also, we assume that e r = e r - for all r, i.e., the relation type embeddings are shared. For BloomGML, following (8) we define ℓ low w.r.t.</p><formula xml:id="formula_36">Ḡ as ℓ low (H; W, Ḡ) = ē∈ Ē f (h ū, h v ; r),<label>(15)</label></formula><p>where we choose W = E and</p><formula xml:id="formula_37">f (h ū, h v ; r) = log ρ [s (h u , e r , h v )] , ē ∈ E log (1 -ρ [s (h u -, e r -, h v -)]) , ē ∈ E -<label>(16</label></formula><p>) while implicitly assuming κ and η are zero. By constructing ℓ low in this way, the lower-level minimization problem provides optimal node embeddings conditioned on fixed relation embeddings E. Hence if we execute a descent algorithm A for L steps (e.g., gradient descent), we can obtain some</p><formula xml:id="formula_38">H (L) ≡ H (L) (W) ≡ H (L) (E).</formula><p>To complete the full BloomGML specification per (13), we must also select ℓ up . In order to align with KGE learning, we choose Θ = W = E, Y ′ = {∅} and define</p><formula xml:id="formula_39">ℓ up H (L) (W), Y ′ ; Θ, Ḡ ≡ ℓ up H (L) (E), {∅}; E, Ḡ := ℓ kge H (L) (E), E , (17)</formula><p>where ℓ kge follows (14).</p><p>Key Implications of this Reformulation. Per Proposition 2 and the downstream BloomGML lens from above, it follows that if we minimize (17) over just E, we are effectively reproducing a minimizer of the original KGE loss from ( <ref type="formula" target="#formula_33">14</ref>), with H computed by L steps of A. This implies that learning KGEs equates to training an L-layer MP-GNN on graph Ḡ with parameters E. Of particular relevance here, recent work has been devoted to empirically showing that when training powerful heterogeneous GNN models using ( <ref type="formula" target="#formula_33">14</ref>), contrary to conventional wisdom, completely removing the GNN message-passing layers does not actually harm performance. However, this observation is directly explained by the analysis herein: Explicit external message-passing is not necessary since we are already training an implicit MP-GNN when solving (14) over unconstrained embeddings. Beyond this finding, BloomGML offers an additional practical benefit. In brief, because we are free to choose L, in inductive settings we can pick a relatively small value such that E is learned to adjust accordingly. Hence when new nodes are introduced, their embeddings can be quickly approximated via only L steps of A, rather than full model retraining. We test this capability in Section 5.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Other Graph ML Regimes</head><p>BloomGML elucidates other graph ML scenarios as well, particularly LP and graph-regularized MLP models. While full details are deferred to Appendix G, we note here that LP variants can be recast within BloomGML when we treat observed labels as input features and A as proximal gradient descent. We also provide supplementary experiments that verify BloomGML predictions regarding the relationship between LP and special cases of graph-regularized MLPs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Empirical Validation and Analysis</head><p>As BloomGML represents a conceptual framework that has independent value drawn from its explanatory/unifying nature, not just pushing SOTA per se, the motivations for our experiments are two-fold:</p><p>1. Showcase the versatility and interpretability of BloomGML across diverse testing regimes;</p><p>2. Demonstrate the explanatory power of the bilevel optimization lens applied to graph ML tasks. Mitigating Spurious Input Features. As motivated in Section 2.2, bilevel optimization with an appropriate ℓ low should in principle be able to localize spurious input features, allowing the model to focus on more informative network effects when needed. However, to our knowledge, this capability has not as of yet been exploited. To this end, we compare the original base model formed via (3) and ( <ref type="formula" target="#formula_12">4</ref>), with a more robust version drawn from the general BloomGML framework of (13). In particular, since quadratic regularizers can be sensitive to outliers, we modify (3) by choosing κ(h; x) = δ (h -π(x; W)) within BloomGML, where δ : R d → R + represents a robust Huber loss penalty <ref type="bibr" target="#b17">(Huber, 1992)</ref> applied to each input dimension and summed. We then conduct node classification experiments over datasets Cora, Citeseer, Pubmed, and ogbnarxiv by randomly corrupting 20% of node features prior to training. Results are displayed in Table <ref type="table" target="#tab_0">1</ref> where multiple conclusions are evident: The Huber loss improves the accuracy across all datasets, while correctly identifying the majority of outliers.  Comparison on Heterophily Graphs. For graphs exhibiting heterophily <ref type="bibr">(Zhu et al., 2021a)</ref>, nodes sharing an edge are less likely to have the same label. Hence an energy function that pushes the respective node embeddings to a common value may be counterproductive, i.e., as in the edge-dependent term from (3). Instead, to address heterophily graphs using BloomGML, we form</p><formula xml:id="formula_40">ℓ low via f (h v , h u ; r) = ∥h u C -h v ∥ 2 2</formula><p>, where C ∈ R d×d is a trainable weight and r is ignored for the homogeneous case. Additionally, to reduce sensitivity to less reliable node features that could potentially accompany heterophily graphs, we consider</p><formula xml:id="formula_41">κ(h; x) = δ (h -π(x; W)) to contrast with κ(h; x) = ∥h -π(x; W)∥ 2 2 . Finally, we select η(h) = I ∞ [h &lt; 0]</formula><p>and σ(a) = 1 and apply proximal gradient descent for A. Table <ref type="table" target="#tab_1">2</ref> displays results using the recent heterophily benchmarks Roman, Amazon, Minesweeper, Tolokers, and Questions from <ref type="bibr" target="#b29">Platonov et al. (2023)</ref>. We compare BloomGML against recent GNN models explicitly designed for handling heterophily, namely, FAGCN <ref type="bibr" target="#b2">(Bo et al., 2021)</ref>, FSGNN <ref type="bibr" target="#b25">(Maurya et al., 2022)</ref>, GBK-GNN <ref type="bibr" target="#b8">(Du et al., 2022)</ref>, and JacobiConv <ref type="bibr">(Wang and Zhang, 2022)</ref>. For reference, we also compare with the bilevel baseline formed from (3); additional GNN baselines from <ref type="bibr" target="#b29">Platonov et al. (2023)</ref> are discussed in Appendix H. On average, we observe that BloomGML achieves the best accuracy here. Even so, our focus is not on solving heterophily problems per se, but rather, demonstrating that interpretable modifications to ℓ low can induce predictable effects.</p><p>Regarding the latter, we present one additional visualization afforded by the BloomGML paradigm. On the Roman dataset, we incorporate δ within the function f , which allows greater freedom for embeddings sharing an edge but with different labels to deviate from one another. The distribution of ∥h</p><formula xml:id="formula_42">(L) u -h (L) v ∥ 2 for (u, v) ∈ E but y v ̸ = y u (i.e.</formula><p>, different labels) is shown in Figure <ref type="figure">1</ref>. Clearly, the Huber loss allows greater deviation in embeddings sharing an edge as expected. Interestingly, the accuracy using Huber within f increases to 88.12%.</p><p>Comparison on Heterogeneous Graphs. The base model formed via (3) has also recently been ex- tended to heterogeneous graphs via the HALO model <ref type="bibr" target="#b0">(Ahn et al., 2022)</ref>. However, this extension remains limited in its strict adherence to the quadratic edgeand input feature-dependent penalty terms as in the original (3). To this end, we modify HALO within the confines of the BloomGML framework to explore nonquadratic penalties (Log-Cosh and Huber) while maintaining equivalence across all other aspects of model design. Node classification results are in Table <ref type="table" target="#tab_2">3</ref>, where we observe that all else being equal, these changes lead to an improvement in accuracy over HALO. First, the RefactorGNN model does not actually induce an efficient/sparse MP-GNN, as there remains a global hub node to which all other nodes are connected and receive messages. Secondly, the supporting analysis provided in <ref type="bibr" target="#b5">Chen et al. (2022)</ref> only directly addresses the softmax/DistMult pairing while excluding consideration of negative samples; in contrast, BloomGML serves as a general framework covering a wide variety of both KGE and non-KGE models alike, and within which we have explicitly accounted for negative samples through Ḡ. And lastly, the repeated reinitialization of node embeddings during RefactorGNN training can be viewed as a heuristic, with no guarantee of convergence; BloomGML sidesteps this issue altogether within an integrated bilevel optimization framework.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Knowledge Graph</head><p>To conduct empirical comparisons with RefactorGNN, we must first specify (8) for BloomGML. We take inspiration from NBFNet <ref type="bibr">(Zhu et al., 2021c)</ref> and design ℓ low such that one step of proximal gradient descent   <ref type="table" target="#tab_3">4</ref> on WordNet18RR_v1 and FB15K237_v1 datasets <ref type="bibr" target="#b33">(Teru et al., 2020)</ref>. Across different score functions TransE and DistMult, and aggregators Sum and PNA <ref type="bibr" target="#b6">(Corso et al., 2020)</ref>, BloomGML achieves strong performance relative to RefactorGNN. Note that in Table <ref type="table" target="#tab_3">4</ref> we have reported the best Refac-torGNN model from <ref type="bibr" target="#b5">Chen et al. (2022)</ref> as there is presently no publicly-available code for reproducibiliy.</p><p>Incorporation of Momentum. We demonstrate how the incorporation of momentum within A, as proposed at the end of Section 3.3 and detailed in Appendix F, can maintain MP-GNN structure while expediting convergence. Results are shown in Figure <ref type="figure" target="#fig_2">2</ref> and Table <ref type="table" target="#tab_4">5</ref> using a simple base model akin to (3), where we observe that momentum can potentially improve BloomGML performance by reducing ℓ low more quickly. Additional Results. Finally, please see Appendix J for additional experiments including an ablation over learning λ, the trade-off parameter from (3), as well as further demonstration of the versatility of BloomGML.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>In this work we have introduced the BloomGML framework, which provides a novel lens for understanding various graph ML paradigms and introducing interpretable, targeted enhancements. Let graph ML bloom.</p><p>Zhu, M., <ref type="bibr">Wang, X., Shi, C., Ji, H., and Cui, P. (2021b)</ref>.</p><p>Interpreting and unifying graph neural networks with an optimization framework. arXiv preprint arXiv:2101.11859. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Appendix Overview</head><p>Appendix content more-or-less follows the order in which it was originally referenced in the main text; we summarize as follows:</p><p>• In Section B, we derive the the message passing special case from (4).</p><p>• In Section C, we discuss why increasing the expressiveness of BloomGML in meaningful ways is challenging.</p><p>• In Sections D and E, we provide the proofs of Propositions 1 and 2, respectively.</p><p>• In Section F, we present a general framework for accelerating convergence and related special cases.</p><p>• In Section G, we fill in details relating BloomGML to label propagation and graph-regularized MLPs. We also provide supporting empirical results.</p><p>• In Section H, we provide model implementation and experiment details related to Section 5.</p><p>• In Section I, we explore the connection between NBFNet and BloomGML.</p><p>• In Section J, we present additional empirical results/ablations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Derivation of Message Passing Special Case from (4)</head><p>The message passing updates from (4) in Section 2.2 are based on the energy function from (3), which we repeat here for convenience as</p><formula xml:id="formula_43">ℓ low (H; W, G) = v∈V 1 2 ∥h v -π(x v ; W)∥ 2 2 + λ 2 (u,v)∈E ∥h u -h v ∥ 2 2 . (<label>18</label></formula><formula xml:id="formula_44">)</formula><p>Taking the derivative of this ℓ low w.r.t. h v we obtain</p><formula xml:id="formula_45">∇ hv ℓ low (H; W, G) = h v -π(x v ; W) -λ u∈Nv (h u -h v ). (<label>19</label></formula><formula xml:id="formula_46">) Let µ (l) (u,r,v) := h (l-1) u -h (l-1) v and a (l) v := u∈Nv µ (l)</formula><p>(u,r,v) . There will then exist an update function f U (h</p><formula xml:id="formula_47">(l-1) v , a (l) v , x v ) such that we have h (l) v = h (l-1) v -γ∇ hv ℓ low (H; W, G) = f U (h (l-1) v , a (l) v , x v ) := (1 -γ)h (l-1) v + γλa (l) v + γπ(x v ; W),<label>(20)</label></formula><p>which reproduces (4).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Possibilities for Generalizing BloomGML Expressiveness</head><p>As alluded to in Section 3.3, increasing the expressiveness of BloomGML in meaningful ways is challenging. At a trivial level, we could always generalize (8) by allowing f → f (u,r,v) to vary across each triplet; analogously we could allow κ → κ (v) and η → η (v) or related. But for more interesting enhancements, we might consider flexible expressions of permutation-invariant functions given that the input graph is invariant to the order of nodes and triplets. For example, results from <ref type="bibr" target="#b46">Zaheer et al. (2017)</ref> show that, granted certain stipulations on the input domain, permutation invariant functions operating on a set X can be expressed as ρ[ x∈X ϕ(x)] when granted suitable transforms ρ and ϕ. From this type of result, it is natural to consider, for example, generalizing the first term of (8) via</p><formula xml:id="formula_48">(u,r,v)∈E f (h u , h v ; r) → ρ   (u,r,v)∈E f (h u , h v ; r)   .<label>(21)</label></formula><p>The problem here though is that, if we take the gradient of this revised term w.r.t. the node embeddings, by the chain rule the result can depend on all triplets in the graph, which violates the message-passing schema from either Definition 1 or 2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D Proof of Proposition 1</head><p>The basic strategy here will be to push components of the original aggregation function f A into the revised message and update functions f M and f U , respectively. And the underlying goal is to do so without losing any expressiveness in the resulting composite function, even while reducing the revised aggregation function f A to simple, parameter-free addition.</p><p>To proceed, we rely on a suitable decomposition of permutation-invariant set functions as required by f A over input messages from N v , where the domain of each message is R d . In this regard, a number of permutation-invariant function decompositions have been proposed in <ref type="bibr" target="#b46">Zaheer et al. (2017)</ref> with conditions dependent on the domain of the input sets. The strongest result they present provides a useful general form of exact decomposition; however, unfortunately the underpinning guarantee only holds for input sets drawn from a countable universe, which R d is of course not.</p><p>To work around this limitation, we first assume that |N v | = p &lt; n for all v ∈ V, where p &gt; 0 is a fixed constant. We may then apply Theorem 9 from <ref type="bibr" target="#b46">Zaheer et al. (2017)</ref> which stipulates that any continuous f A defined on a compact set within R d can be approximated arbitrarily closely via a decomposition of the form</p><formula xml:id="formula_49">f A {µ (l) (u,r,v) : (u, r) ∈ N v } ≈ ρ   (u,r)∈Nv ϕ(µ (l) (u,r,v) )   ,<label>(22)</label></formula><p>where ρ : R d → R d and ϕ : R d → R d are suitable transforms.</p><p>To extend to the general case where |N v | may vary across nodes (since graphs are generally not limited to a fixed node degree), we add</p><formula xml:id="formula_50">max v∈V |N v | -|N v | dummy neighbors (u ′ , r ′ ) to N v for every v ∈ V,</formula><p>and form the augmented neighbor sets N ′ v , with the restriction that ϕ(µ u ′ ,r ′ ,v ) = 0. Note that in the neighborhood of the associated dummy messages µ (u ′ ,r ′ ,v) , we can no longer guarantee a close approximation to the true function; however, we can cluster such dummy messages in an area of arbitrarily small measure, so their impact is negligible. Given N ′ v so defined, f A can be approximated arbitrarily closely (except for within a negligible, vanishingly small area of the input domain) via a decomposition of the form</p><formula xml:id="formula_51">f A ({µ (l) (u,r,v) : (u, r) ∈ N v }) ≈ ρ   (u,r)∈N ′ v ϕ(µ (l) (u,r,v) )   ≡ ρ   (u,r)∈Nv ϕ(µ (l) (u,r,v) )   . (<label>23</label></formula><formula xml:id="formula_52">) Now define f M := ϕ • f M , µ<label>(l)</label></formula><formula xml:id="formula_53">(u,r,v) := f M (h (l-1) u , r, h (l-1) v ) ∈ R d , and f A ({ µ (l) (u,r,v) : (u, r) ∈ N v }) = (u,r)∈Nv µ (l) (u,r,v) . Then we have ρ • f A • f M ≈ f A • f M<label>(24)</label></formula><p>Furthermore, if we define f U := f U • ρ, we may conclude that</p><formula xml:id="formula_54">f U • f A • f M ≈ f U • f A • f M (25)</formula><p>in the sense described above.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E Proof of Proposition 2</head><p>We assume that f M satisfies the gradient representation criteria from Definition 3. Now recall that the energy function ℓ low is given by</p><formula xml:id="formula_55">ℓ low (H; W, G) := (u,r,v)∈E f (h u , h v ; r) + v∈V [κ(h v ; x v ) + η(h v )] .<label>(26)</label></formula><p>First, we choose</p><formula xml:id="formula_56">f (h u , h v ; r) := ζ(Φ ⊤ h u , Φ ⊤ h v ; r),<label>(27)</label></formula><p>auxiliary variables are involved, φ is extended to R kd → R d . Such an iterative mapping preserves the properties of message-passing functions. To clarify this, let f U ′ (h, a, s, x) denote the mapping defined in (32). For any v ∈ V, we have h</p><formula xml:id="formula_57">(l) v = f U ′ (h (l-1) v , a<label>(l)</label></formula><p>v , s (l-1) v , x v ), which means one update step only takes information from {v ∪ N v }. Also, a v = (u,r)∈Nv µ (u,r,v) is a permutation-invariant function by construction, which means f U ′ is also permutation invariant over the sets of 1-hop neighbors.</p><p>Turning now to the remainder of this section, we verify that the vanilla momentum from above, as well as AdaGrad, RMSProp, and Adam are all special cases of (32).</p><p>Momentum as Special Case. To show that vanilla momentum is a message-passing layer formed as a special case of (32), we let ξ(g) = g, σ(s) = s, and φ = 1, then the mapping is given by</p><formula xml:id="formula_58">s (l) = βs (l-1) + (1 -β)g (l-1) , h (l) = h (l-1) -γs (l) . (<label>33</label></formula><formula xml:id="formula_59">)</formula><p>which reproduces (31).</p><p>AdaGrad. Here we show AdaGrad <ref type="bibr" target="#b9">(Duchi et al., 2011)</ref> is also a special case of (32). Let β = 0, ξ(g) = diag(gg T ),</p><formula xml:id="formula_60">φ(g) = g, and σ(s) = s (l) + ϵ -1</formula><p>2 where ϵ is a small constant to avoid division by zero. Then the updating rule of AdaGrad is given by</p><formula xml:id="formula_61">s (l) = diag(g (l-1) (g (l-1) ) T ), h (l) = h (l-1) -γ s (l) + ϵ -1 2 ⊙ g (l-1) . (<label>34</label></formula><formula xml:id="formula_62">)</formula><p>Here the square root, inverse, and ⊙ are all element-wise operations.</p><p>RMSprop. RMSprop <ref type="bibr" target="#b15">(Hinton et al., 2012)</ref> divides the gradient by a running average of its recent magnitude.</p><p>To show that it is also a special case of (32), let ξ(g) = g 2 , φ(g) = g, and σ(s) = s (l) + ϵ -1 2 . Then the updating rule of RMSprop is</p><formula xml:id="formula_63">s (l) = βs (l-1) + (1 -β)(g (l-1) ) 2 , h (l) = h (l-1) -s (l) + ϵ -1 2 ⊙ g (l-1) . (<label>35</label></formula><formula xml:id="formula_64">)</formula><p>Adam. Adam <ref type="bibr" target="#b21">(Kingma and Ba, 2014)</ref> requires two auxiliary variables s 1 and s 2 . Let ξ 1 (g) = g, ξ 2 (g) = g 2 , φ(g) = 1, and σ(s</p><formula xml:id="formula_65">(l) 1 , s (l) 2 ) = s (l) 1 1-β l 1 + ϵ -1 • s (l) 1 1-β l 2</formula><p>. The updating rule of Adam is</p><formula xml:id="formula_66">s (l) 1 = β 1 s (l-1) 1 -(1 -β 1 )g (l-1) , s (l) 2 = β 2 s (l-1) 2 + (1 -β 2 )(g (l-1) ) 2 , h (l) = h (l-1) -γ   s (l) 1 1 -β l 1 + ϵ   -1 • s (l) 1 1 -β l 2 . (<label>36</label></formula><formula xml:id="formula_67">)</formula><p>G More on Label Propagation and Graph-Regularized MLPs</p><p>In this section we pick up where we left off in Section 4.3, filling in details at the nexus of label propagation, graph-regularized MLPs, and BloomGML.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>G.1 Label Propagation as a BloomGML Special Case</head><p>Consider the lower-level energy given by</p><formula xml:id="formula_68">ℓ low (H; G) := λtr H ⊤ LH + Ȳ -H 2 F + v∈V ′ I ∞ [h v ̸ = ȳv ], (<label>37</label></formula><formula xml:id="formula_69">)</formula><p>where L is the graph Laplacian of G and Ȳ ∈ R n×d is constructed with ȳv = y v if v ∈ V ′ and ∥ȳ v ∥ = 0 otherwise. This form is a special case of BloomGML when we assume m = 1, f (h u , h v ) = λ∥h u -h v ∥ 2 2 with λ &gt; 0 a hyperparameter, and</p><formula xml:id="formula_70">X = Ȳ, κ(h v ; x v ) = ∥h v -x v ∥ 2 2 ≡ ∥h v -ȳv ∥ 2 2 . Furthermore, we generalize η(h v ) → η(h v ; x v ) ≡ η(h v ; ȳv ) and choose η(h v ; ȳv ) = I[∥ȳ v ∥ ̸ = 0]I ∞ [h v ̸ = ȳ′ v ],<label>(38)</label></formula><p>where we are implicitly assuming that ∥ȳ v ∥ ̸ = 0 for any v ∈ V ′ . The first two terms of (37) are smooth, while the last enforces that embeddings for nodes with observable labels must equal those labels. We may minimize using proximal gradient steps of the form</p><formula xml:id="formula_71">H (l) = prox η,γ (1 -γ)H (l-1) -γ λLH (l-1) -Ȳ = P Ȳ (1 -γ)H (l-1) -γ λLH (l-1) -Ȳ ,<label>(39)</label></formula><p>where P Ȳ : R n×c → R n×c is a projection operator that leaves rows v / ∈ V ′ unchanged, while setting rows v ∈ V ′ as h v → ȳv = y v . Several points are worth noting regarding this result:</p><p>• For different choices of γ and λ, as well as the possible inclusion of a gradient preconditioner, the update from (39) can exactly reproduce various forms of label propagation (LP) <ref type="bibr" target="#b50">(Zhou et al., 2003;</ref><ref type="bibr">Zhu, 2005)</ref>, which represents a family of semi-supervised learning algorithms designed to predict unlabeled nodes by propagating observed labels across edges of the graph.</p><p>• As a representative LP example, we include a gradient preconditioner D -1 within (39), where D is the diagonal degree matrix of G, and choose λ → ∞, γ → 0 such that λγ → 1. Then (39) reduces to the standard, interpretable form</p><formula xml:id="formula_72">H (l) = P Ȳ D -1 AH (l-1) , (<label>40</label></formula><formula xml:id="formula_73">)</formula><p>where A is the adjacency matrix of G.</p><p>• The input argument to P Ȳ [ • ] in (39) exactly reduces to (4) across all v ∈ V if we replace the π used in (4) with the corresponding labels ȳv ; this follows from the derivations presented in Section B. Moreover, the node-wise projection operator P Ȳ merely introduces a nonlinear activation function which can be merged into an update function fU . In this way, executing the LP model propagation steps induces node embeddings analogous to those from a message-passing GNN architecture.</p><p>• If we include the η-based indicator term in (37), then w.l.o.g. we can actually remove the κ-based term and still reproduce some notable LP variants. However, we include the general form for two reasons: (i) It will facilitate more direct comparisons with graph-regularized MLP models below, and (ii) If we instead remove the η-based indicator term, then we can nonetheless recoup other flavors of LP without a projection step by retaining the κ-based term.</p><p>• There exist more exotic LP models that are not directly covered by (37), such as ZooBP <ref type="bibr" target="#b10">(Eswaran et al., 2017)</ref> and CAMLP <ref type="bibr" target="#b40">(Yamaguchi et al., 2016)</ref>, which include compatibility matrices to address graphs beyond vanilla homogeneous structure. These can be accommodated by generalizing (37); however, we do not pursue this course further here.</p><p>We close by noting that, LP methods traditionally do not have parameters W to train, and the motivation for including an upper-level loss ℓ up analogous to BloomGML may be unclear. However, recently trainable variants have been proposed <ref type="bibr">(Wang et al., 2022)</ref> that incorporate randomized sampling to mitigate label leakage. BloomGML can cover many such cases by supplementing (37) with parameters that can be subsequently trained using, for example, a node classification loss for ℓ up .</p><p>G.2 Graph-Regularized MLPs, BloomGML, and Connections with LP Graph-regularized MLPs (GR-MLP) represent a class of models typically applied to node classification tasks whereby no explicit message-passing occurs within actual layers of the architecture itself <ref type="bibr" target="#b1">(Ando and Zhang, 2006;</ref><ref type="bibr" target="#b16">Hu et al., 2021;</ref><ref type="bibr" target="#b47">Zhang et al., 2023)</ref>. Instead, a base model (like an MLP or related) is trained using a typical supervised learning loss combined with an additional regularization factor designed to push together the predictions of node labels sharing an edge. These models are often motivated by their efficiency at inference time, where the graph structure is no longer utilized. As a simple representative example,<ref type="foot" target="#foot_1">3</ref> consider the loss</p><formula xml:id="formula_74">ℓ(W; G) := 1 2 ∥ Ȳ -H∥ 2 F + λ 2 tr H ⊤ LH , s.t. h v = π(x v ; W) ∀v ∈ V.<label>(41)</label></formula><p>Here we are assuming that Ȳ is defined analogously as in Section G.1. In this expression, the first term represents quadratic supervision applied to node labels Ȳ, while the second term introduces the eponymous graph-regularization with graph Laplacian L. Within the constraint, π is some node-wise trainable model such as an MLP. Hence model training amounts to learning a W such that the resulting node embeddings closely match the given labels subject to smoothing across the graph. For this purpose, we take gradient steps</p><formula xml:id="formula_75">W (l) = W (l-1) -γ ∂ℓ(W; G) ∂W W=W (l-1) , l = 1, . . . , L.<label>(42)</label></formula><p>We now show how these steps induce implicit message-passing GNN-like structure in certain cases, and later, connect to label propagation. To see this effect in transparent terms, assume that π(x; W) = xW. Then we have</p><formula xml:id="formula_76">∂ℓ(W; G) ∂W = X ⊤ H + λLH -Ȳ .<label>(43)</label></formula><p>From here we define H (l) := XW (l) such that the above gradient steps w.r.t. W produce a corresponding sequence of embeddings given by</p><formula xml:id="formula_77">H (l) = H (l-1) -γXX ⊤ H (l-1) + λLH (l-1) -Ȳ .<label>(44)</label></formula><p>Provided that X is full column rank, we can assume w.l.o.g. that columns of X are orthonormal, i.e., X ⊤ X = I.</p><p>(This is possible because we can always convert non-orthonormal columns into orthonormal ones via an invertible linear transformation that can be absorbed into W.) Consequently, we may directly conclude that XX ⊤ = P X , where P X indicates an orthogonal projection to the range of X, denoted range[X]. We then provide the following straightforward interpretations of this process:</p><p>• From the perspective of BloomGML, we can convert (41) to an equivalent ℓ low given by</p><formula xml:id="formula_78">ℓ low (H; W, G) := λ 2 (u,v)∈E ∥h u -h v ∥ 2 2 + v∈V 1 2 ∥h v -ȳv ∥ 2 2 + I ∞ {H / ∈ range[X]},<label>(45)</label></formula><p>where we are treating the labels from Ȳ as auxiliary inputs to the κ function, and we are trivially generalizing the non-smooth η function to apply across all of H while including a dependency on the original node features from X. Additionally, the proximal gradient update for minimizing (45) is given by</p><formula xml:id="formula_79">H (l) = P X (1 -γ)H (l-1) -γ λLH (l-1) -Ȳ ,<label>(46)</label></formula><p>which is equivalent to (44) provided H (0) ∈ range[X]. Analogous to the LP derivations from Section G.1, the input argument to P X [ • ] in (46) exactly reduces to (4) across all v ∈ V if we replace the π used in (4) with the corresponding labels ȳv ; this follows from the derivations presented in Section B. In this way, training GR-MLP model weights induces node embeddings analogous to those from a message-passing GNN architecture, the final projection operator notwithstanding.</p><p>• If d = n, then P X = XX ⊤ = I and we are operating in an overparameterized regime where H = W. In this special case, the iterations from (46) exactly reproduce LP from Section G.1, excluding the projection step as some LP variants do.</p><p>• In the more typical setting with d &lt; n, the lingering difference between (46) and LP hinges on the projection operator being invoked, P X versus P Ȳ (where P Ȳ is defined in Section G.1; it is not equivalent to a projection to range[ Ȳ]). Which operator is to be preferred depends heavily on the quality of input features. If range[X] closely aligns with range[Y] (the range space of the true label matrix), then P X will be preferable. In contrast, when the relationship is closer to range[X] ⊥ range[Y], then P Ȳ will generally be superior.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>G.3 Empirical Illustration of LP/GR-MLP Insights</head><p>To illustrate some of the concepts from the previous section, we conduct a simple experiment involving Cora and Citeseer data. We choose π(x; W) = xW and train GR-MLP models based on (46) using (i) original node features, and (ii) overparameterized features whereby d = n. We also compare with an LP model, excluding the projection step for a more direct evaluation.</p><p>Node classification results from these experiments are shown in Table <ref type="table" target="#tab_6">6</ref>. The first two rows confirm the equivalence between GR-MLP and LP for the reasons detailed in Section G.2. Furthermore, by examining the second and third rows, we are able to observe how the quality of node features influences the efficacy of P X . Specifically, it has been previously demonstrated that the features and labels of Cora nodes have minimal positive (linear) correlation <ref type="bibr" target="#b23">(Luo et al., 2021)</ref>. Therefore, from Table <ref type="table" target="#tab_6">6</ref> we see that the GR-MLP model using the original features performs much worse than the overparameterized version. In contrast, with Citeseer where the input features are more aligned with the labels, the original feature model significantly outperforms the overparameterized one. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>H Model Implementation and Section 5 Experiment Details</head><p>In this section we provide further details regarding the experiments from Section 5.</p><p>Details for Table <ref type="table" target="#tab_0">1</ref>. Our implementation is based on modifications of the public codebase from <ref type="bibr" target="#b44">Yang et al. (2021)</ref>. We adopt the hyperparameters they reported for all datasets. For BloomGML, we apply a vectorized version of a Huber penalty in the form</p><formula xml:id="formula_80">δ(u) := d i=1 1 2 u 2 i , for |u i | &lt; 1 |u i | -1 2 , otherwise,<label>(47)</label></formula><p>where {u i } d i=1 are the elements of the input vector u ∈ R d . We then form the energy function</p><formula xml:id="formula_81">ℓ low (H; W, G) = (u,v)∈E f (h u , h v ; r) + v∈V κ(h v ; x v ) = λ 2 (u,v)∈E ∥h u -h v ∥ 2 2 + v∈V δ (h v -π(x v ; W)) ,<label>(48)</label></formula><p>where the dependency of f on r is irrelevant for homogeneous graphs. Note that because (48) is smooth and differentiable (i.e., the Huber loss is differentiable and the ℓ 1 norm defaults to merely a summation since its argument is non-negative), no η term is needed. Hence, we choose A as gradient descent for producing the BloomGML model A[ℓ low , • ]. For ℓ up we apply a standard node classification loss. We reproduce Table <ref type="table" target="#tab_0">1</ref> from the main text with error bars obtained from averaging over 10 trials; these results are presented in Table <ref type="table" target="#tab_7">7</ref>. For the experiments, we fixed the hidden embedding size to 1024, which gives the model more capacity for handling heterphility, and we run Bayesian optimization with the same range as in the left block of Table <ref type="table">9</ref> for the remaining hyperparameters.</p><p>Details for Table <ref type="table" target="#tab_2">3</ref>. For these results involving heterogeneous graphs, we modify the codebase from the HALO model <ref type="bibr" target="#b0">(Ahn et al., 2022)</ref> and adopt κ(h; x) = δ(h v -π(x v ; W)) or κ(h; x) = ω(h v -π(x v ; W)), where ω is the Log-Cosh loss given by ω(u) := d i=1 log(cosh u i ).</p><p>(51)</p><p>The hyperparameters we used are also selected via Bayesian optimization with Wandb; the search range is provided in the right block of Table <ref type="table">9</ref>, for both HALO and BloomGML. Note that we observe negligible variance in the test accuracies across different seeds, so we omit error bars from multiple runs.</p><p>Details for Table <ref type="table" target="#tab_3">4</ref>. We provide specifics directly tied to creating Table <ref type="table" target="#tab_3">4</ref> here, while a more comprehensive treatment of how NBFNet relates to BloomGML is deferred to Section I. Our implementation is based on modifications of the public codebase from <ref type="bibr">Zhu et al. (2021c)</ref>, which involves (among other things) two trainable linear transformations. The first involves parameters W r and b r used to create the relation embeddings for each relation type via e r = W r q q + b r , where q q is the query embedding. The other is Φ used to transform the output of the aggregation function back to the embedding space. To satisfy the criteria of BloomGML, we modify the code to share these weights across all layers. Performance results for RefactorGNN <ref type="bibr" target="#b5">(Chen et al., 2022)</ref> were taken from the original paper due to lack of publicly-available reproducible code for conducting our own comparisons.</p><p>Details for Table <ref type="table" target="#tab_4">5</ref> and Figure <ref type="figure" target="#fig_2">2</ref>. For Table <ref type="table" target="#tab_4">5</ref>, we modify the codebase from <ref type="bibr" target="#b44">Yang et al. (2021)</ref> by using the update step defined in (31). The components are chosen based on (4). The hyperparameters are chosen via grid search over λ, γ and β. For Figure <ref type="figure" target="#fig_2">2</ref>, we use the same set of hyperparameters for both SGD and BloomGML (momentum), with the number of message-passing layers being 200.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I Exploring the Connection between NBFNet and BloomGML</head><p>Given a graph G = (V, R, E), let G cq denote a conditional version with the same node, relation, and edge set, but with node features X cq = {x v,cq } v∈V and labels Y cq = {y v,cq } v∈V that depend on a fixed source node c ∈ V (in this section c should not be confused with the class label dimension used elsewhere) and query relation q ∈ R. By conditioning in this way, KGC or link prediction queries specific to c and q can be converted to node classification, e.g. y v,cq = 1 if (c, q, v) is a true edge in the original graph. We may then later expand to unrestricted link prediction tasks by replicating across all c ∈ V and q ∈ R. This is the high-level strategy of NBFNet.</p><p>In this section, we first show that given a graph G cq described as above, an NBFNet-like architecture with parameters shared across layers can be induced using BloomGML iterations of the form A[ℓ low , • ] for suitable choice of energy ℓ low and A. For this purpose, we define the lower-level energy function as where H cq = {h v,cq } v∈V are node embeddings and e r := W r q + b r are relation embeddings, q is a so-called shared query relation embedding (distinct from the relation index of query q), and W r and b r are trainable parameters that are bundled within W along with Φ, Ψ ∈ R d×d . Additionally, x v,cq := I(c = v)q for all v ∈ V cq .</p><formula xml:id="formula_82">ℓ</formula><p>To ensure the gradient expressions are symmetric in form across relations and inverse relations, we require that Φ and Ψ are symmetric matrices. However, it has been shown in <ref type="bibr" target="#b43">Yang et al. (2022b)</ref> that in certain circumstances,</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figurev</head><label></label><figDesc>Figure 1: ∥h (L) u -h (L) v ∥2 density for (u, v) ∈ E but with different labels in the Roman dataset.</figDesc><graphic coords="8,338.00,72.00,184.68,110.81" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head></head><label></label><figDesc>Completion. As mentioned at the end of Section 4.2, BloomGML is particularly wellsuited for inductive KGE tasks such as KGC. To this end, we analytically and empirically compare against the recent RefactorGNN model<ref type="bibr" target="#b5">(Chen et al., 2022)</ref>, which includes related analysis showing how a particular score function, DistMult<ref type="bibr" target="#b41">(Yang et al., 2014)</ref>, when combined with a softmax training loss over positive samples, has some commonalities with GNN layer structure. From a practical standpoint, RefactorGNN involves training a KGE model while resetting node embeddings to initial values in regular intervals to facilitate the inductive setting (the edge embeddings are trained as usual). While certainly a noteworthy contribution, there nonetheless remain three limitations of RefactorGNN relative to BloomGML.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: ℓ low values versus propagation steps on Cora. mimics an NBFNet model layer; see Appendix I for derivations showing how this process aligns with an MP-GNN layer when incorporated within BloomGML under the right circumstances. We also set κ(h; x) = η(h) = 0, σ(a) = 1 for simplicity. Inductive KGC results are shown in Table4on WordNet18RR_v1 and FB15K237_v1 datasets<ref type="bibr" target="#b33">(Teru et al., 2020)</ref>. Across different score functions TransE and DistMult, and aggregators Sum and PNA<ref type="bibr" target="#b6">(Corso et al., 2020)</ref>, BloomGML achieves strong performance relative to RefactorGNN. Note that in Table4we have reported the best Refac-torGNN model from<ref type="bibr" target="#b5">Chen et al. (2022)</ref> as there is presently no publicly-available code for reproducibiliy.</figDesc><graphic coords="9,333.14,152.33,194.40,97.20" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Performance mitigating spurious input features.Here the detect ratio is obtained by computing ∥hvπ(xv; W)∥2 for all v ∈ V and then segmenting out the percentage of corrupted nodes within the largest 20%.Despite these quite general aims, with limited space we only include a few representative use cases and coincident analyses. That being said, our experiments still span quite diverse settings, where SOTA methods are different and often rely on domain-specific architectures and/or heuristics. Hence our strategy is simply to pick strong, domain-specific baselines for comparisons</figDesc><table><row><cell></cell><cell></cell><cell>Cora</cell><cell cols="2">Citeseer Pubmed</cell><cell>Arxiv</cell></row><row><cell>Accuracy</cell><cell>GCN Base from (3)</cell><cell>51.40 54.97</cell><cell>46.40 38.98</cell><cell>59.00 45.67</cell><cell>64.03 47.63</cell></row><row><cell></cell><cell>BloomGML</cell><cell>65.83</cell><cell>49.33</cell><cell>72.70</cell><cell>69.11</cell></row><row><cell>Detect Ratio</cell><cell>BloomGML</cell><cell>94.27</cell><cell>87.82</cell><cell>96.98</cell><cell>100.00</cell></row></table><note><p><p><p>across each task and narrative purpose, noting that these baselines generally outperform standard/generic alternatives (on a task-by-task basis) per results in prior work. Additionally, throughout this section, we use BloomGML to describe models derived from (</p>13</p>), with differentiating descriptions accompanying each experiment. Also, please see Appendix H for comprehensive details of experimental setups as well as reproduction of result tables with error bars.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Node classification on heterophily graphs.</figDesc><table><row><cell>Follow-</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 :</head><label>3</label><figDesc>Node classification accuracy involving heterogeneous graphs. BloomGML is modified from HALO to include robust regularization within κ(h; x).</figDesc><table><row><cell></cell><cell cols="3">AIFB MUTAG BGS AM</cell></row><row><cell>HALO</cell><cell>97.2</cell><cell>80.9</cell><cell>89.7 85.9</cell></row><row><cell cols="2">BloomGML 97.2</cell><cell>82.4</cell><cell>93.1 86.9</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 4 :</head><label>4</label><figDesc>Inductive KGC tasks. Reported results based on the Test Hits@10 metric. Sum and PNA are aggregators while T and D are TransE and DistMult score functions, respectively.</figDesc><table><row><cell></cell><cell></cell><cell cols="2">WN18RR_v1</cell><cell></cell><cell></cell><cell cols="2">FB15k-237_v1</cell><cell></cell></row><row><cell></cell><cell cols="8">PNA(T) Sum(T) PNA(D) Sum(D) PNA(T) Sum(T) PNA(D) Sum(D)</cell></row><row><cell>RefactorGNN</cell><cell>/</cell><cell>/</cell><cell>/</cell><cell>0.885</cell><cell>/</cell><cell>/</cell><cell>/</cell><cell>0.787</cell></row><row><cell>BloomGML</cell><cell>0.952</cell><cell>0.937</cell><cell>0.960</cell><cell>0.946</cell><cell>0.744</cell><cell>0.747</cell><cell>0.836</cell><cell>0.792</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 5 :</head><label>5</label><figDesc>Node classification with momentum. The optimization algorithm for BloomGML is SGD with momentum.</figDesc><table><row><cell></cell><cell cols="4">Cora Citeseer Pubmed Arxiv</cell></row><row><cell>SGD</cell><cell>80.1</cell><cell>73.2</cell><cell>78.0</cell><cell>72.0</cell></row><row><cell cols="3">BloomGML 83.4 74.0</cell><cell>80.7</cell><cell>72.6</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head></head><label></label><figDesc>Zhu, X. (2005). Semi-supervised learning with graphs.</figDesc><table><row><cell>PhD Thesis, Carnegie Mellon University.</cell></row><row><cell>Zhu, Z., Zhang, Z., Xhonneux, L.-P., and Tang, J.</cell></row><row><cell>(2021c). Neural bellman-ford networks: A general</cell></row><row><cell>graph neural network framework for link prediction.</cell></row><row><cell>Advances in Neural Information Processing Systems,</cell></row><row><cell>34:29476-29490.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 6 :</head><label>6</label><figDesc>Node classification accuracy (%) comparisons. Results are averaged over 5 trials; error bars (not shown) are negligible.</figDesc><table><row><cell></cell><cell cols="2">Cora Citeseer</cell></row><row><cell>Label Propagation</cell><cell>70.2</cell><cell>50.2</cell></row><row><cell cols="2">GR-MLP Overparam. 70.2</cell><cell>50.2</cell></row><row><cell>GR-MLP Original</cell><cell>60.4</cell><cell>64.1</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 7 :</head><label>7</label><figDesc>Full version of Table1including error bars from averaging over 10 runs. Performance mitigating spurious input features. Here the detect ratio is obtained by computing ∥hv -π(xv; W)∥2 for all v ∈ V and then segmenting out the percentage of corrupted nodes within the largest 20%. BloomGML 65.83 ± 2.28 49.33 ± 1.95 72.70 ± 1.58 69.11 ± 0.23 Details for Figure1. To show the effect of BloomGML to have connected nodes with deviated embeddings, we use a Huber penalty for the edge-dependent regularizer term leading to the energy function ℓ low (H; W, G) = (u,v)∈E f (h u , h v ; r) +</figDesc><table><row><cell></cell><cell></cell><cell>Cora</cell><cell>Citeseer</cell><cell>Pubmed</cell><cell>Arxiv</cell></row><row><cell>Accuracy</cell><cell>Base</cell><cell>54.97 ± 1.95</cell><cell>38.98 ± 1.96</cell><cell>45.67 ± 3.21</cell><cell>47.63 ± 0.23</cell></row><row><cell cols="2">Detect Ratio BloomGML</cell><cell>94.27</cell><cell>87.82</cell><cell>96.98</cell><cell>100.00</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head></head><label></label><figDesc>low (H cq ; W, G cq ) := (52) Φh u,cq + h ⊤ v,cq Φe r + h ⊤ u,cq Φe r -1 + Φx v,cq || 2 2 + η(h v,cq ) ,</figDesc><table><row><cell>(u,r,v)∈Ecq</cell><cell>h ⊤ v,cq 1 2</cell><cell>v∈Vcq</cell><cell>||Ψ</cell><cell>1 2 h v,cq + Ψ -1 2</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_0"><p>We omit a subscript v in the following context for simplicity.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_1"><p>Admittedly, this example does not cover the full diversity of possible GR-MLP models in the literature. Nonetheless, it remains a useful starting point for analysis purposes.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_2"><p>https://wandb.ai/site</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>where Φ and ζ instantiate the gradient representation criteria for f M . From this it follows that</p><p>We may then choose µ (l) (u,r,v) := f M (h (l-1) u</p><p>, r, h (l-1) v</p><p>) ∈ R d , and by adding up all gradient terms depending on a</p><p>given node v, we can produce the aggregation function a (l)</p><p>(u,r,v) : (u, r) ∈ N v }) = (u,r)∈Nv µ (l) <ref type="bibr">(u,r,v)</ref> , noting that in certain cases r = r-1 for some other relation r ∈ R. And by linearity of the aggregation, we can later push Φ through to the update function (see below).</p><p>In this way, the gradient of ℓ low w.r.t. h (l-1) v , excluding the (possibly) non-differentiable η term is given by Φa</p><p>Given the Lipschitz continuous gradients of ζ, it follows that for a suitably small γ ′ &gt; 0, there will always exist an upper bound of the form</p><p>for all γ ∈ (0, γ ′ ], where C is an irrelevant constant, σ is a preconditioner function, and we achieve equality iff H = H (l-1) . From this bound, we can construct an update function by taking a proximal step that is guaranteed to reduce or leave unchanged ℓ low . The form is given by</p><p>completing the proof.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>F Accelerating BloomGML Convergence with Momentum/Hidden States</head><p>At the end of Section 3.3, we briefly alluded to retaining the expressiveness of (11) and the efficient message passing structure of Definition 2 while accelerating convergence, meaning a smaller value of L will be adequate for approximating a minimum of ℓ low . We fill in further details here. At a high level, this goal can be accomplished through the use of additional hidden states S = {s v } v∈V ∈ R n×d that instantiate momentum <ref type="bibr" target="#b30">(Polyak, 1964)</ref>. The latter can mute the amplitude of oscillations in noisy gradients while traversing flatter regions of the loss surface more quickly. A revised version of (11) festooned with momentum is given by</p><p>where β is an additional trade-off parameter.</p><p>Beyond the vanilla version of momentum given by ( <ref type="formula">31</ref>), for reference we now define a more general formulation that encompasses many well-known acceleration methods including AdaGrad <ref type="bibr" target="#b9">(Duchi et al., 2011)</ref>, RMSProp <ref type="bibr" target="#b15">(Hinton et al., 2012)</ref>, and Adam <ref type="bibr" target="#b21">(Kingma and Ba, 2014)</ref> as special cases.</p><p>To begin, let ℓ low be any differentiable energy function expressible as (8) with η = 0 (we omit handling the more general case for brevity, although it can be derived in a similar way) and g</p><p>provides a general framework for accelerating convergence. Here ξ : R d → R d , and φ : R d → R d are linear node-wise functions defined on g. σ(•) : R d → R + &gt; 0 is an arbitrary positive function. Note that when k &gt; 1 Details for Table <ref type="table">2</ref>. Building on the results from above and the description in Section 5 in the main text, we consider the generalized form</p><p>As before, this expression is differentiable so we can choose A as gradient descent with step-size parameter γ. All of the hyperparameters were selected via Bayesian optimization using Wandb 4 and we also provide the model hyperparameters search space in Table <ref type="table">9</ref>. Note that we also found that it can be effective to simply learn λ, i.e., absorb it into W, which reduces the hyperparameter search space and can potentially even improve performance.</p><p>We show such supporting ablations in Section J.1.</p><p>In Table <ref type="table">8</ref> we reproduce results from Table <ref type="table">2</ref>, including error bars from averaging over 10 runs and an additional ablation. For the latter, we compare κ(h; x) = ∥h -π(x; W)∥ 2 2 labeled as BloomGML (w/o Huber) with the κ(h; x) = δ (h v -π(x v ; W)) implied within (49). From Table <ref type="table">8</ref> we observe that the Huber version works better on 4 of 5 datasets, the exception being Amazon where it is significantly worse. As one candidate explanation for this exception, we note that the Amazon dataset has a significantly higher adjusted homophily ratio than the other 4 datasets, where adjusted homophily is defined as in <ref type="bibr" target="#b28">Platonov et al. (2022)</ref> (this metric is less sensitive to the number of classes and their balance).</p><p>We also trained several standard GNN architectures, e.g., GCN and GAT, for reference purposes; however, we found that their performance was considerably worse than the heterophily baseline architectures from Table <ref type="table">8</ref> (and therefore Table 2 as well). This is in contrast to <ref type="bibr" target="#b29">Platonov et al. (2023)</ref>, which presents somewhat stronger results associated with such popular architectures. However, this apparent contradiction can be resolved by closer examination of the public implementations from <ref type="bibr" target="#b29">Platonov et al. (2023)</ref>. Here we observe that additional modifications to the original models have been introduced to the codebase that can significantly alter performance. While certainly valuable to consider, these types of enhancements can be widely applied and lie beyond the scope of our bilevel optimization lens. Indeed the flexibility of BloomGML also readily accommodates further architectural adjustments with the potential to analogously improve performance as well on specific heterophily tasks.  <ref type="table">2</ref> and<ref type="table">3</ref>. For BloomGML (w/o Huber), λ is a learnable parameter that is not searched by BO; see Section J.1 for an ablation on learning λ.  <ref type="bibr">[128,256,512] [16, 64, 128]</ref> asymmetric weights can be reproduced by symmetric ones via an appropriate expansion of the hidden dimensions. Let</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Hyperparameters Range for Table 2 Range for</head><p>Then we have</p><p>Thus, the aggregated function is</p><p>Then, by reintroducing η and adopting proximal gradient descent for A, we produce the message-passing function</p><p>This expression closely resembles an NBFNet model layer with summation aggregation.</p><p>Proceeding further, we extend the scope of our discussion to an expanded graph G exp with node set V exp and edge set E exp , where G exp = ∪G cq , ∀(c, q, •) ∈ E exp . Analogously, we define an extended energy function over G exp as</p><p>For elements in Y cq , positive instances correspond with true edges in the original graph, while negative instances are obtained by sampling. With Y exp := ∪Y cq , we define an upper-level energy as</p><p>where V ′ cq represents the node set of each G cq with observed labels. In this way, the resulting bilevel optimization process can be viewed as instantiating a BloomGML node classification task on the expanded graph G exp , with architecture mimicking a specialized NBFNet-like model designed to minimize ℓ low .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>J Additional Experiments</head><p>In this section we include additional ablations and further demonstration of the versatility of BloomGML.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>J.1 Ablation on Learning λ</head><p>There are two potential advantages to learning differentiable hyperparameters within ℓ low . First, relative to hyperparameter tuning, it may be possible to boost performance. And secondly, even if performance improvements are stubborn, by learning such hyperparameters, we economize the sweep over any remaining hyperparameters as the effective search space has compressed along one dimension. In this regard, Table <ref type="table">10</ref> shows results on the heterophily datasets (and the same setup from Tables <ref type="table">2</ref> and<ref type="table">8</ref>) with and without learning λ. From these results we observe that learning λ produces reliable performance, suggesting that it can be trained instead of tuned (as a hyperparameter) without sacrificing accuracy. If for some reason we prefer to have a model with layer-normalized node embeddings, one option is to introduce a penalty of the form (∥h∥ 2 2 -1) 2 , absorb this factor into κ(h; x), and pthen roceed to minimize ℓ low using regular gradient descent for A. However, this requires an additional trade-off hyperparameter, and if we want to be arbitrarily close to the unit norm, convergence will become prohibitively slow. Alternatively, we can enforce strict adherence to unit norm by choosing η(h) = I ∞ {∥h∥ 2 2 ̸ = 1} and then adopt proximal gradient descent for A to handle the resulting discontinuous loss surface. This involves simply taking gradient steps on all other differentiable terms and then projecting to the unit sphere (i.e., the proximal operator). We compare these two approaches in Figure <ref type="figure">3</ref>, where proximal gradient descent converges far more rapidly. For the model without proximal gradient descent, we add the penalty α(∥h∥ 2 2 -1) 2 to the energy from (3), where α is the trade-off parameter; we choose α = 1 in Figure <ref type="figure">3</ref>. For the model with proximal gradient descent, we project each node embedding to the surface of a ball satisfying ||h|| 2 2 = 1. </p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Descent steps of a relation-aware energy produce heterogeneous graph neural networks</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ahn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Moon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wipf</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Learning on graph with laplacian regularization</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ando</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="page">19</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Beyond low-frequency information in graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Shen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">35</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multi-relational data</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page">26</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Does your graph need a confidence boost? Convergent boosted smoothing on graphs with tabular node features</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Mueller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">N</forename><surname>Ioannidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Adeshina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Goldstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wipf</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Refactor gnns: Revisiting factorisation-based models from a message-passing perspective</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mishra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Franceschi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Principal neighbourhood aggregation for graph nets</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Corso</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Cavalleri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Beaini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Liò</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Veličković</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Understanding convolution on graphs via energies</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Di Giovanni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Rowbottom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">P</forename><surname>Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Markovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">M</forename><surname>Bronstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Transactions on Machine Learning Research</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Gbk-gnn: Gated bi-kernel graph neural networks for modeling both homophily and heterophily</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the ACM Web Conference 2022</title>
+		<meeting>the ACM Web Conference 2022</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="1550" to="1558" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Adaptive subgradient methods for online learning and stochastic optimization</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Duchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Hazan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Singer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of machine learning research</title>
+		<imprint>
+			<biblScope unit="issue">7</biblScope>
+			<biblScope unit="page">12</biblScope>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Zoobp: Belief propagation for heterogeneous networks</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Eswaran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Günnemann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Faloutsos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Makhija</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kumar</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">10</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Neural message passing for quantum chemistry</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gilmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">S</forename><surname>Schoenholz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">F</forename><surname>Riley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">E</forename><surname>Dahl</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1263" to="1272" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">A characterization of proximity operators</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gribonval</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nikolova</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Mathematical Imaging and Vision</title>
+		<imprint>
+			<biblScope unit="volume">62</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="773" to="789" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Inductive representation learning on large graphs. Advances in neural information processing systems</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page">30</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Graph representation learning</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<publisher>Morgan &amp; Claypool Publishers</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Neural networks for machine learning lecture 6a overview of mini-batch gradient descent</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Swersky</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Cited on</title>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page">2</biblScope>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>You</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Gao</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2106.04051</idno>
+		<title level="m">Graph-mlp: Node classification without message passing in graph</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Robust estimation of a location parameter</title>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">J</forename><surname>Huber</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Breakthroughs in statistics: Methodology and distribution</title>
+		<imprint>
+			<date type="published" when="1992">1992</date>
+			<biblScope unit="page" from="492" to="518" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">A survey on knowledge graphs: Representation, acquisition, and applications</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Cambria</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Marttinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">Y</forename><surname>Philip</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Transactions on Neural Networks and Learning Systems</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<author>
+			<persName><forename type="first">H</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wipf</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2310.12457</idno>
+		<title level="m">MuseGNN: Interpretable and convergent graph neural network layers at scale</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Molecular graph convolutions: moving beyond fingerprints</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kearnes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Mccloskey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Berndl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Pande</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Riley</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of computeraided molecular design</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="page" from="595" to="608" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6980</idno>
+		<title level="m">Adam: A method for stochastic optimization</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1609.02907</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Reslpa: Label propagation with residual learning</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zeng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 7th International Conference on Computing and Artificial Intelligence, ICCAI &apos;21</title>
+		<meeting>the 2021 7th International Conference on Computing and Artificial Intelligence, ICCAI &apos;21</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">A unified view on graph neural networks as graph signal denoising</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Shah</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 30th ACM International Conference on Information &amp; Knowledge Management</title>
+		<meeting>the 30th ACM International Conference on Information &amp; Knowledge Management</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="1202" to="1211" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Simplifying approach to node classification in graph neural networks</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">K</forename><surname>Maurya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Murata</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Computational Science</title>
+		<imprint>
+			<biblScope unit="volume">62</biblScope>
+			<biblScope unit="page">101695</biblScope>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">A unified framework for convolution-based graph neural networks</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Huang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">N</forename><surname>Parikh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Boyd</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proximal algorithms. Found. Trends Optim</title>
+		<imprint>
+			<biblScope unit="page" from="127" to="239" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<author>
+			<persName><forename type="first">O</forename><surname>Platonov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kuznedelev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Babenko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Prokhorenkova</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2209.06177</idno>
+		<title level="m">Characterizing graph datasets for node classification: Beyond homophily-heterophily dichotomy</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">A critical look at the evaluation of GNNs under heterophily: Are we really making progress?</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Platonov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kuznedelev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Diskin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Babenko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Prokhorenkova</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Eleventh International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">Some methods of speeding up the convergence of iteration methods. Ussr computational mathematics and mathematical physics</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">T</forename><surname>Polyak</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1964">1964</date>
+			<biblScope unit="volume">4</biblScope>
+			<biblScope unit="page" from="1" to="17" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<title level="m" type="main">Modeling relational data with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Bloem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Van Den Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Titov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">A review on bilevel optimization: From classical to evolutionary approaches and applications</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sinha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Malo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Deb</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Evolutionary Computation</title>
+		<imprint>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="276" to="295" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Inductive relation prediction by subgraph reasoning</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Teru</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Denis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hamilton</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="9448" to="9457" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title level="m" type="main">Graph attention networks</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1710.10903</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">How powerful are spectral graph neural networks</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="23341" to="23362" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Why propagate alone? parallel use of labels and features on graphs</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wipf</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Learning deep ℓ 0 encoders</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Ling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Huang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">30</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<monogr>
+		<title level="m" type="main">How powerful are graph neural networks?</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Jegelka</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">LazyGNN: Large-scale graph neural networks via lazy propagation</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Xue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Torkamani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<title level="m" type="main">Camlp: Confidence-aware modulated label propagation</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yamaguchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Faloutsos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Kitagawa</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="513" to="521" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<monogr>
+		<title level="m" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W.-T</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Deng</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6575</idno>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Transformers from an optimization perspective</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wipf</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2022">2022a</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<monogr>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wipf</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2111.06592</idno>
+		<title level="m">Implicit vs unfolded graph neural networks</title>
+		<imprint>
+			<date type="published" when="2022">2022b</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Graph neural networks inspired by classical iterative algorithms</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wipf</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="11773" to="11783" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Gnnexplainer: Generating explanations for graph neural networks</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bourgeois</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>You</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zaheer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kottur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ravanbakhsh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Poczos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">J</forename><surname>Smola</surname></persName>
+		</author>
+		<title level="m">Deep sets. Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">30</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<monogr>
+		<title level="m" type="main">Orthoreg: Improving graphregularized mlps via orthogonality regularization</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">N</forename><surname>Ioannidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Adeshina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Faloutsos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Karypis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">S</forename><surname>Yu</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<title level="m" type="main">Revisiting graph convolutional network on semi-supervised node classification from an optimization perspective</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2009.11469</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Dgl-ke: Training knowledge graph embeddings at scale</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Karypis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval</title>
+		<meeting>the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="739" to="748" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Learning with local and global consistency</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Bousquet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Schölkopf</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+			<biblScope unit="page">16</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Graph neural networks: A review of methods and applications</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AI open</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="57" to="81" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Dirichlet energy constrained learning for deep graph neural networks</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S.-H</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Hu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="21834" to="21846" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Graph neural networks with heterophily</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">A</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Rao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Mai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Lipka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">K</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Koutra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI conference on artificial intelligence</title>
+		<meeting>the AAAI conference on artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">35</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

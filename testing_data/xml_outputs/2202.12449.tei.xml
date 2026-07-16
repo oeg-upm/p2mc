@@ -1,0 +1,939 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">DIRECTED GRAPH AUTO-ENCODERS</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Georgios</forename><surname>Kollias</surname></persName>
+							<email>gkollias@us.ibm.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">IBM Research T. J. Watson Research Center</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Vasileios</forename><surname>Kalantzis</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">IBM Research T. J. Watson Research Center</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Tsuyoshi</forename><surname>Idé</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">IBM Research T. J. Watson Research Center</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Aurélie</forename><surname>Lozano</surname></persName>
+							<email>aclozano@us.ibm.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">IBM Research T. J. Watson Research Center</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Naoki</forename><surname>Abe</surname></persName>
+							<email>nabe@us.ibm.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">IBM Research T. J. Watson Research Center</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">DIRECTED GRAPH AUTO-ENCODERS</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="MD5">B55CB9521035CAB6C72D7FA8C56E9BB3</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:26+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We introduce a new class of auto-encoders for directed graphs, motivated by a direct extension of the Weisfeiler-Leman algorithm to pairs of node labels. The proposed model learns pairs of interpretable latent representations for the nodes of directed graphs, and uses parameterized graph convolutional network (GCN) layers for its encoder and an asymmetric inner product decoder. Parameters in the encoder control the weighting of representations exchanged between neighboring nodes. We demonstrate the ability of the proposed model to learn meaningful latent embeddings and achieve superior performance on the directed link prediction task on several popular network datasets.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Introduction</head><p>Graph-structured data are ubiquitous, commonly encountered in diverse domains, ranging from biochemical interaction networks, to networks of social and economic transactions. A graph introduces dependencies between its connected nodes, thus algorithms designed to work solely with feature vectors of isolated nodes as inputs can yield suboptimal results. One way to remedy this issue, without reverting to more complex graph algorithms, is to enhance the representation of a graph node so that both its features and embedding graph structure are captured in a single vector.</p><p>Graph Convolutional Networks (GCNs) produce vectorial representations of nodes that are graph-aware and have been successfully used in downstream learning tasks including node classification, link prediction and graph classification. The construction of GCNs falls into two categories: spatial-based and spectral-based. Spatial-based GCNs are conveniently described as Message Passing Neural Networks (MPNNs) detailing the steps for aggregating information from neighbor graph nodes <ref type="bibr" target="#b0">Gilmer et al. (2017)</ref>; <ref type="bibr" target="#b1">Micheli (2009)</ref>; <ref type="bibr" target="#b2">Niepert et al. (2016)</ref>. They adopt a local view of the graph structure around each node and are straightforward to describe and lightweight to compute; however they also need local customizations to enhance the performance of the representations they produce for downstream learning tasks <ref type="bibr" target="#b3">Veličković et al. (2017)</ref>. Spectral-based GCNs originate in graph signal processing perspectives <ref type="bibr" target="#b4">Bruna et al. (2014)</ref>. They are based on the graph Laplacian, so they inherently adopt a global graph view <ref type="bibr" target="#b5">Defferrard et al. (2016)</ref>; <ref type="bibr">Kipf and Welling (2016a)</ref>. However they incur more computational cost, typically addressed by approximating their convolutional filter.</p><p>In this work we focus on GCN-based models for representing the nodes of directed graphs (encoding), so that we can faithfully reconstruct their directed edges (decoding). Our goal is to identify both whether two nodes u and v should be connected or not (which is the only goal for the undirected case) and whether their connection has the direction u → v or v → u or both. Many applications depend critically on this distinctionality. For example in (directed) citation graphs it cannot be the case that a publication cites a work that is published later in time, in (directed) causal graphs a causal node should prepend any of its effects, in knowledge graphs subject nodes are expected to point to object nodes. As a consequence, failing to identify the correct orientation even in a single edge could severely disrupt downstream tasks: time ordering can become contradicting, paths to root causes can be erroneously blocked, flow computations between entities can be totally wrong.</p><p>Our encoder follows a color refinement scheme for directed graphs that reduces to the standard Weisfeiler-Leman algorithm. Coupled with an unsymmetric decoder, our directed graph auto-encoder can accurately infer missing directed links from the limited, incomplete graph it has access to during training time.</p><p>Our contributions are two-fold. First, we propose a novel variant of the Weisfeiler-Leman algorithm that clearly emphasizes the dual role of directed graph nodes as both sources and targets of directed links. This abstracts, for the first time, the alternating update of authority and hub scalar values in HITS, and the relations between left and right singular vectors computed in SVD and the GCN-based approaches for directed graphs inspired by them. Second, we design parameterized GCN layers for updating the pair-of-vectors representation of the source and target roles of directed graph nodes in an alternating manner, and use these layers as the encoder in a directed graph auto-encoder architecture. We demonstrate that the parameterization we introduce is performance-critical for learning latent representations, and the proposed model can outperform state-of-the-art methods for the directed link prediction task on several popular citation network datasets in terms of area under the ROC curve (AUC) and average precision (AP) metrics.</p><p>The code is available at https://github.com/gidiko/DiGAE.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Preliminaries and background</head><p>We can generally describe the dependencies of a network as a directed graph G(V, E, w), i.e., a weighted dependency graph. Here V is the set of n = |V | graph nodes and E = {(i, j) ∈ V × V : i → j} is the set of its m = |E| directed edges, expressed as node pairs. Finally w : V × V → R is the edge weight function, with w(i, j) being a scalar capturing the "strength" of the dependency i → j iff (i, j) ∈ E -and vanishing otherwise. Following a linear algebra perspective, we will represent G(V, E, w) as an n × n sparse, weighted, adjacency matrix A. This matrix has m non-vanishing entries and its (i, j) entry is set equal to the respective weight w(i, j), i.e., A[i, j] = w(i, j). Throughout the rest of this paper, we use</p><formula xml:id="formula_0">Ñ + (i) = N + (i) ∪ {i} ( Ñ -(i) = N -(i) ∪ {i}) and deg + (i) = | Ñ + (i)| (deg -(i) = | Ñ -(i)|)</formula><p>, to denote the neighbor node sets of the outgoing (incoming) edges and outgoing (incoming) degrees of a node i -including itself. Analogously, the corresponding diagonal matrices with the outdegrees (indegrees) along their diagonal will be denoted as</p><formula xml:id="formula_1">D+ ( D-</formula><p>), where we top with a tilde mark the names of adjacency matrices with added self-links. Note that for undirected, unweighted graphs, the corresponding adjacency matrices are symmetric and binary, i.e., D is a diagonal matrix where dii is the original degree of node i increased by 1 (because of the added self-link).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Dual vector encoding of directed graph nodes</head><p>Consider a directed edge i → j, with weight w(i, j), where i is the source node and j is the target node. Now, let's assume that node i is equipped with a pair of vectors in R k , 1 ≤ i ≤ n: (i) vector s i encodes i's role as a source, which is the same for any of the directed edges it participates as a source, and (ii) vector t i encodes i's role as a target; similarly for node j. The similarity of nodes i and j in building the weighted directed edge i → j could then be captured by a similarity function sim(•, •) which ideally evaluates to the true edge weight: sim(s i , t j ) = w(i, j).</p><p>An immediate choice for the similarity function is the dot product: sim(s i , t j ) = s i t j , with the encodings originally realized as column vectors. We then can compactly evaluate the weights of all edges, by buliding two matrices, S and T, where S[i, :] = s i and T[j, :] = t j , for all 1 ≤ i, j ≤ n, and requiring A = ST . This particular choice has been explored in <ref type="bibr" target="#b7">Ou et al. (2016)</ref>, which leverages the singular value decomposition (SVD) A = UΣV and sets S = UΣ 1 2 and T = VΣ 1 2 . The authors also explore a variant based on truncated SVD.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Weisfeiler-Leman (WL) algorithm and connection to GCNs</head><p>One-dimensional Weisfeiler-Leman (1-WL) One dimensional Weisfeiler-Leman (1-WL) algorithm is a well-studied approach for assigning distinct labels to the nodes of undirected, unweighted graphs with different topological roles <ref type="bibr" target="#b8">Weisfeiler and Leman (1968)</ref>. Given adjacency information in the form of neighborhood lists</p><formula xml:id="formula_2">N (i) = [k : i → k ∨ k → i], ∀i ∈ [0, n), 1-dim WL</formula><p>iteratively updates a node's label by computing a bijective hash of its neigbors' labels, and mapping this to a unique label. The procedure terminates when the hash-and-map procedure stabilizes. A detailed sketch of the 1-WL algorithm is provided in the Appendix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Graph Convolutional Network (GCN)</head><p>Graph Convolutional Networks (GCNs) suggest convolution operators for graph signals defined over graph nodes. Following the early analysis in <ref type="bibr" target="#b9">Hammond et al. (2011)</ref> and the expansions in <ref type="bibr" target="#b5">Defferrard et al. (2016)</ref>, GCNs were particularly popularized by <ref type="bibr">Kipf et al. Kipf and Welling (2016a)</ref>. In particular, the work in <ref type="bibr">Kipf and Welling (2016a)</ref> focused on undirected, unweighted graphs, such that the adjacency matrices are symmetric and binary. Each node i is initially assumed encoded by a k = k 0 dimensional vector x i , so all node encodings can be collected in an n × k matrix X = X (0) . The goal is to transform the node embeddings so that a downstream task such as node classification is more accurate.</p><p>The proposed transformation contains a succession of graph convolutional layers of the form:</p><formula xml:id="formula_3">Z (t) ← D-1 2 Ã D-1 2 X (t) W (t)<label>(1)</label></formula><p>interspersed with nonlinear layers, like ReLU and softmax. The quantity W (t) is a learnable k t × k t+1 matrix of weights for the t th graph convolutional layer (t = 0, 1, . . .). The algorithm in Kipf and Welling (2016a) implements the transformation of the original encodings X:</p><formula xml:id="formula_4">Z ← softmax( Â ReLU( Â X W (0) ) W (1) ),<label>(2)</label></formula><p>where</p><formula xml:id="formula_5">Â := D-1 2 Ã D-1 2 .</formula><p>Connecting 1-WL to GCNs</p><p>In <ref type="bibr" target="#b10">Morris et al. (2019)</ref> the connection of 1-WL to 1-GNNs is explored. Their basic 1-GNN model assumes the form</p><formula xml:id="formula_6">f (t) (v) = σ   f (t-1) (v) • W (t) 1 + w∈N (v) f (t-1) (w) • W (t) 2  <label>(3)</label></formula><p>In this, f (t) (v), which is the row feature vector of node v at layer t &gt; 0, is computed by aggregating its feature vector and the feature vectors of its neighbors at the previous layer t -1, after first multiplying them respectively by parameter matrices</p><formula xml:id="formula_7">W (t) 1 and W (t)</formula><p>2 . It follows GCNs are 1-GNNs. These results establish the connection of 1-WL to 1-GNNs (3):</p><p>• [Theorem 1 in <ref type="bibr" target="#b10">Morris et al. (2019)</ref>] For all t ≥ 0 and for all choices of weights</p><formula xml:id="formula_8">W (t) = (W (t ) 1 , W<label>(t )</label></formula><p>2 ) t ≤t , coloring c (t) l refines encoding f (t) : c (t) l f (t) . This means that for any nodes u, w in G st , c</p><formula xml:id="formula_9">(t) l (u) = c (t) l (w) implies f (t) (u) = f (t) (w).</formula><p>• [Theorem 2 in <ref type="bibr" target="#b10">Morris et al. (2019)</ref>] For all t ≥ 0 there exists a sequence of W (t) and a 1-GNN architecture such that the colorings and the encodings are equivalent: c</p><formula xml:id="formula_10">(t) l ≡ f (t) (i.e. c (t) l f (t) and f (t) c (t) l ).</formula><p>DiGAE: Directed Graph Auto-Encoder</p><p>Weisfeiler-Leman (WL) algorithm and connection to encoder layers in DiGAE</p><p>We now extend 1-WL for coloring pairs of node labels in directed graphs. We can formally prove that this extension reduces to standard 1-WL over a bipartite, undirected graph. This allows us to connect it to 1-GNNs with a special structure for the parameter matrices, which corresponds to the directed graph convolutional layers in the encoder module of our DiGAE architecture which we define next. For the case of shared weight matrices we can even remove this special structure requirement.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Coloring pairs of node labels in directed graphs</head><p>To extend 1-WL for directed graphs, we equip each node of the graph with 2 labels, one for capturing its role as a "source" of directed edges emanating from it and another one for its role as a "target" node for directed edges pointing to it. Then at each step, we propose the "source" label of a node to be a bijective function of its current "source" label and the multiset of "target" labels of the nodes it points to. In parallel, its "target" label will be updated to the bijective mapping of its current target label and the "source" labels of the nodes pointing to it. For the detailed algorithm, please refer to the Appendix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Neural Source and Target encodings</head><p>The propagation of "source" and "target" node labels along their directed edges, as in the extension of the 1-WL algorithm, suggests a new graph convolutional network layer. Similarly to the way the GCN layer is closely connected to standard 1-WL, we propose a novel directed graph convolutional layer that transforms a pair of source and target encoding vectors for each node, in analogy to our extension for directed graphs. We assume that each node i is originally encoded by a pair of vectors, its source s (0)</p><p>i and target t (0)</p><p>i encodings, and collect these encodings as rows in matrices S (0) and T (0) .</p><p>We can now define the t th graph convolutional layer for updating the source encodings by aggregating the transformed and normalized target encodings in the neighborhood as:</p><formula xml:id="formula_11">S (t+1) ← D+ -β Ã D--α T (t) W (t) T<label>(4)</label></formula><p>In this work we propose tunable parameters α and β for weighting the degrees in message passing. This subtle modification can have important effects in performance for the link prediction task as demonstrated in the experimental section.</p><p>Similarly we update the target encodings by aggregating the transformed and normalized source encodings in the neighborhood:</p><formula xml:id="formula_12">T (t+1) ← D--α Ã D+ -β S (t) W (t) S<label>(5)</label></formula><p>where</p><formula xml:id="formula_13">W (t)</formula><p>T and W (t)</p><p>S are the (learnable) linear tranformations for target and encoding encodings prior to their propagation. Defining Â = D+ -β Ã D--α , we can compactly express our proposed graph convolutional layer by the following pair of tranformations:</p><formula xml:id="formula_14">S (t+1) ← Â T (t) W (t) T T (t+1) ← Â S (t) W (t) S .</formula><p>(6)</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Reduction to 1-WL</head><p>We consider the transformation of our directed, unweighted graph G(V, E) to its bipartite representation <ref type="bibr" target="#b11">Bang-Jensen and Gutin (2008)</ref>. The bipartite graph G st is assumed undirected and it follows that for the set N st (v) of the immediate neighbors of any of its nodes</p><formula xml:id="formula_15">G st (V s , V t , E st ) with V s = V = [0, n), V t = [n, 2 n) and E st = {{i, j + n}|(i, j) ∈ E}</formula><formula xml:id="formula_16">v ∈ V (G st ) = V s ∪ V t : N st (v) = {j + n|(v, j) ∈ E} if 0 ≤ v &lt; n {i|(i, v -n) ∈ E} if n ≤ v &lt; 2<label>(7)</label></formula><p>We also assume that the 2n nodes of G st are initially colored with two colors in the set {s, t} according to a coloring function function l :</p><formula xml:id="formula_17">V s ∪ V t → Σ with l(v) = s, if 0 ≤ v &lt; n and l(v) = t, if n ≤ v &lt; 2 n.</formula><p>In other words (G st , l) is a labeled graph, so we can directly apply the standard 1-WL iterative algorithm for color refinement. In each iteration t ≥ 0, 1-WL computes a node coloring c (t) l : V (G st ) → Σ with an arbitrary codomain of colors Σ. We initialize this sequence of colorings as c (0) l = l and at t &gt; 0, node coloring is updated as:</p><formula xml:id="formula_18">c (t) l (v) = HASH (c (t-1) l (v), {{c (t-1) l (w)|w ∈ N st (v)}})</formula><p>Termination of this standard 1-WL algorithm is guaranteed after at most |V (G st )| = 2 n iterations and reached when |c</p><formula xml:id="formula_19">(t) l | = |c (t-1) l | for some k.</formula><p>Essentially, the bipartite representation maps a node i ∈ V in the directed graph G to a pair of nodes</p><formula xml:id="formula_20">(i ∈ V s , i + n ∈ V t ) in the undirected, bipartite graph G st : i ∈ V s represents i ∈ V as a source of directed edges in G and i + n ∈ V t represents i ∈ V as a target of directed edges in G.</formula><p>In addition, identical color pair labels (s, t), initially assigned to all nodes i ∈ V (in the directed graph G) are mapped to: (i) an initial label s for node i ∈ V s and (ii) an initial label t for node i + n ∈ V t (in the undirected, bipartite graph G st ). So in our refinement scheme for a node i in G, it holds (c</p><formula xml:id="formula_21">(0) l,s (i), c (0) l,t (i)) = (s, t) while for its corresponding nodes i, i + n in G st , c (0) l (i) = s and c (0) l (i + n) = t.</formula><p>We can now prove that the color pairs computed at each step k and for each node i by our refinement scheme on a directed graph G can equivalently be computed by standard 1-WL on the undirected, bipartite G st by pairing the colors of its nodes i and i + n. In other words: Theorem 1. c</p><formula xml:id="formula_22">(t) l,s (i) = c (t) l (i), c (t) l,t (i) = c (t) l (i + n)<label>(8)</label></formula><p>for all layers t ≥ 0 and i ∈ [0, n).</p><p>Proof. We use induction. For t = 0 this holds by our initialization convention: c</p><formula xml:id="formula_23">(0) l,s (i) = c (0) l (i) = s and c (0) l,t (i) = c (0) l (i + n) = t.</formula><p>Let us now assume that this also holds for some t and find out for t + 1. Consider a node with index i ∈ [0, n). Its neighbors w = j + n ∈ N st (i) in G st map to the outlink-neighbors j ∈ N + (i) in G according to our bipartite representation (see Equation ( <ref type="formula" target="#formula_16">7</ref>). These neighbors w</p><formula xml:id="formula_24">= j + n ∈ N st (i) have color labels c (t) l (j + n) which according to (8) are equal to c (t) l,t (i): c (t+1) l (i) =HASH((c (t) l (i), {{c (t) l (w)|w ∈ N st (i)}})) = HASH((c (t) l,s (i), {{c (t) l,t (j)|j ∈ N + (i)}})) (9) Similarly for a node with index i + n ∈ [n, 2n), its neighbors w = j ∈ N st (i) in G st map to the inlink-neighbors j ∈ N -(i -n) in G according to Equation 7. The node with index i + n has color label equal to c (t) l,t and the inlink neighbors j, since j ∈ [0, n) have color labels equal to c (t) l,s (see 8): c (t+1) l (i + n) =HASH((c (t) l (i + 1), {{c (t) l (w)|w ∈ N st (i)}})) = HASH((c (t) l,t (i), {{c (t) l,s (j)|j ∈ N -(i)}})) (10)</formula><p>According to our extension to 1-WL, the refinement we propose reads: c</p><formula xml:id="formula_25">(t+1) l,s (i) = HASH (c (t) l,s (i), {{c (t) l,t (j)|j ∈ N + (i)}}) and c (t+1) l,t (i) = HASH (c (t) l,t (i), {{c (t) l,s (j)|j ∈ N -(i)}})</formula><p>. By comparing with equations ( <ref type="formula">9</ref>) and ( <ref type="formula">10</ref>) it follows that c</p><formula xml:id="formula_26">(t+1) l,s = c (t+1) l (i) and c (t+1) l,t = c (t+1) l (i + n) which completes the proof.</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Connecting 1-WL to the encoder layers in DiGAE</head><p>We can encode the initial labels c (0) l (v) of the nodes in our bipartite representation G st by considering two arbitrary, nonequal, vectors s, t in R e×1 and setting f (0) (v) = s for nodes v ∈ [0, n) and f (0) (v) = t for nodes v ∈ [n, 2n); e can be as small as 1 (i.e. for one-hot encoding). These encodings are consistent with the initial labels (i.e. they are different for nodes with different initial colors). Given the consistent encodings and our reduction of our color refinement to 1-WL for G st , two results readily apply, from theorems 1 and 2 in <ref type="bibr" target="#b10">Morris et al. (2019)</ref>. These results readily establish the connection of our 1-WL to 1-GNNs (3).</p><p>Alternatively, we can encode the initial labels c (0) l (v) of the nodes in our bipartite representation G st by vectors f (0) (v) as follows. For nodes v ∈ [0, n) we assume the encoding f (0) (v) = [s , 0] and for nodes v ∈ [n, 2n) we set f (0) (v) = [0, t ] where 0 ∈ R 1×e denotes the zero row vector. Our encodings are in R 1×2e and they are also consistent with our initial labels. In this encoding scheme, the first e elements (last e elements) of the initial feature vector f (0) (v) are non-vanishing for nodes in G st capturing the source (target) role of nodes in G.</p><p>We can ensure this property is preserved for feature vectors f (t) (v), t &gt; 0 under the iteration in (3) by additionally selecting block-diagonal matrices for W (t) 1 and block-antidiagonal matrices for W (t) 2 :</p><formula xml:id="formula_27">W (t) 1 = W (t) 1S O O W (t) 1T , W (t) 2 = O W (t) 2S W (t) 2T O (11)</formula><p>where</p><formula xml:id="formula_28">W (t) 1S , W (t) 1T , W (t) 2S , W<label>(t)</label></formula><p>2T ∈ R e×e and O = O e×e is the zero matrix.</p><p>This is straightforward to verify. For a node in i ∈ [0, n) for which</p><formula xml:id="formula_29">f (t-1) (i) = [s (t-1) i , 0] its neighbors j ∈ [n, 2n) will have encodings of the form f (t-1) (v) = [0, t (t-1) j</formula><p>]. Substitution in Equation (3) yields:</p><formula xml:id="formula_30">f (t) (i) = [σ(s (t-1) i • W (t) 1S + j∈N (i) t (t-1) j • W (t)</formula><p>2T ), 0 1×e ] so f (t) (i) still has only its first e elements non-vanishing, the same as f (t-1) (i). Similarly for i ∈ [n, 2n) we get:</p><formula xml:id="formula_31">f (t) (i) = [σ(0 1×e , t (t-1) i • W (t) 1T + j∈N (i) s (t-1) j • W (t)</formula><p>2S )], so f (t) (i) still has only its last e elements non-vanishing, the same as f (t-1) (i).</p><p>The motivation behind the selection of block-structured parameter matrices W 1T = O e×e , these vectors f (t) (i) can be seen to map directly to rows of matrices S (t) and T (t) in Equation ( <ref type="formula">6</ref>). Alternatively, we can consider general (non-structured) W (t) 1 and W (t) 2 in our 1-GNN which corresponds to sharing learnt parameters for neural source and target encodings.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Directed Graph AutoEncoder (DiGAE) model</head><p>In analogy to the Graph AutoEncoder (GAE) model in Kipf and Welling (2016b), we can define its directed variant (DiGAE) by stacking two directed graph convolutional layers connected with ReLU nonlinearity for its encoder and a sigmoid applied to the inner product of the source and target encodings for its decoder. In particular, the encoder reads</p><formula xml:id="formula_32">Z S = ÂReLU( Â S (0) W (0) S )W (1) T Z T = Â ReLU( Â T (0) W (0) T )W (1) S (12)</formula><p>while the decoder for computing the reconstructed adjacency matrix Ā is</p><formula xml:id="formula_33">Ā = σ(Z S Z T )<label>(13)</label></formula><p>In the sequel, we experiment with the single-layer DiGAE model, referred to as DiGAE-1L. This autoencoder has the same decoder as DiGAE and its encoder implements the pair of transformations</p><formula xml:id="formula_34">Z S = S (1) = ÂT (0) W (0)</formula><p>T and</p><formula xml:id="formula_35">Z T = T (1) = Â S (0) W (0) S .</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Related work</head><p>Ma et al <ref type="bibr" target="#b13">Ma et al. (2019)</ref> formally extend convolution to directed graphs by defining a normalized, symmetric directed Laplacian and leveraging the Perron vector of the induced transition probability matrix for weighing messaged passing. In <ref type="bibr">Tong et al. (2020a)</ref>, Tong et al approximate the digraph Laplacian by means of Personalized PageRank, and this relaxed definition offers performance benefits and the ability to process directed graphs that are not necessarily strongly connected. The authors of Fast Directed GCN in <ref type="bibr" target="#b15">Li et al. (2020)</ref> also approximate the digraph Laplacian, by assuming the trivial Perron vector for regular graphs. In <ref type="bibr" target="#b16">Monti et al. (2018)</ref>, a polynomial of selected motif Laplacians is used to filter node representations. Most notably, all aforementioned spectral-based extensions to convolution in directed graphs, produce single-vector representations, so the dual nature of a node as both a source and target of directed edges is not captured; we do not require the separate computation of the Perron vector and a scheme for weighing messages is automatically learnt. For convolution in directed knowledge graphs, we refer to <ref type="bibr" target="#b17">Kampffmeyer et al. (2019)</ref>; <ref type="bibr" target="#b18">Schlichtkrull et al. (2018)</ref>.</p><p>In <ref type="bibr">Tong et al. (2020b)</ref>, first and second order proximity kernels for directed graphs are combined to produce single-vector representations for graph nodes. Second order proximity kernels normalize the products of A and its transpose, and produce dual-vector intermediate representations, similarly to the work proposed in this paper. However, normalization of the products is graph-agnostic, the intermediate sparse matrix products they employ are computationally costly with potentiallly dense matrix outputs, the first order proximity kernels is symmetric. High-Order Proximity preserved Embeddings (HOPE) in <ref type="bibr" target="#b7">Ou et al. (2016)</ref> rely on matrix factorization (SVD) of a higher order proximity matrix while Asymmetric Proximity Preserving (APP) embeddings in <ref type="bibr" target="#b20">Zhou et al. (2017)</ref> rely on random walks with restart. These encoders are not GCN-based which is the focus in our work. Dual-vector representation can be enforced artificially: in <ref type="bibr" target="#b21">Salha et al. (2019)</ref>, source/target GAE and VGAE models are based on graph auto-encoders for undirected graphs from the seminal work of Kipf and Welling <ref type="bibr">Kipf and Welling (2016b)</ref>, where the single-vector representation (of even size) is assumed to be the concatenation of two-identically sized parts The gravity-inspired directed GCN architecture in <ref type="bibr" target="#b21">Salha et al. (2019)</ref> on the other hand produces single vector encodings using fixed normalization for the messages and embeds asymmetry in only one of its entries by fusing the importance of the target node and the distance of the node encodings at the ends of the directed edge.</p><p>The directed graph can be of a special kind. Message passing in GCNs for Directed Acyclic Graphs (DAGs) is explored in <ref type="bibr" target="#b22">Thost and Chen (2021)</ref>. Or the directed edges can carry labels of different types in which case the undirected GCN can be extended to include terms denoting the additional aggregation of edge features <ref type="bibr" target="#b23">Jaume et al. (2019)</ref>, in close analogy to the extension of WL test to a directed graph with edge labels <ref type="bibr" target="#b24">Orsini et al. (2015)</ref>; <ref type="bibr" target="#b25">Grohe et al. (2017)</ref>. In another interesting view, the directed graph can first be converted to an undirected bipartite graph as in <ref type="bibr" target="#b26">Zhou et al. (2005)</ref> driven by the source-target node duality.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Experiments</head><p>In this section we demonstrate the performance of the proposed approach on the directed link prediction task associated with two different datasets: (a) namely CoraML (2,995 nodes, 8,416 edges, 2,879 features), and (b) CiteSeer (3,312 nodes, 4,715 edges, 3,703 features). The CoraML dataset contains machine learning publications grouped into seven classes. The CiteSeer dataset contains scientific papers grouped into six classes. Each paper in CoraML and CiteSeer is represented by a one-hot vector indicating the presence or absence of a word from a dictionary. We employ grid search for hyperparameter tuning: learning rate η ∈ {0.005, 0.01}, hidden layer dimension d ∈ {32, 64} with d/2 for the latent space dimension, (α, β) ∈ {0.0, 0.2, 0.4, 0.6, 0.8} 2 for DiGAE models and parameter λ ∈ {0.1, 1.0, 10.0} for Gravity GAE. For the final models we select hyperparameter values that maximize mean AUC computed on the validation set. In all cases, models are trained for 200 epochs, using Adam optimizer, without dropout, performing full-batch gradient descent.</p><p>We use Python and especially the PyTorch library and PyTorch Geometric <ref type="bibr" target="#b27">Fey and Lenssen (2019)</ref>, which is a geometric deep learning extension library. We ran experiments for all models (ours and baselines) on a system equipped with an Intel(R) Core(TM) i7-8850H CPU @2.60GHz (6 cores/12 threads) and 32 GB of DDR4 memory @2400 MHz.</p><p>We consider the following directed link prediction task adapting the description in Kipf and Welling (2016b) to digraphs.</p><p>Task: Directed link prediction We randomly remove 15% of the directed edges from the graph and train models on the remaining edge set. Two thirds of the removed edges (i.e. 10% of all input graph edges) are used as actual edges for testing, one third of them (i.e. 5% of all input graph edges) as actual edges for validation. These test and validation sets also include the same number of fake directed edges (negative samples), as their actual ones: negative samples are Directed Graph Auto-Encoders generated by randomly connecting pairs of nodes which are not wired in the input graph. Validation sets are only used for hyperparameter tuning.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Results and Discussion</head><p>We compare the performance of our DiGAE models to Standard GAE in Kipf and Welling (2016b), Source/Target GAE and Gravity GAE both in <ref type="bibr" target="#b21">Salha et al. (2019)</ref>. Similarly to our models, these baselines are GCN-based. We use the TensorFlow implementations of baseline models from the authors of <ref type="bibr" target="#b21">Salha et al. (2019)</ref>. <ref type="foot" target="#foot_0">1</ref>We run a series of twenty experiments for each graph and selected model combination, and report the mean and standard deviation of the AUC and AP metrics, as well as their respective timings. Random train and test graph dataset splits are used for each such experiment and metrics are averaged over the set, to account for their sensitivity to the choice of the split, as empirically observed in <ref type="bibr" target="#b28">Shchur et al. (2018)</ref>.</p><p>Results with node features supplied in all cases (feature-based configurations), are summarized in Table <ref type="table" target="#tab_0">1</ref>. We mark in bold the largest entry (or largest entries in the case of their overlapping intervals).</p><p>Mean AUC values for DiGAE-1L in particular consistently outperform other baselines for the citation graphs and the margin can be significant: in CiteSeer this is of the order of 6% for Gravity GAE and up to 18% compared to Standard GAE. For mean AP, margins are similarly in the 4% to 19% range, or up to 3% for CoraML. Varying (α, β) pair values has significant impact on the reconstruction metrics. As an example, the mean AUC can be as low as 73.73% and 86.10% for DiGAE-1L respectively for CoraML and CiteSeer for the selected η and d but for suboptimal (α, β) within the search grid. In the Appendix we include metrics tables for the full (α, β) grid collected during hyperparameter tuning. In experiments with citation graphs, DiGAE-1L is markedly faster by factors in the range ×5 to ×15. This is partly due to the different implementations, the fact that this is a single-layer only and for CiteSeer in particular to the smaller size for the output vector from hyperparameter tuning (16 vs 32 for a hidden encoding of 64 entries for baselines). Gravity GAE is the slowest, mainly due to the complexity of its decoder (pairwise distance computation).</p><p>The authors in <ref type="bibr" target="#b21">Salha et al. (2019)</ref> originally used the baselines with one-hot encoding of the nodes (feature-less configurations). For citation networks, node features capture similarity which is symmetric and this could conceptually hinder the identification of directionality in predicted links as in our task, which is an inherently asymmetric relation. For this reason, we also tested feature-less configurations for the baselines and interestingly got comparable results to the feature-based case (Table <ref type="table" target="#tab_1">2</ref>): our DiGAE-1L models from (Table <ref type="table" target="#tab_0">1</ref>) are top performers for both CoraML and CiteSeer datasets. Experiments with datasets from the WebKB collection and Pubmed are included in the Appendix. Truncated SVD baseline We also explore the performance of an approach based on truncated SVD for our directed link prediction task. For a given train/validation/test split, we use the directed edges that are available to use for training for building a partial adjacency matrix A p of the underlying directed graph G(V, E) and compute its truncated SVD, retaining the singular triplets corresponding to its largest k singular values, A p ≈ U k Σ k V k . Then we consider the matrices for the source and target encodings of nodes</p><formula xml:id="formula_36">Z S = U k Σ 1/2 k and Z T = V k Σ 1/2</formula><p>k and use the asymmetric decoder from Equation ( <ref type="formula" target="#formula_33">13</ref>) for predicting directed links. We use the same evaluation pipeline as in our GNN experiments and compute respective AUC and AP performance metrics for the graph reconstruction. For truncated SVD we  experimented with implementations based on ARPACK <ref type="bibr" target="#b29">Lehoucq et al. (1998)</ref> and randomized <ref type="bibr">SVD Halko et al. (2011)</ref> for k ∈ {2 i |i = 1, 2, . . . , 7} and we got very similar metrics for our input graphs (please refer to the Appendix for metrics tables). We repeated for 20 random graph splits for each graph, k and implementation combination. Figure <ref type="figure" target="#fig_2">2</ref> summarizes the results for the largest mean AUC and AP value for each graph, k combination. We observe that for 16-dimensional encoding vectors we get best results in reconstruction in terms of mean AP: 82.83% for CoraML and 69.88% for CiteSeer. These are significantly lower than 94.10% for CoraML and 92.57% for CiteSeer that the "neural" source and target encodings our DiGAE-1L produces. SVD encodes only connectivity while DiGAE models, being GNNs, leverage both connectivity and node features. The truncated SVD baseline is essentially the HOPE idea <ref type="bibr" target="#b7">Ou et al. (2016)</ref> with the proximity matrix being the adjacency matrix A. For comparison and for the standard Katz proximity in HOPE, (I -βA)</p><p>-1 βA, we computed largest mean AP values in reconstruction over k ∈ {2 i |i = 1, 2, . . . , 7}, β = 0.02, applying 20 random graph splits for each k. We get 83.87% for CoraML and 67.29% for CiteSeer: comparable to truncated SVD baseline results and significantly lower than the respective DiGAE-1L metrics. We include tables with detailed results in the Appendix.</p><p>Clustering source and target encodings We used t-Distributed Stochastic Neighbor Embedding (t-SNE) <ref type="bibr" target="#b31">Van der Maaten and Hinton (2008)</ref> for reducing the dimension of source and target representations of nodes produced by DiGAE in order to visualize them. Figure <ref type="figure" target="#fig_3">3</ref> illustrates a crisp separation of points with different class labels and this is true for both source and target vectors. This separation is not present in their feature space. This implies that DiGAE embeddings are promising inputs for clustering purposes. The fact that the clusters can be independently identified in both the source and target space opens up the possibility for exploring sets of points that share cluster identity in both spaces, as the core ones for a label. Vector hub and authority scores Source and target representations are expected to be the (vector) surrogates respectively of (scalar) hub and authority scores. Table <ref type="table" target="#tab_2">3</ref> confirms this intuition. A source vector of particularly large magnitude for a node a will be more probable to yield large inner products with target vectors of other nodes b in the decoder. This means that a directed edge a → b will be likely to appear, which will increase a's outdegree. Similarly, a large magnitude for a node's target vector encourages other nodes to connect to it and increase its indegree. In turn, outdegrees are known to correlate to hub scores and indegrees to authority and PageRank scores. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Conclusions and future work</head><p>In this paper we present DiGAE, a new class of directed graph autoencoders that computes a pair of vector representations for each node. It exploits the asymmetry in input and output node degrees and further skews this by allowing exponents in scaling the features to enter as parameters. DiGAE outperforms state-of-the art GCN-based graph autoencoders on the directed link prediction task and can be an order of magnitude times faster in learning representations for CoraML and CiteSeer datasets. In future work, we plan to explore encoders that integrate scaling decisions that are local to each node.</p><p>Algorithm 2 Updating the enconding of node i in a GCN layer</p><formula xml:id="formula_37">Input: x i , N (i), W Set: Ñ (i) := N (i) ∪ {i} and deg(i) := | Ñ (i)| Transform: x i ← W x i Scale: x i ← 1 √ deg(i)</formula><p>x i Send: send(x i , j) to all nodes j ∈ Ñ (i) Receive: x j ← receive(j) from all nodes j ∈ Ñ (i) Sum:</p><formula xml:id="formula_38">x i ← j∈ Ñ (i) x j Scale: x i ← 1 √ deg(i) x i Output: x i</formula><p>Algorithm 3 Coloring of pairs of node labels in directed graphs Input: Neighbor lists for outgoing and incoming edges, N + (i) and N -(i) respectively, for all nodes i ∈ [0, n) Ensure neighbor lists are lexicographically sorted:</p><formula xml:id="formula_39">N + (i) ← sort(N + (i)), N -(i) ← sort(N -(i)), ∀i ∈ [0, n) Initialize: t ← 0; c (t) l,s := s, c<label>(t)</label></formula><p>l,t := t; h (t)</p><formula xml:id="formula_40">s (i) = HASH(s), h<label>(t)</label></formula><formula xml:id="formula_41">t (i) := HASH(t), ∀i ∈ [0, n); L (0) s = L<label>(0)</label></formula><p>t := {s, t} while True do Hash source label, target labels of pointed nodes: h</p><formula xml:id="formula_42">(t+1) s (i) := HASH(c (t) l,s (i), &lt; c (t) l,t (j) : j ∈ N + (i) &gt;) Hash node target label, source labels of pointing nodes: h (t+1) t (i) := HASH(c (t) l,t (i), &lt; c (t) l,s (j) : j ∈ N -(i) &gt;)</formula><p>List of unique hashes for nodes with source role:</p><formula xml:id="formula_43">H s : H s ← sort ([{h (t+1) s (i) : i ∈ [0, n)}])</formula><p>List of unique hashes for nodes with target role:</p><formula xml:id="formula_44">H t : H t ← sort ([{h (t+1) t (i) : i ∈ [0, n)}]) Function f s maps items in H s to labels: f s (H s (j)) := j, ∀j ∈ [0, size(H s )) Function f t maps items in H t to labels: f t (H t (j)) := j, ∀j ∈ [0, size(H t )) Update source labels: c (t+1) l,s (i) := f s (h (t+1) s (i))), ∀i ∈ [0, n) Update target labels: c (t+1) l,t (i) := f t (h (t+1) t (i))), ∀i ∈ [0, n) Update sets of labels: L (t+1) s := {c (t+1) l,s (i) : i ∈ [0, n)}; L (t+1) t := {c (t+1) l,t (i) : i ∈ [0, n)} if L (t+1) s = L (t) s and L (t+1) t = L (t) t then break else t ← t + 1 end if end while Output: L (t) s , L (t) t Algorithm 4 Input: s i , t i ; N + (i), N -(i); W S , W T ; α, β Set: Ñ + (i) := N + (i) ∪ {i} and deg + (i) := | Ñ + (i)|; Ñ -(i) := N -(i) ∪ {i} and deg -(i) := | Ñ -(i)| Transform: s i ← W S s i ; t i ← W T t i ; Scale: s i ← 1 (deg + (i)) β s i ; t i ← 1 (deg -(i)</formula><p>) α t i Send: send(s i , j) to all nodes j ∈ Ñ + (i); send(t i , j) to all nodes j ∈ Ñ -(i) Receive: s j ← receive(j) from all nodes j ∈ Ñ -(i); t j ← receive(j) from all nodes j ∈ Ñ + (i) Sum:      </p><formula xml:id="formula_45">s i ← j∈ Ñ + (i) t j ; t i ← j∈ Ñ -(i) s j Scale: s i ← 1 (deg + (i)) β s i ; t i ← 1 (deg -(i)) α t i Output: s i , t i</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Truncated SVD baseline metrics</head><p>Table <ref type="table" target="#tab_5">4</ref> details the metrics obtained in the truncated SVD baseline experiments.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>HOPE baselines</head><p>For comparison and for the standard Katz proximity (I -βA) -1 βA in HOPE <ref type="bibr" target="#b7">Ou et al. (2016)</ref>, we computed AUC and AP metrics for k ∈ {2 i |i = 1, 2, . . . , 7}, β = 0.02, 20 random splits, for CoraML and CiteSeer datasets. Table <ref type="table" target="#tab_6">5</ref> details the metrics obtained in the experiments.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Results on WebKB collection datasets</head><p>We experiment with the following datasets from the WebKB collection<ref type="foot" target="#foot_1">2</ref> : "Wisconsin", "Texas" and "Cornell"; their properties are in Table <ref type="table" target="#tab_7">6</ref>. In WebKB datasets, nodes represent Web pages and are manually classified into the five categories: student, project, course, staff, and faculty; edges are hyperlinks between them. Node features are the bag-of-words representation of the Web pages. We apply the same pipeline as for CoraML and CiteSeer citation datasets. In Table <ref type="table" target="#tab_9">7</ref> we report the peformance metrics for the case the node features are input in model training. For the feature-less configurations, performance of baselines is reported in Table <ref type="table" target="#tab_10">8</ref>.</p><p>Likewise for citation datasets, both DiGAE models perform better in mean AUC and AP for all WebKB networks. Note however that performance metrics for any model over different splits for these small graphs have large standard deviations, which does not provide a clean performance ranking of the models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Results on Pubmed dataset</head><p>We experiment with the Pubmed dataset (19,717 nodes, 44,338 edges, 500 features) which is a citation network pertaining to diabetes classified into one of three classes ("Diabetes Mellitus, Experimental", "Diabetes Mellitus Type 1", "Diabetes Mellitus Type 2")<ref type="foot" target="#foot_2">3</ref> .</p><p>We employ the same grid search strategy for hyperparameter tuning and training setup as for other citation datasets. We report on the mean AUC and AP metrics and their respective timings over a series of ten experiments for each selected model, with one hot-encoding of the nodes (feature-less configurations), in Table <ref type="table" target="#tab_11">9</ref>. DiGAE models consistently and significantly outperform other baselines by margins which are in the 7% to 13% range for mean AUC and in the 4% to 8% range for mean AP; they are also considerably faster. DiGAE-1L in particular is the fastest overall by a factor close or exceeding ×10 and performs best overall in the mean AUC and AP metrics. Impact of α and β on the performance for DiGAE models</p><p>In Figure <ref type="figure" target="#fig_9">6</ref>    A note on the role of parameters α and β.</p><p>By varying exponent parameters α and β we modify the spectrum (singular values) of our multiplication matrices Â, Â (please see Equations ( <ref type="formula">6</ref>) in the text). In particular for smaller parameter values, the scaling role of the node degrees d is supressed (and in the limit of 0 it vanishes: 1/d 0 = 1) and the spectrum max shifts to larger values while for larger parameters the spectrum range shrinks. Spectrum shrinking will typically lead to smaller magnitudes for source and target encodings from Equations (6) (and their respective inner products) and so the sigmoid function in the decoder can fail to predict links: this is consistent with the particularly low performance metrics when both α and β are large. Please see the spectrum for CoraML's Â for α, β ∈ {0.3, 0.5, 0.8}, α = β in Figure <ref type="figure" target="#fig_11">7</ref>. From the local smoothing perspective around a node i, smaller α's reinforce the role of "authority" nodes j pointed by i (i.e. nodes with large indegree deg -(j)) in updating source encoding s i from t j 's (contributing terms analogous to 1 deg -(j) α t j ). Similarly, smaller β's reinforce the role of "hub" nodes j pointing to i (i.e. nodes with large outdegree deg + (j)) in updating target encoding t i from s j 's (contibuting terms analogous to 1 deg + (j) β s j ). For a deeper theoretical analysis of the impact of the parameters on the spectum, the simplified linear case (as in "Simplifying Graph Convolutional Networks", Wu et al (2019), there for the impact of self-links) could be a starting point and this is deferred for future research.   </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: An example directed graph G with n = 6 nodes (top) and its bipartite representation Gst (bottom). Both graphs are colored with each node in G carrying a pair of source and target colors -respectively in left and right semidiscs. The example node 3 in G maps to nodes 3 and 9 in Gst.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head></head><label></label><figDesc>for allowing the extra flexibility of learning different sets of parameters for nodes with source and target roles (in undirected G st ). By removing self-links and setting W</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Truncated SVD based directed link prediction: AUC and AP metrics for CoraML and CiteSeer.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Left and center: t-SNE embeddings on source and target representations computed with our DiGAE-1L for CoraML. Right: embeddings of orginal feature vectors (colors indicate classes).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head></head><label></label><figDesc>Figure 4 lists the mean AUC scores of the DiGAE model for various combinations of the hyperparameters (α, β). Numbers inside the boxes are mean AUC values collected during hyperparameter tuning, for the η and d values of the selected model.</figDesc><graphic coords="13,352.95,171.47,118.46,118.46" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Grid search for CoraML (left) and CiteSeer (right) datasets to identify optimal α (vertical) and β (horizontal) for DiGAE model. Numbers inside the boxes indicate respective AUC scores.</figDesc><graphic coords="13,139.87,171.47,118.46,118.46" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 5</head><label>5</label><figDesc>Figure 5 is the analogous for Figure 4, but for the DiGAE-1L model.</figDesc><graphic coords="13,139.87,380.02,118.46,118.46" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Grid search for CoraML (left) and CiteSeer (right) datasets to identify optimal α (vertical) and β (horizontal) for DiGAE-1L model. Numbers inside the boxes indicate respective AUC scores.</figDesc><graphic coords="13,352.95,380.02,118.46,118.46" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head></head><label></label><figDesc>we list the mean AUC scores of the DiGAE models for various combinations of hyperparameters (α, β) for the Pubmed dataset. Numbers inside the boxes are mean AUC values collected during hyperparameter tuning, for the η and d values of the selected model. We confirm the flexibility to further optimize performance metrics by suitably tuning node degrees' exponentiation parameters α and β.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: Grid search for Pubmed dataset to identify optimal α (vertical) and β (horizontal) for DiGAE-1L (left pane) and DiGAE (right pane) models. Numbers inside the boxes indicate respective AUC scores.</figDesc><graphic coords="15,121.46,472.05,137.55,137.55" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: Spectrum for CoraML's Â for α, β ∈ {0.3, 0.5, 0.8}, α = β.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>General directed link prediction for the citation graphs (feature-based configurations).</figDesc><table><row><cell>Dataset</cell><cell>Model</cell><cell>AUC</cell><cell>AP</cell><cell>Time (secs)</cell></row><row><cell cols="2">CoraML DiGAE (ours)</cell><cell cols="3">88.10 +/-1.70 89.83 +/-1.39 9.56 +/-0.48</cell></row><row><cell cols="5">CoraML DiGAE 1-Layer (ours) 94.09 +/-0.66 94.10 +/-0.77 7.64 +/-0.21</cell></row><row><cell cols="2">CoraML Gravity GAE</cell><cell cols="3">92.35 +/-0.57 94.17 +/-0.53 51.56 +/-0.13</cell></row><row><cell cols="2">CoraML Source/Target GAE</cell><cell cols="3">91.66 +/-0.52 92.60 +/-0.47 36.88 +/-0.20</cell></row><row><cell cols="2">CoraML Standard GAE</cell><cell cols="3">89.54 +/-1.14 91.40 +/-1.11 36.55 +/-0.21</cell></row><row><cell cols="2">CiteSeer DiGAE (ours)</cell><cell cols="3">92.05 +/-1.06 92.29 +/-0.97 11.10 +/-0.22</cell></row><row><cell cols="5">CiteSeer DiGAE 1-Layer (ours) 92.76 +/-0.87 92.57 +/-1.08 4.12 +/-0.11</cell></row><row><cell cols="2">CiteSeer Gravity GAE</cell><cell cols="3">86.79 +/-0.98 88.60 +/-1.05 106.44 +/-0.16</cell></row><row><cell cols="2">CiteSeer Source/Target GAE</cell><cell cols="3">82.90 +/-1.79 84.70 +/-1.47 73.46 +/-0.21</cell></row><row><cell cols="2">CiteSeer Standard GAE</cell><cell cols="3">74.35 +/-1.77 80.96 +/-1.26 73.84 +/-0.48</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>General directed link prediction for the citation graphs (feature-less configurations).</figDesc><table><row><cell>Dataset</cell><cell>Model</cell><cell>AUC</cell><cell>AP</cell></row><row><cell cols="2">CoraML Gravity GAE</cell><cell cols="2">91.56 +/-0.71 93.62 +/-0.59</cell></row><row><cell cols="4">CoraML Source/Target GAE 91.85 +/-0.58 92.91 +/-0.64</cell></row><row><cell cols="2">CoraML Standard GAE</cell><cell cols="2">89.42 +/-0.84 92.09 +/-0.64</cell></row><row><cell cols="2">CiteSeer Gravity GAE</cell><cell cols="2">87.05 +/-0.99 88.88 +/-0.96</cell></row><row><cell cols="4">CiteSeer Source/Target GAE 82.39 +/-1.56 84.38 +/-1.57</cell></row><row><cell cols="2">CiteSeer Standard GAE</cell><cell cols="2">73.81 +/-1.37 80.52 +/-1.13</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 :</head><label>3</label><figDesc>Pearson correlation coefficients between the magnitudes of source and target vector encodings, and a collection of centrality scores (Hub/Authority and PageRank) and degrees (in/out), for all nodes in CoraML. Encodings were computed with DiGAE-1L.</figDesc><table><row><cell></cell><cell cols="2">source magnitude target magnitude</cell></row><row><cell>hub</cell><cell>0.37</cell><cell>0.06</cell></row><row><cell>outdegree</cell><cell>0.82</cell><cell>0.12</cell></row><row><cell>authority</cell><cell>0.05</cell><cell>0.41</cell></row><row><cell>pagerank</cell><cell>-0.01</cell><cell>0.48</cell></row><row><cell>indegree</cell><cell>0.08</cell><cell>0.77</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 4 :</head><label>4</label><figDesc>Truncated SVD baseline metrics (AUC and AP) for CoraML and CiteSeer datasets: two SVD implementations (standard and randomized) and different encoding vector sizes: k = 2,4, 8, 16, 32, 64, 128.    </figDesc><table><row><cell>Dataset</cell><cell>Model</cell><cell>k AUC</cell><cell>AP</cell></row><row><cell cols="2">CoraML SVD</cell><cell cols="2">2 74.41 +/-1.45 75.05 +/-1.47</cell></row><row><cell cols="2">CoraML SVD</cell><cell cols="2">4 79.22 +/-1.90 80.45 +/-1.47</cell></row><row><cell cols="2">CoraML SVD</cell><cell cols="2">8 79.94 +/-1.60 81.78 +/-1.31</cell></row><row><cell cols="2">CoraML SVD</cell><cell cols="2">16 78.79 +/-1.35 81.61 +/-1.35</cell></row><row><cell cols="2">CoraML SVD</cell><cell cols="2">32 77.91 +/-1.71 81.84 +/-1.47</cell></row><row><cell cols="2">CoraML SVD</cell><cell cols="2">64 75.23 +/-1.33 80.76 +/-1.09</cell></row><row><cell cols="2">CoraML SVD</cell><cell cols="2">128 70.79 +/-1.70 78.03 +/-1.12</cell></row><row><cell cols="2">CoraML RandSVD</cell><cell cols="2">2 72.62 +/-2.64 76.11 +/-2.02</cell></row><row><cell cols="2">CoraML RandSVD</cell><cell cols="2">4 75.85 +/-1.75 78.91 +/-1.35</cell></row><row><cell cols="2">CoraML RandSVD</cell><cell cols="2">8 78.09 +/-1.08 81.36 +/-1.15</cell></row><row><cell cols="2">CoraML RandSVD</cell><cell cols="2">16 79.15 +/-2.06 82.83 +/-1.65</cell></row><row><cell cols="2">CoraML RandSVD</cell><cell cols="2">32 78.14 +/-1.88 82.61 +/-1.43</cell></row><row><cell cols="2">CoraML RandSVD</cell><cell cols="2">64 75.83 +/-1.66 81.41 +/-1.32</cell></row><row><cell cols="4">CoraML RandSVD 128 73.25 +/-2.27 79.98 +/-1.74</cell></row><row><cell cols="2">CiteSeer SVD</cell><cell cols="2">2 61.62 +/-1.26 61.84 +/-1.17</cell></row><row><cell cols="2">CiteSeer SVD</cell><cell cols="2">4 62.23 +/-1.31 62.62 +/-1.34</cell></row><row><cell cols="2">CiteSeer SVD</cell><cell cols="2">8 63.76 +/-1.41 64.36 +/-1.25</cell></row><row><cell cols="2">CiteSeer SVD</cell><cell cols="2">16 62.84 +/-1.59 63.88 +/-1.42</cell></row><row><cell cols="2">CiteSeer SVD</cell><cell cols="2">32 63.11 +/-1.44 64.42 +/-1.44</cell></row><row><cell cols="2">CiteSeer SVD</cell><cell cols="2">64 62.51 +/-1.60 64.31 +/-1.39</cell></row><row><cell cols="2">CiteSeer SVD</cell><cell cols="2">128 63.51 +/-1.93 65.81 +/-1.64</cell></row><row><cell cols="2">CiteSeer RandSVD</cell><cell cols="2">2 63.45 +/-1.61 66.13 +/-1.57</cell></row><row><cell cols="2">CiteSeer RandSVD</cell><cell cols="2">4 64.52 +/-1.81 67.39 +/-1.53</cell></row><row><cell cols="2">CiteSeer RandSVD</cell><cell cols="2">8 67.34 +/-1.67 69.72 +/-1.38</cell></row><row><cell cols="2">CiteSeer RandSVD</cell><cell cols="2">16 66.86 +/-1.54 69.88 +/-1.23</cell></row><row><cell cols="2">CiteSeer RandSVD</cell><cell cols="2">32 66.33 +/-2.05 69.76 +/-1.56</cell></row><row><cell cols="2">CiteSeer RandSVD</cell><cell cols="2">64 65.61 +/-2.50 69.40 +/-1.87</cell></row><row><cell cols="4">CiteSeer RandSVD 128 63.94 +/-1.47 68.79 +/-1.25</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 5 :</head><label>5</label><figDesc>HOPE baseline metrics (AUC and AP) for CoraML and CiteSeer datasets and for different encoding vector sizes: k = 2,4, 8, 16, 32, 64, 128. Katz Index proximity has its β parameter set to 0.02.</figDesc><table><row><cell>Dataset</cell><cell>Model</cell><cell>k AUC</cell><cell>AP</cell></row><row><cell cols="2">CoraML HOPE/Katz</cell><cell cols="2">2 71.24 +/-1.09 72.08 +/-1.23</cell></row><row><cell cols="2">CoraML HOPE/Katz</cell><cell cols="2">4 79.27 +/-1.53 80.18 +/-1.35</cell></row><row><cell cols="2">CoraML HOPE/Katz</cell><cell cols="2">8 81.38 +/-1.50 82.49 +/-1.47</cell></row><row><cell cols="2">CoraML HOPE/Katz</cell><cell cols="2">16 79.47 +/-1.40 82.05 +/-1.18</cell></row><row><cell cols="2">CoraML HOPE/Katz</cell><cell cols="2">32 80.77 +/-1.50 83.87 +/-1.23</cell></row><row><cell cols="2">CoraML HOPE/Katz</cell><cell cols="2">64 78.08 +/-1.41 82.45 +/-1.16</cell></row><row><cell cols="4">CoraML HOPE/Katz 128 75.00 +/-1.95 80.91 +/-1.38</cell></row><row><cell cols="2">CiteSeer HOPE/Katz</cell><cell cols="2">2 60.64 +/-1.27 60.75 +/-1.25</cell></row><row><cell cols="2">CiteSeer HOPE/Katz</cell><cell cols="2">4 62.14 +/-1.66 62.56 +/-1.58</cell></row><row><cell cols="2">CiteSeer HOPE/Katz</cell><cell cols="2">8 63.66 +/-1.49 64.06 +/-1.46</cell></row><row><cell cols="2">CiteSeer HOPE/Katz</cell><cell cols="2">16 64.17 +/-1.69 65.05 +/-1.62</cell></row><row><cell cols="2">CiteSeer HOPE/Katz</cell><cell cols="2">32 63.72 +/-1.47 65.10 +/-1.44</cell></row><row><cell cols="2">CiteSeer HOPE/Katz</cell><cell cols="2">64 64.33 +/-2.24 66.03 +/-1.89</cell></row><row><cell cols="4">CiteSeer HOPE/Katz 128 65.07 +/-1.36 67.29 +/-1.27</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 6 :</head><label>6</label><figDesc>WebKB datasets.</figDesc><table><row><cell>Dataset</cell><cell cols="3">Number of nodes Number of edges Number of features</cell></row><row><cell>Texas</cell><cell>183</cell><cell>325</cell><cell>1703</cell></row><row><cell>Cornell</cell><cell>183</cell><cell>298</cell><cell>1703</cell></row><row><cell>Wisconsin</cell><cell>251</cell><cell>515</cell><cell>1703</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 7 :</head><label>7</label><figDesc>General directed link prediction for the WebKB graphs (feature-based configurations).</figDesc><table><row><cell>Dataset</cell><cell>Model</cell><cell>AUC</cell><cell>AP</cell><cell>Time (secs)</cell></row><row><cell cols="2">Wisconsin DiGAE (ours)</cell><cell>73.95 +/-7.55</cell><cell>79.64 +/-6.31</cell><cell>1.12 +/-0.04</cell></row><row><cell cols="3">Wisconsin DiGAE 1-Layer (ours) 81.14 +/-7.36</cell><cell>85.60 +/-5.03</cell><cell>0.82 +/-0.03</cell></row><row><cell cols="2">Wisconsin Gravity GAE</cell><cell>73.37 +/-4.19</cell><cell>76.73 +/-3.97</cell><cell>0.70 +/-0.10</cell></row><row><cell cols="2">Wisconsin Source/Target GAE</cell><cell>72.73 +/-5.31</cell><cell>78.40 +/-4.17</cell><cell>0.56 +/-0.04</cell></row><row><cell cols="2">Wisconsin Standard GAE</cell><cell>67.84 +/-5.02</cell><cell>75.34 +/-4.28</cell><cell>0.51 +/-0.10</cell></row><row><cell>Texas</cell><cell>DiGAE (ours)</cell><cell cols="3">64.79 +/-17.24 74.38 +/-12.99 0.93 +/-0.03</cell></row><row><cell>Texas</cell><cell cols="2">DiGAE 1-Layer (ours) 70.58 +/-8.16</cell><cell>76.97 +/-7.82</cell><cell>0.69 +/-0.03</cell></row><row><cell>Texas</cell><cell>Gravity GAE</cell><cell>64.14 +/-7.98</cell><cell>71.38 +/-7.41</cell><cell>0.56 +/-0.08</cell></row><row><cell>Texas</cell><cell>Source/Target GAE</cell><cell>63.50 +/-7.41</cell><cell>68.42 +/-6.72</cell><cell>0.47 +/-0.05</cell></row><row><cell>Texas</cell><cell>Standard GAE</cell><cell>50.80 +/-7.93</cell><cell>62.28 +/-5.60</cell><cell>0.46 +/-0.05</cell></row><row><cell>Cornell</cell><cell>DiGAE (ours)</cell><cell cols="2">69.69 +/-12.07 77.14 +/-9.77</cell><cell>0.90 +/-0.03</cell></row><row><cell>Cornell</cell><cell cols="4">DiGAE 1-Layer (ours) 61.96 +/-10.27 70.69 +/-10.26 0.65 +/-0.02</cell></row><row><cell>Cornell</cell><cell>Gravity GAE</cell><cell>66.24 +/-4.84</cell><cell>69.10 +/-5.01</cell><cell>0.59 +/-0.09</cell></row><row><cell>Cornell</cell><cell>Source/Target GAE</cell><cell>62.82 +/-5.75</cell><cell>69.42 +/-5.25</cell><cell>0.47 +/-0.05</cell></row><row><cell>Cornell</cell><cell>Standard GAE</cell><cell>57.49 +/-7.78</cell><cell>68.72 +/-6.54</cell><cell>0.47 +/-0.05</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 8 :</head><label>8</label><figDesc>General directed link prediction for the WebKB graphs (feature-less configurations).</figDesc><table><row><cell>Dataset</cell><cell>Model</cell><cell>AUC</cell><cell>AP</cell></row><row><cell cols="2">Wisconsin Gravity GAE</cell><cell cols="2">67.04 +/-5.35 74.41 +/-4.42</cell></row><row><cell cols="4">Wisconsin Source/Target GAE 72.46 +/-5.89 77.05 +/-5.68</cell></row><row><cell cols="2">Wisconsin Standard GAE</cell><cell cols="2">65.89 +/-5.28 74.00 +/-4.13</cell></row><row><cell>Texas</cell><cell>Gravity GAE</cell><cell cols="2">65.53 +/-7.30 70.77 +/-6.47</cell></row><row><cell>Texas</cell><cell cols="3">Source/Target GAE 62.37 +/-5.24 67.58 +/-4.13</cell></row><row><cell>Texas</cell><cell>Standard GAE</cell><cell cols="2">53.81 +/-6.61 64.24 +/-5.27</cell></row><row><cell>Cornell</cell><cell>Gravity GAE</cell><cell cols="2">69.58 +/-5.26 73.41 +/-5.07</cell></row><row><cell>Cornell</cell><cell cols="3">Source/Target GAE 65.14 +/-5.71 69.90 +/-5.18</cell></row><row><cell>Cornell</cell><cell>Standard GAE</cell><cell cols="2">60.26 +/-7.96 69.21 +/-6.91</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_11"><head>Table 9 :</head><label>9</label><figDesc>General directed link prediction for Pubmed dataset (feature-less configurations). Layer (ours) 94.35 +/-0.37 93.16 +/-0.48 45.49 +/-0.48 Pubmed Gravity GAE 84.28 +/-0.59 86.60 +/-0.58 560.09 +/-9.94 Pubmed Source/Target GAE 85.01 +/-1.36 87.28 +/-0.60 418.40 +/-2.13 Pubmed Standard GAE 81.43 +/-0.32 85.88 +/-0.31 421.56 +/-5.95</figDesc><table><row><cell>Dataset Model</cell><cell>AUC</cell><cell>AP</cell><cell>Time (secs)</cell></row><row><cell>Pubmed DiGAE (ours)</cell><cell cols="3">92.09 +/-1.92 91.08 +/-1.22 98.62 +/-2.75</cell></row><row><cell>Pubmed DiGAE 1-</cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>https://github.com/deezer/gravity_graph_autoencoders</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>http://www.cs.cmu.edu/afs/cs.cmu.edu/project/theo-11/www/wwkb/</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>https://linqs.soe.ucsc.edu/data</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Appendix</head><p>We include the detailed algorithm for WL and the message passing view of a simplified GCN layer. We then describe our coloring of pairs of node labels in directed graphs and its associated message passing scheme.</p><p>In order to emphasize the impact of α and β hyperparameters on performance metrics for CoarML and CiteSeer datasets, we visualize AUC mean values, collected during hyperparameter tuning, for the selected model's η and d values. We also provide the detailed performance metrics table for the truncated SVD baseline for both standard and randomized SVD implementations on which Figure <ref type="figure">2</ref> in the main text is based and the standard Katz proximity in HOPE is similarly explored next. An application of all models on small Web graphs from the WebKB collection follows. We conclude with experiments over a larger dataset, Pubmed, in which we confirm the performance benefits of our DiGAE models and the optimization opportunities that parameters α, β offer, followed by a short note connecting them to the spectral modifications they effect.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Weisfeiler-Leman (WL) algorithm</head><p>Algorithm 1 provides a summary of the Weisfeiler-Leman (WL) algorithm.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Algorithm 1 Weisfeiler-Leman (WL) algorithm</head><p>Input: Neighbor lists N (i), for all nodes i ∈ [0, n) Ensure neighbor lists are lexicographically sorted:</p><p>Hash the tuple of (sorted) neighbors' labels: h</p><p>List of unique hashes H: H ← sort ([{h</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>GCNs as message passing systems</head><p>Algorithm 2 describes the steps each node i performs to update its current encoding x i given the set of its neighbors N (i) and a transformation matrix W (which is identical for all nodes).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Coloring of pairs of node labels in directed graphs</head><p>Algorithm 3 provides a summary of our extension of 1-WL for directed graphs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>DiGAE encoder layer as a message passing system</head><p>We can express our DiGAE encoder layer in a message-passing fashion; Algorithm 4 details the operations performed at each node i.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Neural message passing for quantum chemistry</title>
+		<author>
+			<persName><forename type="first">Justin</forename><surname>Gilmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Samuel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><forename type="middle">F</forename><surname>Schoenholz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Riley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><forename type="middle">E</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Dahl</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1263" to="1272" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Neural network for graphs: A contextual constructive approach</title>
+		<author>
+			<persName><forename type="first">Alessio</forename><surname>Micheli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Neural Networks</title>
+		<imprint>
+			<biblScope unit="volume">20</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="498" to="511" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Learning convolutional neural networks for graphs</title>
+		<author>
+			<persName><forename type="first">Mathias</forename><surname>Niepert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohamed</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Konstantin</forename><surname>Kutzkov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2014" to="2023" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Graph attention networks</title>
+		<author>
+			<persName><forename type="first">Petar</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillem</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arantxa</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adriana</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>Liò</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">th International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Spectral networks and deep locally connected networks on graphs</title>
+		<author>
+			<persName><forename type="first">Joan</forename><surname>Bruna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wojciech</forename><surname>Zaremba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arthur</forename><surname>Szlam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yann</forename><surname>Lecun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2nd International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2014">2014. 2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Convolutional neural networks on graphs with fast localized spectral filtering</title>
+		<author>
+			<persName><forename type="first">Michaël</forename><surname>Defferrard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xavier</forename><surname>Bresson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pierre</forename><surname>Vandergheynst</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 30th International Conference on Neural Information Processing Systems</title>
+		<meeting>the 30th International Conference on Neural Information Processing Systems</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="3844" to="3852" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1609.02907</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Asymmetric transitivity preserving graph embedding</title>
+		<author>
+			<persName><forename type="first">Mingdong</forename><surname>Ou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Pei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ziwei</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenwu</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the 22nd ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="1105" to="1114" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">The reduction of a graph to canonical form and the algebra which appears therein</title>
+		<author>
+			<persName><forename type="first">Boris</forename><surname>Weisfeiler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrei</forename><surname>Leman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NTI, Series</title>
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="issue">9</biblScope>
+			<biblScope unit="page" from="12" to="16" />
+			<date type="published" when="1968">1968</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Wavelets on graphs via spectral graph theory</title>
+		<author>
+			<persName><forename type="first">Pierre</forename><surname>David K Hammond</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rémi</forename><surname>Vandergheynst</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gribonval</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Applied and Computational Harmonic Analysis</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="129" to="150" />
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Weisfeiler and leman go neural: Higher-order graph neural networks</title>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Morris</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Ritzert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>William L Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gaurav</forename><surname>Eric Lenssen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Rattan</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Grohe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="4602" to="4609" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Digraphs: theory, algorithms and applications</title>
+		<author>
+			<persName><forename type="first">Jørgen</forename><surname>Bang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">-</forename><surname>Jensen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregory</forename><forename type="middle">Z</forename><surname>Gutin</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+			<publisher>Springer Science &amp; Business Media</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Variational graph auto-encoders</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1611.07308</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianye</forename><surname>Hao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaodong</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Han</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junqi</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guangyong</forename><surname>Chen</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1907.08990</idno>
+		<title level="m">Spectral-based graph convolutional network for directed graphs</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Digraph inception convolutional networks</title>
+		<author>
+			<persName><forename type="first">Zekun</forename><surname>Tong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxuan</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Changsheng</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinke</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Rosenblum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Lim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Scalable graph convolutional networks with fast localized spectral filter for directed graphs</title>
+		<author>
+			<persName><forename type="first">Chensheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaowei</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dujia</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guo</forename><surname>Wei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Access</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page" from="105634" to="105644" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Motifnet: a motif-based graph convolutional network for directed graphs</title>
+		<author>
+			<persName><forename type="first">Federico</forename><surname>Monti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karl</forename><surname>Otness</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">M</forename><surname>Bronstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2018 IEEE Data Science Workshop (DSW)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="225" to="228" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Rethinking knowledge graph propagation for zero-shot learning</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Kampffmeyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinbo</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodan</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yujia</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><forename type="middle">P</forename><surname>Xing</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition</title>
+		<meeting>the IEEE/CVF Conference on Computer Vision and Pattern Recognition</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="11487" to="11496" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Modeling relational data with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Bloem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rianne</forename><surname>Van Den</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><surname>Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Titov</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">European semantic web conference</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="593" to="607" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<author>
+			<persName><forename type="first">Zekun</forename><surname>Tong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxuan</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Changsheng</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">S</forename><surname>Rosenblum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Lim</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2004.13970</idno>
+		<title level="m">Directed graph convolutional network</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Scalable graph embedding for asymmetric proximity</title>
+		<author>
+			<persName><forename type="first">Chang</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuqiong</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaofei</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhongyi</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Gao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">31</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Gravity-inspired graph autoencoders for directed link prediction</title>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Salha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stratis</forename><surname>Limnios</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Romain</forename><surname>Hennequin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michalis</forename><surname>Viet-Anh Tran</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Vazirgiannis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th ACM International Conference on Information and Knowledge Management</title>
+		<meeting>the 28th ACM International Conference on Information and Knowledge Management</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="589" to="598" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<author>
+			<persName><forename type="first">Veronika</forename><surname>Thost</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Chen</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2101.07965</idno>
+		<title level="m">Directed acyclic graph neural networks</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Jaume</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">An-Phi</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">María</forename><surname>Rodríguez Martínez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jean-Philippe</forename><surname>Thiran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maria</forename><surname>Gabrani</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1904.08745</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Graph invariant kernels</title>
+		<author>
+			<persName><forename type="first">Francesco</forename><surname>Orsini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paolo</forename><surname>Frasconi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luc</forename><surname>De</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Raedt</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the twenty-fourth international joint conference on artificial intelligence</title>
+		<meeting>the twenty-fourth international joint conference on artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">2015</biblScope>
+			<biblScope unit="page" from="3756" to="3762" />
+		</imprint>
+	</monogr>
+	<note>IJCAI-INT JOINT CONF ARTIF INTELL</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Color refinement and its applications. Van den Broeck</title>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Grohe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristian</forename><surname>Kersting</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Mladenov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pascal</forename><surname>Schweitzer</surname></persName>
+		</author>
+		<editor>Kersting, K.</editor>
+		<editor>Natarajan, S</editor>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page">30</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Semi-supervised learning on directed graphs</title>
+		<author>
+			<persName><forename type="first">Dengyong</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Hofmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernhard</forename><surname>Schölkopf</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+			<biblScope unit="page" from="1633" to="1640" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Fast graph representation learning with PyTorch Geometric</title>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><forename type="middle">E</forename><surname>Lenssen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR Workshop on Representation Learning on Graphs and Manifolds</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Pitfalls of graph neural network evaluation</title>
+		<author>
+			<persName><forename type="first">Oleksandr</forename><surname>Shchur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Mumme</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aleksandar</forename><surname>Bojchevski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Günnemann</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1811.05868</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">ARPACK users&apos; guide -solution of large-scale eigenvalue problems with implicitly restarted Arnoldi methods. Software, environments, tools</title>
+		<author>
+			<persName><forename type="first">Richard</forename><forename type="middle">B</forename><surname>Lehoucq</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danny</forename><forename type="middle">C</forename><surname>Sorensen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">SIAM</title>
+		<imprint>
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Finding structure with randomness: Probabilistic algorithms for constructing approximate matrix decompositions</title>
+		<author>
+			<persName><forename type="first">Nathan</forename><surname>Halko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joel</forename><forename type="middle">A</forename><surname>Per-Gunnar Martinsson</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Tropp</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">SIAM review</title>
+		<imprint>
+			<biblScope unit="volume">53</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="217" to="288" />
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Visualizing data using t-sne</title>
+		<author>
+			<persName><forename type="first">Laurens</forename><surname>Van Der Maaten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of machine learning research</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">11</biblScope>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

@@ -1,0 +1,1093 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main"></title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="MD5">260E3F1ADF2912CF817F531CDC88A91F</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:20+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We develop a probabilistic extension of state-of-the-art embedding models for link prediction in relational knowledge graphs. Knowledge graphs are collections of relational facts, where each fact states that a certain relation holds between two entities, such as people, places, or objects. We argue that knowledge graphs should be treated within a Bayesian framework because even large knowledge graphs typically contain only few facts per entity, leading effectively to a small data problem where parameter uncertainty matters. We introduce a probabilistic reinterpretation of the DistMult <ref type="bibr" target="#b41">(Yang et al., 2015)</ref> and ComplEx (Trouillon et al., 2016)  models and employ variational inference to estimate a lower bound on the marginal likelihood of the data. We find that the main benefit of the Bayesian approach is that it allows for efficient, gradient based optimization over hyperparameters, which would lead to divergences in a non-Bayesian treatment. Models with such learned hyperparameters improve over the state-of-the-art by a significant margin, as we demonstrate on several benchmarks.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>In 2012, Google announced that it improved the quality of its search engines significantly by utilizing knowledge graphs <ref type="bibr" target="#b10">(Eder, 2012)</ref>. A knowledge graph is a dataset of facts represented in terms of triplets <ref type="bibr">(head, relation, tail)</ref>, where head and tail represent entities in the world, and a relation is a property that describes the relationship between the two entities. As an example, when the head entity is 'Paris', and the relation is 'is in', then the tail entity could be 'France' or 'Europe'.</p><p>While the number of possible relations among entities is enormous, the amount of edges in empirical knowledge graphs is often rather small. It is therefore desirable to complete the missing edges in a knowledge graph algorithmically based on patterns detected in the observed part of he graph <ref type="bibr">(Nickel et al., 2016a)</ref>. Such link prediction has become an important subfield of artificial intelligence <ref type="bibr" target="#b6">(Bordes et al., 2013;</ref><ref type="bibr" target="#b38">Wang et al., 2014;</ref><ref type="bibr" target="#b24">Lin et al., 2015;</ref><ref type="bibr">Nickel et al., 2016c;</ref><ref type="bibr" target="#b37">Trouillon et al., 2016;</ref><ref type="bibr" target="#b39">Wang &amp; Li, 2016;</ref><ref type="bibr" target="#b17">Ji et al., 2016;</ref><ref type="bibr" target="#b33">Shen et al., 2016;</ref><ref type="bibr" target="#b40">Xiao et al., 2017;</ref><ref type="bibr" target="#b34">Shi &amp; Weninger, 2017;</ref><ref type="bibr" target="#b22">Lacroix et al., 2018)</ref>.</p><p>In statistical relational learning, link prediction is done by inferring/learning explicit rules about relationships and then applying these inferred rules in order to reason about unobserved facts <ref type="bibr" target="#b11">(Friedman et al., 1999;</ref><ref type="bibr" target="#b20">Kersting et al., 2011;</ref><ref type="bibr" target="#b30">Niu et al., 2012;</ref><ref type="bibr" target="#b31">Pujara et al., 2015)</ref>. A complementary, highly scalable approach relies on embedding models <ref type="bibr" target="#b19">(Kadlec et al., 2017;</ref><ref type="bibr" target="#b26">Nguyen, 2017)</ref>. These models represent entities and relationships in terms of low-dimensional semantic vectors and implicitly encode the relationships in the knowledge graphs in terms of three-way mathematical operations among these vector triplets <ref type="bibr" target="#b41">(Yang et al., 2015;</ref><ref type="bibr" target="#b37">Trouillon et al., 2016)</ref>. In the early works, different embeddings were used for the two tasks of head and tail prediction. <ref type="bibr" target="#b22">Lacroix et al. (2018)</ref> proposed to map these two tasks to just the tail prediction task by augmenting the data by reciprocal facts with inversed relations. In the present work, we also use this data augmentation technique to pave the way for a probabilistic interpretation of knowledge graph embedding models. The probabilistic formulation allows us to keep track of parameter uncertainty by applying Bayesian methods.</p><p>We argue that the parameter uncertainty in knowledge graph embedding models can be significant, calling for a Bayesian approach. As the number of parameters grows linearly with the number of entities, and every entity is only connected to a small number of other entities by observed links, this effectively leads to a small data problem, even if the knowledge graph as a whole may be huge. For example, Figure <ref type="figure" target="#fig_1">1</ref> shows that for a popular large-scale knowledge base, about 80% of entities have  less than 80 observed facts. Similar observation have been made for recommender systems, where most users interact only with a small subset of the items <ref type="bibr" target="#b12">(Gopalan et al., 2014;</ref><ref type="bibr">2015;</ref><ref type="bibr" target="#b23">Liang et al., 2018)</ref>. As in recommender systems, we show that a Bayesian approach can be highly beneficial in knowledge graph embeddings. This paper presents such a Bayesian formulation and presents an interpretation of popular embedding models as generative models of relational facts.</p><p>The benefits of a Bayesian formulation of knowledge graph embeddings are two-fold. First, this formulation allows us to infer posterior distributions of embedding vectors, giving us uncertainty estimates. An arguably more important aspect is that of hyperparameter tuning, as the state-of-the-art embedding models employ a large number of hyperparameters (regularizers), one for every entity <ref type="bibr" target="#b22">(Lacroix et al., 2018)</ref>. <ref type="bibr" target="#b19">Kadlec et al. (2017)</ref> showed that careful hyperparameter tuning can dramatically increase predictive performance. While there is no classical way to scalably tune hyperparameters on a per-entity level without some heuristic, our Bayesian approach allows for gradient-based hyperparameter optimization on the marginal likelihood of the data <ref type="bibr" target="#b3">(Bishop, 2006)</ref>. This approach, termed variational expectation maximization (variational EM <ref type="bibr" target="#b2">(Bernardo et al., 2003)</ref>), still works if variational approximations are used <ref type="bibr" target="#b18">(Jordan et al., 1999;</ref><ref type="bibr">Blei et al., 2017;</ref><ref type="bibr" target="#b42">Zhang et al., 2017)</ref>.</p><p>We propose a simple, principled, and efficient way to tune hyperparameters using variational EM. This approach lower-bounds the marginal likelihood of the data and allows this bound to be optimized for hyperparameters without running into degenerate solutions <ref type="bibr" target="#b2">(Bernardo et al., 2003;</ref><ref type="bibr" target="#b25">Mandt et al., 2017)</ref>. This is in contrast to point estimation, which results in degeneracies when jointly optimizing over model parameters and hyperparameters. As a result, our approach learns a macroscopic number of hyperparameters, resulting in a new state-of-the-art performance on link prediction.</p><p>Our contribution in this work can be summarized as follows:</p><p>• We present a probabilistic interpretation of existing knowledge graph embedding models such as ComplEx and DistMult. We reformulate these models as generative models for relational facts, which paves the way for Bayesian inference in these models. • We apply stochastic variational inference to scalably estimate an approximate posterior for each entity and relation embedding in the knowledge graph. This approach not only allows us to estimate uncertainty, but more importantly allows for gradient-based hyperparameter optimization by stochastic gradient descent on the optimized variational bound (variational EM). Implementing our methodology in existing models requires only a few lines of additional code, and it does not increase the computational complexity compared to a non-Bayesian training approach. • We show experimentally that our method reaches new state-of-the-art results in link prediction.</p><p>We present results on several large data sets using two popular models which we trained using variational EM. We observe that our improvements are most notable for entites with few training points, as we show by introducing a new, balanced evaluation metric. The paper is structured as follows. In Section 2, we review the related work about knowledge graph embeddings and variational inference. In Section 3, we present the generative model for relational facts and reinterpret existing loss functions as the maximum a posterior estimator of the generative model. In Section 4, we propose our approximate Bayesian expectation maximization algorithm for finding the hyperparameters. Finally, in Section 5 we test the hyperparameter learning algorithm for the link prediction task on two different embedding algorithms using standard performance metrics.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">RELATED WORK</head><p>Related work to this paper can be grouped into link prediction algorithms and variational inference.</p><p>Link Prediction. Knowledge graphs and link prediction gained a lot of attention; for a review see <ref type="bibr">(Nickel et al., 2016b)</ref>. Most link prediction algorithms use latent features of entities or relationships, also termed embeddings. TransE proposed by <ref type="bibr" target="#b6">Bordes et al. (2013)</ref> is one example, where each entity and relation are embedded in a K-dimensional space. The embeddings are found such that for a given fact (h, r, t), the sum of embeddings of h plus r be close to t, and far from other entities.</p><p>Many models are based on tensor factorization, where an adjacency tensor is built from the triplet facts, and entities and relations are embedded to a K-dimensional space. Different methods differ in the structure of the embedded vectors. <ref type="bibr" target="#b14">Hitchcock (1927)</ref> assume that an entity's embedding depends on whether the entity appears as the head or tail of a fact. DistMult simplified the model by assuming that tails and heads have the same embeddings <ref type="bibr" target="#b41">(Yang et al., 2015;</ref><ref type="bibr" target="#b36">Toutanova &amp; Chen, 2015)</ref>. ComplEx extended DistMult by embedding the entities and relations to a complex space to allow for nonsymmetric relations. <ref type="bibr" target="#b22">Lacroix et al. (2018)</ref> introduced reciprocal relations and trained with the full log-loss instead of binary loss with negative sampling, which improved the results.</p><p>Link prediction algorithms are susceptible to overfitting, and the importance of hyperparameter choices has been pointed out by several authors, e.g., <ref type="bibr" target="#b19">(Kadlec et al., 2017;</ref><ref type="bibr" target="#b22">Lacroix et al., 2018)</ref>. Different reguralizers have been proposed, the most standard one being the 2-norm <ref type="bibr" target="#b41">(Yang et al., 2015)</ref>. A heuristic that often produces the best results (e.g., in <ref type="bibr" target="#b22">(Lacroix et al., 2018)</ref>) is to choose the strength of the regularizer proportional to the frequency of the entities (see e.g., <ref type="bibr" target="#b35">(Srebro &amp; Salakhutdinov, 2010)</ref>). In contrast, our approach learns entity-dependend hyperparameters without relying on heuristics. Also, <ref type="bibr" target="#b22">Lacroix et al. (2018)</ref> showed that the 2-norm is not a valid tensor norm, and that the 3-norm is more appropriate for triplet data.</p><p>Variational Inference. Variational inference (VI) is a powerful technique to approximate a Bayesian posterior over latent variables given observations <ref type="bibr" target="#b18">(Jordan et al., 1999;</ref><ref type="bibr">Blei et al., 2017;</ref><ref type="bibr" target="#b42">Zhang et al., 2017)</ref>. Besides approximating the posterior, VI also estimates the marginal likelihood of the data. This allows for gradient-based hyperparameter tuning, a technique called variational EM <ref type="bibr" target="#b2">(Bernardo et al., 2003)</ref>, which is the main benefit of the Bayesian approach used in this paper.</p><p>Our paper builds on recent probabilistic extensions of embedding models to Bayesian models, such as word <ref type="bibr" target="#b1">(Barkan, 2017)</ref> or paragraph <ref type="bibr" target="#b16">(Ji et al., 2017)</ref> embeddings. In these works, the words are embedded into a K-dimensional space. It has been shown that using a probabilistic approach leads to better performance on smaller data, and allows these models to be combined with powerful priors, such as for time series modeling <ref type="bibr">(Bamler &amp; Mandt, 2017;</ref><ref type="bibr" target="#b15">Jähnichen et al., 2018</ref>). Yet, the underlying probabilistic models in these papers are very different from the ones considered in our work. In this section, we describe a generative model for relational facts. Then, we show that existing tensor factorization models can be interpreted as a maximum a posteriori (MAP) estimation of the parameters of the generative model <ref type="bibr" target="#b3">(Bishop, 2006)</ref>. In Section 4, we move to our main contribution. We use our generative model to derive an approximate Bayesian inference algorithm to optimize over hyperparameters (regularizers) in a principled way.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">KNOWLEDGE GRAPH EMBEDDINGS AS GENERATIVE MODELS OF FACTS</head><formula xml:id="formula_0">E e R r r 2 [N r ] e 2 [N e ] (h i , r i ) i 2 [n] t i</formula><p>Let S = {(h i , r i , t i )} i=1,...,n be the set of n triplet facts, with heads</p><formula xml:id="formula_1">h i ∈ [N e ], tails t i ∈ [N e ], and relations r i ∈ [N r ].</formula><p>Here, N e and N r are the number of distinct entities and relations that we model. From now on, we use the data augmentation technique used in <ref type="bibr" target="#b22">(Lacroix et al., 2018)</ref> (see Remark 2 in the appendix). It reduces the task of performing both head and tail predictions to that of performing only tail predictions by introducing reciprocal relations. Thus, given a head h and relation r, the link prediction boils down to finding the tail t in the fact (h, r, t).</p><p>For simplicity, we present the generative process at the example of the DistMult model <ref type="bibr" target="#b41">(Yang et al., 2015)</ref>. Generalization to other models, such as ComplEx <ref type="bibr" target="#b37">(Trouillon et al., 2016)</ref> or CP <ref type="bibr" target="#b14">(Hitchcock, 1927)</ref> is straight-forward. In DistMult, each entity and relation is embedded in the latent vector space R K . Let E ∈ R Ne×K (similarly R ∈ R Nr×K ) be the embedding matrix for entities <ref type="bibr">(relations)</ref>, where</p><formula xml:id="formula_2">E e ∈ R K (R r ∈ R K ) is the embedding vector for entity e ∈ [N e ] (relation r ∈ [N r ]).</formula><p>The Score. Embedding models such as DistMult rely on a score X h,r,t which plays a role both in the probabilistic and classical formulation of the model. This score assigns a scalar value to each combination of the embeddings E h , R r , and E t . In DistMult, the score is</p><formula xml:id="formula_3">X h,r,t = K i=1 E hi R ri E ti .</formula><p>In the conventional approach, the embedding vectors are trained in such a way that observed triplets have high scores. As we show below, the score also enters the probabilistic extension of the model.</p><p>Generative Process. We can now present our perspective of knowledge graph embeddings as generative models. Figure <ref type="figure" target="#fig_2">2</ref> shows a graphical model. The generative process is as follows:</p><p>• For each entity e ∈ [N e ], draw an embedding E e ∈ R K from a prior p(E e |λ e ), e.g., a normal distribution. Similarly, for each relation r ∈ [N r ], draw an embedding R r ∈ R K from a prior p(R r |λ r ). Here, λ e and λ r are hyperparameters.</p><p>• Repeat for each triplet index i ∈ {1, . . . , n}:</p><p>-Draw a head h i and a relation r i from a discrete joint distribution P (h i , r i ).</p><p>-Draw a tail t i ∼ Multinomial(softmax t (X hi,ri,t )).</p><p>Above, the softmax normalizes the scores over the tail index, softmax</p><formula xml:id="formula_4">t (X h,r,t ) = exp X h,r,t t exp X h,r,t</formula><p>. We see that the resulting generative model produces fact triplets conditioned on semantic embeddings of entities and relations. This concludes the generative process perspective.</p><p>MAP Estimation Recovers Original Model. The cost function used for learning E and R in the existing works can be seen as maximum a posteriori (MAP) estimation of the generative model above, where we optimize the log joint distribution over the embeddings E and R:</p><formula xml:id="formula_5">E , R = arg max E,R log p(E, R, S|λ) = arg max E,R log p(S|E, R) + log p(E, R|λ) .</formula><p>(1)</p><p>In the DistMult model, the loss function with a Gaussian prior with precision λ becomes</p><formula xml:id="formula_6">L(E, R, λ) = -log p(S|E, R) -log p(E, R|λ),<label>(2)</label></formula><p>where the negative log likelihood is just the cross entropy,</p><formula xml:id="formula_7">-log p(S|E, R) = (h,r,t)∈S -X h,r,t + log t exp X h,r,t + c,<label>(3)</label></formula><p>and the negative log prior leads to the regularizer</p><formula xml:id="formula_8">-log p(E, R|λ) = 1 2 e∈[Ne] λ e E e 2 -K log(λ e ) + 1 2 r∈[Nr] λ r R r 2 -K log(λ r ) + c. (4)</formula><p>Up to the terms K log(λ e/r ) in Eq. 4, which do not affect the minimization over E and R, Eqs. 2-4 recover precisely the loss function used in <ref type="bibr" target="#b22">(Lacroix et al., 2018)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">GRADIENT-BASED HYPERPARAMETER TUNING VIA VARIATIONAL EM</head><p>In this section, we describe an efficient method to learn optimized hyperparameters λ e and λ r for each entity and each relation embedding in the model. We stress that such optimization could not be achieved via classical grid search due to the sheer number of hyperparameters; this number would have to be reduced by some heuristic <ref type="bibr" target="#b35">(Srebro &amp; Salakhutdinov, 2010)</ref>. Our method is based on optimizing the marginal likelihood over λ e and λ r using variational inference.</p><p>Recall that in a knowledge graph, the number of triplets per entity is typically small (see Figure <ref type="figure" target="#fig_1">1</ref>). Therefore, the cross entropy (log likelihood, Eq. 3) contains only few terms per entity, and thus the regularizer (log prior, Eq. 4) has a strong influence on the optimization.</p><p>Finding good hyperparameters λ e and λ r for each entity e and relation r would usually involve expensive cross validations and grid search over many parameters. Simply minimizing the loss L in Eqs. 2-4 over both hyperparameters λ e/r and model parameters E and R does not work because L is not bounded from below. Setting E and R to zero and λ e , λ r → ∞ would send L → -∞ due to the terms -K 2 log(λ e/r ) in Eq. 4. Note that ignoring these terms would not solve the problem, as the optimization would then set λ e and λ r to zero and the model would become unregularized. draw uniform noise samples, e ∼ N (0, I) and r ∼ N (0, I)</p><formula xml:id="formula_9">7: γ ← γ -∇ γ L µ E + E σ E , µ R + R σ R , λ -log σ E -log σ R L = loss, see Eq. 2 8: if t ≥ T 0 then λ ← arg max λ E qγ [log p (E, R|λ)]</formula><p>See appendix for analytic solution 9:</p><p>else do not update hyperparameters λ 10: Re-train model with learned hyperparameters:</p><formula xml:id="formula_10">E * , R * = arg min E,R L(E, R, λ)</formula><p>Variational Expectation Maximization. A well-known approach to avoid degenerate solutions in gradient-based hyperparameter optimization is the expectation-maximization (EM) algorithm <ref type="bibr" target="#b8">(Dempster et al., 1977)</ref>. This algorithm optimizes the marginal likelihood of a model with hidden variables over hyperparameters by alternating between a gradient step on hyperparameters, and a step in which the hidden variables are integrated out. We use a version of EM based on variational inference, termed variational EM <ref type="bibr" target="#b2">(Bernardo et al., 2003)</ref> that avoids the integration step.</p><p>The measure of how well a probabilistic model fits the data S is the marginal likelihood, p(S|λ) = p(E, R, S|λ) dE dR.</p><p>(5)</p><p>We want to find hyperparameters λ that maximize the marginal likelihood p(S|λ); however, since the integral in Eq. 5 is intractable, the marginal likelihood is unavailable in closed form. To circumvent this problem, we use variational inference (VI) <ref type="bibr" target="#b18">(Jordan et al., 1999)</ref>. In VI, one first chooses a family of variational distributions q γ (E, R), which is parameterized by so-called variational parameters γ. Evoking Jensen's inequality, the marginal likelihood is then lower-bounded by the evidence lower bound <ref type="bibr">(Blei et al., 2017;</ref><ref type="bibr" target="#b42">Zhang et al., 2017)</ref>, or ELBO, as</p><formula xml:id="formula_11">log p(S|λ) ≥ E E,R∼qγ [log p(E, R, S|λ) -log q γ (E, R)] =: ELBO(λ, γ). (<label>6</label></formula><formula xml:id="formula_12">)</formula><p>The bound is tight if the variational distribution q γ is the true posterior of the model for given λ. Therefore, maximizing the ELBO over the variational parameters γ closes the gap between ELBO and true marginal likelihood, and the ELBO can be taken as a proxy for the latter.</p><p>We use the ELBO as a proxy for the marginal likelihood p(S|λ), and we maximize it concurrently over both γ and λ using Black Box Variational Inference with reparameterization gradients <ref type="bibr" target="#b21">(Kingma &amp; Welling, 2014;</ref><ref type="bibr" target="#b32">Rezende et al., 2014)</ref>. Since p(S|λ) is a discrete probability distribution, it is upper bounded by 1, so the optimization over λ is well defined. As discussed above, this is in contrast to the loss L, which is not bounded as a function of λ.</p><p>We choose a fully factorized variational distribution q γ (E, R). This is called the mean field approximation. Specifically, we use a fully factorized Gaussian variational distribution with means µ E ei and µ R ri , and standard deviations σ E ei and σ R ri for the parameters E ei and R ri , respectively. The collection of all means and standard deviations comprises the variational parameters γ.</p><p>Learning Optimal Hyperparameters. Algorithm 1 summarizes our method. It consists of three steps: (i) Pre-train a point-estimated model using the MAP estimator L (Eqs. 2-4) with a reasonable choice of hyperparameters λ (Line 3 in Algorithm 1). (ii) Use variational EM to maximize the lower bound on the marginal likelihood over the hyperparameters (Lines 4-9); here, we use the pretrained model to initialize the means of the variational distribution, see below. (iii) Plug the learned hyperparameters λ into the MAP estimator and train the final model (Line 10).</p><p>Implementing these three steps requires only few changes compared to a MAP estimated model. Steps (i) and (iii) are just the existing MAP estimation of the latent parameters. The implementation of step 2 is also very similar. To optimize the ELBO with the reparameterization gradient trick, one injects parameter noise into the loss L of the MAP estimator (see Lines 6-7). One then optimizes over the optimal amplitude σ E/R of the noise using stochastic gradient descent. The additional entropy termlog σ Elog σ R in Line 7 prevents mode collapse of the variational distribution.</p><p>Lines 6-7 in Algorithm 1 describe the most generic way to estimate the gradient of the ELBO using reparameterization gradients. For specific models, parts of the ELBO can be evaluated analytically, which typically reduces the gradient noise. In the appendix, we derive an analytic expression for the contribution of the regularizer (log prior) to the ELBO. We find a solution in closed form for regularization with both the 2-norm and the 3-norm. The expected log prior prevents degenerate solutions of the kind discussed above because it penalizes sending λ e/r to infinity.</p><p>After maximizing ELBO over λ and γ, we plug the learned λ into the original MAP estimator and improve the performance of the model, see Line 10 in Algorithm 1. We also experimented with using the learned variational distribution q γ (E, R) directly for link prediction using a Bayesian inference approach. In this setup, we evaluate the predictive probability of, e.g., a tail t given head h and relation r by taking the expectation of the conditional probability p(t|h, r, E, R) under the variational distribution. We find that, when the embedding dimensions K is small, these Bayesian predictions outperform point estimates. However, for a large embedding dimension K, MAP estimators perform better. We speculate that this may be because the match between variational distribution and true posterior may be worse in high dimensions, where the true posterior can have a more complicated structure that the mean field variational distribution cannot capture. We find that the main advantage of the variational treatment of the models that we considered is the efficient optimization over hyperparameters.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">EXPERIMENTAL RESULTS</head><p>We test the performance of DistMult and ComplEx on four standard data sets, where we optimized hyperparameters in two different ways. Our baseline is standard grid search, and our proposed approach for hyperparameter tuning is variational EM (Algorithm 1). The latter relies on the probabilistic formulation provided in this paper. We considered two types of metrics: mean reciprocal rank, and hits at 10 (explained below). Our approach sets a new state-of-the-art in hits at 10 on all four data sets, and in mean reciprocal rank on three out of four data sets.</p><p>Performance Metrics. We report the standard metrics used in the knowledge graph embedding literature. We perform head and tail prediction and report all results in the 'filtered' setting introduced in <ref type="bibr" target="#b6">(Bordes et al., 2013)</ref>. In tail prediction, one tries to find the correct tail t of a fact (h, r, t) from the test set when given only head h and relation r. We do this by ranking all candidate tails according to their probabilities under the model. The 'filtered' rank, denoted below by rank(t|h, r), takes into account that more than one tail may be a correct answer. One removes from the ranking all other tails t = t for which a fact (h, r, t ) exists in either the training, validation, or test set. We evaluate the following metrics of the filtered ranks (for all metrics, higher is better):</p><p>• Mean Reciprocal Rank (MRR), see, e.g., <ref type="bibr" target="#b41">(Yang et al., 2015)</ref> (8)</p><p>• Hits at 10 (H@10), see, e.g., <ref type="bibr" target="#b6">(Bordes et al., 2013)</ref>. It is the percentage of test facts for which the 10 highest ranked predictions contain the correct prediction, i.e., for which rank(t|h, r) ≤ 10.</p><p>Baselines. We study two models, ComplEx <ref type="bibr" target="#b37">(Trouillon et al., 2016;</ref><ref type="bibr" target="#b22">Lacroix et al., 2018)</ref> and Dist-Mult <ref type="bibr" target="#b41">(Yang et al., 2015;</ref><ref type="bibr" target="#b19">Kadlec et al., 2017)</ref>, with and without the variational EM algorithm. As in <ref type="bibr" target="#b22">(Lacroix et al., 2018)</ref>, our baseline for ComplEx, uses the weighted 3-norm regularizer that reached the previous state-of-the-art performance, i.e., λ e/r are proportional to the frequency of entity e (relation r) in the dataset. We implemented our own version of DistMult using reciprocal relations and full log-loss with weighted 3-norm regularizer. The results were consistent with (and even slightly improved) the best results reported in the literature <ref type="bibr" target="#b41">(Yang et al., 2015;</ref><ref type="bibr" target="#b19">Kadlec et al., 2017)</ref>.</p><p>Datasets. We used four standard datasets. The first two are FB15K from the Freebase project <ref type="bibr" target="#b5">(Bollacker et al., 2008)</ref> and WN18 from the WordNet database <ref type="bibr" target="#b7">(Bordes et al., 2014)</ref>. The other two datasets, FB15K-237 and WN18RR, are modified versions of FB15K and WN18 due to <ref type="bibr" target="#b36">(Toutanova &amp; Chen, 2015;</ref><ref type="bibr" target="#b9">Dettmers et al., 2018)</ref>. The motivation for the modified datasets is that FB15K and WN18 contain near duplicate relations that make link prediction trivial for some facts, thus encouraging overfitting. In FB15K-237 and WN18RR these near duplicates were removed.</p><p>Results. Tables <ref type="table" target="#tab_1">1</ref> and<ref type="table" target="#tab_2">2</ref> summarize our results. We see that the balanced metric MRR b is generally lower than its unbalanced counterpart MRR, confirming the intuition that MRR is biased towards the easier predictions. Table <ref type="table" target="#tab_1">1</ref> shows results for the ComplEx model. We see that variational EM improves the performance of the ComplEx model on three out of the four datasets. On the fourth dataset, FB15K, variational EM improves H@10 over the baseline, but MRR and MRR b are better in the baseline model. The latter may be explained by the fact that the FB15K data set is known to contain near duplicates in the test-training split, thus favoring models that tend to overfit the data.</p><p>For DistMult the improvements are more significant (Table <ref type="table" target="#tab_2">2</ref>). In WN18, variational EM improves both MRR and MRR b by 2 percentage points, and in WN18RR all metrics are improved almost by 1 percent. MRR b is improved by 0.5 percent in FB15K237, and H@10 is improved by 0.5 percent in FB15K. Although a more exhaustive hyper-parameter tuning using cross validation might further improve the performance of DistMult, the goal of this work is to reach such performance without a need to do an expensive grid search. Using variational EM hyperparameter learning algorithm, we can learn good hyperparameters λ easily and reach the state-of-the-art results without spending many resources on hyperparameter tuning.   In Figure <ref type="figure" target="#fig_5">3a</ref>, the red line is the weighted λ in the baseline. Also, in Figure <ref type="figure" target="#fig_5">3b</ref> λ are initialized with the baseline. The plots justifies the heuristic of using a λ proportional to the frequency of parameters. Figure <ref type="figure" target="#fig_5">3a</ref> also confirms that there is a power-law relation between λ and frequencies.</p><p>Finally, we study the influence of the frequency of entities in the training data on the hyperparameters learned by the variational EM algorithm. Figure <ref type="figure" target="#fig_5">3a</ref> shows the learned λ e for all entities e as a function of the entities' frequencies. The red line compares this to the weighted regularizer proposed in <ref type="bibr" target="#b35">(Srebro &amp; Salakhutdinov, 2010)</ref>, which sets λ e and λ r proportional to the frequency. Qualitatively, our findings confirm the heuristic to use stronger regularization for entities with more training data. Quantitatively, however, we find that a linear relation between frequency and regularization strength is too strong. Our result might point to a better frequency based heuristics to choose λ.</p><p>To study the evolution of regularizations over the training time, we divide the entities into three bins [L, M, H] of low, medium, and high frequency. Each bin contains one third of the entities.</p><p>In Figure <ref type="figure" target="#fig_5">3b</ref> shows the evolution of the average λ within each bin as a function of the training epoch. The λ are initialized with the baseline (i.e., λ proportional to their frequency). We hold the hyperparameters fixed for the first 15 epochs of the EM algorithm to allow for the variational distribution q γ to come close to the actual posterior before we start updating λ. We see that on average, the hyperparameters learned by our approach converge to a different optimal value than the heuristic suggested by <ref type="bibr" target="#b35">Srebro &amp; Salakhutdinov (2010)</ref>. In our experiments, we also see that, as expected, the inferred uncertainties σ E e and σ R r are higher for entities and relations with fewer training facts (see appendix for more details).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">CONCLUSIONS</head><p>We showed that two of the most popular knowledge graph embedding models-DistMult and ComplEx-have an interpretation as probabilistic generative models of facts. Drawing on this view, we presented a scalable variational inference algorithm to learn a lower bound of the marginal likelihood of the data. We used this bound to optimize the many hyperparameters of these models by gradient descent (variational EM); an approach that would not be possible when point estimating model parameters. Using this methodology of optimizing hyperparameters, we outperformed the state of the art in link prediction on several popular benchmark data sets. The approach enjoys the same scalability properties as conventional maximum likelihood learning.</p><p>Our approach amounted to training the model twice: once in a Bayesian fashion to optimize hyperparameters, and then by point-estimating model parameters, using the hyperparameters obtained from the previous optimization. One may wonder why the approximate posterior was not used for link prediction. Our experiments revealed that using the posterior for link prediction worked well in low dimensions, but underperformed in high dimensions (not shown). We interpret this as a failure of the variational approximation in high dimension where the true posterior may locally not look Gaussian, pushing the variational Gaussian means away from the posterior maximum. For learning hyperparameters via variational EM, however, the variational approach works in all considered embedding dimensions. In the future, it would be interesting to explore more sophisticated posterior approximations that avoid this double-training procedure. However, a fully-Bayesian prediction task would be expensive to evaluate, making the proposed approach the most relevant one in practice.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A APPENDIX A.1 COMPUTING THE TERMS IN ELBO</head><p>In this section , we compute the expectations appear in the ELBO in Eq. 6. For we choose DistMult as the embedding model, but the computations are similar for the other models such as ComplEx <ref type="bibr" target="#b37">(Trouillon et al., 2016)</ref> or CP <ref type="bibr" target="#b14">(Hitchcock, 1927)</ref>. The term -E qγ [log q γ (E, R)] is the entropy of the Gaussian distribution, and it is</p><formula xml:id="formula_13">-E qγ [log q γ (E, R)] = e∈[Ne] i∈[K] log σ E ei + r∈[Nr] i∈[K] log σ R ri + c,<label>(9)</label></formula><p>where c is a constant and can be ignored in the optimization process. Now, let us focus on the evaluation of the expected prior. We derive the equations for E qγ [log p(E|λ e )] and E qγ [log p(R|λ r ))] can be computed in a similar way.</p><p>Gaussian prior. First, let us focus on the Gaussian prior</p><formula xml:id="formula_14">p(E e |λ e ) = ( λ e 2π ) K exp(-λ e E e 2 /2).</formula><p>The log of Gaussian prior is</p><formula xml:id="formula_15">log p(E e |λ e ) = - λ e 2 E e 2 + K 2 log λ e + c.<label>(10)</label></formula><p>The expectation of Eq. 10 with respect to the variational distribution q γ is</p><formula xml:id="formula_16">E qγ [log p(E e |λ e )] = - λ e 2 µ E e 2 + σ E e 2 + K 2 log λ e + c.,<label>(11)</label></formula><p>where σ E e 2 = i∈[K] (σ E ei ) 2 , (details can be found in Appendix B of (Kingma &amp; Welling, 2014)). Notice that λ e only appears in p(E e |λ e ), so for a given µ E e and σ E e we can easily find its optimal value by maximizing E qγ [log p(E e |λ e )] over λ as follows,</p><formula xml:id="formula_17">λ e = K µ E e 2 + σ E e 2 ,<label>(12)</label></formula><p>Nuclear 3-norm prior. Now, let us consider the prior</p><formula xml:id="formula_18">p(E e |λ e ) = 1 Z exp(- λ e 3 E e<label>3</label></formula><p>3 ),</p><p>where Z is the normalization factor. The normalization factor Z is only a function of λ e and not the variational parameters γ, hence E qγ [log Z] = log Z. We start the analysis by computing the normalization factor Z,</p><formula xml:id="formula_19">Z = Ee∈R K exp(- λ e 3 E e<label>3</label></formula><formula xml:id="formula_20">3 ) dE e ,<label>(13)</label></formula><p>we compute the integral with the change of the variables ζ = λ</p><formula xml:id="formula_21">1/3 e E e Z = 1 λ K/3 e ζ∈R K exp(- 1 3 ζ 3 3 ) dζ = c λ K/3 e ,<label>(14)</label></formula><p>where c = ζ∈R K exp(-</p><formula xml:id="formula_22">1 3 ζ 3 3 ) dζ. Therefore, E qγ [log Z] = log Z = - K 3 log λ e + c<label>(15)</label></formula><p>Now, let us focus on computing</p><formula xml:id="formula_23">E qγ [ λ e 3 E e 3 3 ] = E qγ [ λ e 3 i∈[K] |E ei | 3 ]. Given the Gaussian variational distribution N (µ E ei , (σ E ei ) 2 ), the samples of N (µ E ei , (σ E ei ) 2 ) can be written as E ei ∼ µ E ei + σ E ei ,<label>(16</label></formula><p>) where ∈ R is the noise sampled from the Gaussian distribution N (0, 1). Using this reparametrization, we get</p><formula xml:id="formula_24">E qγ E ei 3 3 = 1 √ 2π ∞ -∞ |µ E ei + σ ei x| 3 e -1 2 x 2 dx µ0= µ E ei σ ei = σ 3 ei √ 2π ∞ -∞ |µ 0 + x| 3 e -1 2 x 2 dx = σ 3 ei √ 2π - ∞ µ0 (-µ 0 + x) 3 e -1 2 x 2 dx + ∞ -µ0 (µ 0 + x) 3 e -1 2 x 2 dx = σ 3 ei √ 2π 2 ∞ µ0 (3µ 2 x + x 3 )e -1 2 x 2 dx + µ0 -µ0 (3µ 0 x 2 + µ 3 0 )e -1 2 x 2 dx = σ 3 ei √ 2π 2(µ 2 0 + 2)e -1 2 µ 2 0 + π 2 6µ 0 + 2µ 3 0 erf( µ 0 √ 2 ) = 2 π (µ E ei ) 2 σ ei + 2(σ ei ) 3 e -1 2 µ E ei σ ei 2 + 3|µ E ei |(σ ei ) 2 + |µ E ei | 3 erf |µ E ei | √ 2σ ei ,<label>(17)</label></formula><p>where erf(•) is the error function. Given E qγ E e 3 3 we can compute the optimal λ for a given γ by maximizing ELBO as</p><formula xml:id="formula_25">λ e = K E qγ [ E e 3 3 ] . (<label>18</label></formula><formula xml:id="formula_26">)</formula><p>Arbitrary prior. For an arbitrary prior, we can always use the reparameterization trick to compute a stochastic estimate of log prior and its gradient (check Lines 4-6 in Algorithm 1).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 FURTHER REMARKS</head><p>Remark 1. DistMult is further improved by <ref type="bibr" target="#b37">Trouillon et al. (2016)</ref>. The improved algorithm (Com-plEx) embeds the entities and relations to a K dimensional complex space C K rather than R K , and X h,r,t = Re K i=1 E hi R ri Ēti . Using complex numbers increases the flexibility of the algorithm and allows ComplEx to capture the non-symmetry in the triplet facts, meaning that X h,r,t = X t,r,h . This happens when the imaginary parts of the entries of the R r are non-zero, while if the imaginary parts of the entries of the R r are zero, the model can learn the symmetric relations, i.e., X h,r,t = X t,r,h . This is in contrast to DistMult, where always X h,r,t = X t,r,h . Remark 2. <ref type="bibr" target="#b22">Lacroix et al. (2018)</ref> presented a data augmentation technique, which simplifies the presentation of the model. Given the set of the triplet facts {(h i , r i , t i )} i=1,...,n , one first augments the data set by adding a new 'reciprocal' fact for each existing fact (h i , r i , t i ). Then, for each fact (h i , r i , t i ) in the original data set, one adds a new fact by swapping head h i and tail t i and replacing the relation with its reciprocal relation. The new dataset S = {(h i , r i , t i )} i=1,...,2n has 2n facts, N e entities and 2N r relations (N r relations plus N r reciprocal relations). This augmentation of the data maps the head and tail prediction task to just tail prediction. Two advantages are: (i) better performance, this is because the relations are trained specifically for the task of tail predictions rather than training a relation for both head and tail predictions <ref type="bibr" target="#b22">(Lacroix et al., 2018)</ref>; and (ii) it establishes a consistent causal direction (h, r) → t that enables us to reuse the generative model for both head and tail predictions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3 UNCERTAINTY ANALYSIS</head><p>Figure <ref type="figure">4</ref> depicts the average standard deviation (i.e., σ E and σ R ) of the embeddings inferred by variational EM algorithm. As it is seen, on average, the frequent entities or relations have a lower  Figure <ref type="figure">4</ref>: The average of standard deviations of Gaussian variational distribution for FB15K237 in variational EM algorithm. We see that on average the entities with higher frequencies reach a lower σ, that means a lower uncertainty.</p><p>uncertainty and variational EM algorithm learns more confident embeddings for the frequent entities or relations. Also, on average, the relations' embeddings have lower uncertainty compared to the embeddings' uncertainty. This is because there are fewer relations compared to entities, hence on average, there are more facts for a relation compared to an entity.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Histograms of the number of facts per entity in the training set of two data sets. Note the log scale of the horizontal axis. The plots show that the distributions are left-skewed. For example, in the FB15K dataset, a third of the entities have less than 25 facts in the whole training set, justifying the claim that even large knowledge bases involve small-data problems.</figDesc><graphic coords="2,108.00,81.86,198.00,132.15" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: The generative process of the triples (h, r, t).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Algorithm 1</head><label>1</label><figDesc>Gradient Based Tuning of Hyperparameters λ 1: Input: Number of training steps T ; number of initialization steps T 0 2: Initialize: λ and γ = (µ, σ) 3: Pre-train the model using SGD: µ E , µ R = arg min E,R L(E, R, λ) 4: for t = 0 : T do Variational EM update for T iterations 5: draw mini-batch B ∈ S 6:</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head></head><label></label><figDesc>(a) Learned λ for entities vs. frequencies. (b) Evolution of average λ in each frequency bin.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: The values of λ at the end of optimization for FB15K-237 dataset and over training epochs.In Figure3a, the red line is the weighted λ in the baseline. Also, in Figure3bλ are initialized with the baseline. The plots justifies the heuristic of using a λ proportional to the frequency of parameters. Figure3aalso confirms that there is a power-law relation between λ and frequencies.</figDesc><graphic coords="8,329.76,83.11,174.24,121.10" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head></head><label></label><figDesc>(a) Uncertainty of entities' embeddings vs frequencies. (b) Uncertainty of relations' embeddings vs frequencies.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>Performance of different variants of the ComplEx model (filtered ranks). † denotes our implementation of ComplEx with reciprocal relations and weighted 3-norm regularizer, hyperparameters taken from<ref type="bibr" target="#b22">(Lacroix et al., 2018)</ref> (it reaches the same performance as<ref type="bibr" target="#b22">(Lacroix et al., 2018)</ref>).</figDesc><table><row><cell>Variant of the</cell><cell>WN18RR</cell><cell>WN18</cell><cell>FB15K237</cell><cell>FB15K</cell></row><row><cell>ComplEx model</cell><cell>MRR/MRR b /H@10</cell><cell>"/"/"</cell><cell>"/"/"</cell><cell>"/"/"</cell></row><row><cell>(Trouillon et al., 2016)</cell><cell>-/-/-</cell><cell>94.1/-/94.7</cell><cell>-/-/-</cell><cell>69.2/-/84.0</cell></row><row><cell>Our MAP †</cell><cell>48.2/47.0/57.2</cell><cell cols="3">95.2/95.8/96.2 36.4/19.9/55.6 85.8/82.0/90.9</cell></row><row><cell>Our EM</cell><cell>48.6/47.3/57.9</cell><cell cols="3">95.3/95.8/96.4 36.5/20.3/56.0 85.4/81.9/91.5</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Performance of different models for DistMult model (filtered). Bold numbers are the best performance. † Our implementation of DistMult with reciprocal relations and weighted 3-norm regularizer.</figDesc><table><row><cell>Variant of the</cell><cell>WN18RR</cell><cell>WN18</cell><cell>FB15K237</cell><cell>FB15K</cell></row><row><cell>DistMult model</cell><cell>MRR/MRR b /H@10</cell><cell>"/"/"</cell><cell>"/"/"</cell><cell>"/"/"</cell></row><row><cell>(Kadlec et al., 2017)</cell><cell>-/-/-</cell><cell>79.0/-/95.0</cell><cell>-/-/-</cell><cell>83.7/-/90.4</cell></row><row><cell>Our MAP †</cell><cell>44.7/43.4/53.3</cell><cell cols="3">89.8/90.0/95.8 35.5/18.9/54.6 84.2/80.0/90.8</cell></row><row><cell>Our EM</cell><cell>45.</cell><cell></cell><cell></cell><cell></cell></row></table><note><p>5/44.1/54.4 92.1/92.3/95.9 35.7/19.4/54.8 84.1/80.2/91.4</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 :</head><label>3</label><figDesc>Dataset Statistics.</figDesc><table><row><cell>Dataset</cell><cell cols="5">#entities #relations #training×10 3 #test×10 3 # validation×10 3</cell></row><row><cell>FB15K237</cell><cell>15k</cell><cell>237</cell><cell>272k</cell><cell>20k</cell><cell>18k</cell></row><row><cell>FB15K</cell><cell>15K</cell><cell>1k</cell><cell>500k</cell><cell>60k</cell><cell>50k</cell></row><row><cell>WN18RR</cell><cell>41k</cell><cell>11</cell><cell>87k</cell><cell>3k</cell><cell>3k</cell></row><row><cell>WN18</cell><cell>41k</cell><cell>18</cell><cell>141k</cell><cell>5k</cell><cell>5k</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Dynamic word embeddings</title>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Bamler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Mandt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 34th international conference on Machine learning</title>
+		<meeting>the 34th international conference on Machine learning</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Bayesian neural word embedding</title>
+		<author>
+			<persName><forename type="first">Oren</forename><surname>Barkan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="3135" to="3143" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">The variational Bayesian EM algorithm for incomplete data: with application to scoring graphical model structures</title>
+		<author>
+			<persName><surname>Bernardo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">O</forename><surname>Bayarri</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Berger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Dawid</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Heckerman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><surname>West</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Bayesian statistics</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="page" from="453" to="464" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">M</forename><surname>Bishop</surname></persName>
+		</author>
+		<title level="m">Pattern Recognition and Machine Learning (Information Science and Statistics)</title>
+		<meeting><address><addrLine>Berlin, Heidelberg</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer-Verlag</publisher>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Variational inference: A review for statisticians</title>
+		<author>
+			<persName><forename type="first">Alp</forename><surname>David M Blei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jon</forename><forename type="middle">D</forename><surname>Kucukelbir</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mcauliffe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the American Statistical Association</title>
+		<imprint>
+			<biblScope unit="volume">112</biblScope>
+			<biblScope unit="issue">518</biblScope>
+			<biblScope unit="page" from="859" to="877" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Freebase: a collaboratively created graph database for structuring human knowledge</title>
+		<author>
+			<persName><forename type="first">Kurt</forename><surname>Bollacker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Colin</forename><surname>Evans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Praveen</forename><surname>Paritosh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Sturge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jamie</forename><surname>Taylor</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2008 ACM SIGMOD international conference on Management of data</title>
+		<meeting>the 2008 ACM SIGMOD international conference on Management of data</meeting>
+		<imprint>
+			<publisher>AcM</publisher>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="1247" to="1250" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multi-relational data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="2787" to="2795" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">A semantic matching energy function for learning with multi-relational data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xavier</forename><surname>Glorot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Machine Learning</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="volume">94</biblScope>
+			<biblScope unit="page" from="233" to="259" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Maximum likelihood from incomplete data via the EM algorithm</title>
+		<author>
+			<persName><forename type="first">Nan</forename><forename type="middle">M</forename><surname>Arthur P Dempster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Donald</forename><forename type="middle">B</forename><surname>Laird</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Rubin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the Royal Statistical Society. Series B</title>
+		<imprint>
+			<biblScope unit="page" from="1" to="38" />
+			<date type="published" when="1977">1977</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pontus</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Knowledge graph based search system</title>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Scott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eder</forename></persName>
+		</author>
+		<idno>App. 13/404</idno>
+		<imprint>
+			<date type="published" when="2012-06-21">June 21 2012</date>
+			<biblScope unit="page">109</biblScope>
+		</imprint>
+	</monogr>
+	<note type="report_type">US Patent</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Learning probabilistic relational models</title>
+		<author>
+			<persName><forename type="first">Nir</forename><surname>Friedman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lise</forename><surname>Getoor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daphne</forename><surname>Koller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Avi</forename><surname>Pfeffer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IJCAI</title>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+			<biblScope unit="volume">99</biblScope>
+			<biblScope unit="page" from="1300" to="1309" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Bayesian nonparametric poisson factorization for recommendation systems</title>
+		<author>
+			<persName><forename type="first">Prem</forename><surname>Gopalan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francisco</forename><forename type="middle">J</forename><surname>Ruiz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rajesh</forename><surname>Ranganath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Blei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">In Artificial Intelligence and Statistics</title>
+		<imprint>
+			<biblScope unit="page" from="275" to="283" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Scalable recommendation with hierarchical poisson factorization</title>
+		<author>
+			<persName><forename type="first">Jake</forename><forename type="middle">M</forename><surname>Prem Gopalan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">M</forename><surname>Hofman</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Blei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">UAI</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="326" to="335" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">The expression of a tensor or a polyadic as a sum of products</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Frank</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hitchcock</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Mathematics and Physics</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="issue">1-4</biblScope>
+			<biblScope unit="page" from="164" to="189" />
+			<date type="published" when="1927">1927</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Scalable generalized dynamic topic models</title>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Jähnichen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Florian</forename><surname>Wenzel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marius</forename><surname>Kloft</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Mandt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">In Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<author>
+			<persName><forename type="first">Geng</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Bamler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Erik</forename><forename type="middle">B</forename><surname>Sudderth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Mandt</surname></persName>
+		</author>
+		<title level="m">Bayesian paragraph vectors. Symposium on Advances in Approximate Bayesian Inference</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Knowledge graph completion with adaptive sparse transfer matrix</title>
+		<author>
+			<persName><forename type="first">Guoliang</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shizhu</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Zhao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="985" to="991" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">An introduction to variational methods for graphical models</title>
+		<author>
+			<persName><forename type="first">Zoubin</forename><surname>Michael I Jordan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tommi</forename><forename type="middle">S</forename><surname>Ghahramani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lawrence</forename><forename type="middle">K</forename><surname>Jaakkola</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Saul</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Machine learning</title>
+		<imprint>
+			<biblScope unit="volume">37</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="183" to="233" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Knowledge base completion: Baselines strike back</title>
+		<author>
+			<persName><forename type="first">Rudolf</forename><surname>Kadlec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ondrej</forename><surname>Bajgar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>Kleindienst</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2nd Workshop on Representation Learning for NLP</title>
+		<meeting>the 2nd Workshop on Representation Learning for NLP</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="69" to="74" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Statistical relational ai: logic, probability and computation</title>
+		<author>
+			<persName><forename type="first">Kristian</forename><surname>Kersting</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sriraam</forename><surname>Natarajan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Poole</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 11th International Conference on Logic Programming and Nonmonotonic Reasoning</title>
+		<meeting>the 11th International Conference on Logic Programming and Nonmonotonic Reasoning</meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="1" to="9" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Auto-encoding variational bayes</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Canonical tensor decomposition for knowledge base completion</title>
+		<author>
+			<persName><forename type="first">Timothée</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Obozinski</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 35th International Conference on Machine Learning</title>
+		<meeting>the 35th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Variational autoencoders for collaborative filtering</title>
+		<author>
+			<persName><forename type="first">Dawen</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rahul</forename><forename type="middle">G</forename><surname>Krishnan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthew</forename><forename type="middle">D</forename><surname>Hoffman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tony</forename><surname>Jebara</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 World Wide Web Conference, WWW &apos;18</title>
+		<meeting>the 2018 World Wide Web Conference, WWW &apos;18</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="689" to="698" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Learning entity and relation embeddings for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Yankai</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuan</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="page" from="2181" to="2187" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Stochastic gradient descent as approximate bayesian inference</title>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Mandt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthew</forename><forename type="middle">D</forename><surname>Hoffman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">M</forename><surname>Blei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="4873" to="4907" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">An overview of embedding models of entities and relationships for knowledge base completion</title>
+		<author>
+			<persName><forename type="first">Quoc</forename><surname>Dat</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Nguyen</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1703.08098</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">A review of relational machine learning for knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evgeniy</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gabrilovich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the IEEE</title>
+		<imprint>
+			<biblScope unit="volume">104</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="11" to="33" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">A review of relational machine learning for knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evgeniy</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gabrilovich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the IEEE</title>
+		<imprint>
+			<biblScope unit="volume">104</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="11" to="33" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Holographic embeddings of knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lorenzo</forename><surname>Rosasco</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Tomaso</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Poggio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="3" to="5" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Deepdive: Web-scale knowledge-base construction using statistical learning and inference</title>
+		<author>
+			<persName><forename type="first">Feng</forename><surname>Niu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ce</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Ré</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jude</forename><forename type="middle">W</forename><surname>Shavlik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">VLDS</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="page" from="25" to="28" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Using semantics and statistics to turn data into knowledge</title>
+		<author>
+			<persName><forename type="first">Jay</forename><surname>Pujara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hui</forename><surname>Miao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lise</forename><surname>Getoor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">W</forename><surname>Cohen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AI Magazine</title>
+		<imprint>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="65" to="74" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Stochastic backpropagation and approximate inference in deep generative models</title>
+		<author>
+			<persName><forename type="first">Danilo</forename><surname>Jimenez Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shakir</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daan</forename><surname>Wierstra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 31st International Conference on Machine Learning</title>
+		<meeting>the 31st International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Implicit reasonet: Modeling large-scale structured relationships with shared memory</title>
+		<author>
+			<persName><forename type="first">Yelong</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Po-Sen</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2nd Workshop on Representation Learning for NLP</title>
+		<meeting>the 2nd Workshop on Representation Learning for NLP</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Proje: Embedding projection for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Baoxu</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Weninger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="page" from="1236" to="1242" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Collaborative filtering in a non-uniform world: Learning with the weighted trace norm</title>
+		<author>
+			<persName><forename type="first">Nathan</forename><surname>Srebro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruslan</forename><forename type="middle">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="2056" to="2064" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Observed versus latent features for knowledge base and text inference</title>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 3rd Workshop on Continuous Vector Space Models and their Compositionality</title>
+		<meeting>the 3rd Workshop on Continuous Vector Space Models and their Compositionality</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="57" to="66" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Complex embeddings for simple link prediction</title>
+		<author>
+			<persName><forename type="first">Théo</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Éric</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 33rd International Conference on Machine Learning</title>
+		<meeting>the 33rd International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2071" to="2080" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding by translating on hyperplanes</title>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianwen</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianlin</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="page" from="1112" to="1119" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Text-enhanced representation learning for knowledge graph</title>
+		<author>
+			<persName><forename type="first">Zhigang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juan-Zi</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IJCAI</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="1293" to="1299" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Ssp: Semantic space projection for knowledge graph embedding with text descriptions</title>
+		<author>
+			<persName><forename type="first">Han</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minlie</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lian</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoyan</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="page" from="3104" to="3110" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">Bishan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Deng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<monogr>
+		<author>
+			<persName><forename type="first">Cheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Judith</forename><surname>Butepage</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hedvig</forename><surname>Kjellstrom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Mandt</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1711.05597</idno>
+		<title level="m">Advances in variational inference</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

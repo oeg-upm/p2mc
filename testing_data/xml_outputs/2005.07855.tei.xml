@@ -1,0 +1,1375 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Neural Stochastic Block Model &amp; Scalable Community-Based Graph Learning</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Xinli</forename><surname>Yu</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Mathematics</orgName>
+								<orgName type="institution">Temple University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Yuan</forename><surname>Ling</surname></persName>
+							<affiliation key="aff1">
+								<orgName type="institution">Amazon Alexa AI</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Xiaohua</forename><surname>Hu</surname></persName>
+							<affiliation key="aff2">
+								<orgName type="department">College of Computing &amp; Informatics</orgName>
+								<orgName type="institution">Drexel University</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Neural Stochastic Block Model &amp; Scalable Community-Based Graph Learning</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="MD5">B5CAFD7C730A174C847806285AB2BEAB</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T09:39+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>H.2.8 [Database Management]: Database Applications -Data Mining Graph Learning</term>
+					<term>Community Detection</term>
+					<term>Stochastic Block Model</term>
+					<term>Neural Graph Models</term>
+					<term>Graph Alignment</term>
+					<term>Anomaly Detection</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>This paper proposes a novel scalable community-based neural framework for graph learning. The framework learns the graph topology through the task of community detection and link prediction by optimizing with our proposed joint SBM loss function, which results from a non-trivial adaptation of the likelihood function of the classic Stochastic Block Model (SBM). Compared with SBM, our framework is flexible, naturally allows soft labels and digestion of complex node attributes. The main goal is efficient valuation of complex graph data, therefore our design carefully aims at accommodating large data, and ensures there is a single forward pass for efficient evaluation. For large graph, it remains an open problem of how to efficiently leverage its underlying structure for various graph learning tasks. Previously it can be heavy work. With our communitybased framework, this becomes less difficult and allows the task models to basically plug-in-and-play and perform joint training. We currently look into two particular applications, the graph alignment and the anomalous correlation detection, and discuss how to make use of our framework to tackle both problems. Extensive experiments are conducted to demonstrate the effectiveness of our approach. We also contributed tweaks of classic techniques which we find helpful for performance and scalability. For example, 1) the GAT+, an improved design of GAT (Graph Attention Network), the scaled-cosine similarity, and a unified implementation of the convolution/attention based and the random-walk based neural graph models.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Graph community structure is an important research area for graph learning that receives a long-standing attention from a wide spectrum of scientific studies <ref type="bibr" target="#b0">[1]</ref>. A graph community can be understood as a group of strongly interrelated nodes that distinguish themselves from the rest of the graph. The task of community detection is to discover such groups from the graph. With community detection, each graph node will be assigned a community label, also referred to as the node's membership. If a node can belong to multiple communities, then the node has soft community label, i.e. a 𝐾-dimensional probability distribution where 𝐾 is the number of communties in the graph, and we can say it is mixed membership <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b2">3]</ref>.</p><p>In terms of graph topology, nodes in the same community tend to interconnect more often than nodes outside of the community <ref type="bibr">[4]</ref>. In terms of node attributes, nodes from the same community are usually more similar <ref type="bibr" target="#b3">[5,</ref><ref type="bibr" target="#b4">6]</ref>. The existence of rich community structures is especially recognized for large realworld networks <ref type="bibr" target="#b5">[7,</ref><ref type="bibr" target="#b6">8]</ref>. However, to our best knowledge, few previous researches have investigated how to leverage them to benefit other graph learning tasks. The entity labels for many real-world relational data, are generally not available or expensive to acquire; we believe the underlying structure of a graph is the valuable resource we can tap into.</p><p>The community structure can be beneficial from several perspectives. It can be viewed as a 'divide-and-conquer' strategy. For performance, the hypothesis space for a large graph learning problem could be gigantic, and we should guide the algorithm to search in the places more likely to have the right answers. For example, in the graph alignment problem in Section 3.5, nodes from two very different communities can still have similar attributes, especially when rich data like texts are not available; thus we can guide the alignment model to only match nodes from top-aligned communities to reduce the chance of mismatch. For efficiency, no matter it is social network, a knowledge graph or a biological network, the nodes outside a community intuitively tend to make less impact when a model learns a community. Hence, guiding the model to focus on the community and its most related communities and ignore others can help reduce unnecessary computation. For learning, community detection can improve the embedding quality without further demand on the data. Link prediction has been involved in graph embedding training in many researches <ref type="bibr" target="#b7">[9]</ref><ref type="bibr" target="#b8">[10]</ref><ref type="bibr" target="#b9">[11]</ref>; if we view link prediction as the "micro" learning that helps encode graph topology, then the community detection can be viewed as the "macro" learning that equips the embeddings with better awareness of the whole picture. An example is shown in Figure <ref type="figure" target="#fig_6">1</ref>, where it is embeddings of a graph of ten noisy communities, and the embeddings trained with community detection are clearly more separable. (c). embeddings trained with community detection by our joint SBM loss in <ref type="bibr" target="#b9">(11)</ref>.</p><p>Figure <ref type="figure" target="#fig_6">1</ref> Illustration of the effect of community detection. Node color in (a) corresponds to embeddings of the same color in (b) and (c). Both trained with our framework in Figure <ref type="figure" target="#fig_3">3</ref>, where the only difference is whether community detection is consider in the loss. More separation among communities is clearly seen in (c).</p><p>In this paper, we propose to train a graph learning task with our community-based framework in Figure <ref type="figure" target="#fig_3">3</ref>. The framework learns the graph topology through the joint task of community detection and link prediction by optimizing the proposed Neural Stochastic Block Model (NSBM) layer and the joint SBM loss function in equation <ref type="bibr" target="#b9">(11)</ref>. The NSBM layer and its loss are adapted from the likelihood function of the Stochastic Block Model (SBM) <ref type="bibr" target="#b10">[12]</ref>. In comparison to the classic SBM likelihood, the adapted loss is differentiable, naturally allows mixedmembership and weighted graph, and easily encodes node attributes. The community labels and embeddings are then passed to the task layer for task-specific use. Meanwhile, our design aims at the following requirements for online learning and scalability:</p><p>1) community label evaluation should take a single GPU-enabled feed-forward pass within the framework without the need for further iterations like the evaluation of SBM. 2) capable of accepting batches throughout the framework during the training, so that the model can learn at scale; Application 1. After introduction the framework, we apply it to leverage community structure for the large graph alignment problem in Section 3.5. Graph alignment can be roughly described as matching corresponding nodes in different graphs so that a given alignment cost function is minimized <ref type="bibr">[13]</ref>. We choose this task because graph alignment and community detection share similar principals at the high level: both closely rely on node similarities and topology similarities. We propose to take the convenience of the community embeddings learned by our framework and first align the detected communities before actually matching the nodes. We show in experiments that a simple neural alignment task layer on top of our framework can achieve better performance in comparison to a recent alignment model <ref type="bibr" target="#b12">[14]</ref><ref type="bibr" target="#b13">[15]</ref><ref type="bibr" target="#b14">[16]</ref>.</p><p>Application 2. We also apply the framework to the anomalous correlation detection problem in Section 3.6, which raises alert when a non-trivial subset of the data points have unusually high correlation, and we also want to pin-point this unusually correlated data subset <ref type="bibr" target="#b15">[17]</ref><ref type="bibr">[18]</ref><ref type="bibr" target="#b17">[19]</ref><ref type="bibr" target="#b18">[20]</ref>. The traditional way of detection is by Principal Component Analysis (PCA), finding the top (normalized) eigenvalue of the correlation matrix, raising alert if the eigenvalue exceeds a threshold, and finding anomalies by their similarities with the principal component. For large dataset, this approach is not just expensive, but also ineffective because the eigenvalue will be provably converge to the neutral value 0.5 as the data size grows <ref type="bibr" target="#b15">[17]</ref>. We treat the data points as nodes of a weighted graph with their Pearson's correlations as the edge weights, and apply our framework to directly identify "communities" in that graph, and then further check each of them if they have strong internal correlations with much less computation cost.</p><p>The main contribution of this paper is that we develop a novel and general community-based neural graph learning framework that can learn from large-scale data and make efficient evaluation, and we show through extensive experiments that it helps improve performance for two applications. For this paper, the online evaluation time is a focus; in an industrial pipeline, the evaluation has to be efficient, while training can be off-line and take more time. We also contributed a few techniques we found helpful for performance and scalability; for example, a unified implementation of convolution-attention based and the random-walk based neural graph models, the GAT+, the scaled-cosine similarity to prevent embeddings from being far apart in the Euclidean space, a design to allow joint community detection and task training, etc.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Related Works</head><p>Stochastic Block Model (SBM) is a well-studied probabilistic generative model for graph community detection with strong theoretical background <ref type="bibr" target="#b10">[12,</ref><ref type="bibr" target="#b19">21,</ref><ref type="bibr" target="#b20">22]</ref>. A further improvement of this model introduces mixed membership by adding a Dirichlet prior to the community labels <ref type="bibr" target="#b1">[2]</ref>. The other popular framework with strong theory is the spectral clustering <ref type="bibr" target="#b21">[23]</ref>. In comparison to SBM, the difficulty of the later is the costly computation of the eigenvectors and the requirement of availability of the entire adjacency matrix, and it becomes tricky for large graphs <ref type="bibr" target="#b22">[24]</ref>.</p><p>The probabilistic models are good for theoretical soundness and interpretability; however, they suffer from some crucial problems: 1) it is tricky to develop a complex probabilistic model than a neural network; for example, merely enabling mixed membership with a Dirichlet prior is enough to render the model intractable <ref type="bibr" target="#b1">[2]</ref>, and it has to either use the slow Gibbs Sampling, or an approximation like mean-field approximation that introduces counterintuitive independence assumptions; 2) slower inference, since iterations are typically still needed during evaluation; work-arounds like KNN is unable to work for complex data; 3) there lacks a mature general software for swift experiments and fast computation; it is often the case that a small gap in the probabilistic assumptions leads to big difference in the inference implementation.</p><p>Network alignment can be applied to identify similar users in different social networks <ref type="bibr" target="#b23">[25]</ref>  <ref type="bibr" target="#b24">[26]</ref>, study protein-protein interaction <ref type="bibr" target="#b25">[27]</ref><ref type="bibr" target="#b26">[28]</ref><ref type="bibr" target="#b27">[29]</ref> or chemical compound network <ref type="bibr" target="#b28">[30]</ref>, align knowledge bases <ref type="bibr" target="#b29">[31]</ref>, and some computer vision tasks <ref type="bibr" target="#b30">[32]</ref>, among others. There is recent interest for large graph alignment. FINAL-N in <ref type="bibr" target="#b13">[15]</ref> makes use of both topology and node attributes, however, it takes quadratic time and space complexity and can run out of memory on a 50K graph with 10 attributes. The other method UniAlign in <ref type="bibr" target="#b14">[16]</ref> completes in one iteration, and supports high-dimensional features, however, the topological adjacency information is lost in the conversion of the original network to a node-feature bipartite network which results in low accuracy, especially on a large network. The algorithm still needs quadratic time complexity although it is non-iterative <ref type="bibr">[33]</ref>. A more recent work <ref type="bibr" target="#b12">[14]</ref> applies an approximation technique by landmark node embeddings, where see the concept of "landmark embeddings" are analogous to the community embeddings but obtained by predefined rules. However, the choice of landmarks are tricky and the performance is susceptible to the choice; the paper's proposal of "random sample" does not work well for large graphs; we also find it has to dramatically increase the number of landmarks in order to maintain reasonable performance.</p><p>Anomaly detection is also an active research topic of long history. Many algorithms focus on detecting individual anomalies <ref type="bibr" target="#b31">[34]</ref>, some other researches aim at discovering anomaly groups <ref type="bibr">[35]</ref><ref type="bibr" target="#b33">[36]</ref><ref type="bibr" target="#b34">[37]</ref><ref type="bibr" target="#b35">[38]</ref><ref type="bibr" target="#b36">[39]</ref>. The individuals in each anomaly group need not appear to be anomalous by themselves, but collectively they become different from others. This paper focuses on discovering a group of strongly correlated data points with the assumption of weak background correlation, i.e. the majority of the normal data points should not correlate. The primary technique for CAD is PCAbased <ref type="bibr" target="#b17">[19,</ref><ref type="bibr" target="#b37">[40]</ref><ref type="bibr" target="#b38">[41]</ref><ref type="bibr" target="#b39">[42]</ref><ref type="bibr" target="#b40">[43]</ref>. Although CAD involves streaming data since the beginning, none of the above-mentioned works can directly apply to large-scale data due to the principal score degeneration <ref type="bibr" target="#b15">[17]</ref>. Meanwhile, as far as we know, the best time complexity reported from previous works is sub-cubic <ref type="bibr" target="#b17">[19,</ref><ref type="bibr" target="#b41">44,</ref><ref type="bibr">45]</ref>, still intensive for large-scale monitor and involving much unnecessary calculation that can be avoided.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Model &amp; Inference</head><p>Main notation in this paper are summarized in Table <ref type="table">1</ref>. By convention, small bold letters represent vectors and big bold letters represent matrices.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>General 𝐺 = (𝑉, 𝐸)</head><p>The graph, its node set and edge set.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A</head><p>The graph adjacency matrix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>X</head><p>The row-major node embedding matrix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>𝐗</head><p>The row major embeddings of a community.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>ℒ(𝐱) = 𝐖𝐱 + 𝐛</head><p>A neural linear layer, and mathematically an affine transformation, where 𝐖 and 𝐛 are trainable parameters; ℒ(𝐗) is applying the linear layer to every column of 𝐗.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>SBM Neural Framework K</head><p>The number of communities to detect.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>P</head><p>The stochastic block matrix in the SBM model. z</p><p>The membership vector in classic SBM.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Z</head><p>The relaxed mix-membership matrix in our neural framework.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>𝐂</head><p>Records the number of edges inside a community or between every two communities for classic SBM. Relaxed as community similarity in the neural framework.</p><p>Table <ref type="table">1</ref>. Notations</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.">Stochastic Block Model</head><p>We fist give a brief overview of the canonical Stochastic Block Model (SBM), which aims to divide the nodes of a graph 𝐺 = (𝑉, 𝐸) into 𝐾 clusters (pre-defined, and each cluster is also referred to as a block) by modeling generation of the graph edges 𝐸. Basically it uses links for weak supervision, constructing a likelihood for the observed links, and iteratively switches node membership to increase the likelihood, until node label convergence. Let |𝑉| be the size of the node set, and |𝐸| be the number of edges, then the model has the following parameters, Let 𝑒 , be the number of actual edges between community 𝑖 and community 𝑗. Note all 𝑛 , and 𝑐 , are functionss of 𝐳. We can in addition let 𝐂 = 𝑐 , , 𝐍 = (𝑛 , ) be two 𝑘 × 𝑘 matrices to store above-mentioned values, and let 𝐧 = (𝑛 ) be a vector of length 𝐾 . SBM infers the above parameters by maximizing the following likelihood ℓ of the observed edges 𝐸, ℓ = ℙ(𝐸|𝐳, 𝐏) = 𝐏(𝑖, 𝑗) , (1 -𝐏(𝑖, 𝑗)) , , , ∈ 𝐳( ), 𝐳( )</p><formula xml:id="formula_0">(1)</formula><p>In simple words, the likelihood (1) represents a generative process for edges: for every pair of nodes 𝑣 , 𝑣 , if 𝑣 is from the 𝑖th community, and 𝑣 is from the 𝑗th community, then there is a probability 𝐏(𝑖, 𝑗) that 𝑣 , 𝑣 have an edge between them. The maximum likelihood for 𝐏(𝑖, 𝑗) can then be solved as 𝐏(𝑖, 𝑗) = , , , and the optimization for 𝐳 goes as the following:</p><p>We have several problems for equation ( <ref type="formula">1</ref>) and Algorithm 1. First, ( <ref type="formula">1</ref>) is non-differentiable and optimizing it involves integer programming; thus, it is not straightforward to integrate (1) with a neural network. Second, they also do not consider node attributes; although there are recent development like mixedmembership SBM <ref type="bibr" target="#b43">[46,</ref><ref type="bibr">47]</ref>, the probabilistic inference inevitably grows complicated with added parameters. Third, like many other probabilistic models, a trained SBM may still need inference that takes iterations to adequately evaluate new nodes in the graph given the limited information encoded by 𝐏.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.">Neural SBM Community Detection</head><p>We still consider a graph 𝐺 = (𝑉, 𝐸), and now also with the node attributes. For convenience, we assume the attributes of a node can be numerically represented by a 𝑑 dimensional feature vector. Let these feature vectors be collectively denoted by a |𝑉| × 𝑑 matrix 𝐗<ref type="foot" target="#foot_0">1</ref> . We start by fixing a fundamental requirement in our design. As mentioned in the introduction, we want a single feed-forward GPU-enabled pass to infer community labels during evaluation. To achieve this, the categorical labels 𝐳 in the canonical SBM is relaxed as soft assignments (a.k.a. soft labels, or mixed membership) 𝐙, a |𝑉| × 𝐾 matrix, where 𝐙(𝑣, 𝑖) is the probaiblity of node 𝑣 being a member of the 𝑖th community. Soft assignment is a natural in neural networks with the softmax layer <ref type="bibr" target="#b45">[48]</ref>; also it avoid the expensive integer programming. Then we want to design a neural network 𝑓 such that,</p><formula xml:id="formula_1">𝐙 = 𝑓(𝑉|𝐸, 𝐗) (2)</formula><p>That is, the neural network 𝑓 is a function that assigns a mixed membership to each node given the node features 𝐗 and the edges 𝐸. For example, let 𝐀 be the adjacency matrix (or any other appropriate matrix representing 𝐸, e.g. graph Laplacian), and 𝐛 be a learnable bias, a concrete 𝑓 can be as simple as <ref type="bibr" target="#b2">(3)</ref>.</p><formula xml:id="formula_2">𝐙 = softmax(𝐀𝐗 + 𝐛)<label>(3)</label></formula><p>As another essential component, we need a loss function. If we happen to have some ground-truth community labels, then a loss like the negative log-likelihood can be constructed based on 𝐙 like any neural network. We denote such loss as the loss . We should address the case when we only have edges for weak supervision without ground-truth community labels. We turn the likelihood in equation ( <ref type="formula">1</ref>) as the loss function. By first applying a logarithm on ℓ, and then applying the following approximation (4) for the logarithmic terms,</p><formula xml:id="formula_3">ln(1 -𝑥) = -𝑥 ln 𝑥 + 𝑥 + 𝑟, ∀|𝑥| &lt; 1 (4)</formula><p>where 𝑟 is a infinitesimal remainder such that lim → 𝑟 = 0; taking logarithm of (1) and then replace the logarithmic terms by (4), with several careful mathematical transformations, we will arrive at an approximate likelihood written in the matrix format as in <ref type="bibr" target="#b3">(5)</ref> where ∘ denotes element-wise product, and 𝟏 is a vector with all components being 1. See the foot-note sketch proof..</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>ℓ ≈ 𝟏 (𝐂 ∘ ln 𝐂)𝟏 -(ln 𝟏 𝐙)𝐂𝟏 -𝟏 𝐂(ln 𝐙 𝟏)</head><p>(5)</p><p>We note that (5) holds for the majority of real-life networks, because real-life networks and their communities tend to obey the densification laws <ref type="bibr" target="#b46">[49]</ref>. We define loss = -ℓ as the SBM loss. The SMB loss favors stronger links inside a community, but weaker links among communities, and hence encourages diagonally dense 𝑃 as showing in Figure <ref type="figure" target="#fig_1">2</ref>. A rigorous proof is not hard and hence omitted due to limited space.</p><p>(a) the case when every node is one of the 𝐾 = 6 communities; the right plot is the colormap of its 6 × 6 stochastic block matrix 𝐏.</p><p>(b) the case when only some nodes belong to the 𝐾 = 2 communities; the right plot is the colormap of its 3 × 3 stochastic block matrix 𝐏 where a "pseudo-community" is added to hold other nodes not in the two communities. It is possible not every node belongs to a community with stronger internal connections. The application in Section 2.6 is such a case, where there are one or more anomaly clusters, but remaining non-anomalies lacks strong links. Our solution is to add a pseudo-community to hold nodes not clustered into the 𝐾 communities, as illustrated in Figure <ref type="figure" target="#fig_1">2 (b)</ref>. Let 𝐙 be a |𝑉| × (𝐾 + 1) matrix so that every node has an additional option that it is not in any community; the stochastic block matrix 𝐏 also gets one additional dimension. However, we should not encourage nodes to fall in this pseudo-community, thus the pseudo-community is not considered in 𝐂 and loss . We are not there yet. Although 𝐙 is now relaxed to allow decimals, 𝐂 is not, so (5) is still not differentiable. By the definition in Section 3.1, 𝐂 holds the counts of edges between every two communities in its off-diagonal cells, and the number of intra-community edges along its diagonal. We notice the fact that the counts in 𝐂(𝑖, 𝑗) is larger if community 𝑖, 𝑗 have more connections, which bears strong resemblance to "community similarity". Therefore, we generalize the matrix 𝐂 as the community similarity matrix. From this generalized perspective, a 𝐂 can be</p><formula xml:id="formula_4">𝐂 = 𝐙 T (𝐗𝐗 + 𝐀𝐀 )𝐙 (6)</formula><p>Moreover, as we can see from equation ( <ref type="formula">6</ref>), thinking of 𝐂 as similarities naturally allows the edges being weighted, or even associated with edge features. Based on our experiments, we find it essential to consider two additional loss terms. Forthgoing, we denote a linear layer (mathematically an affine function) as ℒ(𝐱) = 𝐱𝐖 + 𝐛 where 𝐖 is the trainable feature weights and 𝐛 is the trainable bias. </p><p>where 𝑙 is a function turning a prediction score into a loss, e.g. negative log-likelihood in the case of unweighted graph.</p><formula xml:id="formula_6">𝑙(𝜎) = -log(𝜎) (𝑣 , 𝑣 ) ∈ 𝐸 -log(1 -𝜎) (𝑣 , 𝑣 ) ∉ 𝐸<label>(8)</label></formula><p>For the metric 𝑠, in particualr, we find a simple but effective similarity metric, which is rarely seen in other researches to our best knowledge. We find it work better than all other similarity functions mentioned above in our tweaking experiments, 𝑠(𝐱 , 𝐱 ) = 𝛼 × cos(𝐱 , 𝐱 )</p><p>Here 𝛼 is a sufficiently large constant, and by parameter tuning we find 𝛼 = 16 generally works well. We call (9) as the scaled cosine similarity. We can view it as being enforcing similarity normalization to prevent large separation in Euclidean space if using dot product, but allows sufficient gradients to flow back to optimize the parameters. 2) let 𝐙(𝑣) be the mixed membership of a node 𝑣, then the entropy loss (regularization) like (10) will encourage the major probability mass being assigned to only one of the labels, and penalties a diverse distribution.</p><formula xml:id="formula_8">loss = entropy 𝐙(𝑣) ∈ (<label>10</label></formula><formula xml:id="formula_9">)</formula><p>Although being a regularization, we find the entropy loss essential to our purpose. The SBM loss optimizes for the macro sparsity among different communities, while the entropy loss optimizes for the micro sparsity between nodes and communities; together they ensures discovery of reasonable community boundaries.</p><p>Overall, we sum all four losses discussed above, where "loss " is optional. We call this the joint SBM loss. We call the neural module defined in this section as the Neural Stochastic Block Model (NSBM).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>loss = loss</head><p>+ loss + loss + loss (11)</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.">Combining with Neural Graph Embedders</head><p>The previous section has setup a relatively complete SBM neural network. This network can be placed on top of a neural graph embedder which generates the embeddings 𝐗 to plugin equation <ref type="bibr" target="#b2">(3)</ref>. Although there is also possibility to plugin edge embeddings into (6) as mentioned earlier, for this paper we focus on the node embeddings. The architecture is shown in Figure <ref type="figure" target="#fig_3">3</ref>. 1) The node attributes are encoded by attribute encoders. For example, the text attributes can be encoded by the pretrained-BERT <ref type="bibr" target="#b47">[50]</ref>, the categorial or numerical data can be encoded by a feed-forward network. The outputs of different encoders for one node as well as an additional trainable embedding vector are concatenated as a single raw embedding vector. 2) Then we input the raw embeddings into a neural graph embedder, for example, the Graph Convolutional Network <ref type="bibr" target="#b48">[51]</ref>, the Graph Attention Network <ref type="bibr" target="#b49">[52]</ref>, or node2vec <ref type="bibr" target="#b7">[9]</ref>. The output are node embeddings. 3) On one hand, the node embeddings are sent to a community detection layer (e.g. equation ( <ref type="formula" target="#formula_2">3</ref>)) to generate community labels, which are then optimized through the joint SBM loss as defined in <ref type="bibr" target="#b9">(11)</ref>. On the other hand, the node embeddings can be passed to a task module to accomplish some specific tasks, whose results are optimized through the task loss. In this paper, we later study two tasks, the network alignment problem, and the anomalous correlation detection problem. 4) In addition, the results of community detection can feed the task module, either as additional features, or to potentially divide the hypothesis space of the task for the purpose of "divide-andconquer" as discussed in introduction.</p><p>Let 𝐗 also denote the set of all node embeddings in the graph, and let 𝐗 , … , 𝐗 denote community node embeddings. Since the community label is soft, then intuitively 𝐗 = diag 𝐙(: , 𝑘) 𝐗.</p><p>In practice, we clip 𝐙 by a thershold 𝜃 (𝐙) (e.g. 0.1). We can optionally re-normalize the clipped 𝐙, but in practice we find it not effective.</p><p>Often there is need in the task module for a community embedding 𝐱 , … , 𝐱 for each community, like our applications in later Section 3.5 and Section 3.6. Let 𝑓 denote the function that assembles node embeddings in a community as a single community embedding,</p><formula xml:id="formula_10">𝐱 = 𝑓 𝐗 , 𝑖 = 1, … , 𝐾<label>(12)</label></formula><p>For example, if the output embeddings of the neural graph embedder have encoded necessary local graph topology and attributes, then letting 𝑓 be a weighted sum given all embeddings in 𝐗 then we find it generally sufficient to apply the following self-attention weights, where ℒ is a linear layer,</p><formula xml:id="formula_11">self_atten 𝐗 = softmax 𝐰 tanh ℒ 𝐗 𝐱 = 𝐗 atten 𝐗 , 𝑖 = 1, … , 𝐾<label>(13)</label></formula><p>This design will be directly used for Section 3.5 the graph alignment task. For Section 3.6 anomalous correlation detection, a variant <ref type="bibr" target="#b17">(19)</ref> without the softmax is used.</p><p>How this design works for joint training. Modern tools Tensorflow or PyTorch support the clipping function. If the community node embeddings or the community embeddings are used in the task module, information will flow back from the task loss to the community detection parameters, and hence we achieved joint training of the community detection and the task.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4.">Adaptation for Large Data</head><p>The design of equation ( <ref type="formula" target="#formula_2">3</ref>) and ( <ref type="formula">6</ref>) as well as some neural graph embedders requires availability of adjacency matrix and all node embeddings, preventing our framework in Figure <ref type="figure" target="#fig_3">3</ref> to train on a large graph. The current publicly available implementations of neural graph models like the graph convolutional networks (GCN) <ref type="bibr" target="#b48">[51]</ref>, or the graph attention networks (GATs) <ref type="bibr" target="#b49">[52]</ref>, they both use sparse matrices to store the adjacency-related matrices. However, at this moment, sparse matrix operations are still not well-supported by major deeplearning tools like Tensorflow or PyTorch; the sparse matrix will be blown into a full matrix when multiplied by a dense matrix, a very possible situation during backpropagation, preventing its application to a complex model and large data. In this section, we discuss our approach to adapt our framework to large data.</p><p>First, we propose that, many current popular neural graph embedders can be "almost" equivalently implemented in the same way as sequence embedding, and hence no need for sparse matrices. This is straightforwardly true for random-walk based methods like deep-walk or node2vec. For GCN, its convolutional layer derived by Chebyshev polynomial approximation can be viewed as applying pre-defined and fixed "attention" weights on neighborhood nodes; and two stacked convolutional layers can be achieved by running two epochs with one convolutional layer; for GATs, it is the same but now the attention weights are learnable self-attentions. Therefore, we propose that such neural graph embedders in practice can be implemented using the same architecture as illustrated in Figure <ref type="figure">4</ref>.</p><p>1) It requires pre-computing node representatives repr(𝑣) for each 𝑣 ∈ 𝑉, typically including 𝑣 itself, plus its neighborhood nodes, or nodes along a sample path. The nodes in repr(𝑣) are sorted by a criterion. We use the following sorting key for nodes from neighborhood, which always puts 𝑣 as the first node in the sequence.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>|deg(𝑢) -deg(𝑣)|, 𝑢 ∈ repr(𝑣)</head><p>For nodes from a sample path, we could just use the node order in the sample path.</p><p>2) The raw embeddings of the nodes in repr(𝑣) are passed through a sequecne embedder, like the Transformer, which further transforms the raw node embeddings, as well as encoding the sequence order. The output embeddings of the sequence embedder are then combined as a single node embedding vector by a sequence-to-vector layer, e.g. average pooling, max pooling or self-attention. Optionally, we may train the sequence embedder with a negative-sampling based language-modeling task, e.g. the skip-gram in node2vec.</p><p>Figure <ref type="figure">4</ref> The general architecture for seq-based neural graph embedder, consisting of a sequence embedder, a sequence-to-vector layer, and optionally a language-modeling module by negative sampling. Here we choose <ref type="bibr" target="#b12">(14)</ref> as the representative node sorting key; other sorting keys like Jaccard index are also applicable.</p><p>Then, since the mixture of node embeddings have happened in the neural graph embedder, it becomes unnecessary to place adjacency information in (3), therefore we reformulate it as <ref type="bibr" target="#b13">(15)</ref>, where ℒ is a linear layer.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>𝐙 = softmax ℒ(𝐗) (15)</head><p>Last, we deal with <ref type="bibr" target="#b4">(6)</ref>, by proposing the following scheme to construct training batches compatible with the sequence-based neural network training in Figure <ref type="figure">4</ref>. 1) We maintain a list recording each node's major community assignment, i.e. the community of the highest membership probability. We initialize this list by a heuristic algorithm, starting with a node with high degree, and then keeps "absorbing" closely linked adjacent nodes into the same community, until no such node can be found from the neighbors. The detailed algorithm is omitted for space. Then we update the list at the end of every batch based on the output of ( <ref type="formula" target="#formula_12">14</ref>). 2) Then construct training batches according to Algorithm 3. We first randomly choose from the communities, and then random sample a batch without replacement from the chosen communities. For each batch, the computation of ( <ref type="formula">6</ref>) and the joint SBM loss in <ref type="bibr" target="#b9">(11)</ref> are now constrained to that batch. where 𝑑 is some distance measure, like the Frobenius norm, 𝐀 , 𝐀 are the adjacency matrices of the two graphs, and 𝐏 is a |𝑉 | × |𝑉 | selection matrix (every row has one element being 1 and all others being 0, no two 1s are in the same row or same column). The meaning of ( <ref type="formula">16</ref>) is treating each row of the adjacency matrix as the feature of a node, and 𝐏 is exactly an operator that chooses one node from 𝐺 for each node in 𝐺 ; thus 𝐏 represents the alignment, and is our optimization target. The 𝐏 can be relaxed to allow every row being a discrete distribution to avoid integer progamming, similar to what we did for the community labels in Section 2.2. To handle node embeddings in <ref type="bibr" target="#b14">(16)</ref>, we have to place corresponding embedding vectors in non-zero cells of 𝐀 , 𝐀 (so they become 3-D tensors).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.5.">Graph Alignment</head><p>The above formulation cannot handle large graphs due to involvement of adjacency information of the whole graph for globally optimized alignment. We consider that, if the graph topology could be well captured in the node embeddings due to other modules of our framework, i.e. the neural graph embedder, the SBM loss, the link-prediction loss, etc., then it could be less necessary for a global optimization. Therefore, we reduce the graph alignment task to a much simpler task -embedding similarity search. For fair comparison experiment, we perform embedding similarity search by the same k-d tree algorithm given the node embeddings 𝐗 , 𝐗 of 𝐺 and 𝐺 <ref type="bibr" target="#b12">[14]</ref>. Using a more mature package like Faiss <ref type="bibr" target="#b50">[53]</ref> is another option.</p><p>However, there is a hidden problem -𝐗 , 𝐗 may not be comparable. The two graphs are embedded separately, and no parameters in our framework offer to encode their comparability. We thus introduce the alignment loss with entropy regularization, where ℒ and ℒ are two linear layers.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>los𝑠</head><p>= 𝑑 ℒ (𝐗 ), 𝐏ℒ (𝐗 ) + entropy(𝐏)</p><p>The alignment 𝐏 can now be further modeled as the result of a neural alignment layer by (18), which shares the same linear layers in <ref type="bibr" target="#b15">(17)</ref>, and again the 𝑠 is a similarity measure like in <ref type="bibr" target="#b5">(7)</ref>,</p><formula xml:id="formula_14">𝐏 = softmax 𝑠 ℒ (𝐗 ), ℒ (𝐗 ) (18)</formula><p>We note it is essential to have the linear layers ℒ and ℒ ; their job is exactly to transform embeddings in 𝐗 and 𝐗 to a comparable space. Now the training objective is reduced to learn an alignment projection 𝐏 that maps embeddings from two graphs to a comparable space by optimizing <ref type="bibr" target="#b15">(17)</ref>, it is not necessary to train on all embeddings together, i.e. we can train by batches. We still follow Algorithm 3 to construct batches, but with the following extra operations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>1) Compute community embeddings by (13).</head><p>2) Compute community similarity between 𝐺 and 𝐺 by applying the loss ( <ref type="formula" target="#formula_13">17</ref>) on community embeddings. 3) Compute node embedding alignment; for 𝑐 communities sampled from 𝐺 , sample the same batch size from their top-𝑐 matched communities in 𝐺 , and then applying the loss ( <ref type="formula" target="#formula_13">17</ref>) again on node embeddings.</p><p>There is a caveat that we also train the alignment projection 𝐏 on community embeddings; we construct batches of community embeddings and put them at the end of each epoch, so that 𝐏 also learn to project community embeddings in order to perform above step 2). The community detection module is inactive for these special batches. After all training, we pass embeddings of ℒ (𝐗 ) and 𝐏ℒ (𝐗 ) to the embedding similarity search algorithm.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.6.">Correlated Anomaly Detection</head><p>a 𝑛 × 𝑑 feature matrix 𝐗, where 𝑛 is the number of data points and 𝑑 is the dimension of data features, then the correlated anomaly detection is to find 𝐾 subsets of of 𝐗, such that each subset has a non-trivial number of features, and the correlation within each such subset is high. Each such subset is called a correlated anomaly set. Until now, this task is mostly solved with variants of Principal Component Analysis (PCA) across the 𝑛 features. Let's also denote the 𝐾 feature subsets as 𝐗 for convenience, then this task has two parts, The approach taken here is non-conventional. We aim to solve this problem through our NSBM framework in Figure <ref type="figure" target="#fig_3">3</ref>. The idea is to treat the correlation matrix as an adjacency matrix of a weighted graph. Note again the design in ( <ref type="formula">6</ref>) naturally allows weighted adjacency matrix.</p><p>For community detection, we let the number of communities be the same as the number of anomaly sets, i.e. 𝐾, so that each community corresponds to one anomaly set. We add one extra pseudo-community for holding non-anomalies like in Figure <ref type="figure" target="#fig_1">2 (b)</ref>. The "edge" between two features 𝐱 , 𝐱 is represented by the clipped correlation, where 𝜃 ( ) is the clipping threshold. We set an emperically rule to find this threshold, e.g. 1.5 times of the average correlation of historical data. corr′(𝐱 , 𝐱 ) = 0 corr(𝐱 , 𝐱 ) &lt; 𝜃 ( ) corr(𝐱 , 𝐱 ) otherwise</p><p>For the task, we use (13) without softmax as unnormalized attention weights; here 𝐗 is 𝐙-augmentd as in (13) 𝛂 = 𝐰 tanh 𝐖 𝐗 + 𝐛 <ref type="bibr" target="#b17">(19)</ref> and then the following is the community embedding for the 𝑘th community, 𝐱 = 𝐗 𝑘 𝛂 <ref type="bibr" target="#b18">(20)</ref> Let var(⋅) denote the variance, and we then apply the following specialized loss, which we refer to as the PCA loss, on top of each community embedding 𝐱 , 𝑘 = 1, … , 𝐾, based on a theorem that PAC is equivalent to such optimization <ref type="bibr" target="#b51">[54]</ref>,</p><formula xml:id="formula_15">loss ( ) = var(𝐱 ) + 50(𝛂 𝛂 -1)<label>(21)</label></formula><p>By minimizing this loss, the following should approximate the principal score for the 𝑖th community,</p><formula xml:id="formula_16">𝜌 𝐗 ≈ 𝛂 corr′ 𝐗 𝛂 size 𝐗<label>(22)</label></formula><p>For evaluation, given a feature matrix, compute its clipped correlation matrix and treat it as if it was a weighted graph; the features go through the graph embedder and get into "node" embeddings, and then the community detection module labels each feature with categorical labels 1, … , 𝐾 + 1, where 1, … , 𝐾 means a feature likely belongs to a correlated anomaly set, and label 𝐾 + 1 means the feature is not an anomaly. For each of the 𝐾 anomaly set, compute its approximate principal score 𝜌 by <ref type="bibr" target="#b20">(22)</ref> and raise an alarm if 𝜌 is higher than an alarm threshold 𝜃 (</p><p>) (e.g. 0.7).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Experiments</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.">Community Detection</head><p>We first show our framework's capability of discovering community structures before moving into specific applications. We experiment on the following datasets with ground-truth labels. Note for all these datasets, a node may belong to multiple ground-truth communities (i.e. the communities can overlap).  1) The Youtube dataset contains a social network of users, where each community is a ground-truth group on Youtube <ref type="bibr" target="#b52">[55]</ref>. Only node adjacency is available for this dataset. We consider 2) The Amazon Co-Purchase dataset [56] provides product categories as the ground-truth labels. It is a graph such that, if a product is "also-bought" with another product at least three times, then there is an undirected edge between them. Each product is associated with the product title.</p><p>3) The Wikipedia page-link dataset is a web graph of Wikipedia hyperlinks <ref type="bibr" target="#b54">[57]</ref>. In additional to the graph topology, every node is associated with the title of the wiki page. The page category is the ground-truth community label.</p><p>We propose assemble a Transformer on top of the graph attention network GAT as designed in Figure <ref type="figure">4</ref>, and we call this as GAT+. We equip our framework in Figure <ref type="figure" target="#fig_3">3</ref> with GAT+ and node2vec, referred to as the NSBM-GAT+ and NSBM-n2v. We compare with the GAT+ and n2v without the SBM loss to show the effectiveness that loss function. A 100-dimensional vector is used to encode the topology information for a node. For the Youtube dataset, it is just this topology embedding, and no attribute. For the Amazon and Wikipedia dataset we compare the case with, the attribute encoder is summarized in equation ( <ref type="formula" target="#formula_17">23</ref>); we apply the pre-trained BERT (base) plus a linear layer to turn a title into a 100-d text embedding, which is concatenated with the topology embedding to form a 200-dimensional node embedding, and then they go through one additional linear layer.</p><formula xml:id="formula_17">attr_emb(𝑡𝑖𝑡𝑙𝑒) = ℒ ℒ BERT(𝑡𝑖𝑡𝑙𝑒) , 𝐱<label>(23)</label></formula><p>For unsupervised learning, we compare with n2v and GAT+ with the link-prediction loss (but still feed the same output from the attribute encoders). We take the unweighted average of precision and F1 score (a.k.a. marco-F1) across the communities. In case when one node belongs to multiple (say k) communities in the ground-truth, the prediction is good for the community if that community is ranked top-k in the model's soft prediction label. The experiment results are shown in Table <ref type="table">3</ref>. This shows the effectiveness of the joint SBM loss by a large margin. Also we notice adding text data dramatically improves the especially the precision and hence the F1 score.</p><p>We also test our framework's ability when trained with partial labels, shown in Figure <ref type="figure">5</ref>; we in addition compare with a neural classification model LINE. We allow the models to see a random sample of ground-truth labels during training. The results indicate the joint SBM loss provides helpful information especially when the labels and text are less seen. When more labels or the texts become available, they start to dominate the training, and the metric numbers converge.  <ref type="table">3</ref> Compare the joint SBM loss in <ref type="bibr" target="#b9">(11)</ref> with the link-prediction loss when trained without labels. Due to varying community sizes, we take unweighted average of metrics across the communities; "a. pre" is the average precision, and "ma. F1" is the macro-F1. For both n2v and GAT+, the SBM loss optimize the model for a clear better understanding of graph topology in terms of community detection.</p><p>Figure <ref type="figure">5</ref> Performance comparison between our framework (SBM-n2v, SBM-GAT+) and GAT+, n2v and LINE when some labels are available. The advantage of applying the joint SBM loss is obvious when less labels are seen for all datasets tested.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.">Network Alignment</head><p>We apply our NSBM framework to the network alignment problem as discussed in Section 3.5. We compare with several recent models UniAlign <ref type="bibr" target="#b14">[16]</ref>, FINAL <ref type="bibr" target="#b13">[15]</ref>, CAlign <ref type="bibr" target="#b55">[58]</ref> and REGAL <ref type="bibr" target="#b12">[14]</ref>. We experiment with four datasets with different characteristics summarized in Table <ref type="table">4</ref> to test our framework's generalized performance. The metric is the alignment accuracythe total number of correct alignment predictions over the size of the ground truth. For UniAlign and REGAL, we supply count vectors for text tokens (removing stop words and very rare words). The neural models can directly feed on the original text.</p><p>We first follow previous researches to test how the above methods perform with different levels of pre-alignment. For UniAlign and REGAL, we merge the features of two pre-aligned nodes. FINAL has a build-in support for pre-alignment. For CAlign, we fix pre-alignment through the iterations. For NSBM, we let the alignment module see the alignment labels and train by negative-sampling classification. Results are shown in the top row of Figure <ref type="figure" target="#fig_7">6</ref>.</p><p>We then check if each method is capable of effective and efficient alignment for new nodes coming into the graph. We hide 50% of the nodes with ground-truth alignment during training, and divide them into 5 batches for evaluation, and measure the average performance; this is simulating online and zero-shot evaluation. The measurement of evaluation time includes node attribute encoding. For UniAlign, we treat the other 50% aligned during the training as pre-alignment, and then make the evaluation. For node2vec, we sample from adjacent nodes' pre-sampled path nodes, which saves time and prevents the time measure being dominated by path sampling. For NSBM, we limit PyTorch to use only one CPU for fairness. Results are shown in the bottom row of Figure <ref type="figure" target="#fig_7">6</ref>. The LinkedIn network comes with the "also viewed" data to create a "co-viewed" network, and every person has skills, education background and career history. The ArnetMiner network contains 30,045 nodes; the LinkedIn network contains 34,221 nodes. There are 4,269 nodes from the two graph that can be identified as the same person due to name match and large keyword overlap. We break affiliation/location information into categorical node attributes, and use the research key words and the LinkedIn interests as the text data. We see from the results that our approach is superior to other methods. UniAlign and FINAL do not properly handle this dataset. Due to the sparsity of the alignable nodes in the dataset, REGAL based methods are impaired by the randomly sampled landmark nodes, which do not necessarily provide related information for the alignable nodes.</p><p>For NSBM, it directly and fully encodes node attributes and graph topology for superior performance. The zero-shot evaluation has similar performance results. NSBM's evaluation time cost is reasonable, two to three times higher than REGAL. We measure the Levenshetein distance and longest common substring between each node and its neighbors, normalize both metrics by the average length of two user names, discretize both into three categories and then make counts as the categorical node features. This is again a heterogenous network alignment with sparse overlap. For NSBM, it achieves reasonable competitive results considering both accuracy and time.  This dataset is to test the models learning capability for large graph without any extra attributes. This dataset is too large for FINAL, and for UniAlign we need fast randomized SVD, but the performance is inadequate. For CAlign, its evaluation takes long time. For REGAL, the impact of such a large graph is clear; it is underperforming in comparison to other dates sets. We also checked using ten times of the landmark nodes, which can get the performance above 0.4, but in that case the evaluation time cost is near half hour and the number of landmark nodes is not growing logarithmically with the graph size. For NSBM, it has a distinctive upper-hand performance for this dataset, confirming our capability for a large graph. The GAT+ and n2v versions perform almost the same in this dataset. We find GAT+ learns an attention that favors large-degree nodes on this dataset, while node2vec favors large-degree nodes by design. This makes sense since a connection to a high-degree node in the co-author network is intuitively more informative. For efficiency, the evaluation time significantly drops even below REGAL due to no text encoding layers.</p><p>Overall, the experiments show our NSBM framework generally achieves remarkable performance for the graph alignment task in terms of comparison with recent methods tested above. It is especially suitable when rich attributes are available. It is efficient to align new nodes while still maintaining strong accuracy. NSBM-GAT+ generally works better than NSBM-n2v when node attributes are very informative; otherwise it seems to depend on whether high-degree nodes in the graph are more important.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3.">Anomalous Correlation Detection</head><p>We only consider NSBM-GAT+ in this section due to the nature of our problem -we push a sliding time window through the time series data, and monitor if the data in a window has strong unusual correlation. For NSBM, this is equivalent to test a new graph each time, and node2vec sampling is costly for this purpose. GAT+ is more efficient as it only identifies adjacent nodes based on the clipped correlation matrix. We evaluate if NSBM-GAT+ is more capable of detecting correlations in comparison to PCA. We use two data sets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>1) a large 4-month ecommerce web server log dataset of 315M</head><p>Apache log entries and visits from 2M distinct IPs. The server is known to be constantly harassed by web crawlers; in this case, a node is an IP, and the edge is its correlation with other IPs in their requests for different server resources. A feature vector for this data consists of how many times an IP visits each sever resource in the given time window. 2) Daily stock price history of about 7200 U.S. stocks; in this case, a node is a stock, and the edge is a stock's price-change correlation with other stocks. A feature vector for this data consists of the daily price change (in percentage) in a given time window.</p><p>We use a sliding window on both datasets to mimic onlinemonitoring. There are about 20,000 windows for the server log data with window size from about 500 to 4000. There are 4,000 windows for the stock data with window size gradually growing from 400 to above 7000. In a time window, if there is a nontrivial subset of nodes with principal score (normalized top eigenvalue of correlation matrix) exceeding 0.7, we say that windows has anomalous correlation. Both sets satisfy the assumption of weak background correlation. Even the stocks from the same business section on average only strongly correlate in 1.5% of the time.</p><p>Ground-truth simulation. We need simulated anomalies due to lack of ground-truth. For the server log data, several were used to simulate realistic anomalous visits on the server. For the stock data, hundreds of good-quality sets of are manually identified, which are usually stocks from related business sections; these true anomalies are perturbated and replicated for simulation.</p><p>Qualitative evaluation. We first apply a synthetic-data trained NSBM to the real data and visualize the results to qualitatively compare with the PCA approach. To construct the training set, we first sample anomaly sets from the simulated data and find their mean and covariance matrix, and then generate the synthetic anomalies from normal distributes with these mean and covariance. We then make synthetic feature matrices from a normal distribution with the true-data background mean and variance, and randomly replace some of the feature vectors by the synthetic anomalies.  Quantitative evaluation. For the following, we denote the synthetic-data trained NSBM-GAT+ as NSBM 1 . We also train with two other schemes, 1) Train with 50% of the original data, denoted by NSBM 2 . 2) Randomly injects 50% of the synthetic anomalies into 50% of the time windows for semi-supervised training; the community detection module has a label loss (negative log-likelihood) that penalizes the case when these anomalies are clustered into the pseudo-community; this is denoted by NSBM 2 .</p><p>To be fair, we remove anomalies identified from the real data in the previous experiment, and then randomly inject the remaining 50% of simulated anomalies not seen during training to 10% of the time windows as ground-truth. In this case, if an alarm is raised for a time window without the simulated anomalies, then it can be treated as a false alarm. We manipulate the anomalies to simulate three scenarios: 1) "large", the simulated anomalies will take 20% to 50% of data in the window; 2) "small", the simulated anomalies will take 5% to 20% of data in the window; 3) "hidden", 20~200 anomalies with low feature quantity are injected into a window of size larger than 2000. The last case is when all PCA-based approach is destined to fail. We set 𝐾 = 2; an anomaly is detected as long as it is in the 𝐾 clusters. Results are shown in Table <ref type="table">5</ref>. For convenience, we use NSBM 1 , NSBM 2 , NSBM 3 to represent NSBM-GAT+ being trained in the three ways mentioned earlier. Table <ref type="table">5</ref> Anomalous correlation experiment results. * "rec" includes the % of raised alerts of those injected with simulated anomalies, and the % of detected simulated anomalies in these alerted time windows; ** "acu" is the % of detected anomalies are from the simulated anomalies; *** "ex .a" is # alerted time windows without injected anomalies, an indicator of how likely the model is to raise a false alarm.</p><p>We see the PCA-based approach only works well for the "large" scenario, while the NSBM approach has strong performance for all scenarios, a result consistent with our qualitative comparison in Figure <ref type="figure" target="#fig_10">7</ref>. Moreover, in terms of computation time, the average PCA runtime is 26s for the server log data and 37s for the stock data, while NSBM on average takes 5s for both datasets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Conclusion</head><p>This paper proposes a general community-based large-graph learning neural framework with a loss function adapted from the stochastic block model, a unified graph encoder implementation, a mechanism to plugin an jointly train with a task module, and other careful designs for scalable training. We showed how the framework can be effectively applied in the graph alignment problem and the anomalous correlation detection problem, and we achieve competitive to better performance with significant save of evaluation time. The framework is a very general and we may apply it to other graph learning tasks in the future.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>(a). a subgraph of the Amazon dataset of 10 noisy communities. Zheng Chen College of Computing &amp; Informatics, Drexel University (b). embeddings trained by only the link prediction loss.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2</head><label>2</label><figDesc>Figure 2 Illustration of two community detection cases of our concern.</figDesc><graphic coords="4,50.88,420.00,126.24,95.04" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>1) the link prediction loss -given two nodes 𝑣 , 𝑣 and denote their embeddings by 𝐱 = 𝐗(𝑣 ), 𝐱 = 𝐗(𝑣 ), the link prediction can be made by 𝜎 𝑠 ℒ (𝐱 ), ℒ (𝐱 ) , where ℒ , ℒ are linear layers, and 𝜎 is an acativation function like the sigmoid function, 𝑠 is a similarity metric like dot product, cosine similarity, a differentiable norm, or any other appropriate function. ℒ , ℒ can be the same if the graph is undirected. Then a general form of the link prediction loss is written as loss = 𝑙 𝜎 𝑠 ℒ (𝐱 ), ℒ (𝐱 ) , ∈ 𝐗( ), 𝐗( )</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3</head><label>3</label><figDesc>Figure 3 The proposed community-based graph learning framework.</figDesc><graphic coords="5,92.64,120.96,176.16,125.76" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>For</head><label></label><figDesc>two graphs 𝐺 = (𝑉 , 𝐸 ), 𝐺 = (𝑉 , 𝐸 ), our alignment task is to match every node in 𝐺 with one node in 𝐺 . If we allow different graph sizes, and without loss of generality let |𝑉 | ≤ |𝑉 | , then the alignment can be formulated as the following optimization, min 𝐏 𝑑(𝐀 , 𝐏𝐀 𝐏 ) (16)</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>1 ) 2 )</head><label>12</label><figDesc>Find the feature subsets 𝐗 , 𝐾 = 1, … , 𝐾 with strong internal correlations. Raise alarm when the principal score of a feature subset 𝐗 exceeds a certain threshold. The score is defined as 𝜌 𝐗 = 𝐗 𝐗 (normalized top eigenvalue of the data correlation matrix) and 𝜌 𝐗 ∈ (0, 1]. A high principal score is an indicator there is strong correlation within 𝐗 .</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>1 )</head><label>1</label><figDesc>summary of four alignment data sets. ArnetMiner-LinkedIn. The ArnetMiner coauthor dataset comes with co-author relations and affiliation, job, research keywords.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 6</head><label>6</label><figDesc>Figure 6 Network alignment performance comparison. First row: alignment accuracy at different percentages of alignment labels being used for training. Second row: zero-shot online evaluation accuracy vs. evaluation time (seconds, log2 scale); 50% of alignable nodes in the first graph is hidden from training; our two NSBM models are at the top-left corner of the plots, indicating it is generally more efficient and more effective.</figDesc><graphic coords="8,53.76,465.12,505.44,228.48" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>4)</head><label></label><figDesc>DBLP. The 2015 and 2016 DBLP co-author network [59]. Only the graph is available. The 2015 graph has 389,809 nodes, and the 2016 graph has 402,040 nodes, and they have an overlap of size 179,519.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Figure 7</head><label>7</label><figDesc>Figure7Apply the synthetic-data trained NSBM-GAT+ to detect anomalous correlations from the (a) server-log data and the (b) stock data. PCA only raises alarm when the correlation is overwhelming. Especially for stock data, the number of stocks grows over time, an the PCA approach never works after a certain time. NSBM-GAT+ is capable of discovering the anomalies throughout the time.</figDesc><graphic coords="9,317.76,354.48,240.48,117.12" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 A</head><label>2</label><figDesc></figDesc><table /><note><p>summary of community detection data sets. "med.": median.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>2 )</head><label>2</label><figDesc>Amazon Co-Purchase Network [56]. The first graph comes from year 2015 and contains 37,201 nodes; the second network comes from year 2016 and contains 40,021 nodes. The two networks have 29,760 nodes in common based on product ID. We use product title words as the text data. This dataset differs from the ArnetMiner-LinkedIn dataset on that it is two homogenous networks, and they have large overlap. As a result, performance for most methods are much better. For NSBM, the model generally achieves best results and is able to generalize good performance to zero-shot evaluation, but the accuracy does considerably drop since a substantial amount of nodes are hidden during training and the node embedding quality is hence reduced. 3) Fliker-Last.fm. These are two social networks, and the links in the graph represent friendship. The first network has 21,945 nodes; the second network has 26,426 nodes. It has a ground truth of 641 matched nodes. Only user names are available.</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>This follows recent neural network researches and tools like Tensorflow or PyTorch that treat a data point as a row vector. In this case a linear layer (an affine function) is written as 𝐱𝐖 + 𝐛 rather than 𝐖𝐱 + 𝐛. Conventionally computational science and machie learning instead treat a data point as a column vector.</p></note>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Community detection in graphs</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Fortunato</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Physics reports</title>
+		<imprint>
+			<biblScope unit="volume">486</biblScope>
+			<biblScope unit="page" from="75" to="174" />
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Mixed Membership Stochastic Blockmodels</title>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">M</forename><surname>Airoldi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">M</forename><surname>Blei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">E</forename><surname>Fienberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">P</forename><surname>Xing</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="1981" to="2014" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Dynamic infinite mixed-membership stochastic blockmodel</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">Y</forename><surname>Da Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lancichinetti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Fortunato</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE transactions on neural networks and learning systems</title>
+		<imprint>
+			<date type="published" when="2009">2014. 2009</date>
+			<biblScope unit="volume">26</biblScope>
+			<biblScope unit="page">56117</biblScope>
+		</imprint>
+	</monogr>
+	<note>Community detection algorithms: a comparative analysis</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Community detection in a large real-world social network</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Steinhaeuser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">V</forename><surname>Chawla</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+			<publisher>Springer, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">Community detection and mining in social media. lectures on data mining and knowledge discovery</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Liu</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="1" to="137" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">J</forename><surname>Lang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Dasgupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">W</forename><surname>Mahoney</surname></persName>
+		</author>
+		<title level="m">Statistical properties of community structure in large social and information networks. City</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Community structure in large networks: Natural cluster sizes and the absence of large well-defined clusters</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">J</forename><surname>Lang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Dasgupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">W</forename><surname>Mahoney</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Internet Mathematics</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="page" from="29" to="123" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">node2vec: Scalable feature learning for networks</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Grover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<publisher>ACM, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sun</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1812.08434</idno>
+		<title level="m">Graph networks: A review of methods and applications</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Link prediction based on graph neural networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">City</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Stochastic blockmodels and community structure in networks</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Karrer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">E</forename><surname>Newman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Physical Review E</title>
+		<imprint>
+			<biblScope unit="volume">83</biblScope>
+			<biblScope unit="page">16107</biblScope>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Fifty years of graph matching, network alignment and network comparison</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Emmert-Streib</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Dehmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Shi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Information Sciences</title>
+		<imprint>
+			<biblScope unit="volume">346</biblScope>
+			<biblScope unit="page" from="180" to="197" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Regal: Representation learning-based graph alignment</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Heimann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Safavi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Koutra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">City</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Final: Fast attributed network alignment</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Tong</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">City</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Big-align: Fast bipartite graph alignment</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Koutra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Tong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Lubensky</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<publisher>IEEE, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Correlated Anomaly Detection from Large Streaming Data</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Ling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Quan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Yan</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<publisher>IEEE, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Advanced correlation-based anomaly detection method for predictive maintenance</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kurihara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tanaka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Noda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chikuma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Suzuki</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Fast botnet detection from streaming logs using online lanczos method</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W.-S</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Yan</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<publisher>IEEE, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Applying PCA for traffic anomaly detection: Problems and solutions</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Brauckhoff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Salamatian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>May</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<publisher>IEEE, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Community detection and the stochastic block model</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Abbe</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">A survey on theoretical advances of community detection in networks</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Wiley Interdisciplinary Reviews: Computational Statistics</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page">1403</biblScope>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">A tutorial on spectral clustering</title>
+		<author>
+			<persName><forename type="first">Von</forename><surname>Luxburg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Statistics and computing</title>
+		<imprint>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="page" from="395" to="416" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Large-scale spectral clustering on graphs</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Danilevsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Han</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">City</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Pct: partial co-alignment of social networks</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">S</forename><surname>Yu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">International World Wide Web Conferences Steering Committee</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note>City</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">Connecting heterogeneous social networks with local and global consistency</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">S</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Cosnet</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<publisher>ACM, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Global alignment of multiple protein interaction networks with application to functional orthology detection</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Berger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the National Academy of Sciences</title>
+		<imprint>
+			<biblScope unit="volume">105</biblScope>
+			<biblScope unit="page" from="12763" to="12768" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Fair evaluation of global network aligners</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Crawford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Milenković</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Algorithms for Molecular Biology</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page">19</biblScope>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">Achieving high k-coverage and k-consistency in global alignment of multiple PPI networks</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Ke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Hu</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<publisher>IEEE, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Gpm: A graph pattern matching kernel with diffusion for chemical compound classification</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Smalter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Huan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Lushington</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+			<publisher>IEEE, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title level="m" type="main">Simple greedy matching for aligning large knowledge bases</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lacoste-Julien</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Palla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Davies</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Kasneci</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Graepel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ghahramani</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sigma</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<publisher>ACM, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">A recurrent encoder-decoder network for sequential face alignment</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">S</forename><surname>Feris</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">N</forename><surname>Metaxas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Time complexity of matrix multiplication in Big-Align</title>
+		<imprint>
+			<publisher>City</publisher>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Anomaly detection: A survey</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Chandola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Banerjee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kumar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM computing surveys (CSUR)</title>
+		<imprint>
+			<biblScope unit="volume">41</biblScope>
+			<biblScope unit="page">15</biblScope>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<title level="m" type="main">Modeling multiple time series for anomaly detection</title>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">K</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">V</forename><surname>Mahoney</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+			<publisher>IEEE, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Hierarchical probabilistic models for group anomaly detection</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Póczos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schneider</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Connolly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Vanderplas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">City</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Glad: group anomaly detection in social media analysis</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Knowledge Discovery from Data (TKDD)</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page">18</biblScope>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Group anomaly detection using flexible genre models</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Póczos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">G</forename><surname>Schneider</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">City</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<monogr>
+		<title level="m" type="main">Bounding graph fraud in the face of camouflage</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Hooi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">A</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Beutel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Shin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Faloutsos</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Fraudar</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<publisher>ACM, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<title level="m" type="main">Recent advances in multivariate statistical process control: improving robustness and sensitivity</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Wise</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Ricker</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1991">1991</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Recursive PCA for adaptive process monitoring</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">H</forename><surname>Yue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Valle-Cervantes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">J</forename><surname>Qin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of process control</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page" from="471" to="486" />
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Adaptive process monitoring using efficient recursive PCA and moving window PCA algorithms</title>
+		<author>
+			<persName><forename type="first">J.-C</forename><surname>Jeng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the Taiwan Institute of Chemical Engineers</title>
+		<imprint>
+			<biblScope unit="volume">41</biblScope>
+			<biblScope unit="page" from="475" to="481" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<title level="m" type="main">Sbotminer: large scale search bot detection</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Ke</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<publisher>ACM, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Fast estimation of principal eigenspace using Lanczos algorithm</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Kailath</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">SIAM Journal on Matrix Analysis and Applications</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="page" from="974" to="994" />
+			<date type="published" when="1994">1994</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Lanczos algorithms for large symmetric eigenvalue computations</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">K</forename><surname>Cullum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">A</forename><surname>Willoughby</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">SIAM</title>
+		<imprint>
+			<biblScope unit="volume">I</biblScope>
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Community detection and stochastic block models: recent developments</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Abbe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="page" from="6446" to="6531" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Stochastic block models with multiple continuous attributes</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Stanley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Bonacci</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kwitt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Niethammer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">J</forename><surname>Mucha</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Applied Network Science</title>
+		<imprint>
+			<biblScope unit="volume">4</biblScope>
+			<biblScope unit="page" from="1" to="22" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">D</forename><surname>Beale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">B</forename><surname>Demuth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hagan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Neural network design</title>
+		<meeting><address><addrLine>Boston</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="1996">1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">Graphs over time: densification laws, shrinking diameters and possible explanations</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kleinberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Faloutsos</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+			<publisher>ACM, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<monogr>
+		<title level="m" type="main">Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M.-W</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">J A P A</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bert</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<title level="m" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">J</forename><surname>Welling</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<monogr>
+		<title level="m" type="main">Graph attention networks</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1710.10903</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Billion-scale similarity search with GPUs</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Johnson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Douze</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Jégou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Big Data</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Generalizations of principal component analysis, optimization problems, and neural networks</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Karhunen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Joutsensalo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neural Networks</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page" from="549" to="562" />
+			<date type="published" when="1995">1995</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Defining and evaluating network communities based on ground-truth</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Knowledge and Information Systems</title>
+		<imprint>
+			<biblScope unit="volume">42</biblScope>
+			<biblScope unit="page" from="181" to="213" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<monogr>
+		<title level="m" type="main">Hidden factors and hidden topics: understanding rating dimensions with review text</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Mcauley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<publisher>ACM, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Local higher-order graph clustering</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">R</forename><surname>Benson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">F</forename><surname>Gleich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">City</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W.-S</forename><surname>Yang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<publisher>ACM, City</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

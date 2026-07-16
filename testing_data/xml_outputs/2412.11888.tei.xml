@@ -1,0 +1,1644 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">GNN APPLIED TO EGO-NETS FOR FRIEND SUGGESTIONS</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-12-17">December 17, 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Evgeny</forename><surname>Zamyatin</surname></persName>
+							<email>e.zamyatin@corp.vk.com</email>
+							<affiliation key="aff0">
+								<address>
+									<settlement>Saint-Petersburg</settlement>
+									<country key="RU">Russia</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">GNN APPLIED TO EGO-NETS FOR FRIEND SUGGESTIONS</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-12-17">December 17, 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">9F8AFCAD0A14061BB0C95DFC2563936D</idno>
+					<idno type="arXiv">arXiv:2412.11888v1[cs.SI]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:21+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>A major problem of making friend suggestions in social networks is the large size of social graphs, which can have hundreds of millions of people and tens of billions of connections. Classic methods based on heuristics or factorizations are often used to address the difficulties of scaling more complex models. However, the unsupervised nature of these methods can lead to suboptimal results. In this work, we introduce the Generalized Ego-network Friendship Score framework, which makes it possible to use complex supervised models without sacrificing scalability. The main principle of the framework is to reduce the problem of link prediction on a full graph to a series of low-scale tasks on ego-nets with subsequent aggregation of their results. Here, the underlying model takes an ego-net as input and produces a pairwise relevance matrix for its nodes. In addition, we develop the WalkGNN model which is capable of working effectively in the social network domain, where these graph-level link prediction tasks are heterogeneous, dynamic and featureless. To measure the accuracy of this model, we introduce the Ego-VK dataset that serves as an exact representation of the real-world problem that we are addressing. Offline experiments on the dataset show that our model outperforms all baseline methods, and a live A/B test demonstrates the growth of business metrics as a result of utilizing our approach.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>The link prediction task is one of the fundamental problems of graph analysis. It is widespread in the industry, especially in social networks. Many of their long-term metrics depend on the users' social activity, and recommender systems help support and promote this activity. The social graph of a modern service represents a heterogeneous continuous-time dynamic graph. Various connections between users appear and disappear, including friendships, messages, likes, profile visits and others. Many of them are characterized by timestamps and intensities. The task of building methods that can effectively take into account all the available information about user relationships is very important, as the solutions' quality can directly affect business performance.</p><p>One of the specifics of working with social networks is the lack of meaningful features that describe users. General attributes such as sex, age or interests are often available, but they are not sufficient to model a user's social dynamics. Some bioinformatics problems can be seen as examples of tasks with rich node features, where units have natural descriptions that precisely define the principles of link formation. In the case of social networks, the structural information of the graph is of particular importance.</p><p>Despite active research <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b1">2]</ref> on graph neural networks, heuristics-based approaches still play a significant role in the industry. Methods such as common neighbors, Adamic-Adar <ref type="bibr" target="#b2">[3]</ref>, Preferential Attachment <ref type="bibr" target="#b3">[4]</ref>, etc. are widely used. Many recent papers refer to them as strong baselines <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b5">6,</ref><ref type="bibr" target="#b6">7]</ref>, and the field of research aimed at finding ways to generalize them shows high potential <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b7">8,</ref><ref type="bibr" target="#b5">6]</ref>. Most of the heuristics do not rely on node features, which is an important property for the task of link prediction in social networks. The scalability, simplicity and efficiency of such methods make them attractive for industry use.</p><p>Most popular heuristics rely on local neighborhood analysis, which makes it possible to scale them to large graphs. To compute them, storing the whole graph in memory is not needed, since some local structures are enough. For example, a distributed version of the triangle counting algorithm <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b9">10]</ref>, which requires storing only the list of the node's neighbors, can be used to compute common neighbors and Adamic-Adar heuristics.</p><p>One of the most informative and convenient structures for analyzing local neighborhoods is the ego-net. The ego-net of a node is a subgraph containing all the neighbors of the node and the links between them (see Figure <ref type="figure" target="#fig_0">1</ref>). On the one hand, ego-nets provide a rich description of local neighborhoods, and their small size makes it possible to use complex methods for their analysis. On the other hand, ego-nets can still be processed within large graphs, as there is an efficient way <ref type="bibr" target="#b5">[6,</ref><ref type="bibr" target="#b8">9]</ref> to construct them using MapReduce <ref type="bibr" target="#b10">[11]</ref>. The maximum volume of all ego-nets within a graph is bound by O(|E| 3/2 ) <ref type="bibr" target="#b9">[10]</ref>, which is acceptable for industrial graphs. All of the above makes ego-nets a potentially attractive structure for working with graphs that contain billions of nodes. In this work, we propose a general framework for building recommendations on large-scale graphs, inspired by the idea on making friend suggestions using ego-net analysis <ref type="bibr" target="#b5">[6]</ref>. The main principle of the framework is to reduce the problem of link prediction in a whole graph to a series of tasks within ego-nets and the aggregation of their results. The task within an ego-net can be characterized as a graph-level link prediction problem in heterogeneous dynamic graphs without node features. This is yet another challenge for GNNs when it comes to inductively determining the laws of edge dynamics in graphs. The lack of meaningful node attributes in the social network domain make the graph structure the only available source of information. The graph structure, on the other hand, is highly descriptive, as there are many possible connections between users in social networks.</p><p>The combination of these properties makes our task challenging and novel. First-order GNNs fail on this task because they strongly depend on the quality attributes of the nodes <ref type="bibr" target="#b11">[12]</ref>. Higher-order GNNs are theoretically capable of solving the problem, but their application to heterogeneous graphs with rich attributes of edges is not sufficiently covered in the literature. To address this problem, we introduce the WalkGNN model -a second-order GNN, which constructs representations for pairs of nodes and is able to efficiently account for different types of links between nodes together with their numerical characteristics. Its key component is the WalkConv layer, which transforms each edge into an information filter and passes through it the corresponding state the relationship of a pair of nodes.</p><p>Our research is based on data from VK 1 , the largest social network in Russia with 100M monthly active users. To measure the models' quality on our task, we introduce the Ego-VK dataset, which represents the set of ego-nets of VK users. Each ego-net has at most 300 nodes and 4 possible types of connections between them. One of the edge types is the friendship's age, and the three other edges describe other types of relationships. The task is to predict new friendships in each ego-net.</p><p>The rest of the paper is organized as follows. In Section 2, we briefly review the literature relevant to our work. Then, in Section 3, we present our Generalized Ego-network Friendship Score framework and describe the architecture of the WalkGNN model. In Section 4, we describe the experimental setting, the offline and online results, and the ablation study. Finally, in Section 5, we draw our conclusions and consider the directions for future research.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related works</head><p>Traditionally, the problem of link prediction in large-scale graphs is solved by one of two types of methods. One is based on local neighborhood analysis using heuristics, while the other is based on graph embeddings construction. Approaches that use neural networks, in most cases, turn out to be too complex to scale and are not directly applicable to large-scale graphs. However, given that in our work we reduce the large-scale problem to a series of low-scale tasks, the work related to building complex models for the link prediction problem is also relevant here.</p><p>Heuristic Methods. Despite the advanced age of most graph heuristics, they are still applicable due to their efficiency, simplicity and scalability. In contrast to most complex models, these methods do not require the presence of node features. The most popular among them are first-and second-order heuristics. Higher-order heuristics are much more difficult to scale on large graphs, so they much less commonly used in the industry. Most used first-order heuristics are Common Neighbours (CN) and Preferential Attachment (PA) <ref type="bibr" target="#b3">[4]</ref>. Adamic-Adar (AA) <ref type="bibr" target="#b2">[3]</ref> and resource allocation (RA) <ref type="bibr" target="#b12">[13]</ref> are examples of second-order heuristics. Murata et al. <ref type="bibr" target="#b13">[14]</ref> and Lu et al. <ref type="bibr" target="#b14">[15]</ref> also consider the weighted versions of these algorithms. All of these heuristics were invented a long time ago, but remain strong baselines for many link prediction problems.</p><p>Zhang et al. <ref type="bibr" target="#b4">[5]</ref> proposed the SEAL method, which can automatically learn heuristics via analyzing local subgraphs around each potential link. While this approach performed well, the relative uplift compared to the well-known Adamic-Adar was below 5% in most cases. On the other hand, the disadvantage of SEAL is the difficulty of scaling it to large graphs. Epasto et al. <ref type="bibr" target="#b5">[6]</ref> proposed an original idea of analyzing local communities within ego-nets to improve the common neighbors heuristic. Their friendship score similarity measure the co-occurrences of two nodes in different ego-net's clusters. This approach shows high accuracy and scales well to industrial graphs, but still relies on heuristic approaches. Since a variation of this method is deployed on VK, we use it as a baseline in our online tests.</p><p>Taking the idea of link prediction using ego network analysis as a starting point, our work builds on it by exploring the use of supervised methods to obtain more accurate solutions.</p><p>Embedding Methods. Most works on link prediction using large graphs belongs to this family of methods. Embedding methods learn a representation for each node by capturing the edge structure of the graph. A dot or cosine similarity measure is most commonly used for recommendations. The classical methods such as DeepWalk <ref type="bibr" target="#b6">[7]</ref>, node2vec <ref type="bibr" target="#b15">[16]</ref> and LINE <ref type="bibr" target="#b16">[17]</ref> have proven to be robust and efficient methods for link prediction in static homogeneous graphs. Meanwhile, in case of heterogeneous or dynamic graphs, these methods lose their effectiveness due to the unsupervised nature of learning. CTDNE <ref type="bibr" target="#b17">[18]</ref> extends the DeepWalk method to the case of continuous-time dynamic graphs and shows good results. However, the principle of temporal walks can essentially be considered heuristics rather than supervised learning, so it can be suboptimal. Various methods <ref type="bibr" target="#b18">[19,</ref><ref type="bibr" target="#b19">20,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b21">22]</ref> for multi-relational knowledge graphs can be applied to heterogeneous graphs, but they are difficult to adapt for a temporal setting.</p><p>Embedding-based methods are attractive in terms of scalability, but still not flexible enough for supervised learning. Our work is not directly compared to these methods, but in this subsection we show the importance of research on the application of supervised approaches to large-scale graphs.</p><p>Graph Neural Nets. Generally, complex transductive models do not scale well to large graphs due to the graphs' huge number of parameters and nonlinear structure. In this paper, we reduce the problem of link prediction in a complete graph to the low-scale graph-level problems on ego-nets, which is why we can use GNNs.</p><p>At present, the most popular way of constructing graph neural networks is the message-passing framework <ref type="bibr" target="#b22">[23]</ref>. Its main idea is to hierarchically build representations of nodes through convolutions of neighbors. The GraphSAGE <ref type="bibr" target="#b23">[24]</ref>, TGAT <ref type="bibr" target="#b24">[25]</ref>, GAT <ref type="bibr" target="#b25">[26]</ref> and GCN <ref type="bibr" target="#b26">[27]</ref> models are all different variations of MP-GNNs. They show good results on a number of problems, but fail at tasks with no natural node attributes.</p><p>An active line of research is focused on evaluating the impact of node availability and quality of node characteristics on the accuracy of graph neural networks. Xu et al. <ref type="bibr" target="#b27">[28]</ref>, Morris et al. <ref type="bibr" target="#b28">[29]</ref> and Dehmamy et al. <ref type="bibr" target="#b29">[30]</ref> consider the expressive power of message-passing GNNs <ref type="bibr" target="#b22">[23]</ref> from a theoretical point of view. They prove that these types of models have significant limitations on learning from graph structures. Errica et al. <ref type="bibr" target="#b11">[12]</ref> and Duong et al. <ref type="bibr" target="#b30">[31]</ref> empirically demonstrate that the success of many GNNs relies heavily on rich node features. For example, in bioinformatics problems <ref type="bibr" target="#b23">[24,</ref><ref type="bibr" target="#b31">32]</ref>, node entities have natural chemical properties. In the case of knowledge graph tasks <ref type="bibr" target="#b32">[33]</ref>, there can be a textual description of entities. When nodes have low cardinality, we can consider collaborative information. However, building models that can efficiently capture graph topology and work in a featureless setting is problematic.</p><p>Many works have attempted to address this problem. The main research direction on this topic focuses on using artificial node features. Some authors propose to initialize node features with random values <ref type="bibr" target="#b33">[34,</ref><ref type="bibr" target="#b34">35]</ref>, which others use various graph statistics <ref type="bibr" target="#b30">[31,</ref><ref type="bibr" target="#b35">36,</ref><ref type="bibr" target="#b36">37]</ref> and roles <ref type="bibr" target="#b4">[5]</ref>. You et al. <ref type="bibr" target="#b37">[38]</ref> proposed the use of ego-nets to embed nodes. These methods lead to an increase in the accuracy of the models, but do not solve the fundamental problem of models ignoring topological structures.</p><p>A lot of research is aimed at analyzing the expressive power of GNNs <ref type="bibr" target="#b38">[39]</ref>. Xu et al. <ref type="bibr" target="#b27">[28]</ref> proved that many popular message-passing models have significant limitations when it comes to learning from graph structures. They proposed a GIN model, the representational power of which is equal to the power of the 1-WL test <ref type="bibr" target="#b39">[40]</ref>. Hu et al. <ref type="bibr" target="#b40">[41]</ref> considered the idea of transfer learning in the graph domain and proposed the GINE model, which extends GIN to handle edge attributes. Brossard et al. <ref type="bibr" target="#b41">[42]</ref> took the expressive power of GIN-based models a step further and proposed a GINE+ model that enables the GNN to detect small cycles.</p><p>To overcome the theoretical limitations on structure learning of GNNs, researchers are turning their attention to higher-order models. Moris et al. <ref type="bibr" target="#b28">[29]</ref> and Maron et al. <ref type="bibr" target="#b42">[43]</ref> proposed k-GNN, which associates each k-tuple of nodes with a vector representation. They showed that k-GNN is, at most, as powerful as the k-WL test. This property allows models to better understand the graph structure, but the computational complexity of such methods grows exponentially with k. Maron et al. <ref type="bibr" target="#b43">[44]</ref> proposed PPGN, a 2-GNN based model which has a provable 3-WL expressive power. Zhu et al. <ref type="bibr" target="#b7">[8]</ref> proposed the NBFNet framework for building such models, inspired by the generalized Bellman-Ford algorithm.</p><p>Although high-order GNNs show a high possibility of learning from topology, the question of their application to heterogeneous graphs is not well studied. In our work, we propose a new second-order WalkGNN model, whose architecture allows us to efficiently account for different types of edges together with their numerical values.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Algorithm</head><p>In this section, we first present a framework for building recommendations on large graphs by analyzing ego-nets. This framework is a generalization of the idea proposed by Epasto et al. <ref type="bibr" target="#b5">[6]</ref>. Following them, we called it the Generalized Ego-network Friendship Score. Essentially, it represents a combination of in-ego model and out-ego aggregation.</p><p>Then, we will present a model we called WalkGNN, which we use in our framework. This model is inspired by the graph walk counting algorithm, and unlike most popular GNNs, builds representations of node pairs instead of nodes. Its key component is the novel layer WalkConv, which generates a state transition matrix for each edge and propagates the corresponding node pair states through it.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Generalized Ego-network Friendship Score</head><p>To illustrate our framework, consider the following scenario: each user of a social network is asked to estimate the probability of friendship between each of her or his friends based on some context. This context is the user's knowledge about his friends and the relationships between them. We can call this value the local relevance of one user to another with respect to their common friend. Then, for each pair of users, we can analyse all the local relevancies of their common friends and infer the global relevance of one user to the other. The values obtained from this process can be used to create a list of recommended friends for each user. This idea is key to our recommendation building framework.</p><p>Instead of asking users, we will use a machine learning model that, for a pair of users u and v, will predict their local relevance with respect to their common friend e. Global relevance for u and v is defined as an aggregation of local relevance of all their common friends. As the context of e, we use its ego-net. As described above, ego-nets are a very convenient structure in large-scale settings. Both scalability and informativeness of ego-nets allow building accurate predictions for hundreds of millions of users.</p><p>Our framework consists of two components. The first and the most important one we call in-ego model. This model takes an ego-net as input and produces a matrix of pairwise relevance of all nodes of this ego-net. Essentially, the in-ego model generalizes the link formation laws across graphs using their topology. The second component is the out-ego aggregation. This is just a function that reduces values for pairs of nodes, which occurs in several ego-nets. Both of these components are used in the corresponding phases of our framework.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Algorithm 1 Ego-nets construction</head><p>Input:</p><formula xml:id="formula_0">Graph G(V, E) Output: {Ego-net(e) | ∀e ∈ V } Bloom ← BloomF itler(E) T ← Ø for u ∈ V do for ∀e, v ∈ N (u) do if (e, v) ∈ Bloom then Add (e, v, u) to T end if end for end for T ′ ← T left semi join E on λ(x, y, z), (a, b) ⇒ x = a and y = b R ← T ′ group by λ(x, y, z) ⇒ x return R</formula><p>Phase 1: Ego-net construction. Each ego-net is a set of triangles and pendant nodes with one common node (see Figure <ref type="figure" target="#fig_0">1</ref>). In order to construct ego-nets for each node of the original graph, we use a distributed version of the triangle counting algorithm augmented with a Bloom filter <ref type="bibr" target="#b44">[45]</ref>. This algorithm can be implemented in the MapReduce paradigm. The map stage takes as input the list of node neighbors and outputs the potential triangles that passed the Bloom filter test. In the next step, we partition the triangles by the side for which we need to perform an additional check and join them with the edges of the original graph. This step is necessary to detect triangles for which the Bloom filter gave a false positive. At the final stage, we group triangles by ego and save the result. See Algorithm 1 for an outline of the method.</p><p>Phase 2: In-ego model inference. The ego-nets computed at the previous stage are passed to the in-ego model. This is a simple map transformation that takes an ego-net as input and outputs a matrix of pairwise relevance of nodes.</p><p>Phase 3: Out-ego aggregation. Each pair of nodes in the original graph will have exactly as many scores as they have common neighbors. To obtain the final relevance value between two nodes, the out-ego aggregation function is used. In this work, we use simple binary operations such as summation or maximum. The resulting values can be used to construct friend suggestions.</p><p>Note. Some classic link prediction heuristics fit our framework. In case of Adamic-Adar, an in-ego model is a value</p><formula xml:id="formula_1">1 log(n)</formula><p>, where n is the size of the ego-net, and out-ego aggregation is summation. In case of friendship score <ref type="bibr" target="#b5">[6]</ref>, an in-ego model's value is 1 when both nodes are in the same cluster, and 0 otherwise.</p><p>All phases of our framework can be implemented in the MapReduce paradigm. This makes it possible for us to scale it to graphs of any size. A key component of our framework is the in-ego model. Its accuracy directly affects the quality of the entire system. In the next section, we will describe our GNN, which we developed specifically for our task by taking into account its specifics.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">WalkGNN</head><p>Our framework can easily scale to graphs of any size, but this property also imposes certain limitations, since in-ego models must consider all ego-nets independently of each other. In other words, natural node identifiers cannot be used within the model, and therefore, collaboration information is unavailable. The edges in our task change dynamically and can be of different types such as friendships, messages, likes and others. Finally, there are no natural features of users that would provide sufficient information about their social connections' dynamics. Only general features such as sex, age or country are available. These kinds of features provide only auxiliary information and cannot be a reliable basis. Thus, the problem can be described as graph-level link prediction on heterogeneous temporal graphs without node attributes.</p><p>The lack of node attributes in the graph-level setting limits model design. Therefore, we have two options available. The first is to build the model in the node representation paradigm and craft synthetic node features. Such methods have been widely studied by the community and have shown a strong dependence on hand-crafted features. In contrast, the second option of models based on node pair representations is much less studied, but existing works show promising results <ref type="bibr" target="#b7">[8]</ref>. Morris et al. <ref type="bibr" target="#b28">[29]</ref> and Maron et al. <ref type="bibr" target="#b43">[44]</ref> proved that the k-GNN model is at most as powerful as the k-WL </p><formula xml:id="formula_2">T u,v k ← EdgeM LP k (e), (u, v, e) ∈ E W u,v,t k+1 ← 1 d S u,q,c k T q,v,c,t k return S k + M LP k (W k+1 )</formula><p>test. Since the ability of the model to efficiently learn the graph structure is critical to our problem, we built our model based on the node pair representations paradigm.</p><p>Our WalkGNN model is inspired by the walks counting algorithm. This algorithm is a simple example of a dynamic programming problem. To calculate the number of walks of length k between all pairs of nodes in a graph, we must first solve the same problem for length k -1 and multiply the result by the adjacency matrix:</p><formula xml:id="formula_3">W k = W k-1 × A,</formula><p>where W k is a k-length walks count matrix and A is the adjacency matrix. The initial state is an identity matrix.</p><p>Instead of a scalar value of the walks count, we will store a vector of size d, which is an embedding that describes the relationship between a pair of nodes. To predict the probability of forming links, we can train a supervised classifier based on them. To construct such embeddings, we need to define an initial state and a transition function. We can use a diagonal matrix with constant values or features of nodes as the initial state. The transition function will be defined in the next subsection.</p><p>WalkConv. Suppose we have representations of node pair relations at the k-th iteration. That is, the state matrix</p><formula xml:id="formula_4">W k of dimensions [n × n × d]</formula><p>is computed, and we need to compute W k+1 . A key principle of our architecture is that we treat each edge as an information filter through which we propagate the state. Remember that each edge is parameterized by different attributes, such as the age of the friendship, the number of messages, likes or profile visits, and so on. In general, for each edge, we have a vector of its attributes e. On top of it, we can build a Multilayer perceptron (MLP), which would transform e into a d<ref type="foot" target="#foot_1">2</ref> -dimensional vector. It can later be reshaped to a [d × d] dimensional matrix. The obtained matrix is the linear filter used for propagating the state. The transition formula is as follows:</p><formula xml:id="formula_5">W u,v k+1 := 1 d (t,v,e)∈E W u,t k × EdgeM LP k (e)<label>(1)</label></formula><p>where d is the dimension of the state, E is a set of edges and EdgeM LP k is an MLP that takes the attributes of an edge as input and returns a matrix of dimension</p><formula xml:id="formula_6">[d × d].</formula><p>This expression can also be represented in Einstein notation, as presented in Algorithm 2. The complexity of WalkConv is O(n 3 × d 2 ), where n is the number of nodes and d is the number of hidden units. This is the most computationally intensive part of our model, but it can be implemented efficiently as a dense multiplication of two matrices of dimensions</p><formula xml:id="formula_7">[n × n × d] and [n × n × d × d].</formula><p>The WalkGNN model itself is a stack of WalkConv layers. To improve learning stability, we also use a residual connection after each layer (see Algorithm 2 and 3 for pseudocode).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Algorithm 3 WalkGNN</head><p>Input: edge list E, number of layers l Output: pairwise matrix relevance</p><formula xml:id="formula_8">S u,v 0 ← 1, if u = v, 0, if u ̸ = v. for k ← 1 to l do S k ← W alkConv(S k-1 , E) end for return OutM LP (S l )</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiment</head><p>Firstly, we compare the accuracy of the WalkGNN 2 model with classical heuristics as well as some of the most diffused models in the literature that are applicable in our setting. Then, we describe the results of an online test based on VK's friends recommendation system. Finally, we show the results of an ablation study that validates the importance of each model component in maximizing accuracy.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Offline Experiment</head><p>Dataset. We evaluate our model on two different datasets. The first dataset, Ego-VK, is a random sample of ego-nets from users of the VK social network for a certain date. The friendships formed on the next day are used as the ground truth edges, ego-nets with no new friendships during this period are ignored. Ground truth edges are undirected, i.e., any direction of the edge is considered as the right prediction. The base edges inside ego-nets are directed and can be of four types. Each type of edge have numerical characteristic describing the age of the friendship or three other kinds of activity. If there is no friendship between a pair of nodes, the age value is -1. It is guaranteed that there are no base edges of any type between pairs of nodes from the ground truth set in the original ego-net. The training, validation and test set are divided randomly. Natural node attributes are not used in this task. As attributes of nodes, we use attributes of edges with ego node in forward and backward directions. The edges with ego node at one end are omitted. In each ego-net, the ego node has id 0 and all other nodes are numbered with ordinal numbers, so all ego-nets are completely independent. All ego-nets are limited by 300 nodes by the activity of interactions with ego.</p><p>To evaluate the applicability of our model to graphs of other domains, we also measure its accuracy on the Yeast <ref type="bibr" target="#b45">[46,</ref><ref type="bibr" target="#b46">47]</ref> dataset. This dataset is a set of small molecules, where each molecule is described as a graph with labeled nodes and edges. The nodes are described by one of 74 labels, and the edges are of three types. Originally, this dataset represents a graph-level classification task. To evaluate the quality of the link prediction task, we adapted the dataset accordingly. We removed one edge from each graph and assigned it as a target for the model. Note that graph labels are not used in our task. The statistics of both datasets are provided in Table <ref type="table" target="#tab_1">1</ref>.</p><p>Evaluation. We use the ndcg@5 measure to compare the link-prediction accuracy of the models. In each ego-net, the 5 pairs of nodes with best scores other than those already present are used to score the model. The hyperparameters of the models were selected to maximize accuracy on the validation dataset. Accuracies of the models on the test sample together with 95% confidence intervals are presented in Table <ref type="table" target="#tab_2">2</ref>.</p><p>Implementation Details. In our WalkGNN model, we use 6 WalkConv layers with 8 hidden units. We also extend the attributes of edges by adding the features of the source and destination nodes of the corresponding edge. In the case of directed graphs, at the end of WalkConv, we concatenate the new state with its transpose to consider the reverse direction of edges. The time feature from Ego-VK dataset is transformed by formula 28/(t + 1) when t ≥ 0 and 0 otherwise. Attributes of edges between ego and the node in both directions are used as features of this node at the initialization step. In the rest of the model, the edges with ego are ignored. All MLPs have 4 layers, ReLU activation and 32 hidden units. As a loss function, we use pairwise loss <ref type="bibr" target="#b47">[48]</ref>.</p><p>Baselines. We compare WalkGNN against classical heuristics and the most popular GNNs that are known to be able to learn from the graph structure. As a heuristics baseline, we use Adamic-Adar and its weighted version. We use the state-of-the-art GIN model and its GINE modification as the baselines, which are known in the literature as the most expressive MP-GNN. Xu et al. <ref type="bibr" target="#b27">[28]</ref> and Errica et al. <ref type="bibr" target="#b11">[12]</ref> argue that using node degree as a feature with GIN improves model accuracy. Sato et al. <ref type="bibr" target="#b34">[35]</ref> introduce rGIN model which assign additional attributes of each node sampled from an almost uniform discrete probability distribution. Unfortunately, this modification does not improve the accuracy of the model on our task. Other first-order models such as GCN, GraphSage and GAT failed on the task. We use PPGN <ref type="bibr" target="#b43">[44]</ref> as a high-order GNN baseline, which has strong theoretical expressive power, high accuracy in link prediction problems, a simple and clear architecture, and the ability to incorporate edge attributes. Higher-order GNNs are computationally expensive and are not suitable for our problem. In order to correctly compare expressive power, we consider a setting without edge attributes as well.</p><p>Results. The results of model evaluation are presented in edge attributes shows the model's high degree of attention to graph structure and edge properties. On featureless tasks, the superiority of WalkGNN over Adamic-Adar, which is widely used in social networks, demonstrates the model's ability to efficiently learn the natural laws of edge formation.</p><p>The evaluation results on the Yeast dataset also show the superiority of our model over baselines. The low result of the Adamic-Adar heuristic shows that the laws of link formation in the social domain are inapplicable to chemical bond analysis. Despite this, WalkGNN performs well and significantly outperforms other baseline models in terms of accuracy.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Online Experiments.</head><p>We test Generalized Ego-network Friendship Score with the WalkGNN model in a People You May Know (PYMK) recommendation block of the VK social network (see Figure <ref type="figure" target="#fig_1">2</ref>). The block is shown to the users of the news feed with more than 100M monthly users. To compare our method with the production solution, we divide this audience into two parts for the AB test. The algorithm on the control group is a modified version<ref type="foot" target="#foot_2">3</ref> of the friendship score <ref type="bibr" target="#b5">[6]</ref>, which outperformed our previous solutions such as Adamic-Adar and Node2Vec<ref type="foot" target="#foot_3">4</ref> with a large margin. Both methods work offline and build and export suggestions for all VK users every day. Pipeline consists of three parts: ego-nets materialization, per ego-net computation and results aggregation. All stages together take up about 3k cores and 3Tb RAM of a hadoop <ref type="bibr" target="#b48">[49]</ref> cluster and take about 10 hours to complete. The results of the online test showed a 12% increase in friend requests' CTR. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Ablation Study.</head><p>To prove the importance of components of the WalkGNN model, we perform a series of ablation experiments on the Ego-VK dataset. We take the model described in Section 4.1 as the base configuration and make one change in each experiment:</p><p>• Use 2 WalkConv blocks instead of 6</p><p>• Use 4 WalkConv blocks instead of 6</p><p>• Use 8 WalkConv blocks instead of 6</p><p>• Ignore node features • Ignore edge features</p><p>Results. The results of the experiments are presented in Table <ref type="table">3</ref>. The accuracy of the model grows with the number of convolution blocks, and saturates around 6 on our task. The edge attributes have a significant impact on the accuracy of the model, as the performance degradation when ignoring them is more than 50%. In contrast, the results of ignoring node features show the insignificance of their influence on model performance due to their low quality or inefficient use.</p><p>We leave the study of how to effectively utilize node features for future works.</p><p>Table <ref type="table">3</ref>: Ablation study results. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusion</head><p>In this paper, we presented a framework for building friend suggestions on large-scale graphs. Our solution is capable of leveraging the accuracy of complex models while maintaining scalability. As part of our framework, we addressed the graph-level problem of predicting friendships within ego-nets. We developed the WalkGNN model that satisfies all the requirements of our framework and is capable of outperforming state-of-the-art solutions. To measure the quality metrics relevant to our task, we introduced the Ego-VK dataset, which represents a supervised graph-level link-prediction task. We believe that our dataset could be useful for further research addressing the expressive power of graph models.</p><p>An interesting direction for future work is to investigate more complex local relevance aggregation methods that can be extended from scalar values to multidimensional vectors. Another option is to develop a way to efficiently incorporate node attributes into the WalkGNN architecture.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Ego-net example.</figDesc><graphic coords="2,187.76,191.19,233.99,268.86" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: PYMK at VK. .</figDesc><graphic coords="8,129.26,450.82,350.99,180.43" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>± 4•10 -3 WALKGNN-2B 0.074 ± 4•10 -3 WALKGNN-4B 0.085 ± 4•10 -3 WALKGNN-8B 0.088 ± 4•10 -3 WALKGNN-NO-E-ATTR 0.051 ± 3•10 -3 WALKGNN-NO-N-ATTR 0.086 ± 4•10 -3</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>Algorithm 2 WalkConvInput: current state matrix S k , edge list E Output: new state matrix S k+1</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>Ego-VK dataset stats.DATASET GRAPHS AVG. NODES AVG. EDGES AVG. LABELS</figDesc><table><row><cell>EGO-VK</cell><cell>61808</cell><cell>210.4</cell><cell>2916.6</cell><cell>1.5</cell></row><row><cell>YEAST</cell><cell>79601</cell><cell>21.5</cell><cell>22.8</cell><cell>1.0</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 .</head><label>2</label><figDesc>WalkGNN outperforms the next-best solution by 20% and 3% in the setting with and without edge attributes on the Ego-VK dataset. It is worth noting that Adamic-Adar is still a strong baseline in social networks domain and outperforms first-order GNN in terms of accuracy, which is explained by the lack of dependence on the node features. The 156% gap between WalkGNN versions with and without</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 2 :</head><label>2</label><figDesc>Test set ndcg@5.</figDesc><table><row><cell>ALGORITHM</cell><cell>EGO-VK-NO-ATTR</cell><cell>EGO-VK</cell><cell>YEAST</cell></row><row><cell>ADAMIC-ADAR</cell><cell>0.028 ± 3•10 -3</cell><cell cols="2">0.055 ± 4•10 -3 0.003 ± 7•10 -4</cell></row><row><cell>GIN</cell><cell>0.015 ± 2•10 -3</cell><cell cols="2">0.037 ± 3•10 -3 0.405 ± 6•10 -4</cell></row><row><cell>GIN-DEG</cell><cell>0.015 ± 2•10 -3</cell><cell cols="2">0.037 ± 3•10 -3 0.407 ± 7•10 -4</cell></row><row><cell>PPGN</cell><cell>0.034 ± 3•10 -3</cell><cell cols="2">0.075 ± 4•10 -3 0.642 ± 6•10 -4</cell></row><row><cell>WALKGNN</cell><cell>0.035 ± 3•10 -3</cell><cell cols="2">0.090 ± 4•10 -3 0.720 ± 6•10 -4</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>https://vk.com/about</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>Code and dataset are provided at: https://github.com/ezamyatin/walk_gnn.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>See https://vkteam.medium.com/pymk-at-vk-ml-over-ego-nets-b31f5df7e944 for details.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_3"><p>https://github.com/ezamyatin/node2vec-spark</p></note>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Graph neural networks: a bibliometrics overview</title>
+		<author>
+			<persName><forename type="first">Abdalsamad</forename><surname>Keramatfar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohadeseh</forename><surname>Rafiee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hossein</forename><surname>Amirkhani</surname></persName>
+		</author>
+		<idno>CoRR, abs/2201.01188</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Computing graph neural networks: A survey from algorithms to accelerators</title>
+		<author>
+			<persName><forename type="first">Akshay</forename><surname>Sergi Abadal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jorge</forename><surname>Guirado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eduard</forename><surname>López-Alonso</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Alarcón</surname></persName>
+		</author>
+		<idno>CoRR, abs/2010.00130</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Friends and neighbors on the web</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lada</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eytan</forename><surname>Adamic</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Adar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Soc. Networks</title>
+		<imprint>
+			<biblScope unit="volume">25</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="211" to="230" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Emergence of scaling in random networks</title>
+		<author>
+			<persName><forename type="first">Albert-Laszlo</forename><surname>Barabasi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rita</forename><forename type="middle">Albert</forename><surname>Albert</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">science</title>
+		<imprint>
+			<biblScope unit="volume">286</biblScope>
+			<biblScope unit="page" from="509" to="512" />
+			<date type="published" when="1999">1999</date>
+			<pubPlace>New York, N.Y.</pubPlace>
+		</imprint>
+	</monogr>
+	<note>Science</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Link prediction based on graph neural networks</title>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixin</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Hanna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wallach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hugo</forename><surname>Larochelle</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 31: Annual Conference on Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">Kristen</forename><surname>Grauman</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Nicolò</forename><surname>Cesa-Bianchi</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Roman</forename><surname>Garnett</surname></persName>
+		</editor>
+		<meeting><address><addrLine>NeurIPS; Montréal, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018-12-03">2018. 2018. December 3-8, 2018. 2018</date>
+			<biblScope unit="page" from="5171" to="5181" />
+		</imprint>
+	</monogr>
+	<note>Samy Bengio</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Ego-net community mining applied to friend suggestion</title>
+		<author>
+			<persName><forename type="first">Alessandro</forename><surname>Epasto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Silvio</forename><surname>Lattanzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Vahab</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ismail</forename><surname>Mirrokni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ahmed</forename><surname>Sebe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sunita</forename><surname>Taei</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Verma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. VLDB Endow</title>
+		<meeting>VLDB Endow</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="324" to="335" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Deepwalk: online learning of social representations</title>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rami</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Skiena</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The 20th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, KDD &apos;14</title>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Sofus</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Claudia</forename><surname>Macskassy</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jure</forename><surname>Perlich</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Wei</forename><surname>Leskovec</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Rayid</forename><surname>Wang</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Ghani</surname></persName>
+		</editor>
+		<meeting><address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2014">August 24 -27, 2014. 2014</date>
+			<biblScope unit="page" from="701" to="710" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Neural bellman-ford networks: A general graph neural network framework for link prediction</title>
+		<author>
+			<persName><forename type="first">Zhaocheng</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zuobai</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">C</forename><surname>Louis-Pascal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Xhonneux</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 34: Annual Conference on Neural Information Processing Systems 2021, NeurIPS 2021</title>
+		<editor>
+			<persName><forename type="first">Aurelio</forename><surname>Marc</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Alina</forename><surname>Ranzato</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Yann</forename><forename type="middle">N</forename><surname>Beygelzimer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Percy</forename><surname>Dauphin</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jennifer</forename><forename type="middle">Wortman</forename><surname>Liang</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Vaughan</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2021">December 6-14, 2021. 2021</date>
+			<biblScope unit="page" from="29476" to="29490" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Counting triangles and the curse of the last reducer</title>
+		<author>
+			<persName><forename type="first">Siddharth</forename><surname>Suri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergei</forename><surname>Vassilvitskii</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th International Conference on World Wide Web, WWW 2011</title>
+		<editor>
+			<persName><forename type="first">Sadagopan</forename><surname>Srinivasan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Krithi</forename><surname>Ramamritham</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Arun</forename><surname>Kumar</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><forename type="middle">P</forename><surname>Ravindra</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Elisa</forename><surname>Bertino</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Ravi</forename><surname>Kumar</surname></persName>
+		</editor>
+		<meeting>the 20th International Conference on World Wide Web, WWW 2011<address><addrLine>Hyderabad, India</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2011-04-01">March 28 -April 1, 2011. 2011</date>
+			<biblScope unit="page" from="607" to="614" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Algorithmic Aspects of Triangle-Based Network Analysis</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Schank</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+		<respStmt>
+			<orgName>Institut für Theoretische Informatik</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">PhD thesis</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Mapreduce: simplified data processing on large clusters</title>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Dean</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanjay</forename><surname>Ghemawat</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Commun. ACM</title>
+		<imprint>
+			<biblScope unit="volume">51</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="107" to="113" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">A fair comparison of graph neural networks for graph classification</title>
+		<author>
+			<persName><forename type="first">Federico</forename><surname>Errica</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Podda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Davide</forename><surname>Bacciu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alessio</forename><surname>Micheli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">8th International Conference on Learning Representations, ICLR 2020</title>
+		<meeting><address><addrLine>Addis Ababa, Ethiopia</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020">April 26-30, 2020. 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Predicting missing links via local information</title>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Linyuan</forename><surname>Lü</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi-Cheng</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The European Physical Journal B -Condensed Matter and Complex Systems</title>
+		<imprint>
+			<biblScope unit="volume">71</biblScope>
+			<biblScope unit="page" from="623" to="630" />
+			<date type="published" when="2009">10 2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Link prediction of social networks based on weighted proximity measures</title>
+		<author>
+			<persName><forename type="first">Tsuyoshi</forename><surname>Murata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sakiko</forename><surname>Moriyasu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2007 IEEE / WIC / ACM International Conference on Web Intelligence</title>
+		<meeting><address><addrLine>WI; Silicon Valley, CA, USA, Main Conference Proceedings</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE Computer Society</publisher>
+			<date type="published" when="2007-02-05">2007, 2-5 November 2007. 2007</date>
+			<biblScope unit="page" from="85" to="88" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Link prediction in weighted networks: The role of weak ties</title>
+		<author>
+			<persName><forename type="first">Linyuan</forename><surname>Lü</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Europhysics Letters</title>
+		<imprint>
+			<biblScope unit="volume">89</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">18001</biblScope>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">node2vec: Scalable feature learning for networks</title>
+		<author>
+			<persName><forename type="first">Aditya</forename><surname>Grover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</title>
+		<editor>
+			<persName><forename type="first">Balaji</forename><surname>Krishnapuram</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Mohak</forename><surname>Shah</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Alexander</forename><forename type="middle">J</forename><surname>Smola</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">C</forename><surname>Charu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Dou</forename><surname>Aggarwal</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Rajeev</forename><surname>Shen</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Rastogi</surname></persName>
+		</editor>
+		<meeting>the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining<address><addrLine>San Francisco, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2016">August 13-17, 2016. 2016</date>
+			<biblScope unit="page" from="855" to="864" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">LINE: large-scale information network embedding</title>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mingzhe</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qiaozhu</forename><surname>Mei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 24th International Conference on World Wide Web, WWW 2015</title>
+		<editor>
+			<persName><forename type="first">Aldo</forename><surname>Gangemi</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Stefano</forename><surname>Leonardi</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Alessandro</forename><surname>Panconesi</surname></persName>
+		</editor>
+		<meeting>the 24th International Conference on World Wide Web, WWW 2015<address><addrLine>Florence, Italy</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2015">May 18-22, 2015. 2015</date>
+			<biblScope unit="page" from="1067" to="1077" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Continuous-time dynamic network embeddings</title>
+		<author>
+			<persName><forename type="first">Giang</forename><surname>Hoang Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><forename type="middle">Boaz</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ryan</forename><forename type="middle">A</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nesreen</forename><forename type="middle">K</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eunyee</forename><surname>Koh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sungchul</forename><surname>Kim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Companion of the The Web Conference 2018 on The Web Conference 2018</title>
+		<editor>
+			<persName><forename type="first">Pierre-Antoine</forename><surname>Champin</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Fabien</forename><surname>Gandon</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Mounia</forename><surname>Lalmas</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Panagiotis</forename><forename type="middle">G</forename><surname>Ipeirotis</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Lyon , France</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2018">April 23-27, 2018. 2018</date>
+			<biblScope unit="volume">2018</biblScope>
+			<biblScope unit="page" from="969" to="976" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multi-relational data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>García-Durán</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 26: 27th Annual Conference on Neural Information Processing Systems 2013. Proceedings of a meeting</title>
+		<editor>
+			<persName><forename type="first">J</forename><forename type="middle">C</forename><surname>Christopher</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Léon</forename><surname>Burges</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Zoubin</forename><surname>Bottou</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kilian</forename><forename type="middle">Q</forename><surname>Ghahramani</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Weinberger</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Lake Tahoe, Nevada, United States</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2013">December 5-8, 2013. 2013</date>
+			<biblScope unit="page" from="2787" to="2795" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Zhiqing</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhi-Hong</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian-Yun</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">7th International Conference on Learning Representations</title>
+		<meeting><address><addrLine>New Orleans, LA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019-05-06">2019. May 6-9, 2019. OpenReview.net, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">Bishan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Deng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">3rd International Conference on Learning Representations, ICLR 2015</title>
+		<meeting><address><addrLine>San Diego, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2015">May 7-9, 2015. 2015</date>
+		</imprint>
+	</monogr>
+	<note>Conference Track Proceedings</note>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Simple embedding for link prediction in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Mehran</forename><surname>Seyed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Kazemi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Poole</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hanna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hugo</forename><surname>Wallach</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Larochelle</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 31: Annual Conference on Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">Kristen</forename><surname>Grauman</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Nicolò</forename><surname>Cesa-Bianchi</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Roman</forename><surname>Garnett</surname></persName>
+		</editor>
+		<meeting><address><addrLine>NeurIPS; Montréal, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018-12-03">2018. 2018. December 3-8, 2018. 2018</date>
+			<biblScope unit="page" from="4289" to="4300" />
+		</imprint>
+	</monogr>
+	<note>Samy Bengio</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Neural message passing for quantum chemistry</title>
+		<author>
+			<persName><forename type="first">Justin</forename><surname>Gilmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samuel</forename><forename type="middle">S</forename><surname>Schoenholz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><forename type="middle">F</forename><surname>Riley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><forename type="middle">E</forename><surname>Dahl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 34th International Conference on Machine Learning</title>
+		<editor>
+			<persName><forename type="first">Doina</forename><surname>Precup</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Yee</forename><forename type="middle">Whye</forename><surname>Teh</surname></persName>
+		</editor>
+		<meeting>the 34th International Conference on Machine Learning<address><addrLine>Sydney, NSW, Australia</addrLine></address></meeting>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2017-06-11">2017. 6-11 August 2017. 2017</date>
+			<biblScope unit="volume">70</biblScope>
+			<biblScope unit="page" from="1263" to="1272" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Inductive representation learning on large graphs</title>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhitao</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec ; Guyon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ulrike</forename><surname>Von Luxburg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samy</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanna</forename><forename type="middle">M</forename><surname>Wallach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rob</forename><surname>Fergus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">V N</forename><surname>Vishwanathan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roman</forename><surname>Garnett</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 30: Annual Conference on Neural Information Processing Systems</title>
+		<meeting><address><addrLine>Long Beach, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017-12-04">2017. December 4-9, 2017. 2017</date>
+			<biblScope unit="page" from="1024" to="1034" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Inductive representation learning on temporal graphs</title>
+		<author>
+			<persName><forename type="first">Da</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chuanwei</forename><surname>Ruan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evren</forename><surname>Körpeoglu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sushant</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kannan</forename><surname>Achan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">8th International Conference on Learning Representations, ICLR 2020</title>
+		<meeting><address><addrLine>Addis Ababa, Ethiopia</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020">April 26-30, 2020. 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Graph attention networks</title>
+		<author>
+			<persName><forename type="first">Petar</forename><surname>Velickovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillem</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arantxa</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adriana</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>Liò</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">6th International Conference on Learning Representations, ICLR 2018</title>
+		<title level="s">Conference Track Proceedings. OpenReview.net</title>
+		<meeting><address><addrLine>Vancouver, BC, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018-05-03">April 30 -May 3, 2018. 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">5th International Conference on Learning Representations</title>
+		<title level="s">Conference Track Proceedings. OpenReview.net</title>
+		<meeting><address><addrLine>Toulon, France</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017-04-24">2017. April 24-26, 2017. 2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">How powerful are graph neural networks?</title>
+		<author>
+			<persName><forename type="first">Keyulu</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefanie</forename><surname>Jegelka</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">7th International Conference on Learning Representations, ICLR 2019</title>
+		<meeting><address><addrLine>New Orleans, LA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">May 6-9, 2019. OpenReview.net, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Weisfeiler and leman go neural: Higher-order graph neural networks</title>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Morris</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Ritzert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>Eric Lenssen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gaurav</forename><surname>Rattan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Grohe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Thirty-Third AAAI Conference on Artificial Intelligence, AAAI 2019, The Thirty-First Innovative Applications of Artificial Intelligence Conference, IAAI 2019, The Ninth AAAI Symposium on Educational Advances in Artificial Intelligence</title>
+		<meeting><address><addrLine>Honolulu, Hawaii, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2019-01-27">2019. January 27 -February 1, 2019. 2019</date>
+			<biblScope unit="page" from="4602" to="4609" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Understanding the representation power of graph neural networks in learning graph topology</title>
+		<author>
+			<persName><forename type="first">Nima</forename><surname>Dehmamy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Albert-László</forename><surname>Barabási</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rose</forename><surname>Yu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 32: Annual Conference on Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Hanna</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Hugo</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Alina</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Beygelzimer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Emily</forename><forename type="middle">B</forename><surname>Florence D'alché-Buc</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Roman</forename><surname>Fox</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Garnett</surname></persName>
+		</editor>
+		<meeting><address><addrLine>NeurIPS; Vancouver, BC, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019-12-08">2019. 2019. December 8-14, 2019. 2019</date>
+			<biblScope unit="page" from="15387" to="15397" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">On node features for graph neural networks</title>
+		<author>
+			<persName><forename type="first">Chi Thang</forename><surname>Duong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thanh</forename><forename type="middle">Dat</forename><surname>Hoang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ha</forename><surname>The</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hien</forename><surname>Dang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quoc</forename><surname>Viet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hung</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karl</forename><surname>Aberer</surname></persName>
+		</author>
+		<idno>CoRR, abs/1911.08795</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Protein interface prediction using graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Fout</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathon</forename><surname>Byrd</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Basir</forename><surname>Shariat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Asa</forename><surname>Ben-Hur</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 30: Annual Conference on Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">Isabelle</forename><surname>Guyon</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Samy</forename><surname>Ulrike Von Luxburg</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Hanna</forename><forename type="middle">M</forename><surname>Bengio</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Rob</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><forename type="middle">V N</forename><surname>Fergus</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Roman</forename><surname>Vishwanathan</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Garnett</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Long Beach, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017-12-04">2017. December 4-9, 2017. 2017</date>
+			<biblScope unit="page" from="6530" to="6539" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">A review of relational machine learning for knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evgeniy</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gabrilovich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proc. IEEE</title>
+		<imprint>
+			<biblScope unit="volume">104</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="11" to="33" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">The surprising power of graph neural networks with random node initialization</title>
+		<author>
+			<persName><forename type="first">Ralph</forename><surname>Abboud</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>İsmail İlkan Ceylan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Grohe</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lukasiewicz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirtieth International Joint Conference on Artificial Intelligence, IJCAI 2021, Virtual Event</title>
+		<editor>
+			<persName><forename type="first">Zhi-Hua</forename><surname>Zhou</surname></persName>
+		</editor>
+		<meeting>the Thirtieth International Joint Conference on Artificial Intelligence, IJCAI 2021, Virtual Event<address><addrLine>Montreal, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2021-08-27">19-27 August 2021. 2021</date>
+			<biblScope unit="page" from="2112" to="2118" />
+		</imprint>
+	</monogr>
+	<note>ijcai.org</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Random features strengthen graph neural networks</title>
+		<author>
+			<persName><forename type="first">Ryoma</forename><surname>Sato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Makoto</forename><surname>Yamada</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hisashi</forename><surname>Kashima</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 SIAM International Conference on Data Mining</title>
+		<editor>
+			<persName><forename type="first">Carlotta</forename><surname>Demeniconi</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Ian</forename><surname>Davidson</surname></persName>
+		</editor>
+		<meeting>the 2021 SIAM International Conference on Data Mining</meeting>
+		<imprint>
+			<publisher>SIAM</publisher>
+			<date type="published" when="2021-05-01">April 29 -May 1, 2021. 2021</date>
+			<biblScope unit="page" from="333" to="341" />
+		</imprint>
+	</monogr>
+	<note>SDM 2021, Virtual Event</note>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Nguyen Quoc Viet Hung, and Karl Aberer. Nature vs. nurture: Feature vs. structure for graph neural networks</title>
+		<author>
+			<persName><forename type="first">Chi</forename><surname>Duong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thanh</forename><forename type="middle">Dat</forename><surname>Thang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thanh</forename><forename type="middle">Tam</forename><surname>Hoang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Jo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Pattern Recognit. Lett</title>
+		<imprint>
+			<biblScope unit="volume">159</biblScope>
+			<biblScope unit="page" from="46" to="53" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">On positional and structural node features for graph neural networks on non-attributed graphs</title>
+		<author>
+			<persName><forename type="first">Hejie</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zijie</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carl</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 31st ACM International Conference on Information &amp; Knowledge Management</title>
+		<editor>
+			<persName><forename type="first">Mohammad</forename><surname>Al</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Hasan</forename></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Li</forename><surname>Xiong</surname></persName>
+		</editor>
+		<meeting>the 31st ACM International Conference on Information &amp; Knowledge Management<address><addrLine>Atlanta, GA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022">October 17-21, 2022</date>
+			<biblScope unit="page" from="3898" to="3902" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Identity-aware graph neural networks</title>
+		<author>
+			<persName><forename type="first">Jiaxuan</forename><surname>You</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Michael Gomes Selman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rex</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Thirty-Fifth AAAI Conference on Artificial Intelligence, AAAI 2021, Thirty-Third Conference on Innovative Applications of Artificial Intelligence, IAAI 2021, The Eleventh Symposium on Educational Advances in Artificial Intelligence, EAAI 2021, Virtual Event</title>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2021">February 2-9, 2021. 2021</date>
+			<biblScope unit="page" from="10737" to="10745" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">The expressive power of graph neural networks</title>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Graph Neural Networks: Foundations, Frontiers, and Applications</title>
+		<editor>
+			<persName><forename type="first">Lingfei</forename><surname>Wu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Peng</forename><surname>Cui</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jian</forename><surname>Pei</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Liang</forename><surname>Zhao</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Singapore; Singapore</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="63" to="98" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">A reduction of a graph to a canonical form and an algebra arising during this reduction</title>
+		<author>
+			<persName><forename type="first">Boris</forename><surname>Aa Leman</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Weisfeiler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nauchno-Technicheskaya Informatsiya</title>
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="issue">9</biblScope>
+			<biblScope unit="page" from="12" to="16" />
+			<date type="published" when="1968">1968</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Strategies for pre-training graph neural networks</title>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joseph</forename><surname>Gomes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marinka</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Percy</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vijay</forename><forename type="middle">S</forename><surname>Pande</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">8th International Conference on Learning Representations, ICLR 2020</title>
+		<meeting><address><addrLine>Addis Ababa, Ethiopia</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020">April 26-30, 2020. 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<monogr>
+		<title level="m" type="main">Graph convolutions that can finally model local structure</title>
+		<author>
+			<persName><forename type="first">Rémy</forename><surname>Brossard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriel</forename><surname>Frigo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Dehaene</surname></persName>
+		</author>
+		<idno>CoRR, abs/2011.15069</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<monogr>
+		<title level="m" type="main">Invariant and equivariant graph networks</title>
+		<author>
+			<persName><forename type="first">Heli</forename><surname>Haggai Maron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nadav</forename><surname>Ben-Hamu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaron</forename><surname>Shamir</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lipman</surname></persName>
+		</author>
+		<idno>CoRR, abs/1812.09902</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Provably powerful graph networks</title>
+		<author>
+			<persName><forename type="first">Heli</forename><surname>Haggai Maron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hadar</forename><surname>Ben-Hamu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaron</forename><surname>Serviansky</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lipman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 32: Annual Conference on Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Hanna</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Hugo</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Alina</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Beygelzimer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Emily</forename><forename type="middle">B</forename><surname>Florence D'alché-Buc</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Roman</forename><surname>Fox</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Garnett</surname></persName>
+		</editor>
+		<meeting><address><addrLine>NeurIPS; Vancouver, BC, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019-12-08">2019. 2019. December 8-14, 2019. 2019</date>
+			<biblScope unit="page" from="2153" to="2164" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Space/time trade-offs in hash coding with allowable errors</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Burton</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bloom</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Commun. ACM</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="issue">7</biblScope>
+			<biblScope unit="page" from="422" to="426" />
+			<date type="published" when="1970">1970</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Mining significant graph patterns by leap search</title>
+		<author>
+			<persName><forename type="first">Xifeng</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hong</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiawei</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philip</forename><forename type="middle">S</forename><surname>Yu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the ACM SIGMOD International Conference on Management of Data</title>
+		<editor>
+			<persName><forename type="first">Jason Tsong-Li</forename><surname>Wang</surname></persName>
+		</editor>
+		<meeting>the ACM SIGMOD International Conference on Management of Data<address><addrLine>Vancouver, BC, Canada</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2008-06-10">2008. June 10-12, 2008. 2008</date>
+			<biblScope unit="page" from="433" to="444" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Tudataset: A collection of benchmark datasets for learning with graphs</title>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Morris</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nils</forename><forename type="middle">M</forename><surname>Kriege</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Franka</forename><surname>Bause</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristian</forename><surname>Kersting</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Petra</forename><surname>Mutzel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marion</forename><surname>Neumann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML 2020 Workshop on Graph Representation Learning and Beyond</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note>GRL+ 2020</note>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Learning to rank using gradient descent</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">C</forename><surname>Christopher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tal</forename><surname>Burges</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Erin</forename><surname>Shaked</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ari</forename><surname>Renshaw</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matt</forename><surname>Lazier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicole</forename><surname>Deeds</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregory</forename><forename type="middle">N</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hullender</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Machine Learning, Proceedings of the Twenty-Second International Conference (ICML 2005)</title>
+		<title level="s">ACM International Conference Proceeding Series</title>
+		<editor>
+			<persName><forename type="first">Luc</forename><surname>De</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Raedt</forename></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Stefan</forename><surname>Wrobel</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Bonn, Germany</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2005">August 7-11, 2005. 2005</date>
+			<biblScope unit="volume">119</biblScope>
+			<biblScope unit="page" from="89" to="96" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">The hadoop distributed file system</title>
+		<author>
+			<persName><forename type="first">Konstantin</forename><surname>Shvachko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hairong</forename><surname>Kuang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanjay</forename><surname>Radia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Chansler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE 26th Symposium on Mass Storage Systems and Technologies, MSST 2012</title>
+		<editor>
+			<persName><forename type="first">G</forename><surname>Mohammed</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Xubin</forename><surname>Khatib</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Michael</forename><surname>He</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Factor</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Lake Tahoe, Nevada, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE Computer Society</publisher>
+			<date type="published" when="2010">May 3-7, 2010. 2010</date>
+			<biblScope unit="page" from="1" to="10" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

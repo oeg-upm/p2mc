@@ -1,0 +1,994 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">TGL: A General Framework for Temporal GNN Training on Billion-Scale Graphs</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2022-06-30">30 Jun 2022</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Hongkuan</forename><surname>Zhou</surname></persName>
+							<email>hongkuaz@usc.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Southern California</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Da</forename><surname>Zheng</surname></persName>
+							<email>dzzhen@amazon.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Southern California</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">George</forename><surname>Karypis</surname></persName>
+							<email>gkarypis@amazon.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Southern California</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">TGL: A General Framework for Temporal GNN Training on Billion-Scale Graphs</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2022-06-30">30 Jun 2022</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">C3F9114F5390D00DFD5A59976A6AD135</idno>
+					<idno type="arXiv">arXiv:2203.14883v2[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:32+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract/>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>ABSTRACT</head><p>Many real world graphs contain time domain information. Temporal Graph Neural Networks capture temporal information as well as structural and contextual information in the generated dynamic node embeddings. Researchers have shown that these embeddings achieve state-of-the-art performance in many different tasks. In this work, we propose TGL, a unified framework for large-scale offline Temporal Graph Neural Network training where users can compose various Temporal Graph Neural Networks with simple configuration files. TGL comprises five main components, a temporal sampler, a mailbox, a node memory module, a memory updater, and a message passing engine. We design a Temporal-CSR data structure and a parallel sampler to efficiently sample temporal neighbors to form training mini-batches. We propose a novel random chunk scheduling technique that mitigates the problem of obsolete node memory when training with a large batch size. To address the limitations of current TGNNs only being evaluated on small-scale datasets, we introduce two large-scale real-world datasets with 0.2 and 1.3 billion temporal edges. We evaluate the performance of TGL on four small-scale datasets with a single GPU and the two large datasets with multiple GPUs for both link prediction and node classification tasks. We compare TGL with the open-sourced code of five methods and show that TGL achieves similar or better accuracy with an average of 13× speedup. Our temporal parallel sampler achieves an average of 173× speedup on a multi-core CPU compared with the baselines. On a 4-GPU machine, TGL can train one epoch of more than one billion temporal edges within 1-10 hours. To the best of our knowledge, this is the first work that proposes a general framework for large-scale Temporal Graph Neural Networks training on multiple GPUs.</p><p>PVLDB Reference Format: Hongkuan Zhou, Da Zheng, Israt Nisa, Vasileios Ioannidis, Xiang Song, and George Karypis. TGL: A General Framework for Temporal GNN Training on Billion-Scale Graphs. PVLDB, 14(1): XXX-XXX, 2020. doi:XX.XX/XXX.XX</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>Graph Neural Networks (GNNs) have proven to be powerful and reliable method in representation learning on static graphs and are widely used in many academic and industrial problems. There exist well-developed libraries like DGL <ref type="bibr" target="#b21">[22]</ref> and PyG <ref type="bibr" target="#b1">[2]</ref> that allow users to quickly and efficiently implement GNN variants for static graphs and deploy them to CPUs, GPUs, or even distributed systems. There are also multiple benchmark dataset collections like OGB <ref type="bibr" target="#b3">[4,</ref><ref type="bibr" target="#b5">6]</ref> that provide large-scale and wide-ranging datasets to evaluate the performance of GNN variants for static graphs.</p><p>However, many real-world graphs are dynamic. For example, in a social network new users join over time and users interact with each other on posts and send messages. In a knowledge graph, new events appear and are only valid for specific periods of time. The dynamics in the user-item graph reveal important information in identifying abusive behaviors <ref type="bibr" target="#b19">[20]</ref>. To capture the evolving nature on dynamic graphs, recently, researchers <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b12">13,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b16">17]</ref> have developed Temporal Graph Neural Networks (TGNNs) which jointly learn the temporal, structural, and contextual relationships on dynamic graphs. Like static GNNs, TGNNs encode graph information at a given time into dynamic node embeddings. With the additional temporal information, TGNNs outperform static GNNs on link prediction tasks, dynamic node classification tasks, and many other tasks on dynamic graphs. These works on temporal graph representation learning are developed using different frameworks with different levels of optimizations and parallelization and are evaluated on small dynamic graphs which only contain less than ten thousand nodes and one million edges.</p><p>Many real-world dynamic graphs, such as social network graphs and knowledge graphs, usually have millions of nodes and billions of edges. It is challenging to scale TGNN training to large graphs for multiple reasons. First, the additional temporal dependency requires training to be done chronologically. TGNNs also use more expensive neighbor samplers which select temporal neighbors based on the timestamps of the interactions between nodes. Moreover, different TGNNs capture the temporal information using different strategies like node memory and snapshot. Existing graph deep learning frameworks like DGL and PyG do not provide efficient data structure, sampler, and message passing primitive for dynamic graphs, which requires users to implement extra modules to compose TGNN models. In addition, it is also challenging to design an efficient and versatile framework that is capable of unifying the different schemes of different TGNN variants. Recently, PyTorch Geometric Temporal (PyGT) <ref type="bibr" target="#b15">[16]</ref> attempted to design a library for dynamic and temporal geometric deep learning on top of PyG. However, PyGT only supports discrete time snapshot-based method and full batch training on small-scale spatial-temporal graphs.</p><p>To fill these gaps, we develop TGL, the first general framework for large-scale offline TGNNs training. In this work, we focus on the widely used edge-timestamped dynamic graphs where each edge is associated with a timestamp. TGL supports all TGNN variants that aggregate and refine information from maintained states or features of selected temporal neighbors. The survey <ref type="bibr" target="#b8">[9]</ref> categorizes dynamic graphs into Continuous Time Dynamic Graphs (CTDGs) and Discrete Time Dynamic Graphs (DTDGs) based on the continuous or discrete quantity of the timestamps. However, we believe that DTDGs are essentially CTDGs with granulated timestamps. Hence, we design TGL to support the more general CTDGs and evaluate TGL by comparing the performance of TGNN variants targeting both CTDGs and DTDGs in the experiments. Our main contributions are</p><p>• We design a unified framework that supports efficient training on most TGNN architectures by studying the characteristic of a diverse set of TGNNs variants including snapshotbased TGNNs <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b16">17]</ref>, time encoding-based TGNNs <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b22">23]</ref>, and memory-based TGNNs <ref type="bibr" target="#b9">[10,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b17">18,</ref><ref type="bibr" target="#b22">23]</ref>.</p><p>• We design a CSR-based data structure for rapid access to temporal neighbors and a parallel sampler that support different temporal neighbor sampling algorithms. Our parallel sampler can quickly locate the temporal edges to sample from by maintaining auxiliary pointer arrays.</p><p>• We propose a novel random chunk scheduling technique that overcomes the deprivation of intra-dependency when training with a large batch size for the methods using node memory, which enables multi-GPU training on large-scale dynamic graphs.</p><p>• To better compare the performance of various TGNN methods, we introduce two large-scale datasets with billions of edges -the GDELT and MAG datasets which represent dynamic graphs with long time duration and dynamic graphs with larger number of nodes. • We compare the performance of TGL with the baseline opensourced codes on two small-scale datasets. TGL achieves similar or higher accuracy for all baseline methods with an average speedup of 13× as shown in Figure <ref type="figure">1</ref>. On the largescale datasets, TGL achieves an average of 2.3× speedup when using 4 GPUs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">TEMPORAL GRAPH NEURAL NETWORKS</head><p>TGNNs generate dynamic node embeddings by adding components like time encoder and node memory in the message passing flow or combining information from multiple consecutive graph snapshots.. In general, TGNNs generate dynamic node embeddings by iteratively processing the information gathered from temporal neighbors, similarly to static GNNs. To capture the additional temporal dependencies, TGNNs usually process the neighbor information by three methods: 1) group the neighbors in the past according to their time and learn sequences from the groups (snapshot-based TGNNs), 2) add additional time encoding to each past neighbor, and 3) maintain node memory which summarizes the current state of each node (memory-based TGNNs). Table <ref type="table" target="#tab_0">1</ref> shows different strategies used by different TGNN variants. Note that some TGNNs <ref type="bibr" target="#b14">[15,</ref><ref type="bibr" target="#b22">23]</ref> use combinations of multiple strategies to intensify the temporal relationships, while some other TGNNs only rely on a single strategy. For example, pure memory TGNNs <ref type="bibr" target="#b9">[10,</ref><ref type="bibr" target="#b17">18,</ref><ref type="bibr" target="#b22">23]</ref> directly use the node memory as the dynamic node embeddings, potentially with complex COMB and UPDT function to update node memory. For example, in APAN <ref type="bibr" target="#b22">[23]</ref>, the mails are delivered to the mailboxes of hop-1 neighbors and the COMB function applies attention mechanism to update the node memory. After studying the architecture of different TGNNs, we identify three components that form a unified representation for most TGNN variants -the node memory, the attention aggregator, and the temporal sampler. For snapshot-based TGNNs <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b16">17]</ref>, each snapshot is treated independently while the output of each snapshot is combined to produce the final node embeddings. Beside these methods, CAW-N <ref type="bibr" target="#b23">[24]</ref>  </p><formula xml:id="formula_0">𝑚 𝑢𝑣 𝑒 = 𝒔 𝑢 ||𝒔 𝑣 ||Φ(𝑡 -𝑡 - 𝑣 )||𝒆 𝑢𝑣<label>(1)</label></formula><formula xml:id="formula_1">𝑚 𝑣𝑢 𝑒 = 𝒔 𝑣 ||𝒔 𝑢 ||Φ(𝑡 -𝑡 - 𝑣 )||𝒆 𝑢𝑣 .<label>(2)</label></formula><p>The time encoder Φ <ref type="bibr" target="#b0">[1]</ref> encodes the time interval Δ𝑡 = 𝑡 -𝑡 - 𝑣 into vector</p><formula xml:id="formula_2">Φ(Δ𝑡) = cos(𝝎Δ𝑡 + 𝝓),<label>(3)</label></formula><p>where 𝝎 and 𝝓 are two learnable vectors. The node memory is then updated by</p><formula xml:id="formula_3">𝒔 𝑣 = UPDT 𝒔 𝑣 , COMB 𝑚 𝑖 𝑗 𝑒 |𝑣 ∈ N (𝑖) ∪ N ( 𝑗) ,<label>(4)</label></formula><p>where UPDT is the RNN or GRU memory updater, and COMB is the combiner of all related neighbor input mails. The mails are delivered to the neighbors of the source and destination nodes.</p><p>When performing GNN message passing, the node memory is combined with the original node features 𝒗 𝑣 to serve as the new node features.</p><formula xml:id="formula_4">𝒗 ′ 𝑣 = 𝒔 𝑣 + MLP(𝒗 𝑣 ).<label>(5)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Attention Aggregator</head><p>TGNNs adopt the attention mechanism from Transformer <ref type="bibr" target="#b18">[19]</ref> to gather and aggregate information from temporal neighbors. The attention aggregation of node 𝑢 is computed by the queries, keys, and values from its hop-1 temporal neighbors 𝑣 ∈ N (𝑣).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3">Temporal Sampler</head><p>To ensure each node can access the relevant information from its supporting nodes or the mails are delivered to neighbor nodes, TGNNs need to consider the edge timestamps when sampling. There are two major sampling strategies, uniform sampling where neighbors in the past are sampled uniformly as supporting nodes and most-recent sampling where only the most recent neighbors are sampled. Note that in a dynamic graph, two nodes can have multiple edges at different timestamps. These nodes can also be sampled multiple times as supporting nodes with different timestamps.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">TGL</head><p>In this section, we present TGL -a general framework for efficient TGNNs training on large-scale dynamic graphs.</p><p>Figure <ref type="figure" target="#fig_0">2</ref> shows the overview of the training of TGL on a single GPU. We split the modules with learnable and non-learnable parameters to store on GPU and CPU respectively. For datasets where the ○ Sample neighbors for the root nodes with timestamps in the current mini-batch. 2  ○ Lookup the memory and the mailbox for the supporting nodes. 3  ○ Transfer the inputs to GPU and update the memory. 4  ○ Perform message passing using the updated memory as input. 5  ○ Compute loss with the generated temporal embeddings. 6  ○ Update the memory and the mailbox for next mini-batch.</p><p>GPU memory is sufficient to hold all information, the non-learnable modules can also be stored and computed on GPU to speedup the training. To be compatible with different TGNN variants, we design five general components: the temporal sampler, the mailbox, the node memory, the memory updater, and the attention aggregator. For snapshot-based TGNNs, the temporal sampler would sample in each snapshot individually. Note that in TGL, we do not treat graph snapshots as static windows. Instead, the graph snapshots are dynamically created according to the timestamp of the target nodes. This allows the snapshot-based TGNNs to generate dynamic node embeddings at any timestamps, instead of a constant embedding in a static snapshot.</p><p>TGNNs are usually self-supervised by the temporal edges, because it is hard to get dynamic graphs with enough dynamic node labels to supervise the training. Training with temporal edges causes the "information leak" problem where the edges to predict are already given to the models as input. The information leak problem in attention aggregator can be simply avoided by not sampling along the edges to predict. In node memory, the information leak problem is eliminated by caching the input from previous mini-batches <ref type="bibr" target="#b14">[15]</ref>, which enables the node memory to receive gradients. In TGL, we adopt the mailbox module <ref type="bibr" target="#b22">[23]</ref> to store a fixed number of most recent mails for updating the node memory. When a new interaction appears, we first update the node memory of the involved nodes with the cached messages in the mailbox. The messages in the mailbox are updated after the dynamic node embeddings are computed. Note that to keep the node memory consistent, the same updating scheme is used at inference when updating the node memory is not necessary.</p><p>TGL users can easily configure TGL to train different TGNN variants by yaml configuration files. TGL supports a wide range of TGNN variants including vanilla attention-based TGNN TGAT <ref type="bibr" target="#b0">[1]</ref>, snapshot-based TGNNs like Evolve-GCN <ref type="bibr" target="#b12">[13]</ref> and DySAT <ref type="bibr" target="#b16">[17]</ref>  <ref type="bibr" target="#b14">[15,</ref><ref type="bibr" target="#b17">18]</ref>, and pure memory-based TGNNs <ref type="bibr" target="#b9">[10,</ref><ref type="bibr" target="#b22">23]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Parallel Temporal Sampler</head><p>Sampling neighbors on dynamic graphs is complex as the timestamps of the neighbors need to be considered. In the offline training process, TGL stores the entire dynamic graph statically where the timestamps are attached to the nodes and edges. For snapshot-based TGNNs, the temporal samplers need to identify the snapshots before sampling. Other TGNNs that either samples uniformly from all past neighbors or sample most recent neighbors can be treated as single snapshot TGNNs with infinite snapshot length. Their temporal samplers also needs to identify the candidate edges and their sampling probabilities. Hence, it is important to design a data structure that can rapidly identifies the dynamic candidate set of temporal neighbors to sample from. Combined with the fact that the mini-batches in TGNNs training follow chronological order (have non-decreasing timestamps), we propose the Temporal-CSR (T-CSR) data structure.</p><p>The T-CSR Data Structure Besides the indptr and indices array of the CSR data structure, for each node, T-CSR sorts the outgoing edges according to their timestamps as shown in Figure <ref type="figure">3</ref>. After sorting all the edges in a dynamic graph, we assign edge ids according to their position (indexes) in the sorted indices and times arrays. In addition, for a TGNN model with 𝑛 snapshots, we maintain 𝑛 + 1 pointers for each node that point at the first and last edges in these snapshots. Formally, the T-CSR data structure is defined by an indptr array of size |𝑉 | + 1, an indices array and a time array of size |𝐸|, and 𝑛 + 1 pointers array of size |𝑉 |, which leads to a total Note that some TGNNs like TGAT <ref type="bibr" target="#b0">[1]</ref> use the timestamp of the neighbors to sample multi-hop temporal neighbors, instead of using the timestamp of the root nodes. For these TGNNs, the proposed pointer only works for the hop-1 neighbors. Since the edges are sorted in T-CSR, we can still to use binary search to quickly find out the candidate edges before sampling.</p><formula xml:id="formula_5">𝑒1 , 𝑡1 𝑒 2 , 𝑡 2 𝑒 3 , 𝑡 3 𝑒 4 , 𝑡 4 𝑣 1 𝑣 2 𝑣 3 𝑣 4 5 • • • 𝑣 1 𝑣 2 • • • indptr indices • • • 𝑣 2 𝑣 3 𝑣 4 𝑣 5 • • • times • • • 𝑡 1 𝑡 2 𝑡 3 𝑡 4 • • • 𝑝𝑡 2 𝑝𝑡 1 𝑝𝑡 0 𝑆 1 𝑆 0 Figure 3: T-CSR</formula><p>Parallel Sampling To leverage the multi-core CPU resources in the host machine, we exploit data parallelism to sample on the root nodes in a mini-batch as shown in Algorithm 1. In each mini-batch, the target nodes are evenly distributed to each thread to update the pointers and sample the neighbors. Note that when updating the pointers in parallel, it is possible that multiple threads share the same target nodes with different timestamps, which causes race conditions. We add fine-grained locks to each node to avoid the pointers being advanced multiple times under such conditions. When same target nodes at different timestamp appears multiple time in one mini-batch, it is also possible that the target nodes with small timestamps sample temporal neighbors from the future. We prevent information leak in such situation by strictly enforcing that the sample temporal neighbors have smaller timestamps than the root nodes. After each thread finishes sampling in each minibatch, we generate a DGL Message Flow Graph (MFG) for each layer <ref type="bibr" target="#b21">[22]</ref> which contains all the input data needed in the forward and backward propagation and pass it to the trainer. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Parallel Training</head><p>In order to scale static GNN training to large graphs, recent works <ref type="bibr" target="#b20">[21,</ref><ref type="bibr" target="#b24">25]</ref> increase the batch size to take advantage of the massive data parallelism provided by multi-GPU servers or GPU clusters. However, training TGNN with a large batch size suffers from the intrinsic temporal dependency in the node memory. Defining the dependent edges as pairs of training edges who share common supporting nodes in the source or destination nodes, we can divide the edge dependencies into two types:</p><p>• Intra-batch dependencies refer to the dependent edges in the same mini-batch. In TGNN training, the intra-batch dependencies are discarded in order to process the edges in a mini-batch in parallel.</p><p>• Inter-batch dependencies refer to the dependent edges in different mini-batches. TGNNs take these inter-batch relations into account by updating the node memory and the mailbox after each mini-batch. Since the total number of intra-and inter-batch dependencies is constant on one dynamic graph, training with a larger batch size discards more intra-batch dependencies and learns less inter-batch dependencies which leads to lower accuracy. To mitigate this issue, we propose a random chunk scheduling technique that divides the training edges into chunks and randomly picks one chunk as the starting point in each training epoch, which allows close chunks to be arranged in different mini-batches in different training epochs, hence learning more inter-batch dependencies. The random chunk training algorithm is shown in Algorithm 11.</p><p>To train TGL on multiple GPUs, we adopt the setup of multiple GPUs on a single node and store the node memory and the mailbox in the main memory. On 𝑛 GPUs, we launch 𝑛 training processes and one sampling process with inter-process communication protocols. For simplicity, the updates of the model weights, the node memory, and the mailbox are synchronized.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">EXPERIMENTS</head><p>We perform detailed experiments to evaluate the performance of TGL. We implement TGL using PyTorch 1.8.1 <ref type="bibr" target="#b13">[14]</ref> and DGL 0.6.1 <ref type="bibr" target="#b21">[22]</ref>. The parallel temporal sampler is impletmented using C++ and integrated to the Python training script using PyBind11 <ref type="bibr" target="#b6">[7]</ref>. The open-sourced code of TGL could be found at https://github.com/ tedzhouhk/TGL. We select five representative TGNN variants as the baseline methods and evaluate their performance in TGL.</p><p>• JODIE <ref type="bibr" target="#b9">[10]</ref> is a pure memory-based TGNN method that uses RNN to update the node memory by the node messages. We use the open-sourced code implemented as a baseline in TGN <ref type="bibr" target="#b14">[15]</ref> as the baseline code.</p><p>• DySAT <ref type="bibr" target="#b16">[17]</ref> is a snapshot-based TGNN that uses RNN to combine the node embeddings from different snapshots.</p><p>• TGAT <ref type="bibr" target="#b0">[1]</ref> is a attention-based TGNN that gathers temporal information by the attention aggregator.</p><p>• TGN <ref type="bibr" target="#b14">[15]</ref> is a memory-based TGNN that applies the attention aggregator on the node memory updated by GRU with the node messages.</p><p>• APAN <ref type="bibr" target="#b22">[23]</ref> is a pure memory-based TGNN method that uses attention aggregator to update the node memory by the node messages delivered to the multi-hop neighbors.</p><p>For fair comparison, we set the receptive field to be 2-hop and fix the number of neighbors to sampler per hop at 10. The size of the mailbox is set to be 10 mails in APAN while 1 mail in other methods.</p><p>For the COMB function in Equation <ref type="formula" target="#formula_3">4</ref>, we use the most recent mail in all methods, as we do not see noticeable difference if switched to the mean of mails. We set the dimension of the output dynamic node embeddings to be 100. We apply the attention aggregator with 2 attention heads for the message passing step in all baseline methods.</p><p>For DySAT, we use 3 snapshots with the duration of each snapshot to be 10000 seconds on the four small-scale datasets, 6 hours on GDELT, and 5 years on MAG. As mentioned in Section 3, TGL uses dynamic snapshot windows to ensure that the time resolution of the generated dynamic node embeddings is the same as the other TGNNs. For fairness, we add layer normalization to JOIDE and TGAT, which allows all methods to have layer normalization and in-between each layer. For all methods, we sweep the learning rate from {0.01,0.001,0.0001} and dropout from {0.1,0.2,0.3,0.4,0.5}. The TGNN models are trained with the link prediction task and directly used in the dynamic node classification task without fine-tuning <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b14">15]</ref>. On all datasets, we follow the extrapolation setting that predict the links or node properties in the future given the dynamic graphs in the past. We provide comprehensive and nondiscriminatory benchmark results for various TGNNs by evaluating them in the TGL framework.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Datasets</head><p>Table <ref type="table" target="#tab_4">3</ref> shows the statistic of the six datasets we use to evaluate the performance of TGL. As the Wikipedia <ref type="bibr" target="#b14">[15]</ref>, Reddit <ref type="bibr" target="#b14">[15]</ref>, MOOC <ref type="bibr" target="#b9">[10]</ref>, and LastFM <ref type="bibr" target="#b9">[10]</ref> datasets are small-scale and bipartite dynamic graphs, in order to evaluate the performance on general and largescale graphs, we introduce two large-scale datasets -GDELT and MAG. These two datasets contains 0.2 and 1.3 billion edges in multiple years and focus on testing the capability of TGNNs in two different dimensions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.1">GDELT.</head><p>The GDELT dataset is a Temporal Knowledge Graph (TKG) originated from the Event Database in GDELT 2.0 <ref type="bibr" target="#b10">[11]</ref> which records events happening in the world from news and articles in over 100 languages every 15 minutes. Previous event prediction work <ref type="bibr" target="#b7">[8]</ref> pre-processed a small dataset from the same source with events happened in January 2018. Their version is a featureless graph where the features of actors and events are ignored. In this work, we propose a larger featured version with events happened from the beginning of 2016 to the end of 2020. Our GDELT dataset is a homogeneous dynamic graph where the nodes represent actors and temporal edges represent point-time events. Each node has a 413-dimensional multi-hot vector representing the CAMEO codes attached to the corresponding actor to server as node features. Each temporal edge has a timestamp and a 186-dimensional multi-hot vector representing the CAMEO codes attached to the corresponding event to server as temporal edge features. The link prediction task on the GDELT dataset predicts whether there will be an event happening between two actors at a given timestamp.</p><p>For the node classification task, we use the countries where the actors were located when the events happened as the dynamic node labels. We remove the dynamic node labels for the nodes that have the same labels at their most recent timestamps to make this task more challenging. We use the events before 2019, in 2019, and in 2020 as training, validation, and test set, respectively. The GDELT datasets has dense temporal interactions between the nodes and requires TGNNs to be able to capture mutable node information for a long time duration.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.2">MAG.</head><p>The MAG dataset is a homogeneous sub-graph of the heterogeneous MAG240M graph in OGB-LSC <ref type="bibr" target="#b4">[5]</ref>. We extract the paper-paper citation network where each node in MAG represents one academic paper. A directional temporal edge from node 𝑢 to node 𝑣 represents a citation of the paper 𝑣 in the paper 𝑢 and has a timestamp representing the year when the paper 𝑢 is published. The node features are 768-dimensional vectors generated by embedding the abstract of the paper using RoBERTa <ref type="bibr" target="#b11">[12]</ref>. The link prediction task on the MAG dataset predicts what papers will a new paper cite. For the node classification dataset, we use the arXiv subject areas as node labels. We use the papers published before 2018, in 2018, and in 2019 as training, validation, and test set. The MAG dataset test the capability of TGNN models to learn dynamic node embeddings on large graph with stable nodes and edges.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Parallel Temporal Sampler</head><p>The performance of our parallel temporal sampler is evaluated on the g4dn.8xlarge instance on AWS EC2 with 32 virtual CPUs and 64GB of main memory. We select three representative sampling algorithms</p><p>• DySAT 2-layer sampling represents the temporal graph sampling for snapshot-based methods. The supporting nodes are chosen uniformly from the temporal neighbors in each dynamic snapshots.</p><p>• TGAT 2-layer sampling represents the uniformly temporal graph sampling which selects supporting nodes uniformly from all past temporal neighbors.</p><p>• TGN 1-layer sampling represents the most recent temporal graph sampling which selects most recent temporal neighbors as supporting nodes. Most recent sampling algorithms are usually used in memory-based methods and hence requires one less supporting layers. Table <ref type="table" target="#tab_5">4</ref> shows the improvement (speedup) of the temporal parallel sampler in TGL compared with the samplers in the open-sourced baselines using different number of threads. The baseline samplers sample the neighbors by performing single-thread vectorized binary search on sorted neighbors lists. We show the sampling time for one epoch with batch size of 600 positive and 600 negative edges. With our efficient T-CSR data structure, TGL spends less than 0.5 seconds in sampling on one epoch of the Wikipedia dataset for all three sampling algorithms. Using 32 threads, TGL achieves 57× and 289× speedup compared with the sampler in TGAT and TGN. The speedup is a result by combined factors of 1) the T-CSR data structure, 2) data parallelism, and 3) efficiency of C++ over Python.</p><p>Figure <ref type="figure" target="#fig_3">4</ref> shows the runtime and the runtime breakdown of our temporal parallel sampler using a different number of threads. TGL achieves 3.13×, 4.20×, and 2.42× speedup using 32 threads for the DySAT, TGAT, and TGN sampling algorithms. The reasons for the sub-linear speedup are 1) node-wise locks in updating the pointers   2) memory performance bottleneck when fetching the selected edge information 3) linear workload with respect to the number of threads when generating DGL MFGs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Single-GPU Training</head><p>We evaluate the performance of TGL with a single GPU on the four small datasets. We use the same g4dn.8xlarge AWS EC2 instance with one Nvidia T4 GPU. We find that on all datasets, the batch size of 600 positive edges with 600 negative edges are a good balance point between the convergence rate and training speed for memorybased TGNNs. Hence, for a fair comparison, we use batch size of 600 for all five selected TGNN variants in TGL and their opensourced baselines. For the MOOC and LastFM datasets, we randomly generate 128-dimensional edge features since the original datasets do not contain node or edge features. Due to the lack of authentic features and performance evaluation of the baseline code, we do not compare the performance of TGL and the baseline code on these two datasets. Since the 16GB GPU memory is enough to hold the node features, the edge features, the node memory, and the mailbox, we store these data on GPU instead of CPU to avoid the data transfer overhead. We use 32 threads in the temporal parallel sampler.</p><p>Table <ref type="table" target="#tab_6">5</ref> shows the accuracy and per epoch training time of the five baselines and TGL in the link prediction task. We report the accuracy in Average Precision (AP) on both the positive and negative test edges. For all methods, TGL achieves similar or higher AP than the baselines with significantly faster runtime (see Figure <ref type="figure">1</ref>). The accuracy improvement on TGAT and JODIE is because we use layer normalization in-between each layer. The accuracy of TGAT and TGN also benefits from better hyper-parameters and convergence. TGN achieves the highest AP in the link prediction task on all datasets except the LastFM dataset, followed by JODIE, DySAT Figure <ref type="figure">5</ref> shows the convergence curve and runtime breakdown on the Wikipedia dataset. JODIE, DySAT, and TGN have faster convergence speed than APAN and TGAT. The runtime breakdown is measured by storing the node memory and mailbox in the main memory and forcing to use synchronized execution between the CPU and GPU, which leads to around 15% more execution time than asynchornized execution. With our temporal parallel sampler, the sampling overhead in TGL is negligible. For computation intensive two-layer TGNNs like DySAT and TGAT, the runtime is dominated by the computation on GPU. For memory-based models, the time spent in updating the node memory and the mailbox takes up to 30% of the total training time.</p><p>Table <ref type="table" target="#tab_7">6</ref> shows the results of directly using the learned TGNN models on the dynamic node classification task. On the Wikipedia and the Reddit datasets, the node classification tasks are to identify banned users. Since the number of positive labels are small compared with the number of negative labels, we train the MLP classifiers with an equal number of randomly sampled negative labels, similar to training link prediction models. We also show the accuracy as AP on both the positive nodes and sampled the negative nodes. TGN and JODIE achieve the highest AP on the Wikipedia and the Reddit datasets, where JODIE achieves more than 7% AP than other methods on the Reddit dataset. We assume this is due to the noisy neighbors in the Reddit dataset, which prevent high-expressive model from learning general patterns on the graph structure.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Random Chunk Scheduling</head><p>To evaluate the effectiveness of the random chunk scheduling technique, we train the TGN model which has the best overall performance on the two small-scale datasets, as training with a small batch size and plot various convergence curves on the large-scale datasets is too slow. To make a fair comparison, we train the baseline models with the best group of hyperparameters (0.001 learning rate, 600 batch size). We then increase the batch size and also linearly increase the learning rate, as a larger batch size leads to a better approximation of the total loss <ref type="bibr" target="#b2">[3]</ref>. Specifically, we train the same model with 8× the batch size and learning rate (0.008 learning rate, 4800 batch size) with the chunk sizes of 4800, 300, and 150 (number of chunks per batch size 1, 16, and 32). Since the node memory used in the validation process is inherited from the training process, when we compute the validation loss, we first reset the node memory and use a constant batch size of 600 to run one whole epoch on the training and validation set. Figure <ref type="figure">6</ref> shows the validation loss under different batch sizes and chunk sizes on the Reddit and Wikipedia datasets. The models trained with the batch size of 4800 and no random chunk scheduling cannot learn on both datasets after 5 to 10 epochs, due to the lost dependencies in the training mini-batches. On the Wikipedia dataset, the batch size of 4800 with 16 chunks per batch performs better than no chunks while the same batch size with 32 chunks per batch achieves similar convergence after 30 epochs. On the Reddit dataset, our random chunk scheduling technique also mitigates the overfitting issue and achieves close to baseline convergences within 30 epochs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.5">Multi-GPU Training</head><p>We evaluate the performance of TGL on the two large-scale datasets with multiple GPUs. We use the p3dn.24xlarge instance on EC2 with 96 virtual CPUs, 768GB of main memory, and 8 Nvidia V100  GPUs. We use 64 threads in the temporal parallel sampler and assign 8 threads for each trainer process. We use a local batch size of 4000 positive and 4000 negative edges on each GPU. The global copy of the node memory and the mailbox are stored in the shared memory. The trainer process then overlaps the MFG copy to GPU with the computation on GPU by creating additional copying threads on different CUDA streams. The gradients in each iteration are synchronized among the trainer processes through the NCCL backend.</p><p>Table <ref type="table" target="#tab_8">7</ref> shows the AP and running time in the link prediction task. Similar to the single GPU results, TGN achieves the highest AP and JODIE has the fastest training time. On the GDELT datasets, the memory-based models can train one epoch within 30 minutes, while the non-memory based models need more than 3 hours. On the MAG dataset, APAN throws out of memory error as it requires the mailbox to store 10 most recent mails for each node in the graph. Figure <ref type="figure" target="#fig_5">7</ref> shows the scalability of TGL on multiple GPUs. TGL achieves 2.74×, 2.28×, 2.25×, 2.30× and 1.80× speedup by using 4 GPUs for JODIE, DySAT, TGAT, TGN, and APAN, respectively. For 8 GPUs, the bandwidth between CPU and main memory to slice the node and edge features and update the node memory and the mailbox and the number of PCI-E channels to copy the MFGs to the GPUs are saturated.</p><p>Table <ref type="table" target="#tab_7">6</ref> shows the F1-Micro of the trained models in the multipleclass single-label dynamic node classification task. On the GDELT dataset, all models perform bad where JODIE and TGN has slightly better performance than others. On the MAG dataset, TGAT and DySAT with two complete graph attention layers achieves the highest and second highest accuracy while JODIE with no graph attention layer achieves the lowest accuracy.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">CONCLUSION</head><p>In this work, we proposed TGL -the first unified framework for large-scale TGNN training. TGL allows users to efficiently train different TGNN variants on a single GPU and multiple GPUs by writing simple configuration files. We designed the T-CSR data structure to store the dynamic graphs and developed a temporal parallel sampler which greatly reduces the sampling overhead. We proposed the random chunk scheduling technique to mitigate the loss of dependencies when training with a large batch size. We processed two large-scale datasets to test the capability of TGNNs in two different dimensions. We evaluated the performance of five different TGNN variants on four small-scale datasets and two largescale datasets with billions of edges. TGL achieves similar or better accuracy on all datasets with significantly faster training time compared with the open-sourced baselines.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Overview (forward path) of the proposed framework. 1○ Sample neighbors for the root nodes with timestamps in the current mini-batch.2  ○ Lookup the memory and the mailbox for the supporting nodes.3  ○ Transfer the inputs to GPU and update the memory.4  ○ Perform message passing using the updated memory as input.5  ○ Compute loss with the generated temporal embeddings.6  ○ Update the memory and the mailbox for next mini-batch.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Algorithm 2 : 3 𝑒 4 𝑒 6 sample 8 𝑒 9 𝑒</head><label>234689</label><figDesc>Random Chunk Scheduling 1 Data: training edges 𝐸, sorted T-CSR 𝐺, TGNN model 𝑀 Input: batch size 𝑏𝑠, chunk size 𝑐𝑠, training epochs 𝐸 2 for e in 0..E do 𝑠 ← rand(0, 𝑏𝑠/𝑐𝑠) * 𝑏𝑠; 𝑒 ← 𝑒 𝑠 + 𝑏𝑠; 5 while 𝑒 𝑒 ≤ |𝐸| do MFGs from 𝐸 (𝑒 𝑠 ..𝑒 𝑒 ); 7 train for one iteration with the current MFG; 𝑠 ← 𝑒 𝑠 + 𝑏𝑠; 𝑒 ← 𝑒 𝑒 + 𝑏𝑠;</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: (a) Scalability of the temporal sampler on the Wikipedia dataset. (b) Runtime breakdown (normalized by single thread runtime) of the temporal sampler on the Wikipedia dataset with 1 (top), 8 (mid), and 32 (bottom) threads. Ptr., BS, Spl., and Oth. denote the time to update pointers (line 4 and 11), to perform binary search (line 13), to sample neighbors (line 16), and to generate DGL MFGs (line 18) in Algorithm 1, respectively.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>2 ○ 3 ○ 4 ○ 5 ○ 6 ○Figure 5 :</head><label>234565</label><figDesc>Figure 5: Validation AP with training time (left) and normalized runtime breakdown (right) on the Wikipedia dataset. The circled numbers refer to the six steps in Figure 2.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: Normalized time per epoch with different number of GPUs on the GDELT dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Strategies used by various TGNN variants.</figDesc><table><row><cell>94 96 100 98 AP</cell><cell>10 0</cell><cell>10 1 8. 51 × 4.38× 1 6 .9 4 ×</cell><cell>1 6 .7 3 ×</cell><cell>10 2</cell><cell>JODIE TGAT TGN APAN</cell><cell>TGL Baseline</cell></row><row><cell></cell><cell></cell><cell cols="3">Training Time per Epoch (s)</cell><cell></cell><cell></cell></row><row><cell cols="7">Figure 1: Accuracy and per epoch training time of TGL com-</cell></row><row><cell cols="7">pared with the baselines on the Wikipedia dataset (600 batch</cell></row><row><cell>size).</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>,</head><label></label><figDesc>Algorithm 1: Parallel Temporal Sampler Data: sorted T-CSR 𝐺 Input: root nodes 𝒏 with timestamp 𝒕 𝒏 , number of layer 𝐿, number of neighbors in each layer 𝑘 𝑙 , number of snapshots 𝑆, snapshot length 𝑡 𝑠 Output: DGL MFGs 1 advance the pointer of 𝒏 to 𝒕 𝒏 in 𝑝𝑡 (𝑆 + 1) in parallel; 2 for l in 0..L do set 𝒏 and 𝒕 𝒏 to sampled neighbors in 𝑙 -1; advance the pointer of 𝒏 to 𝒕 𝒏 -𝑠 * 𝑡 𝑠 in 𝑝𝑡 (𝑆 -𝑠 -1) in parallel; 𝑙 neighbors within the snapshot 𝑆 𝑠 ;</figDesc><table><row><cell>3 4 5</cell><cell>for s in 0..S do if 𝑙 ≥ 0 then</cell></row><row><cell>6 7</cell><cell>end if 𝑙 == 0 then</cell></row><row><cell>8</cell><cell></cell></row><row><cell>9 10 11 12</cell><cell>else binary search in the snapshots 𝑆 𝑠 for each node 𝑛 ∈ 𝒏 in parallel; end foreach 𝑛 ∈ 𝒏 in parallel do</cell></row><row><cell>14 15</cell><cell>end generate DGL MFGs;</cell></row><row><cell>16</cell><cell>end</cell></row><row><cell cols="2">17 end</cell></row><row><cell cols="2">memory-based TGNNs</cell></row></table><note><p><p>13</p>sample 𝑘</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head></head><label></label><figDesc>representation of the node 𝑣 1 with four temporal edges 𝑒 1 to 𝑒 4 with timestamps 𝑡 1 to 𝑡 4 connected to neighbors 𝑣 1 to 𝑣 4 . The indices and times arrays are sorted by the edge timestamps and indexed by the edge ids 𝑒 1 to 𝑒 4 . 𝑆 0 and 𝑆 1 denote two snapshots of the temporal graph, designated by the pointers 𝑝𝑡 0 to 𝑝𝑡 2 .</figDesc><table /><note><p>space complexity of O (2|𝐸| + (𝑛 + 2)|𝑉 |). For dynamic graphs with inserting, updating, and deletion of edges and nodes, the T-CSR data structure can treat them as standalone graph events and allocate their own entries in the indices and times array. Sampling With the help of the T-CSR data structure, we can quickly choose an edge between two pointers uniformly, or pick edges closest to the end pointer for the most recent neighbors. These pointers are stored in arrays and takes an additional O (𝑛|𝑉 |) storage and O (|𝐸|) computation complexity to maintain in one epoch, but allows the sampler to identify candidate edges in O (1). By contrast, performing binary search would lead to O (|𝐸| log |𝐸|) computation complexity to identify candidate edges in one epoch.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 3 :</head><label>3</label><figDesc>Dataset Statistic. The max(𝑡) column shows the maximum edge timestamp (minimum edge timestamp is 0 in all datasets). |𝑑 𝑣 | and |𝑑 𝑒 | show the dimensions of node features and edge features, respectively. The * denotes randomized features.</figDesc><table><row><cell cols="2">|𝑉 | Wikipedia 9K 157K 2.7e6 |𝐸| max(𝑡) Labels Classes |𝑑 𝑣 | |𝑑 𝑒 | 217 2 -172 Reddit 11K 672K 2.7e6 366 2 -172 MOOC 7K 412K 2.6e6 ---128* LastFM 2K 1.3M 1.3e8 ---128*</cell></row><row><cell>GDELT 17K 191M 1.8e5 42M MAG 122M 1.3B 120 1.4M</cell><cell>81 152 768 -413 186</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 4 :</head><label>4</label><figDesc>Execution time and improvement with respect to baseline samplers on the Wikipedia dataset for one epoch.</figDesc><table><row><cell>#Threads 1</cell><cell>DySAT 8</cell><cell>32</cell><cell>1</cell><cell>TGAT 8</cell><cell>32</cell><cell>1</cell><cell>TGN 8</cell><cell>32</cell></row><row><cell cols="9">Time (s) 1.161 0.446 0.371 1.557 0.569 0.370 0.094 0.46 0.039 Improv. ---23× 48× 57× 69× 188× 289×</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 5 :</head><label>5</label><figDesc>Link Prediction results on the Wikipedia, Reddit, MOOC, and LastFM datasets. The Time columns refer to the training time per epoch. (First second)</figDesc><table><row><cell cols="8">Wikipedia AP Time (s) AP Time (s) Speedup AP Time (s) AP Time (s) Speedup AP Time (s) AP Time (s) Reddit MOOC LastFM Baseline TGL Baseline TGL TGL TGL</cell></row><row><cell>JODIE 94.35 DySAT -TGAT 95.09 110.1 97.26 16.6 98.90 -96.37 TGN 98.34 17.7 99.62 APAN 98.12 8.8 98.14</cell><cell>1.0 6.4 6.6 2.1 2.0</cell><cell>16.94× 96.56 --16.73× 97.82 576.2 99.48 89.0 99.45 -98.57 8.51× 98.47 91.9 99.78 4.38× 99.22 121.7 99.24</cell><cell>4.2 21.5 39.9 10.5 8.8</cell><cell>21.24× 98.95 -98.76 14.45× 98.50 8.33× 99.59 13.85× 98.58</cell><cell>2.8 19.5 24.5 5.7 5.6</cell><cell>78.78 76.39 54.82 73.76 62.73</cell><cell>8.7 48.4 91.4 18.7 18.2</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 6 :</head><label>6</label><figDesc>Dynamic node classification result (First second)). We denote batch size 𝑥 and number of chunks per batch 𝑦 as 𝑥 -𝑦 in the legends.</figDesc><table><row><cell></cell><cell cols="4">Wikipedia Reddit GDLET MAG AP F1-Micro</cell></row><row><cell>JODIE DySAT TGAT TGN APAN</cell><cell>81.73 86.30 85.18 88.33 82.54</cell><cell>70.91 61.70 60.61 63.78 62.00</cell><cell>11.25 10.05 10.04 11.89 10.03</cell><cell>43.94 50.42 51.72 49.20 -</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 7 :</head><label>7</label><figDesc>Link Prediction results of TGL on GDELT and MAG.</figDesc><table><row><cell cols="4">The Time columns refer to the training time per epoch (First second)).</cell></row><row><cell>AP</cell><cell>GDELT Time (s)</cell><cell>AP</cell><cell>MAG Time (s)</cell></row><row><cell cols="4">JODIE 97.98 DySAT 98.72 10651.4 98.27 19748.6 599.2 99.41 4128.3 TGAT 96.49 8499.2 99.02 32104.5 TGN 99.39 915.9 99.49 8912.5 APAN 95.28 1358.5 --</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Inductive representation learning on temporal graphs</title>
+		<author>
+			<persName><surname>Da Xu</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=rJeW1yHYwH" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note>evren korpeoglu, sushant kumar, and kannan achan</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Fast Graph Representation Learning with PyTorch Geometric</title>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><forename type="middle">E</forename><surname>Lenssen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR Workshop on Representation Learning on Graphs and Manifolds</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<author>
+			<persName><forename type="first">Priya</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Piotr</forename><surname>Dollár</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ross</forename><surname>Girshick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pieter</forename><surname>Noordhuis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lukasz</forename><surname>Wesolowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aapo</forename><surname>Kyrola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Tulloch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yangqing</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kaiming</forename><surname>He</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1706.02677[cs.CV]</idno>
+		<title level="m">Large Minibatch SGD: Training ImageNet in 1 Hour</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maho</forename><surname>Nakata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2103.09430</idno>
+		<title level="m">OGB-LSC: A Large-Scale Challenge for Machine Learning on Graphs</title>
+		<imprint>
+			<date type="published" when="2021">2021. 2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maho</forename><surname>Nakata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2103.09430</idno>
+		<title level="m">OGB-LSC: A Large-Scale Challenge for Machine Learning on Graphs</title>
+		<imprint>
+			<date type="published" when="2021">2021. 2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marinka</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michele</forename><surname>Catasta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2005.00687</idno>
+		<title level="m">Open Graph Benchmark: Datasets for Machine Learning on Graphs</title>
+		<imprint>
+			<date type="published" when="2020">2020. 2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Wenzel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Rhinelander</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dean</forename><surname>Moldovan</surname></persName>
+		</author>
+		<ptr target="https://github.com/pybind/pybind11" />
+		<title level="m">Seamless operability between C++11 and Python</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Recurrent Event Network: Autoregressive Structure Inferenceover Temporal Knowledge Graphs</title>
+		<author>
+			<persName><forename type="first">Woojeong</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xisen</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Ren</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-main.541</idno>
+		<ptr target="https://doi.org/10.18653/v1/2020.emnlp-main.541" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="6669" to="6683" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Representation Learning for Dynamic Graphs: A Survey</title>
+		<author>
+			<persName><forename type="first">Rishab</forename><surname>Seyed Mehran Kazemi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kshitij</forename><surname>Goel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Akshay</forename><surname>Kobyzev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Sethi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pascal</forename><surname>Forsyth</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Poupart</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-main.541</idno>
+	</analytic>
+	<monogr>
+		<title level="j">J. Mach. Learn. Res</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="page" from="1" to="73" />
+			<date type="published" when="2020">2020. 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Predicting Dynamic Embedding Trajectory in Temporal Interaction Networks</title>
+		<author>
+			<persName><forename type="first">Srijan</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xikun</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the 25th ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">GDELT: Global data on events, location, and tone</title>
+		<author>
+			<persName><forename type="first">Kalev</forename><surname>Leetaru</surname></persName>
+			<affiliation>
+				<orgName type="collaboration">ISA Annual Convention</orgName>
+			</affiliation>
+		</author>
+		<author>
+			<persName><forename type="first">Philip</forename><forename type="middle">A</forename><surname>Schrodt</surname></persName>
+			<affiliation>
+				<orgName type="collaboration">ISA Annual Convention</orgName>
+			</affiliation>
+		</author>
+		<ptr target="http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.686.6605" />
+		<imprint>
+			<date type="published" when="2013">2013. 2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<author>
+			<persName><forename type="first">Yinhan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Myle</forename><surname>Ott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naman</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingfei</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mandar</forename><surname>Joshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Omer</forename><surname>Levy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Veselin</forename><surname>Stoyanov</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1907.11692</idno>
+		<title level="m">RoBERTa: A Robustly Optimized BERT Pretraining Approach</title>
+		<imprint>
+			<date type="published" when="2019">2019. 2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">EvolveGCN: Evolving Graph Convolutional Networks for Dynamic Graphs</title>
+		<author>
+			<persName><forename type="first">Aldo</forename><surname>Pareja</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giacomo</forename><surname>Domeniconi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tengfei</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Toyotaro</forename><surname>Suzumura</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hiroki</forename><surname>Kanezashi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Kaler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Tao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><forename type="middle">E</forename><surname>Schardl</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Leiserson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirty-Fourth AAAI Conference on Artificial Intelligence</title>
+		<meeting>the Thirty-Fourth AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">PyTorch: An Imperative Style, High-Performance Deep Learning Library</title>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Paszke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Gross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francisco</forename><surname>Massa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Bradbury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregory</forename><surname>Chanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Trevor</forename><surname>Killeen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zeming</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Natalia</forename><surname>Gimelshein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Antiga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alban</forename><surname>Desmaison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Kopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edward</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zachary</forename><surname>Devito</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Raison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alykhan</forename><surname>Tejani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sasank</forename><surname>Chilamkurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benoit</forename><surname>Steiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lu</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junjie</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soumith</forename><surname>Chintala</surname></persName>
+		</author>
+		<ptr target="http://papers.neurips.cc/paper/9015-pytorch-an-imperative-style-high-performance-deep-learning-library.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">F</forename><surname>Beygelzimer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">E</forename><surname>Alché-Buc</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Fox</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Garnett</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="8024" to="8035" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Temporal Graph Networks for Deep Learning on Dynamic Graphs</title>
+		<author>
+			<persName><forename type="first">Emanuele</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabrizio</forename><surname>Frasca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Davide</forename><surname>Eynard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Federico</forename><surname>Monti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Bronstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML 2020 Workshop on Graph Representation Learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">PyTorch Geometric Temporal: Spatiotemporal Signal Processing with Neural Machine Learning Models</title>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Benedek Rozemberczki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixuan</forename><surname>Scherer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Panagopoulos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maria</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oliver</forename><surname>Astefanoaei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ferenc</forename><surname>Kiss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guzman</forename><surname>Beres</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Lopez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rik</forename><surname>Collignon</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sarkar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 30th ACM International Conference on Information and Knowledge Management</title>
+		<meeting>the 30th ACM International Conference on Information and Knowledge Management</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">DySAT: Deep Neural Representation Learning on Dynamic Graphs via Self-Attention Networks</title>
+		<author>
+			<persName><forename type="first">Aravind</forename><surname>Sankar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanhong</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liang</forename><surname>Gou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 13th International Conference on Web Search and Data Mining</title>
+		<meeting>the 13th International Conference on Web Search and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="519" to="527" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">DyRep: Learning Representations over Dynamic Graphs</title>
+		<author>
+			<persName><forename type="first">Rakshit</forename><surname>Trivedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mehrdad</forename><surname>Farajtabar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prasenjeet</forename><surname>Biswal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyuan</forename><surname>Zha</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=HyePrhR5KX" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">Ashish</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niki</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Llion</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aidan</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Łukasz</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Illia</forename><surname>Polosukhin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="5998" to="6008" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Bipartite Dynamic Representations for Abuse Detection</title>
+		<author>
+			<persName><forename type="first">Rex</forename><surname>Andrew Z Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nikhil</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karthik</forename><surname>Rao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Subbian</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 27th ACM SIGKDD Conference on Knowledge Discovery &amp; Data Mining</title>
+		<meeting>the 27th ACM SIGKDD Conference on Knowledge Discovery &amp; Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="3638" to="3648" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">FlexGraph: a flexible and efficient distributed framework for GNN training</title>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qiang</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianbang</forename><surname>Chao Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rong</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenyuan</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zihang</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingren</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Sixteenth European Conference on Computer Systems</title>
+		<meeting>the Sixteenth European Conference on Computer Systems</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="67" to="82" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Deep Graph Library: A Graph-Centric, Highly-Performant Package for Graph Neural Networks</title>
+		<author>
+			<persName><forename type="first">Minjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Da</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zihao</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quan</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mufei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinjing</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lingfan</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Gai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianjun</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Karypis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinyang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1909.01315</idno>
+		<imprint>
+			<date type="published" when="2019">2019. 2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">APAN: Asynchronous Propagation Attention Network for Real-Time Temporal Graph Embedding</title>
+		<author>
+			<persName><forename type="first">Xuhong</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ding</forename><surname>Lyu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mengjian</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinwen</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinguang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ping</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yupu</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhenyu</forename><surname>Guo</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3448016.3457564</idno>
+		<ptr target="https://doi.org/10.1145/3448016.3457564" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 International Conference on Management of Data (Virtual Event, China</title>
+		<meeting>the 2021 International Conference on Management of Data (Virtual Event, China<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="2628" to="2638" />
+		</imprint>
+	</monogr>
+	<note>SIGMOD/PODS &apos;21)</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Inductive Representation Learning in Temporal Networks via Causal Anonymous Walks</title>
+		<author>
+			<persName><forename type="first">Yanbang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yen-Yu</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunyu</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Li</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=KYPz4YsCPj" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">DistDGL: Distributed Graph Neural Network Training for Billion-Scale Graphs</title>
+		<author>
+			<persName><forename type="first">Da</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinjing</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qidong</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quan</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Karypis</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/ia351965.2020.00011</idno>
+		<ptr target="https://doi.org/10.1109/ia351965.2020.00011" />
+	</analytic>
+	<monogr>
+		<title level="j">IEEE/ACM 10th Workshop on Irregular Applications: Architectures and Algorithms (IA</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<date type="published" when="2020-11">2020. 2020. Nov 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

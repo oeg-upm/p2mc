@@ -1,0 +1,973 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Temporal Knowledge Graph Completion using Box Embeddings</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2021-09-18">18 Sep 2021</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Johannes</forename><surname>Messner</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">University of Oxford</orgName>
+								<address>
+									<country key="GB">UK</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Ralph</forename><surname>Abboud</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">University of Oxford</orgName>
+								<address>
+									<country key="GB">UK</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">İsmail</forename><forename type="middle">İlkan</forename><surname>Ceylan</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">University of Oxford</orgName>
+								<address>
+									<country key="GB">UK</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Temporal Knowledge Graph Completion using Box Embeddings</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2021-09-18">18 Sep 2021</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">659A8B98D1A7AB69E2E09AF950F1FAD7</idno>
+					<idno type="arXiv">arXiv:2109.08970v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:15+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Knowledge graph completion is the task of inferring missing facts based on existing data in a knowledge graph. Temporal knowledge graph completion (TKGC) is an extension of this task to temporal knowledge graphs, where each fact is additionally associated with a time stamp. Current approaches for TKGC primarily build on existing embedding models which are developed for (static) knowledge graph completion, and extend these models to incorporate time, where the idea is to learn latent representations for entities, relations, and time stamps and then use the learned representations to predict missing facts at various time steps. In this paper, we propose BoxTE, a box embedding model for TKGC, building on the static knowledge graph embedding model BoxE. We show that BoxTE is fully expressive, and possesses strong inductive capacity in the temporal setting. We then empirically evaluate our model and show that it achieves state-of-the-art results on several TKGC benchmarks.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Knowledge graphs (KGs) are sets of (binary) facts of the form r(h, t), where h and t represent entities, and r represents a relation that holds between these entities. KGs play an increasingly prominent role in representing, storing, and processing information. KGs such as YAGO <ref type="bibr" target="#b16">(Mahdisoltani, Biega, and Suchanek 2015)</ref>, Knowledge Vault <ref type="bibr" target="#b8">(Dong et al. 2014)</ref>, Freebase <ref type="bibr" target="#b2">(Bollacker, Cook, and Tufts 2007)</ref> and NELL <ref type="bibr" target="#b17">(Mitchell et al. 2018</ref>) store hundreds of millions of facts, and are key drivers for downstream tasks, such as question answering <ref type="bibr" target="#b3">(Bordes, Chopra, and Weston 2014)</ref>, information retrieval <ref type="bibr" target="#b27">(Xiong, Power, and Callan 2017)</ref>, and recommender systems <ref type="bibr" target="#b25">(Wang et al. 2018)</ref>.</p><p>Notably, most KGs are inherently incomplete, which negatively affects their use in downstream applications. This has motivated a large body of work for automatically inferring missing facts from a given KG, a task known as knowledge graph completion (KGC). One prominent approach for KGC is based on KG embedding models, where the idea is to learn embeddings for entities and relations through training over known facts, and subsequently use the learned embeddings to compute plausibility scores for all possible facts <ref type="bibr" target="#b4">(Bordes et al. 2013)</ref>.</p><p>Standard KG embedding models, however, operate under the assumption that the input KG is static, i.e., the ground truth of a fact is independent of time. This assumption is not always realistic, as, e.g., a person living in a location could move to a different location, invalidating the associated fact in the future. Indeed, many real-world KGs include temporal information for their facts, most commonly in the form of time stamps, indicating when the fact holds <ref type="bibr" target="#b11">(Kazemi et al. 2020)</ref>. Specifically, a temporal (binary) fact is a fact of the form r(h, t|τ ), where h and t represent entities, τ is a time stamp, and r represents a relation that holds between these entities at the time specified by τ . A temporal knowledge graph (TKG) is then a (finite) set of temporal facts.</p><p>The focus of this work is on temporal knowledge graph completion (TKGC) which is the task of inferring missing temporal facts from a TKG. The main challenge in TKGC is to additionally learn embeddings for time stamps, such that embedding models perform scoring jointly based on relation, entity and time stamp embeddings. This perspective has led to the development of several embedding models, building on static KGE models <ref type="bibr" target="#b14">(Leblay and Chekol 2018;</ref><ref type="bibr" target="#b13">Lacroix, Obozinski, and Usunier 2020)</ref>, or having dedicated neural architectures <ref type="bibr" target="#b26">(Wu et al. 2020;</ref><ref type="bibr" target="#b9">García-Durán, Dumančić, and Niepert 2018)</ref>, to appropriately represent temporal information. However, no current embedding model, to our knowledge, studies TKGC from the perspective of capturing temporal inference patterns despite their prevalence in real-world data <ref type="bibr" target="#b23">(Toutanova and Chen 2015)</ref>.</p><p>In this paper, we propose BoxTE, a box embedding model for temporal knowledge graph completion. BoxTE builds on the static KG embedding model BoxE <ref type="bibr" target="#b0">(Abboud et al. 2020)</ref>, and extends it with dedicated time embeddings, allowing to flexibly represent temporal information. In BoxTE, time embeddings are unique for each time point, but they are specific for every relation, which yields a very flexible and powerful representation. Our contibutions are manifold. We first show that BoxTE is fully expressive, and has strong inductive capacity, capturing, e.g., a rich class of rigid inference patterns, and cross-time inference patterns. We are not aware of any other model with such capacity, and our study presents the first thorough analysis of inductive capacity in the context of TKGC. Empirically, we conduct a detailed experimental evaluation, and show that BoxTE achieves state-ofthe-art performance on several TKGC baselines, even with a limited number of parameters. Finally, in a dedicated ablation study, we validate our proposed temporal mechanism by comparing with alternate model variations, inspired by existing literature, and show the strength of our proposal.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Temporal Knowledge Graph Completion</head><p>In what follows, we consider a relational vocabulary, which consists of a finite set E of entities, and a finite set R of relations. We additionally consider a finite set of time stamps T. We denote static binary facts as r(h, t), and temporal binary facts as r(h, t|τ ), where h, t ∈ E are entities, r ∈ R is a binary relation, and τ ∈ T is a time stamp. Temporal facts are also referred as quadruples; and, for a temporal fact r(h, t|τ ), h is referred to as the head entity and t as the tail entity, a convention inherited from static binary facts.</p><p>A knowledge graph (KG) G consists of a finite set of binary facts over (E, R); or equivalently, a KG is a multi-labeled graph, where the nodes correspond to entities, and labels correspond to relations. A temporal knowledge graph (TKG) G consists of a finite set of temporal binary facts over (E, R, T). Given a TKG G, temporal knowledge graph completion (TKGC) is the task of predicting new, unseen facts over (E, R, T) based on existing facts in G.</p><p>Typically, TKGC models define a scoring function for temporal facts, and are optimized to score true facts in G higher than corrupted, negatively sampled facts. This negative sampling produces corrupted facts from a true fact r(h, t|τ ) from G by replacing either h or t with a random entity h = h (resp., t = t). Empirically, TKGC models are evaluated by scoring true facts from the TKG test set, and then comparing with scores for all possible corrupted facts not appearing in the training, validation, or test set. Using all scores, standard metrics <ref type="bibr" target="#b4">(Bordes et al. 2013</ref>) are then computed, and these include mean rank (MR), the average rank of facts against their corrupted counterparts, mean reciprocal rank (MRR), their average inverse rank (i.e., 1/rank), and Hits@K, the proportion of facts with rank at most K.</p><p>Conceptually, TKGC models can be characterized by their expressiveness and inductive capacity. More specifically, a model is fully expressive if, for any given disjoint sets of true and false facts, it admits a configuration that accurately classifies all facts. On the other hand, inductive capacity describes the inference patterns that a model can learn and capture. Example inference patterns include relation symmetry, hierarchy and mutual exclusion. Both expressiveness and inductive capacity are key for TKGC, as the former enables fitting of the input TKG, whereas the latter offers a strong inductive bias, and thus improves model generalization.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Related Work</head><p>Knowledge graph embedding models. Knowledge graph embedding (KGE) models represent entities and relations in a KG using embeddings, which in turn are learned from data to compute scores for all possible KG facts. KGE models can broadly be classified into translational, bilinear, and neural models. Translational models, such as TransE <ref type="bibr" target="#b4">(Bordes et al. 2013)</ref> and RotatE <ref type="bibr" target="#b22">(Sun et al. 2019)</ref>, represent entities as points in a low-dimensional space, relations as translations or rotations in this space, and score binary facts based on the distance between the relation-translated head embedding and the tail embedding. A variation on this approach is spatio-translational models, such as BoxE <ref type="bibr" target="#b0">(Abboud et al. 2020)</ref>, where fact correctness depends on absolute representation position in the embedding space. Bilinear models, such as RESCAL <ref type="bibr" target="#b18">(Nickel, Tresp, and Kriegel 2011)</ref>, TuckER <ref type="bibr" target="#b1">(Balazevic, Allen, and Hospedales 2019)</ref> and Com-plEx <ref type="bibr" target="#b24">(Trouillon et al. 2016</ref>) are based on tensor factorization: they embed entities as vectors, and relations as matrices or tensors, such that the bilinear product between entity and relation embeddings yields fact plausibility scores. Finally, neural models, such as rGCN <ref type="bibr" target="#b20">(Schlichtkrull et al. 2018)</ref> and ConvE <ref type="bibr" target="#b7">(Dettmers et al. 2018</ref>) use a neural architecture to perform scoring over KG embeddings. KGE models have widely been investigated in recent years, but these models assume that facts are static, and thus do not incorporate temporal information. Temporal knowledge graph embedding models. Analogously to KGE models, temporal knowledge graph embedding (TKGE) models use embeddings to represent entities, relations, and time stamps in a TKG, and subsequently perform fact scoring. Most TKGE models hence build on existing KGE models. For instance, TTransE <ref type="bibr" target="#b14">(Leblay and Chekol 2018)</ref> extends TransE, and encodes time stamps as translations, analogously to relations, such that these translations additionally move head representations in the embedding space. ChronoR <ref type="bibr" target="#b19">(Sadeghian et al. 2021</ref>) builds on RotatE, and represents time-relation pairs with rotation and scaling in the embedding space. Concretely, relation and time stamp representations are concatenated to yield an overall rotation vector applied on entity representations. Furthermore, TComplEx and TNTComplEx <ref type="bibr" target="#b13">(Lacroix, Obozinski, and Usunier 2020)</ref> are based on ComplEx, and analogously factorize the input TKGC, which both models represent as a fourth-order tensor. TComplEx applies this factorization directly, whereas TNTComplEx divides this factorization into a temporal and a non-temporal component.</p><p>In addition to KGE model extensions, other TKGE models process temporal information initially, before subsequently passing the resulting time-conditioned representation to a static KGE model. For example, TeRo <ref type="bibr" target="#b29">(Xu et al. 2020)</ref> represents time as a rotation in complex vector space that applies on entity embeddings, following which the TransE scoring mechanism applies. Moreover, HyTE (Dasgupta, Ray, and Talukdar 2018) represents each time stamp as a learnable hyper-plane in d-dimensional space, and then projects entity and relation embeddings into this hyper-plane and applies the TransE scoring function on the projections. Additionally, diachronic embeddings <ref type="bibr" target="#b10">(Goel et al. 2019</ref>) have been proposed to map entity and relation embeddings, paired with temporal information, into a KGE model space, thus defining a framework yielding specific models such as <ref type="bibr">DE-TransE and DE-SimplE.</ref> Finally, dedicated neural architectures have been applied to exploit the sequential structure inherent in time, and to leverage the graph structure present in temporal knowledge graphs. More specifically, recurrent neural networks (RNNs) (García-Durán, Dumančić, and Niepert 2018) have been aplied for TKGC, such that these networks model changes in relations over time, and encode the sequential nature of time. More recently, TeMP <ref type="bibr" target="#b26">(Wu et al. 2020</ref>) leverages message passing graph neural networks (MPNNs) to learn structurebased entity representations at every time stamp, and then aggregates representations across all time stamps using an encoder, yielding the models TeMP-GRU (gated recurrent unit encoder) and TeMP-GRU (self-attention encoder). Similarly to other models, the final entity representations can subsequently be used with a static KGE model, e.g., TransE.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">A Temporal Box Embedding Model</head><p>In this section, we introduce BoxTE, a box embedding model for temporal knowledge graph completion. BoxTE builds on the static BoxE model <ref type="bibr" target="#b0">(Abboud et al. 2020)</ref>, and extends it with a temporal representation, which allows to additionally capture inference patterns across time and model certain temporal relational information. We first briefly recall BoxE, and then present BoxTE.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>The box embedding model BoxE</head><p>BoxE <ref type="bibr" target="#b0">(Abboud et al. 2020</ref>) is a spatio-translational knowledge base completion model that can predict facts across relations of arbitrary arity. For our purposes, we only present BoxE restricted to the binary setting.</p><p>Representation. In BoxE, every entity h ∈ E is represented by two vectors, a base position vector e h ∈ R d , and a translational bump vector b h ∈ R d , which translates the entity that co-occurs in a fact with h. For a binary fact r(h, t), the final embeddings of the head entity h and the tail entity t are respectively given as:  </p><formula xml:id="formula_0">score(r(h, t)) = δ(e r(h,t) h , r h ) x + δ(e r(h,t) t , r t ) x ,</formula><p>where δ intuitively computes the distance between a point and a box, and x indicates the L-x norm.</p><p>Properties. BoxE has several desirable properties. First, it is fully expressive. Second, it captures a wide array of inference patterns, and thus has strong inductive capacity. For more details and illustrations, we refer the reader to the original paper <ref type="bibr" target="#b0">(Abboud et al. 2020)</ref>.</p><p>The temporal box embedding model BoxTE  bumping this representation away from r h . By contrast, for the relation s, τ s 1 and τ s 2 are smaller, and do not ultimately affect the correctness of the fact s(t, h) over time. As all time bumps are computed from the same matrices K τ1 and K τ2 , this implies that BoxTE learns a smaller-norm α s , reflecting the temporal stability of relation s.</p><formula xml:id="formula_1">= α r K τ1 , τ r 2 = α r K τ2 , τ s 1 = α s K τ1 ,</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Model Properties</head><p>We now study the representation power and inductive capacity of BoxTE. In particular, we show that BoxTE is fully expressive and extends the inductive capacity of BoxE to capture inference patterns across time.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Full expressiveness</head><p>We first show that BoxTE is fully expressive, by proving the following statement: Theorem 5.1. BoxTE is a fully expressive model for temporal knowledge graphs with the embedding dimensionality d of entities, relations, bumps, and time bumps set to</p><formula xml:id="formula_2">d = min(|R| |T| |E| , |R| |E| 2 ).</formula><p>Importantly, this result already holds for the special case where k = 1 and α r = 1, ∀r ∈ R, i.e., for time bumps defined as relation-independent learnable embeddings.</p><p>The full proof of this result can be found in the appendix. Briefly, the proof verifies two lemmas, corresponding to the |R||T||E| and |R||E| 2 bounds respectively, by providing two BoxTE constructions. For the former lemma, the construction builds on the original BoxE full expressiveness proof <ref type="bibr" target="#b0">(Abboud et al. 2020)</ref>, as bumps are used to make a given fact false without affecting other facts. However, this proof additionally relies on time bumps to make a temporal fact r(h, t|τ i ) false without affecting the correctness of facts of the form r(h, t|τ j ), where j = i. For the latter lemma, the constructions starts from a static BoxE configuration, and uses time bumps to make temporal facts true, while using relation boxes to maintain the correctness and falsehood of other facts.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Inference patterns</head><p>When studying inductive capacity, we say a model captures an inference pattern if it admits a set of parameters exactly and exclusively satisfying the pattern, following BoxE <ref type="bibr" target="#b0">(Abboud et al. 2020)</ref>.</p><p>Rigid inference patterns and relations. BoxTE inherits the inductive capacity of BoxE in the static setting, where each pattern holds at all time stamps. We refer to such patterns as rigid inference patterns, as, for example, the rule:</p><formula xml:id="formula_3">∀τ i , τ j ∈ T : ∀x, y r 1 (x, y|τ i ) ⇒ r 2 (x, y|τ j )</formula><p>specifies that the relation r 1 is subsumed by the relation r 2 regardless of the time stamps we consider, and thus represents a rigid property. While we quantify over given time stamps T, it is worthwhile noting that rigidity holds beyond known time stamps (i.e, the property extrapolates).</p><p>Rigid inference patterns can be captured in BoxTE, as standard BoxE can be emulated by setting identical (or zerovalued) relation scalars, i.e., ∀r, s ∈ R, α r = α s . Hence, BoxTE captures any inference pattern, and even rule language, captured by BoxE, in this sense.</p><p>Additionally, BoxTE can capture rigid relations, i.e., relations that do not vary with time, defined as:</p><formula xml:id="formula_4">∀x, y (∀τ ∈ T : r(x, y|τ )) ∨ (∀τ ∈ T : ¬r(x, y|τ ))</formula><p>This essentially implies that a relation r is static over time, and corresponds to the parametrization α r = 0.</p><p>Cross-time inference patterns. In the temporal setting, a more interesting case is the study of inference patterns across specific time stamps. For example, we may be interested in capturing the pattern for some fixed τ 1 , τ 2 :</p><formula xml:id="formula_5">∀x, y r 1 (x, y|τ 1 ) ⇒ r 2 (x, y|τ 2 )</formula><p>Cross-time inference patterns</p><formula xml:id="formula_6">Inversion: r 1 (x, y|τ 1 ) ⇔ r 2 (y, x|τ 2 ) Hierarchy: r 1 (x, y|τ 1 ) ⇒ r 2 (x, y|τ 2 ) Intersection: r 1 (x, y|τ 1 ) ∧ r 2 (x, y|τ 2 ) ⇒ r 3 (x, y|τ 3 ) Composition r 1 (x, y|τ 1 ) ∧ r 2 (y, z|τ 2 ) ⇒ r 3 (x, z|τ 3 ) Mutual exclusion: r 1 (x, y|τ 1 ) ∧ r 2 (x, y|τ 2 ) ⇒ ⊥</formula><p>Table <ref type="table">1</ref>: Cross-time inference patterns, where we omit universal quantification over variables. BoxTE captures all these patterns, but composition. Fixed-time inference patterns are the special case where the time stamps coincide. which requires r 1 at τ 1 to be subsumed in r 2 at τ 2 , without any implications on the state of these relations on other time stamps. The list of such cross-time inference patterns is provided in Table <ref type="table">1</ref>. BoxTE captures all these cross-time inference patterns, but composition. To study cross-time patterns, we define, for a time stamp τ and relation r, the timeinduced relation head box r h|τ and the time-induced relation tail box r t|τ as:</p><formula xml:id="formula_7">r h|τ = r h -τ r , r t|τ = r t -τ r .</formula><p>Intuitively, time-induced relation boxes offer an alternative, but equivalent, perspective to BoxTE representations, where time bumps apply to relation boxes and translate them in the opposite direction. To show this equivalence, we recall the correctness criteria for BoxTE for a given fact r(h, t|τ ):</p><formula xml:id="formula_8">e r(h,t|τ ) h ∈ r h , e r(h,t|τ ) t ∈ r t .</formula><p>Subtracting τ r from both sides yields:</p><formula xml:id="formula_9">e r(h,t) h ∈ r h|τ , e r(h,t) t ∈ r t|τ .</formula><p>Hence, BoxTE can be interpreted as inducing, at every time stamp, a translated set of relation boxes, which can then be compared with static final entity embeddings to verify temporal fact correctness. Therefore, cross-time inference patterns can be studied by comparing time-induced relation boxes, analogously to standard BoxE. In particular, the hierarchy pattern is captured with the parametrization:</p><formula xml:id="formula_10">r h|τ1 1 ⊂ r h|τ2 2 , r t|τ1 1 ⊂ r t|τ2 2</formula><p>, where ⊂ denotes box containment. The intersection pattern is captured by setting: </p><formula xml:id="formula_11">r h|τ3 3 = r h|τ1 1 ∩ r h|τ2 2 , r t|τ3 3 = r t|τ1 1 ∩ r<label>t|τ2</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Experiments</head><p>In this section, we evaluate BoxTE on TKG benchmarks ICEWS14, ICEWS15 (García-Durán, Dumančić, and Niepert 2018), and GDELT <ref type="bibr" target="#b15">(Leetaru and Schrodt 2013)</ref>. We run experiments both in the standard temporal graph completion setting, and with the recently proposed boundedparameter setting <ref type="bibr" target="#b13">(Lacroix, Obozinski, and Usunier 2020)</ref>. We first present these datasets, and then report setup and results for both aforementioned experiments. In addition to these two experiments, we study the interpretability of BoxTE using a subset of YAGO <ref type="bibr" target="#b21">(Suchanek, Kasneci, and Weikum 2007)</ref>, perform an ablation study on BoxTE with different model variations, and conduct a robustness analysis relative to embedding dimensionality. These additional experiments can be found in the appendix.</p><p>Datasets. We briefly present ICEWS14, ICEWS5-15, and GDELT, and report their main statistics in Table <ref type="table" target="#tab_3">2</ref>. ICEWS14 and ICEWS5-15 (García-Durán, Dumančić, and Niepert 2018) are both subsets of the Integrated Crisis Early Warning System (ICEWS) dataset <ref type="bibr" target="#b5">(Boschee et al. 2015)</ref>, which stores temporal socio-political facts starting from the year 1995. More specifically, ICEWS14 includes facts from the year 2014 involving frequently occurring entities, and ICEWS5-15 includes analogous facts from the period between 2005 and 2015 inclusive. GDELT is a subset of the larger Global Database of Events, Language, and Tone (GDELT) temporal knowledge graph <ref type="bibr" target="#b15">(Leetaru and Schrodt 2013)</ref>, which stores facts about human behavior starting from 1979. This benchmark contains facts with time stamps between April 1, 2015 and March 31, 2016, and only includes facts involving the 500 most frequent entities and 20 most common relations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Temporal knowledge graph completion</head><p>Experimental setup. In this experiment, we train BoxTE on all three benchmark datasets, report test set performance for the best validation setup and compare against baseline models for TKGC. More specifically, we evaluate BoxTE Model</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>ICEWS14</head><p>ICEWS5-15 GDELT MR MRR H@1 H@3 H@10 MR MRR H@1 H@3 H@10 MR MRR H@1 H@3 H@10 TTransE -. Table <ref type="table">3</ref>: TKGC results for BoxTE on ICEWS14, ICEWS5-15, and GDELT. Results for competing models are the best reported from their respective papers, which are referenced in Section 3. ChronoR(a) uses three-dimensional rotation, whereas ChronoR(b) uses two-dimensional rotation.</p><p>in terms of mean rank (MR), mean reciprocal rank (MRR), Hits@1, Hits@3, and Hits@10, and tune its embedding dimensionality d, training batch sizes, number of negative samples, and k values within the set {2, 3, 5}. We train BoxTE with cross-entropy loss, and use the Adam optimizer <ref type="bibr" target="#b12">(Kingma and Ba 2017)</ref> with the default learning rate of 10 -3 . We additionally conduct experiments using the temporal smoothness regularizer proposed in TNTComplEx (Lacroix, Obozinski, and Usunier 2020), and consider factorizations of time embeddings to encourage parameter sharing. Full details about the hyper-parameter setup used to obtain results and explanations of these hyper-parameters are provided in the appendix.</p><p>Results. Results for the standard TKGC setting are shown in Table <ref type="table">3</ref>. BoxTE achieves state-of-the art performance on GDELT, comfortably surpassing TeMP <ref type="bibr" target="#b26">(Wu et al. 2020</ref>) in terms of MRR. BoxTE also performs strongly on ICEWS14, and ICEWS15. On ICEWS14, BoxTE also outperforms TeMP, and is competitive with TNTComplEx and ChronoR. This trend also carries to ICEWS15, where BoxTE remains strong despite the sparsity of the dataset. These results are highly encouraging, particularly given the difficulty and size of the GDELT dataset. Indeed, GDELT is substantially denser than both ICEWS datasets (∼ 2.7 million training facts for 500 entities, 20 relations), and involves significant temporal variability. More concretely, some facts persist across multiple consecutive time stamps, whereas others are momentary and sparse. Hence, GDELT requires strong inductive capacity, and thus is highly challenging. In fact, most TKGC models fail to beat the simple rule-based system TED <ref type="bibr" target="#b26">(Wu et al. 2020)</ref> on GDELT. Hence, the very strong performance of BoxTE suggests that the model does capture temporal patterns, and hence exploits information in the data to outperform existing models.</p><p>On the other hand, both ICEWS datasets are small and, critically, very sparse. For example, ICEWS14 only in-cludes around 70k training facts for 7,000 entities across 365 timestamps. Furthermore, the relations in these datasets are sparse, as they usually encode one-time patterns with limited, if any, regularity, e.g., official visits, negotiations, statements. Hence, these datasets include substantially less temporal patterns and variability, and rely more on entity-driven predictions. This is further highlighted by the fact that the same TKGC models performing poorly on GDELT substantially outperform the rule-based system TED on ICEWS14 and ICEWS5-15 <ref type="bibr" target="#b26">(Wu et al. 2020)</ref>. Hence, both datasets include few temporal patterns for BoxTE to capture, and this substantially reduces the inductive advantage of this model relative to its competitors.</p><p>In terms of performance relative to k, BoxTE performs best with k = 2 on ICEWS14, whereas the optimal k value is 5 for both ICEWS5-15 and GDELT. This may seem unintuitive, especially given the large similarity between both ICEWS datasets, but this can be attributed to the significantly larger number of time steps in ICEWS5-15. Indeed, ICEWS5-15 includes 4017 time stamps, whereas ICEWS14 only includes 365. Thus, more flexibility is needed to learn sufficiently distinct temporal behaviors across these time stamps, and this aligns with our intuition about the advantages of higher k. GDELT results also highlight the importance of higher k, as they confirm the need for more flexibility to fit the rich set of facts it provides.</p><p>Finally, we note that BoxTE is very robust when training on these benchmarks, as it maintains strong performance even when not supplemented with temporal smoothness regularization. By contrast, models such as TNTComplEx and ChronoR suffer significantly without regularization. This further highlights the inductive capacity of BoxTE, which can autonomously learn temporal properties from data, and suggests that this model is a strong, natural choice for applications on novel datasets where such regularizations are not known or not compatible with the data. We discuss this experiment in more detail as an ablation study in the appendix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Model</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>ICEWS14</head><p>ICEWS5-15 GDELT</p><p>MR MRR H@1 H@3 H@10 MR MRR H@1 H@3 H@10 MR MRR H@1 H@3 H@10 Parameter-bounded experiments for TKGC Experimental setup. In this experiment, we train and evaluate BoxTE analogously to the standard TKGC setup, but, we impose a dimensionality constraint, such that the total number of parameters used by the model does not exceed that of 100-dimensional DE-SimplE, in keeping with the literature (Lacroix, Obozinski, and Usunier 2020). Hence, this experiment aims to evaluate the robustness of models with a restricted computational budget. Given this restriction, we additionally evaluate BoxTE with k = 1, so as to allow for a slightly improved dimensionality, albeit at the expense of flexibility. Further details about the parameter counts of BoxTE and competing models are provided in the appendix.</p><p>Results. Results for the bounded-parameter setup are reported in Table <ref type="table" target="#tab_5">4</ref>. In this setup, we see that BoxTE now achieves state-of-the-art performance on both ICEWS14 and GDELT, and maintains its strong performance despite parametrization constraints. In particular, BoxTE only drops by 0.03 in terms of MRR on ICEWS14 relative to its performance on in the standard setup, whereas it drops by 0.10 on GDELT, and by 0.09 on ICEWS5-15. This further reflects the simplicity of ICEWS14, as a low number of parameters remains sufficient for high performance, and highlights the richness of GDELT, as well as the complexity of ICEWS5-15, owing primarily to its larger number of time stamps. The results of this experiment relative to different k also portray an interesting interplay between this parameter and embedding dimensionality d, which manifests differently across the three benchmark datasets. Conceptually, the bounded-parameter setting imposes a trade-off on the choice of k: a small k maximizes dimensionality, but reduces flexibility, whereas a larger k is more flexible, but substantially reduces the available dimensionality. Hence, the optimal value of k is not obvious, and varies substantially among datasets. On ICEWS14, we see that k values of 2 and above perform similarly well, and slightly outperform the k = 1 model, despite their lower dimensionality. This also aligns with the optimal k in the standard setting, and suggests that capturing relational temporal dynamics to some extent (via k &gt; 1) on ICEWS14 is more important than storing more information through larger dimensionality.</p><p>On ICEWS5-15, we see that MRR improves as k increases, and that k = 3 provides strong overall performance. This improvement relative to k is surprising, as the large number of time stamps in this dataset causes embedding dimensionality to decrease substantially as k increases. In fact, d = 137 when k = 1, but this drops to d = 104 when k = 3. Nonetheless, model performance improves. This further highlights the higher importance of capturing relational temporal dynamics in ICEWS5-15 relative to higher dimensionality, and aligns with our expectations given the large number of time stamps in this dataset.</p><p>Finally, for GDELT, BoxTE achieves optimal performance with only k = 1, which stands in sharp contrast with k = 5 being optimal in the standard setting. However, this can be traced back to the density of this dataset. Indeed, as every entity and relation appears in a large number of facts, more dimensionality is needed to capture the information represented by existing facts. Hence, the reduction of dimensionality in this setup causes significant loss in representation capacity, and this severely hurts BoxTE on GDELT. Given this bottleneck, increasing dimensionality is substantially more beneficial in the parameter-bounded setting than improving flexibility, and thus lowering k offers more gain on GDELT.</p><p>Overall, these results show that BoxTE offers a state-ofthe-art, robust baseline for temporal knowledge base completion even under a restricted computational budget.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Summary and Outlook</head><p>In this paper, we presented BoxTE, a temporal knowledge graph embedding model, and showed that this model is fully expressive and captures a rich class of temporal inference patterns. We then evaluated BoxTE empirically, and showed that the model achieves state-of-the-art performance for TKGC, and benefits substantially from its inductive capacity and robustness. Similarly to BoxE, BoxTE naturally applies to higher-arity knowledge bases. Unfortunately, there are no established benchmarks for higher-arity temporal knowledge graph completion, despite its significant potential and wide applicability. One interesting future direction is therefore, introducing new benchmarks for temporal knowledge base completion, involving higher-arity facts to study the performance of BoxTE, as well as other models, in this setting. We think that this work will motivate further research leading to the development of expressive, inductively rich TKGE models.</p><p>A Proof of Theorem 5.1</p><p>We first recall the theorem as stated above: Theorem 5. In what follows, we now identify relations, entities and timestamps using indices. More concretely, we consider relations r j ∈ R, entities e i ∈ E, time stamps τ l ∈ T, as these indices make the proof more convenient.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Proof of Lemma A.1</head><p>The proof of this lemma is an adaptation of the BoxE full expressiveness proof <ref type="bibr" target="#b0">(Abboud et al. 2020</ref>) and shows how, starting from a configuration that makes all possible facts true, arbitrary facts can be made false by bumping entities out of their target relation boxes. We show by induction that any temporal fact in a graph G can be made false, while preserving the truth value of all other facts.</p><p>For a vector v ∈ R d we write v(j, k, l) to refer to the index j |E| |T| + k |T| + l. Intuitively, we assign a unique dimension in our embedding space to any entity-relationtime triple. We denote the upper and lower boundaries of a box r x j , x ∈ {h, t} with u x j and l x j , respectively. Further, without loss of generality, we assume that each time stamp is represented by a single temporal bump (k = 1), and that all temporal scalars are fixed to a value of one (α r1 = ... = α r |R| = 1). In this setting, the single learned time bump for any time stamp directly represents the final time bump for any relation at that snapshot, simplifying the proof. For time τ i , we denote this time bump with τ i . The more general setup with multriple time bumps per snapshot and learnable temporal scalars can be configured to obtain the setting described above, thus making the following proof valid for general BoxTE.</p><p>Base case: We initialize a BoxTE configuration that captures the complete universe of facts over the vocabulary of G, meaning that all possible facts are set to be true. This can be achieved by setting all entity bases, entity bumps, and time bumps to 0, and all relation boxes as unit boxes centred at 0.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Induction step:</head><p>In this step we consider any arbitrary fact r j (e i , e k |τ l ) and make it false without affecting any other fact in the graph. This can be achieved via the following steps:</p><p>Step 1. Increment b i (j, k, l) by a value C, such that: e k (j, k, l)+b i (j, k, l)+τ l (j, k, l)+C &gt; u t j (j, k, l)</p><p>Step 2. Decrement all entity embeddings except e k by C at dimension (j, k, l):</p><formula xml:id="formula_12">∀k = k : e k (j, k, l) := e k (j, k, l) -C</formula><p>Step 3. Decrement all time bumps except τ l by C in dimension (j, k, l):</p><formula xml:id="formula_13">∀l = l : e k (j, k, l) := τ l (j, k, l) -C</formula><p>Step 4. For relation r j , grow the head box at dimension (j, k, l) upwards by C and downwards by 2C, and grow the tail box downwards by 2C at the same dimension:</p><formula xml:id="formula_14">l h j (j, k, l) := l h j (j, k, l) -2C u h j (j, k, l) := u h j (j, k, l) + C l t j (j, k, l) := l t j (j, k, l) -2C</formula><p>Step 5. For all other relations r x ∈ R, x = j, grow both boxes at dimension (j, k, l), upwards by C and downwards by 2C:</p><formula xml:id="formula_15">u h/t x (j, k, l) := u h/t x (j, k, l) + C l h/t x (j, k, l) := l h/t</formula><p>x (j, k, l) -2C It remains to be shown that the induction step does indeed flip the truth value of fact r j (e i , e k |τ l ) to false, while maintaining the truth value of all other facts.</p><p>Observe that Step 1 pushes e rj (ei,ek|τl) k outside of its target relation box r t j at dimension (j, k, l), thus making the fact false, as intended.</p><p>To show that the truth value of any other fact is unaffected by the induction step, we analyse the effect of steps 1-5 on any possible fact F = r j (e i , e k |τ l ) = r j (e i , e k |τ l ). We do this by considering the head an tail entities in the following cases: Case 1. The fact F is true: We show that this fact remains true after the inductive step by analysing both the head entity e F i and tail entity e F k . (a) Head entity: The final embedding e F i can move by at most C in the upwards direction and 2C in the downwards direction after steps 1 and 2, and all relation boxes are grown by C and 2C, respectively, after steps 3 and 4, so e F i ∈ r h j still holds. (b) Tail entity: If e k = e k , then e F k is not changed if e i = e i and τ l = τ l , and decremented by at most 2C at dimension (j, k, l) otherwise. Hence, the changes to both r t j and r t x , x = j in Steps 4 &amp; 5 are sufficient to maintain e k ∈ r t . Conversely, if e k = e k , then e F t is unchanged when e i = e i and τ l = τ l , and thus e k ∈ r t still holds. Otherwise, when e i = e i and τ l = τ l , e F k is incremented by C, which, for r = r j , makes F false, as required, and for r = r j , still keeps e k ∈ r t , as all other tail boxes are grown upwards by C. If e k = e k , e i = e i , and τ l = τ l , then Step 3 ensures that e F k remains unchanged, preserving the truth value of the fact. Therefore, any true fact F = r j (e i , e k |τ l ) does still hold true after the inductive step. Case 2. The fact F is false: We show that this fact remains false after the inductive step by, again, analysing both the head entity e F i and tail entity e F k . (a) Head entity: By construction, all false facts r j (e i , e k |τ l ) are made false by pushing their tail entity outside its target box, thus the following inequality is satisfied:</p><formula xml:id="formula_16">e F k (j , k , l ) &gt; u t j (j , k , l )</formula><p>Any changes to the head entity e F i do not affect this. (b) Tail entity: If e k = e k , then F verifies e F (j , k , l ) &gt; u t j (j , k , l ), where k = k. This inequality continues to hold regardless of the changes to e F k (j, k, l). Otherwise, if e k = e k , and r j = r j , then e i = e i , as F is initially false, and r j (e i , e k |τ l ) is initially true in this induction step. Furthermore, since e i = e i , e F k is unchanged, which maintains the falsehood inequality. Finally, if r j = r j , then the falsehood inequality for F holds at a dimension different than (j, k, l). Therefore, none of the changes in the induction step affect this inequality. Hence, any false fact F = r j (e i , e k |τ l ) is still false after the inductive step.</p><p>Therefore, it can be concluded that BoxTE is able to make any true fact false with d = |R| |T| |E|. It follows that BoxTE can represent any temporal knowledge graph G, and is fully expressive.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Proof of Lemma A.2</head><p>We modify the indexing scheme from above: For a vector v ∈ R d we write v(i, j, k) to refer to the index i |E| |R| + j |E| + k. Intuitively, we assign one dimension in the embedding space to each possible non-temporal fact r j (e i , e k ). Additionally, without loss of generality, we assume k = 1 and α r1 = ... = α r |R| = 1, as in the proof for Lemma A.1.</p><p>Again, we show this property by induction. We start from a configuration that makes facts true if they hold in all time stamps, and makes any other fact false. That is, we consider the static graph G = {r(h, t) | ∀τ ∈ T : r(h, t|τ ) ∈ G}, where G is the original temporal knowledge graph. Then, we use time bumps to make facts true without affecting the correctness/falsehood of other facts.</p><p>Base case: For a TKG G over R, E, T we consider the static graph G = {r(h, t) | ∀τ ∈ T : r(h, t|τ ) ∈ G}. Now we construct a BoxE configuration that captures the non-temporal G , according to the BoxE full expressiveness proof <ref type="bibr" target="#b0">(Abboud et al. 2020)</ref>. However, for this construction, we use d = |R| |E| |E|, and index each fact by the relation and both entities, resulting in indices of the form (i, j, k). This is trivially possible, as this construction is analogous to the original BoxE proof, but introduces added dimensions and enables added indexing, which are necessary for proving this Lemma.</p><p>The resulting construction with d = |R| |E| |E|, by design, is such that all false facts F f = e r (e i , e k ) ∈ G are made false by pushing the respective tail entity out of the tail box in dimension, i.e., (i, j, k): e Ff k (i, j, k) &gt; u t r (i, j, k). Observe that the BoxE construction results in a configuration where every false fact is false exclusively at dimension (i, j, k) (or (i, k) in the original proof). Indeed, every induction step operates at index (i, j, k), and preserves point membership at this dimension for both head and tail for all facts, except for the tail representation of the target fact. The induction step also does not affect any other dimensions. Thus, this construction does not cause additional falsehood beyond its target. Hence, to make a false fact e r (e i , e k ) true, it is necessary and sufficient to adjust the representation at dimension (i, j, k).</p><p>Given this configuration, we now introduce time bumps τ = 0 for all time stamps τ ∈ T to obtain a BoxTE configuration in which a fact is true if and only if it is true for all time stamps in G.</p><p>Induction step: In this step we consider a false fact F = e r (e i , e k |τ l ) and make it true without affecting the truth value of any other fact. We achieve this as follows:</p><p>Step</p><formula xml:id="formula_17">1. Define C such that e k (i, j, k) -u t (i, j, k) &lt; C &lt; e k (i, j, k) -l t (i, j, k). Decrement time bump τ l by C in dimension (i, j, k): τ l (i, j, k) := τ l (i, j, k) -C</formula><p>Step 2. For all relations r x ∈ R, grow both boxes downwards by C in dimension (i, j, k):</p><formula xml:id="formula_18">l h x (i, j, k) := l h x (i, j, k) -C l t x (i, j, k) := l t x (i, j, k) -C Observe that</formula><p>Step 1 pushes the tail entity of the false fact F = e r (e i , e k |τ l ) into its respective relation box:</p><formula xml:id="formula_19">e (ei,rj ,ek) k (i, j, k) + τ l (i, j, k) &lt; u t j (i, j, k) e (ei,rj ,ek) k (i, j, k) + τ l (i, j, k) &gt; l t j (i, j, k), therefore: e er (ei,ek|τl) k ∈ r t j</formula><p>The change of time bump also affects the head entity, but its correctness is preserved by the box growing in Step 2. Hence, the target fact is made true, as required. We now show that the induction step does not affect the truth value of any other fact F = e r (e i , e k |τ l ):</p><p>Case 1. The fact F is true: We show that this fact remains true after the induction step by analysing both the head entity e F i and tail entity e F k .</p><p>(a) Head entity: Observe that in the induction step, the position of e F i changes by at most C in dimension (i, j, k), and only in the downward direction (when l = l). Therefore, growing the head box of every relation by C downwards in the same dimension in Step 2 ensures that e F i ∈ r h j continues to hold. (b) Tail entity: An analogous reasoning as for head entities applies to e k and r t j . Therefore, any true fact F remains true after the induction step. Case 2. The fact F is false: We also show that this fact remains false after the induction step by analysing the head entity e F i and tail entity e F k . (a) Head entity: By construction, all false facts are false in their tail box, satisfying the inequality:</p><formula xml:id="formula_20">e F k (i , j , k ) &gt; u t j (i , j , k )</formula><p>Any changes to the head entity e F i do not affect this. (b) Tail entity: Observe that Step 1 bumps all head boxes in the downward direction in dimension (i, j, k). If e r (e i , e k |τ l ) = e r (e i , e k |τ l ), i.e., F is the target fact, then e k gets bumped into r t j as described above, making the fact true, as required. Otherwise, if (i , j , k ) = (i, j, k), i.e., different static indices, then, by construction, e k (i , j , k ) &gt; u t j (i , j , k ), and this is not affected by any changes in dimension (i, j, k). Finally, if i = i , j = j , k = k , and l = l (same static components, different time stamp), then the representation of e k is not affected by Step 1, and the box growth does not affect the upper bound, keeping the inequality at dimension (i, j, k) false for this distinct timestamp.</p><p>Hence, any false fact F = e r (e i , e k |τ l ) is still false after the induction step. Therefore, BoxTE is fully expressive with dimensionality</p><formula xml:id="formula_21">d = |R| |E| 2 .</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Further Experimental Details</head><p>Hyper-parameter tuning</p><p>In our main experiments, we trained BoxTE on ICEWS14, ICEWS5-15, and GDELT. For each hyper-parameter configuration, we trained models for 1200 epochs on ICEWS14 and ICEWS5-15 and 500 epochs on GDELT, and performed validation every 100 epochs, with peak MRR used as the validation metric. For all experiments, we bound the embedding space to the hypercube [-1, 1] d by applying the hyperbolic tangent function tanh element-wise to all final embedding representations. Experiments were conducted on a single V100 GPU, on a compute node with 64 GB of RAM.</p><p>In our tuning, the hyper-parameters considered include dimensionality, batch size, number of negative samples, and learning rate. However, we additionally experimented with the temporal smoothness regularizer from TNTComplEx, and tuned its weight hyper-parameter λ, and also considered factorizations of time embeddings K τ . We explain this temporal smoothness regularizer and factorization next.</p><p>Temporal smoothness regularizer. TNTComplEx <ref type="bibr" target="#b13">(Lacroix, Obozinski, and Usunier 2020)</ref> propose a temporal smoothness regularizer, which penalizes dissimilarity between temporal representations for consecutive time stamps, i.e., τ i and τ i+1 . Within BoxTE, we apply this regularizer to time embeddings K τ This regularizer is formally defined as:</p><formula xml:id="formula_22">Λ = 1 |T| -1 |T|-1 i=1 k j=1 ||K τ i+1 [j, :] -K τi [j, :]|| 4 4 ,</formula><p>where [j, :] denotes the j th row vector of a matrix. This regularization term is then multiplied by a weight λ and summed with model loss. Therefore, we additionally tune λ in our experiments, and test values in the set {10 -4 , 10 -3 , 10 -2 , 10 -1 }.</p><p>Factorization. In the main paper, we define an embedding matrix K τ for every time stamp τ ∈ T. When viewed holistically, however, these matrix stack up, and constitute an overall time embedding tensor K ∈ R k×|T|×d . Thus, to reduce parametrization, and enforce sharing across time stamps, we factorize K as the product of a left tensor K L and a right tensor K R . More formally: To achieve parameter reduction, we experiment with values of b from the set {20, 40, 80, 200, 400} for all datasets.</p><formula xml:id="formula_23">K = K L × B K R , where K L ∈ R k×|T|×b , K R ∈ R k×b×d , b ∈ N +</formula><p>In addition to these hyper-parameters, we also experimented with both cross-entropy loss and negative sampling loss <ref type="bibr" target="#b22">(Sun et al. 2019)</ref>, and found the former to achieve slightly better results across all experiments. Furthermore, we tuned d from the set {250, 500, 1000, 1500} for the standard temporal knowledge graph completion experiments, and set d to the correct parameter-bounding value for the bounded-parameter experiments. Finally, we tuned k within the set {2, 3, 5} in the standard TKGC setup ({1, 2, 3, 5} in the bounded-parameter setup), the learning rate in the set {10 -4 , 10 -3 }, the number of negative samples per positive fact from the set {50, 75, 100, 150}, and batch size from the set {128, 256, 512, 1024}.</p><p>The best hyper-parameter configurations across all datasets in our experiments are reported in Table <ref type="table" target="#tab_7">5</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Model parameter counts</head><p>In this subsection, we provide equations for computing the parameter counts of BoxTE and competing models which report results in the parameter-bounded BoxTE, we provide two equations, corresponding to the non-factorised and factorized model configurations, respectively. The latter therefore depends on b, the factorization hyper-parameter. All parametrization equations are provided in Table <ref type="table" target="#tab_8">6</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Additional Experiments</head><p>Learned scalars on a subset of YAGO</p><p>In this experiment, we develop a dataset from a subset of the YAGO knowledge graph, train BoxTE on this dataset, and observe the learned scalar vectors for every relation to evaluate whether BoxTE successfully captures relational temporal dynamics. We choose YAGO as it contains several prominent relations with substantial temporal semantics, e.g., playsFor, and with varying degrees of temporal variability. For instance, the relation playsFor is not temporally stable, whereas isMarriedTo is.</p><p>Dataset construction. We construct the dataset YAGO49k-temp from the larger YAGO dataset. To do so we consider the subset of YAGO15k that contains only temporal facts. Further we unfold pairs of compatible facts with the tokens ossursSince and occursUntil: From the dataset entries (h, r, t, occursSince, τ 1 ) and (h, r, t, occursUntil, τ 2 ) we construct the set of facts {r(h, t|τ ) : τ 1 ≤ τ ≤ τ 2 }. By doing this we obtain facts that hold true for given ranges of time, which is unlike the more short-lived facts in GDELT and especially ICEWS14 and ICEWS5-15. The statistics of the resulting datasat are shown in Results. The average scalar values for different relations in this dataset are shown in Table <ref type="table" target="#tab_10">7</ref>. Here, we observe that the temporally unstable relation playsFor learns large temporal scalars with ᾱ = 3.15. Indeed, playsFor connects football players with teams, and each player changes his team 5.45 times over time, on average. This indicates a large degree of temporal variability, which is reflected in the associated scalar mean. By contrast, the isMarriedTo relation, which is more stable, as every person is on average married to 1.05 distinct partners over time, learns much smaller temporal scalars, averaging around ᾱ = 0.61.</p><p>With the relations participatedIn and isAffiliatedTo, a head entity can simultaneously connect with multiple distinct tail entities, and thus the lack of mutual exclusion (as is the case with playsFor) makes these relations less temporally variable. Nonetheless, these relations do exhibit significant variability over time. Accordingly, the model learns intermediate average scalar values for both relations, namely ᾱ = 1.84 and ᾱ = 1.42 respectively.</p><p>Additionally, the dataset contains several relations whose facts are true at single distinct moments in time, rather than over temporal ranges, such as graduatedFrom, created, wroteMusicFor, and hasWonPrize. As facts corresponding to these relations only hold true at one time stamp, and are false at any other time stamp, these relations learn a scalar configuration reflecting this stability, obtaining average scalar values of ᾱ = 0.74, ᾱ = 0.59, ᾱ = 0.86 and Dimensionality  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Robustness analysis</head><p>To investigate the robustness of our model relative to embedding dimensionality d, we train BoxTE on ICEWS14, ICEWS5-15 and GDELT while varying d and report the best result at each value.</p><p>As figure <ref type="figure" target="#fig_2">2</ref> shows, BoxTE achieves state of the art results on ICEWS14 in the constrained parameter setting with d = 154, and comes within 1% of its best possible performance with d = 500. Peak performance is achieved with d = 1000, while higher dimensionalities show a slight decrease in performance. On ICEWS5-15 a similar picture emerges, where d = 500 suffices to come within 0.02 of the best possible result, in terms of MRR. Here we observe no overfitting, even with d = 2000. Overall, we conclude that BoxTE is robust with regard to the chosen embedding dimensionality, with strong performance on all settings between 500 and 2000 dimensions.</p><p>On the much larger GDELT dataset we find that MRR increases across the entire range of computationally feasible dimensionality values. This suggests that BoxTE, in our testing, may not yet have reached its best possible performance on this dataset. This further highlights the complexity and density of information in GDELT dataset.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Ablation studies</head><p>In order to contextualise the results obtained by BoxTE, we perform four ablation studies. First, we investigate the effect of the temporal regularizer on our and competing models. Then, we use competing approaches to make static BoxE temporal and compare with their results. Thirdly, we train BoxTE without relation-specific temporal scalars, and lastly, we compare results obtained by training with different loss functions.</p><p>Temporal regulariser. To better understand the impact of regularisation on the performance of TKGC models, we additionally conduct experiments on both ICEWS datasets where we omit this regularizer (B), and otherwise choose our best performing configuration.</p><p>There, we observe that competing models suffer considerably, whereas BoxTE maintains very strong performance, and in fact becomes the best-performing model. Indeed, BoxTE achieves an MRR of 0.608 on ICEWS14, while the best ICEWS14 models ChronoR <ref type="bibr" target="#b19">(Sadeghian et al. 2021)</ref> and TeLM <ref type="bibr" target="#b28">(Xu et al. 2021</ref>) each report a value of less than 0.6. On ICEWS5-15, BoxTE achieves an MRR of 0.657 and thus surpasses TNTComplEx <ref type="bibr" target="#b13">(Lacroix, Obozinski, and Usunier 2020)</ref>, which reports an MRR of less than 0.65. This suggests that these models are more dependent on the regularisation prior to learn temporal patterns, whereas BoxTE is more robust, and can partly recover this information even when it is not provided. This further highlights the importance of BoxTE semantics, which provide a more holistic means of capturing temporal patterns. This is especially relevant beyond our evaluation setting, where such regularisation terms could not be known, or could not be compatible with the given dataset. In fact, on GDELT, temporal regularisation is detrimental to performance, which suggests that it this regularisation is incompatible with the input data. Indeed, GDELT has large temporal variability, where facts can hold for extended periods of time, but also hold rarely, and thus a general smoothness assumption conflicts with this information and yields worse performance, as expected.</p><p>Model variants. We instantiate two BoxE variants that directly implement competing time representation approaches in BoxE space. This model variant directly applies the diachronic embedding framework: For each entity embedding vector, a proportion γ of dimensions is being reserved for the representation of temporal variations. These dimensions are trained as usual, but then passed through an activation function (sine, σ) and projected through time by multiplying the time index associated with a fact. We experiment with applying this approach to final entity embeddings, entity bumps, and entity bases. We find that DE-BoxE performs best when diachronic embeddings are used on the entity bases, and report results accordingly. Adopting this approach in BoxE space does not require any alterations to the scoring scheme.</p><p>As we show in Table <ref type="table">9</ref>, TBoxE and DE-BoxE underperform significantly when compared to BoxTE, thus indicating that the strong results obtained by BoxTE are a result of the novel time representation, and not merely of the expressive BoxE model that underlies it. Furthermore, TBoxE outperforms TTransE, as is expected due to the stronger static model. Interestingly, however, DE-BoxE is unable to improve on or even match the performance of DE-SimplE. This can be explained by considering BoxE's semantics and distance function. In BoxE, a fact is considered to be true if and only if both entity embeddings are inside their respective target boxes, in all dimensions. In the DE-approach, the choice of activation function imposes a prior on how temporal features are expected to behave over time: A sine activation function presupposes a periodic evolution of temporal features, while a sigmoid σ assumes monotonic growth. If these assumptions do not precisely agree with the data, it is unlikely that every temporal dimension can be configured in such a way that all entities are placed in their respective target boxes, on all relevant time stamps. Thus, TBoxE struggles to fit the data adequately, and ultimately underperforms.</p><p>Temporal scalars. We disable learnable time scalars and train BoxTE on ICEWS14, leaving all other parameters unchanged compared to our best performing configuration. Disabling temporal scalars prohibits relations from modulating the magnitude and direction of a given time bump. We additionally compare to a setup with k = 1 and enabled scalars. We report out results in Table <ref type="table">10</ref>.</p><p>We find that on ICEWS14, unlike ICEWS5-15, employing just a single temporal bump per snapshot (k = 1) does not lead to a significant drop in performance. However, additionally disabling the ability of relations to scale time bumps leads to a drop in MRR of .043. This finding underlines the importance of allowing relations to modulate time bumps, in order to accurately capture how relations are affected differ- Loss function. To compare between loss functions, we train BoxTE with cross-entropy loss and self-adversarial negative sampling loss <ref type="bibr" target="#b22">(Sun et al. 2019</ref>) on the ICEWS14 dataset. Results are shown in Figure <ref type="figure" target="#fig_4">4</ref>. As the figure shows, we find that cross entropy loss consistently outperforms negative sampling loss. We also observe that this difference decreases as dimensionality grows: With 154 dimension the difference is 4.2% or .023 points in MRR, with 1000 dimension it is just 0.5% or .003 MRR points. We also note that adversarial negative sampling loss requires tuning of two additional hyperparameters, the margin γ and the adversarial temperature α. Overall we conclude that cross entropy loss is the better suited objective function for our specific experimental setting.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>e</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head></head><label></label><figDesc>is a tunable hyper-parameter, and × B denotes batch matrix multiplication, with the first order as the batch dimension. In other words, we consider every one of the k representations of all time stamps in T, and factorize the resulting |T| × d matrix as the product of a |T| × b and a b × d matrix.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Mean reciprocal rank (MRR) achieved with different embedding dimensionalities, on ICEWS14 (a), ICEWS5-15 (b) and GDELT (c) datasets.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Influence of temporal regularizer on MRR on ICEWS14 dataset. (a) BoxTE maintains strong performance even without regularisation with k = 2, d = 1000. (b) The temporal regularizer prevents overfitting with large k, d = 500.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Mean reciprocal rank (MRR) achieved with cross entropy loss (CE) and adversarial negative sampling loss (NS) on ICEWS14, with dim ∈ {154, 250, 1000}, k = 2, λ = 0.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 2 :</head><label>2</label><figDesc>TKGC datasets with dataset statistics patterns and time modeling. For instance, TTransE can only capture rigid inverse relations if either the relation translation is set to 0, or if the time translation is set to 0, effectively eliminating the temporal component of the model.</figDesc><table><row><cell>2</cell><cell>,</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 4 :</head><label>4</label><figDesc>TKGC results for BoxTE and competing models in the bounded-parameter setting.</figDesc><table><row><cell>DE-SimplE</cell><cell>-</cell><cell cols="2">.526 .418</cell><cell cols="2">.592 .725</cell><cell>-</cell><cell cols="2">.513 .392</cell><cell cols="2">.578 .748</cell><cell>-</cell><cell cols="2">.230 .141</cell><cell cols="2">.248 .403</cell></row><row><cell>TComplEx</cell><cell>-</cell><cell>.560</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>.580</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell>TNTComplEx</cell><cell>-</cell><cell>.560</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>.600</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell>BoxTE (k=1)</cell><cell cols="3">183 .576 .478</cell><cell cols="2">.639 .753</cell><cell cols="3">122 .564 .452</cell><cell cols="2">.635 .770</cell><cell cols="3">62 .250 .167</cell><cell cols="2">.270 .411</cell></row><row><cell>BoxTE (k=2)</cell><cell cols="3">177 .580 .483</cell><cell cols="2">.642 .755</cell><cell cols="3">110 .567 .458</cell><cell cols="2">.631 .775</cell><cell cols="3">63 .246 .164</cell><cell cols="2">.265 .404</cell></row><row><cell>BoxTE (k=3)</cell><cell cols="3">182 .582 .491</cell><cell cols="2">.640 .748</cell><cell cols="3">125 .570 .465</cell><cell cols="2">.636 .763</cell><cell cols="3">64 .242 .161</cell><cell cols="2">.260 .398</cell></row><row><cell>BoxTE (k=5)</cell><cell cols="3">183 .581 .493</cell><cell cols="2">.632 .742</cell><cell cols="3">134 .567 .469</cell><cell cols="2">.623 .746</cell><cell cols="3">66 .236 .156</cell><cell cols="2">.253 .390</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head></head><label></label><figDesc>1. BoxTE is a fully expressive model for temporal knowledge graphs with the embedding dimensionality d of entities, relations, bumps, and time bumps set to d = min(|R| |T| |E| , |R| |E| 2 ).</figDesc><table><row><cell cols="2">We prove this result by independently showing that</cell></row><row><cell cols="2">BoxTE is fully expressive with d = |R| |T| |E| and d =</cell></row><row><cell cols="2">|R| |E| 2 in the following lemmas, which together imply</cell></row><row><cell cols="2">Theorem 5.1.</cell></row><row><cell cols="2">Lemma A.1. BoxTE is a fully expressive model for tem-</cell></row><row><cell cols="2">poral knowledge graphs with the embedding dimensional-</cell></row><row><cell cols="2">ity d of entities, relations, bumps, and time bumps set to</cell></row><row><cell cols="2">d = |R| |T| |E|.</cell></row><row><cell cols="2">Lemma A.2. BoxTE is a fully expressive model for tem-</cell></row><row><cell cols="2">poral knowledge graphs with the embedding dimensional-</cell></row><row><cell cols="2">ity d of entities, relations, bumps, and time bumps set to</cell></row><row><cell>d = |R| |E|</cell><cell>2 .</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 5 :</head><label>5</label><figDesc>setting, relative to embedding dimensionality, |E|, |R|, and |T|. For Best hyper-parameter configuration of BoxTE on ICEWS14, ICEWS5-15, and GDELT. |E| + kb + 2 |R|) + k |R| + bk |T|</figDesc><table><row><cell cols="2">Standard setup</cell><cell>Embedding Dimension</cell><cell>Learning Rate</cell><cell>Negative Samples</cell><cell>Batch Size</cell><cell>k</cell><cell>λ</cell><cell>Factorisation Basis b</cell></row><row><cell cols="2">ICEWS14</cell><cell>1000</cell><cell>0.001</cell><cell>75</cell><cell>256</cell><cell cols="2">2 0.1</cell><cell>N/A</cell></row><row><cell cols="2">ICEWS5-15</cell><cell>1500</cell><cell>0.001</cell><cell>75</cell><cell>512</cell><cell cols="2">5 0.1</cell><cell>N/A</cell></row><row><cell cols="2">GDELT</cell><cell>1500</cell><cell>0.001</cell><cell>75</cell><cell>256</cell><cell>5</cell><cell>0</cell><cell>N/A</cell></row><row><cell cols="2">Bounded-parameter setup</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="2">ICEWS14</cell><cell>154</cell><cell>0.001</cell><cell>75</cell><cell>256</cell><cell>2</cell><cell>1</cell><cell>N/A</cell></row><row><cell cols="2">ICEWS5-15</cell><cell>104</cell><cell>0.001</cell><cell>75</cell><cell>256</cell><cell>3</cell><cell>0</cell><cell>N/A</cell></row><row><cell cols="2">GDELT</cell><cell>124</cell><cell>0.001</cell><cell>75</cell><cell>256</cell><cell cols="2">1 0.1</cell><cell>80</cell></row><row><cell>Model</cell><cell cols="2">Number of Parameters</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>DE-SimplE</cell><cell cols="2">2d((3γ + (1 -γ)) |E| + |R|)</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>TComplEx</cell><cell cols="2">2d(|E| + |T| + 2 |R|)</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>TNTComplEx</cell><cell cols="2">2d(|E| + |T| + 4 |R|)</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>BoxTE</cell><cell cols="2">d(2 |E| + k |T| + 2 |R|) + k |R|</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>BoxTE(F)</cell><cell>d(2</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 6 :</head><label>6</label><figDesc>Model parameter count for BoxTE and competing models. BoxTE(F) denotes the factorized BoxTE model, and thus additionally depends on the hyper-parameter b. For DE-SimplE, γ denotes the share of temporal embedding features.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 8 .</head><label>8</label><figDesc></figDesc><table><row><cell>Relation</cell><cell>α</cell></row><row><cell>playsFor</cell><cell>3.15</cell></row><row><cell>participatedIn</cell><cell>1.84</cell></row><row><cell>isAffiliatedTo</cell><cell>1.42</cell></row><row><cell>hasWonPrize</cell><cell>1.27</cell></row><row><cell>worksAt</cell><cell>1.05</cell></row><row><cell cols="2">wroteMusicFor 0.86</cell></row><row><cell cols="2">graduatedFrom 0.74</cell></row><row><cell>isMarriedTo</cell><cell>0.61</cell></row><row><cell>owns</cell><cell>0.60</cell></row><row><cell>created</cell><cell>0.59</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 7 :</head><label>7</label><figDesc>Average relational scalars α learned on ICEWS49ktemp.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_11"><head>Table 8 :</head><label>8</label><figDesc>YAGO49k-temp dataset statistics.</figDesc><table><row><cell></cell><cell>YAGO49k-temp</cell></row><row><cell>|E|</cell><cell>4139</cell></row><row><cell>|R|</cell><cell>10</cell></row><row><cell>|T|</cell><cell>506</cell></row><row><cell>|G train |</cell><cell>49509</cell></row><row><cell>|G valid |</cell><cell>6174</cell></row><row><cell>|G test |</cell><cell>5964</cell></row><row><cell>Timespan</cell><cell>1417 years</cell></row><row><cell cols="2">Granularity Yearly</cell></row><row><cell cols="2">ᾱ = 1.27, respectively. Hence, temporal scalars accurately</cell></row><row><cell cols="2">reflect the temporal variability of a given relation in this ex-</cell></row><row><cell cols="2">periment, with stable relations learning small scalars, and</cell></row><row><cell cols="2">highly unstable relations learning larger scalars.</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">BoxE: A Box Embedding Model for Knowledge Base Completion</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Abboud</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">İ</forename><forename type="middle">İ</forename><surname>Ceylan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lukasiewicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Salvatori</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirty-Fourth Annual Conference on Advances in Neural Information Processing Systems</title>
+		<meeting>the Thirty-Fourth Annual Conference on Advances in Neural Information Processing Systems<address><addrLine>NeurIPS</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">TuckER: Tensor Factorization for Knowledge Graph Completion</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Balazevic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Allen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">M</forename><surname>Hospedales</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the Ninth International Joint Conference on Natural Language Processing, EMNLP-IJCNLP</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the Ninth International Joint Conference on Natural Language Processing, EMNLP-IJCNLP</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="5184" to="5193" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Freebase: A Shared Database of Structured General Human Knowledge</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">D</forename><surname>Bollacker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">P</forename><surname>Cook</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Tufts</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-Second AAAI Conference on Artificial Intelligence, AAAI</title>
+		<meeting>the Twenty-Second AAAI Conference on Artificial Intelligence, AAAI</meeting>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Question Answering with Subgraph Embeddings</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chopra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weston</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2014 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Translating Embeddings for Modeling Multi-relational Data</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>García-Durán</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-Sixth Annual Conference on Advances in Neural Information Processing Systems, NIPS</title>
+		<meeting>the Twenty-Sixth Annual Conference on Advances in Neural Information Processing Systems, NIPS</meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="2787" to="2795" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<author>
+			<persName><forename type="first">E</forename><surname>Boschee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lautenschlager</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>O'brien</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Shellman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Starz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ward</surname></persName>
+		</author>
+		<title level="m">ICEWS Coded Event Data</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">HyTE: Hyperplane-based Temporally aware Knowledge Graph Embedding</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">S</forename><surname>Dasgupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">N</forename><surname>Ray</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Talukdar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2018 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2001">2018. 2001-2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Convolutional 2D Knowledge Graph Embeddings</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirty-Second AAAI Conference on Artificial Intelligence, AAAI</title>
+		<meeting>the Thirty-Second AAAI Conference on Artificial Intelligence, AAAI</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1811" to="1818" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Knowledge Vault: A web-scale approach to probabilistic knowledge fusion</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Gabrilovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Heitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Horn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Lao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Strohmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twentieth ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</title>
+		<meeting>the Twentieth ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Learning Sequence Encoders for Temporal Knowledge Graph Completion</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>García-Durán</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Dumančić</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Niepert</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing , EMNLP</title>
+		<meeting>the 2018 Conference on Empirical Methods in Natural Language Processing , EMNLP</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="4816" to="4821" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Diachronic Embedding for Temporal Knowledge Graph Completion</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Goel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>Kazemi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Brubaker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Poupart</surname></persName>
+		</author>
+		<idno>CoRR, abs/1907.03143</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Representation Learning for Dynamic Graphs: A Survey</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>Kazemi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Goel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Kobyzev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sethi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Forsyth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Poupart</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Mach. Learn. Res</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="page">73</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6980</idno>
+		<title level="m">Adam: A Method for Stochastic Optimization</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Tensor Decompositions for Temporal Knowledge Base Completion</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Obozinski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Usunier</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Eighth International Conference on Learning Representations (ICLR)</title>
+		<meeting>the Eighth International Conference on Learning Representations (ICLR)</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Deriving Validity Time in Knowledge Graph</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leblay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">W</forename><surname>Chekol</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International World Wide Web Conference ( WWW)</title>
+		<editor>
+			<persName><forename type="first">P.-A</forename><surname>Champin</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">F</forename><surname>Gandon</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Lalmas</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">P</forename><forename type="middle">G</forename><surname>Ipeirotis</surname></persName>
+		</editor>
+		<meeting>the International World Wide Web Conference ( WWW)</meeting>
+		<imprint>
+			<publisher>ACM Press</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1771" to="1776" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">GDELT: Global data on events, location, and tone</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Leetaru</surname></persName>
+			<affiliation>
+				<orgName type="collaboration">ISA Annual Convention</orgName>
+			</affiliation>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">A</forename><surname>Schrodt</surname></persName>
+			<affiliation>
+				<orgName type="collaboration">ISA Annual Convention</orgName>
+			</affiliation>
+		</author>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">YAGO3: A Knowledge Base from Multilingual Wikipedias</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Mahdisoltani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Biega</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">M</forename><surname>Suchanek</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Seventh Biennial Conference on Innovative Data Systems Research, CIDR</title>
+		<meeting>the Seventh Biennial Conference on Innovative Data Systems Research, CIDR</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Never-ending learning</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">M</forename><surname>Mitchell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">W</forename><surname>Cohen</surname><genName>Jr</genName></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">R H</forename><surname>Talukdar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">P</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Betteridge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Carlson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mishra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">D</forename><surname>Gardner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kisiel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Krishnamurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Mazaitis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Nakashole</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Platanios</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">A</forename><surname>Ritter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Samadi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Settles</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">C</forename><surname>Wijaya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Saparov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Greaves</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Communications of the ACM</title>
+		<imprint>
+			<biblScope unit="volume">61</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="103" to="115" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">A Three-Way Model for Collective Learning on Multi-Relational Data</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Kriegel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-Eighth International Conference on Machine Learning, ICML</title>
+		<meeting>the Twenty-Eighth International Conference on Machine Learning, ICML</meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="809" to="816" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">ChronoR: Rotation Based Temporal Knowledge Graph Embedding</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sadeghian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Armandpour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Colas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">Z</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirty-Fifth AAAI Conference on Artificial Intelligence (AAAI)</title>
+		<meeting>the Thirty-Fifth AAAI Conference on Artificial Intelligence (AAAI)</meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="6471" to="6479" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Modeling Relational Data with Graph Convolutional Networks</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">S</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Bloem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Van Den Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Titov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Fifteenth International Conference on the Semantic Web, ESWC</title>
+		<meeting>the Fifteenth International Conference on the Semantic Web, ESWC</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="593" to="607" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Yago: A Core of Semantic Knowledge</title>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">M</forename><surname>Suchanek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Kasneci</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Weikum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Sixteenth International Conference on World Wide Web</title>
+		<meeting>the Sixteenth International Conference on World Wide Web</meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="697" to="706" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">RotatE: Knowledge Graph Embedding by Relational Rotation in Complex Space</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">In Proceedings of the Seventh International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<publisher>ICLR</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Observed versus latent features for knowledge base and text inference</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Third Workshop on Continuous Vector Space Models and their Compositionality</title>
+		<meeting>the Third Workshop on Continuous Vector Space Models and their Compositionality</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="57" to="66" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Complex Embeddings for Simple Link Prediction</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">É</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirty-Third International Conference on Machine Learning, ICML</title>
+		<meeting>the Thirty-Third International Conference on Machine Learning, ICML</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2071" to="2080" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">RippleNet: Propagating User Preferences on the Knowledge Graph for Recommender Systems</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-Seventh ACM International Conference on Information and Knowledge Management</title>
+		<meeting>the Twenty-Seventh ACM International Conference on Information and Knowledge Management</meeting>
+		<imprint>
+			<publisher>CIKM</publisher>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">C K</forename><surname>Cheung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2010.03526</idno>
+		<title level="m">Temporal Message Passing for Temporal Knowledge Graph Completion</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Explicit Semantic Ranking for Academic Search via Knowledge Graph Embedding</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Power</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Callan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-Sixth International Conference on World Wide Web</title>
+		<meeting>the Twenty-Sixth International Conference on World Wide Web</meeting>
+		<imprint>
+			<publisher>WWW</publisher>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Temporal Knowledge Graph Completion using a Linear Temporal Regularizer and Multivector Embeddings</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nayyeri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lehmann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 Conference of the North American Chapter</title>
+		<meeting>the 2021 Conference of the North American Chapter</meeting>
+		<imprint>
+			<publisher>Online: Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="2569" to="2578" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">TeRo: A Time-aware Knowledge Graph Embedding via Temporal Rotation</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nayyeri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Alkhoury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">S</forename><surname>Yazdi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lehmann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-Eighth International Conference on Computational Linguistics (COLING)</title>
+		<editor>
+			<persName><forename type="first">D</forename><surname>Scott</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">N</forename><surname>Bel</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">C</forename><surname>Zong</surname></persName>
+		</editor>
+		<meeting>the Twenty-Eighth International Conference on Computational Linguistics (COLING)</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1583" to="1593" />
+		</imprint>
+	</monogr>
+	<note>International Committee on Computational Linguistics</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

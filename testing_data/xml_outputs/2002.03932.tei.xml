@@ -1,0 +1,1288 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">PRE-TRAINING TASKS FOR EMBEDDING-BASED LARGE-SCALE RETRIEVAL</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2020-02-10">10 Feb 2020</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Wei-Cheng</forename><surname>Chang</surname></persName>
+							<email>wchang2@cs.cmu.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Carnegie Mellon University &amp; Google</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Felix</forename><forename type="middle">X</forename><surname>Yu</surname></persName>
+							<email>felixyu@google.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Carnegie Mellon University &amp; Google</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Yin-Wen</forename><surname>Chang</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Carnegie Mellon University &amp; Google</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Yiming</forename><surname>Yang</surname></persName>
+							<email>yiming@cs.cmu.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Carnegie Mellon University &amp; Google</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Sanjiv</forename><surname>Kumar</surname></persName>
+							<email>sanjivk@google.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Carnegie Mellon University &amp; Google</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">PRE-TRAINING TASKS FOR EMBEDDING-BASED LARGE-SCALE RETRIEVAL</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2020-02-10">10 Feb 2020</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">2B60642D950B2C4CA6EF7EBC202471E1</idno>
+					<idno type="arXiv">arXiv:2002.03932v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T09:34+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We consider the large-scale query-document retrieval problem: given a query (e.g., a question), return the set of relevant documents (e.g., paragraphs containing the answer) from a large document corpus. This problem is often solved in two steps. The retrieval phase first reduces the solution space, returning a subset of candidate documents. The scoring phase then re-ranks the documents. Critically, the retrieval algorithm not only desires high recall but also requires to be highly efficient, returning candidates in time sublinear to the number of documents. Unlike the scoring phase witnessing significant advances recently due to the BERT-style pre-training tasks on cross-attention models, the retrieval phase remains less well studied. Most previous works rely on classic Information Retrieval (IR) methods such as BM-25 (token matching + TF-IDF weights). These models only accept sparse handcrafted features and can not be optimized for different downstream tasks of interest. In this paper, we conduct a comprehensive study on the embedding-based retrieval models. We show that the key ingredient of learning a strong embedding-based Transformer model is the set of pre-training tasks. With adequately designed paragraph-level pre-training tasks, the Transformer models can remarkably improve over the widely-used BM-25 as well as embedding models without Transformers. The paragraph-level pre-training tasks we studied are Inverse Cloze Task (ICT), Body First Selection (BFS), Wiki Link Prediction (WLP), and the combination of all three. * work performed when interning at Google.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>We consider the large-scale retrieval problem: given a query, return the most relevant documents from a large corpus, where the size of the corpus can be hundreds of thousands or more. One can view this problem as learning a scoring function f : X × Y → R, that maps a pair of a query and a document (q, d) ∈ X × Y to a score f (q, d). The function should be designed such that the relevant (q, d) pairs have high scores, whereas the irrelevant ones have low scores. Many real-world applications besides query-document retrieval can be cast into this form. For example, in recommendation systems, q represents a user query and d represents a candidate item to recommend <ref type="bibr" target="#b20">(Krichene et al., 2019)</ref>. In extreme multi-label classification, q represents a web-page document and d represents the categories or hashtags of interests <ref type="bibr" target="#b17">(Jain et al., 2019;</ref><ref type="bibr" target="#b4">Chang et al., 2019)</ref>. In open-domain question answering, q represents a question and d represents an evidence passage containing the answer <ref type="bibr" target="#b6">(Chen et al., 2017;</ref><ref type="bibr" target="#b15">Hu et al., 2019;</ref><ref type="bibr" target="#b23">Lee et al., 2019)</ref>.</p><p>Central to the above is designing the scoring function f . Recently, BERT <ref type="bibr" target="#b10">(Devlin et al., 2019)</ref>, along with its many successors such as XLNet <ref type="bibr">(Yang et al., 2019b)</ref> and RoBERTa <ref type="bibr" target="#b24">(Liu et al., 2019)</ref>, has led to significant improvements to many NLP tasks such as sentence pairs classification and question-answering. In BERT, the scoring function f is a pre-trained deep bidirectional Transformer model. While BERT-style cross-attention models are very successful, it cannot be directly applied to large-scale retrieval problems because computing f (q, d) for every possible document can be prohibitively expensive. Thus, one typically first uses a less powerful but more efficient algorithm (another scoring function f ) to reduce the solution space (the "retrieval phase"), and then use the BERT-style model to re-rank the retrieved documents (the "scoring phase").</p><p>The retrieval phase is critical. Ideally speaking, the algorithm should have a high recall; otherwise, many relevant documents won't even be considered in the scoring phase. The algorithm also needs to be highly efficient: it should return a small subset of relevant documents in time sublinear to the number of all documents. Although significant developments are advancing the scoring algorithms, the retrieval algorithms remain less studied, and this is the focus of this paper.</p><p>The retrieval algorithm can be put into two categories. The first type is classic information retrieval (IR) algorithms relying on token-based matching. One example is BM-25 <ref type="bibr" target="#b31">(Robertson et al., 2009)</ref>, which remains to be the most commonly-used <ref type="bibr" target="#b27">(Nguyen et al., 2016;</ref><ref type="bibr" target="#b38">Yang et al., 2017;</ref><ref type="bibr">2019a)</ref> and hard to beat <ref type="bibr" target="#b5">(Chapelle &amp; Chang, 2011;</ref><ref type="bibr" target="#b23">Lee et al., 2019)</ref> algorithm. Here the scoring function f is based on token-matching between the two high-dimensional sparse vectors with TF-IDF token weights, and retrieval can be done in sublinear time using the inverted index. Despite the wide usage, these algorithms are handcrafted and therefore cannot be optimized for a specific task.</p><p>The second option is an embedding-based model that jointly embeds queries and documents in the same embedding space and use an inner product or cosine distance to measure the similarity between queries and documents. Let the query embedding model be φ(•) and the document embedding model be ψ(•). The scoring function is f (q, d) = φ(q), ψ(d) .</p><p>In the inference stage, retrieving relevant documents then becomes finding the nearest neighbors of a query in the embedding space. Since the embeddings of all candidate documents can be precomputed and indexed, the inference can be done efficiently with approximate nearest neighbor search algorithms in the embedding space <ref type="bibr" target="#b32">(Shrivastava &amp; Li, 2014;</ref><ref type="bibr" target="#b12">Guo et al., 2016)</ref>.</p><p>In this paper, we refer to the above embedding-based model as the two-tower retrieval model, because the query and document embeddings are coming from two separate "towers" of neural networks. In the literature, it is also known as the Siamese network <ref type="bibr" target="#b8">(Das et al., 2016;</ref><ref type="bibr" target="#b34">Triantafillou et al., 2017)</ref> or dual-encoder model <ref type="bibr" target="#b3">(Cer et al., 2018;</ref><ref type="bibr" target="#b26">Mazaré et al., 2018)</ref>. Compared to the sparse token-based models, the two-tower models can capture deeper semantic relationships within queries and documents, and the models can be optimized specifically for the task being considered.</p><p>In the heart of two-tower models is the embedding functions φ(•) and ψ(•). A modern choice is using Transformers to model the attention within queries and within documents, rather than the cross-attention between them as in the BERT model. The token-level masked-LM (MLM) pretraining task is crucial to the success of BERT-style cross-attention models. Nevertheless, what pre-training tasks are useful for improving two-tower Transformer models in large-scale retrieval, remains a crucial yet unsolved research problem. In this paper, we aim to answer this question by studying different pre-training tasks for the two-tower Transformer models. We contribute the following insight:</p><p>• The two-tower Transformer models with proper pre-training can significantly outperform the widely used BM-25 algorithm;</p><p>• Paragraph-level pre-training tasks such as Inverse Cloze Task (ICT), Body First Selection (BFS), and Wiki Link Prediction (WLP) hugely improve the retrieval quality, whereas the most widely used pre-training task (the token-level masked-LM) gives only marginal gains.</p><p>• The two-tower models with deep transformer encoders benefit more from paragraph-level pre-training compared to its shallow bag-of-word counterpart (BoW-MLP).</p><p>To the best of our knowledge, this is the first comprehensive study on pre-training tasks for efficient large-scale retrieval algorithms. The rest of the paper is organized as follows. We start by introducing the two-tower retrieval model in Section 2. The pre-training tasks are presented in 3, and the experiments and analysis are presented in Section 4. Finally, we conclude this work in Section 5.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">THE TWO-TOWER RETRIEVAL MODEL</head><p>Given a query q ∈ X and a document d ∈ Y, we consider two-tower retrieval models that consist of two encoder functions, φ : X → R k and ψ : Y → R k which map a sequence of tokens in X and Y to their associated embeddings φ(q) and ψ(d), respectively. The scoring function f : is then defined to be the inner product<ref type="foot" target="#foot_0">1</ref> of the embeddings</p><formula xml:id="formula_0">R k × R k → R</formula><formula xml:id="formula_1">f (q, d) = φ(q), ψ(d) .<label>(1)</label></formula><p>In this paper, we are interested in parameterizing the encoders φ, ψ as deep Transformer models <ref type="bibr" target="#b35">(Vaswani et al., 2017)</ref> due to its expressive power in modeling natural language.</p><p>In the rest of this section, we illustrate the advantage of two-tower models in the inference phase; discuss the pros and cons of two-tower models in comparison with BERT-like cross-attention models; present the learning procedure of estimating model parameters under maximum likelihood principle; and review the related works.</p><p>Inference The difference between two-tower models and cross-attention models is shown in Figure <ref type="figure" target="#fig_0">1</ref>. The advantage of two-tower models is the efficiency in the inference time. First, all the document embeddings can be pre-computed. Then, given an unseen query q, we only need to rank the document based on its inner product with the query embedding. This is way more efficient than running inference on a cross-attention BERT-style model (often used in the scoring stage). To see this, the scoring function of BERT-style model is with the form</p><formula xml:id="formula_2">f θ,w (q, d) = ψ θ (q ⊕ d) T w,<label>(2)</label></formula><p>where ⊕ denotes the concatenate operation of the query and the document sequence and w ∈ R k is an additional model parameters. In BERT, for each query, one has to make the above expensive inference on all documents. For example, with the 128-dimensional embedding space, inner product between 1000 query embeddings with 1 million document embeddings only takes hundreds of milliseconds on CPUs, while computing the same scores with cross-attention models takes hours if not more even on GPUs.</p><p>Furthermore, retrieving the closest documents in the embedding space can be performed in sublinear time with the well-studied maximum inner product (MIPS) algorithms with almost no loss in recall <ref type="bibr" target="#b32">(Shrivastava &amp; Li, 2014;</ref><ref type="bibr" target="#b12">Guo et al., 2016)</ref>.</p><p>Learning One unique advantage of the two-tower retrieval model in comparison with classic IR algorithms is the ability to train it for specific tasks. In this paper, we assume that the training data is presented as relevant "positive" query-document pairs</p><formula xml:id="formula_3">T = {(q i , d i )} |T | i=1 .</formula><p>Let θ be the model parameters. We estimate the model parameters by maximizing the log likelihood max θ (q,d)∈T log p θ (d|q) where the conditional probability is defined by the Softmax:</p><formula xml:id="formula_4">p θ (d|q) = exp f θ (q, d) d ∈D exp f θ (q, d ) , (<label>3</label></formula><formula xml:id="formula_5">)</formula><p>and D is the set of all possible documents. The Softmax involves computing the expensive denominator of Equation (3), a.k.a, the partition function, that scales linearly to the number of documents.</p><p>In practice, we use the Sampled Softmax, an approximation of the full-Softmax where we replace D by a small subset of documents in the current batch, with a proper correcting term to ensure the unbiasedness of the partition function <ref type="bibr" target="#b1">(Bengio &amp; Senécal, 2008)</ref>. Sampled Softmax has been widely used in language modeling <ref type="bibr" target="#b7">(Chen et al., 2016;</ref><ref type="bibr" target="#b11">Grave et al., 2017)</ref>, recommendation systems <ref type="bibr" target="#b41">(Yu et al., 2017;</ref><ref type="bibr" target="#b20">Krichene et al., 2019)</ref> and extreme classification <ref type="bibr">(Blanc &amp; Rendle, 2018;</ref><ref type="bibr" target="#b29">Reddi et al., 2019)</ref>.</p><p>Since we often have a limited amount of supervised data from the downstream task, it is important to first train the retrieval model with positive pairs T from a set of pre-training tasks. We then fine-tune it with positive pairs T from the downstream task. We will present the set of pre-training tasks we study in Section 3.</p><p>Related Works Cer et al. ( <ref type="formula">2018</ref>) study the two-tower Transformer model as a universal sentence encoder. The model is learned with multiple tasks including the unsupervised Skip-Thought task <ref type="bibr" target="#b19">(Kiros et al., 2015)</ref>, the supervised conversation input-response task <ref type="bibr" target="#b13">(Henderson et al., 2017)</ref>, and the supervised sentence classification SNLI task <ref type="bibr" target="#b2">(Bowman et al., 2015)</ref>. <ref type="bibr" target="#b16">Humeau et al. (2019)</ref> propose the Poly-encoders architecture to balance the computation/expressiveness tradeoff between two-tower models and cross-attention models. <ref type="bibr" target="#b30">Reimers &amp; Gurevych (2019)</ref> fine-tune the deep twotower models on two supervised datasets, SNLI and MNLI <ref type="bibr" target="#b36">(Williams et al., 2018)</ref>, then apply it in solving other downstream tasks. Unlike all the above works that consider training the two-tower Transformer models on a limited amount of supervised corpus for the sentence classification tasks, we study different pre-training tasks and their contributions in the large-scale retrieval settings.</p><p>Another closely related topic is the open-domain question answering. Previous works consider using BM25 or other lexical matching methods to retrieve the top-k relevant passages efficiently and then deploy the more expensive cross-attention scoring function to find the answer <ref type="bibr" target="#b6">(Chen et al., 2017;</ref><ref type="bibr" target="#b38">Yang et al., 2017;</ref><ref type="bibr">2019a)</ref>. <ref type="bibr" target="#b9">Das et al. (2019)</ref> encode query and document separately with LSTM encoders. They employ a training procedure different from ours and do not consider pre-training. Very recently, <ref type="bibr" target="#b23">Lee et al. (2019)</ref> propose to pre-train two-tower Transformer models with the Inverse Cloze Task (ICT) to replace BM25 in the passage retrieval phase. The advantage is that the retriever can be trained jointly with the reader/scorer. Nevertheless, their pre-trained two-tower models do not outperform BM25 on the SQuAD dataset, potentially because the fine-tuning is only performed on the query-tower.</p><p>Model distillation <ref type="bibr" target="#b14">(Hinton et al., 2015)</ref> can be used to compress expensive BERT-like cross-attention models into efficient two-tower Transformer models for large-scale retrieval problems. For example, <ref type="bibr" target="#b33">Tang et al. (2019)</ref> demonstrate initial success in distilling the BERT model into a two-tower model with BiLSTM as encoders. The pre-training tasks we study in this paper can be used as additional supervision in the distillation process, and therefore complementary to model distillation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">PRE-TRAINING TASKS OF DIFFERENT SEMANTIC GRANULARITIES</head><p>As mentioned in Section 2, due to the limited amount of supervised data from downstream tasks, a crucial step of learning deep retrieval models is to pre-train the model with a set of pre-training tasks (we will verify this in Section 4). Sentence-level pre-training tasks have been studied before. One example is reconstructing the surface form of surrounding sentences given the encoded sentence <ref type="bibr" target="#b22">(Le &amp; Mikolov, 2014;</ref><ref type="bibr" target="#b19">Kiros et al., 2015)</ref>, and another one is discriminating the next sentence from random candidates <ref type="bibr" target="#b18">(Jernite et al., 2017;</ref><ref type="bibr" target="#b25">Logeswaran &amp; Lee, 2018)</ref>.</p><p>In this paper, we assume that the pre-training data is defined as positive query-document (q, d) pairs. A good pre-training task should have the following two properties. 1) It should be relevant to the downstream task. For example, when solving the question-answering retrieval problem, the model should capture different granularities of semantics between the query and document. The semantics In light of the above requirements, we present three pre-training tasks that emphasize different aspects of semantics between queries and documents: Inverse Cloze Task (ICT), Body First Selection (BFS), and Wiki Link Prediction (WLP). In specific, BFS and WLP are newly proposed in this paper. The training data for all these tasks can be freely obtained based from Wikipedia without an additional manual labeling process. Figure <ref type="figure" target="#fig_1">2</ref> provides illustrative examples of these tasks.</p><p>Inverse Cloze Task (ICT) Given a passage p consisting of n sentences, p = {s 1 , . . . , s n }, the query q is a sentence randomly drawn from the passage, q = s i , i ∼ [1, n], and the document d is the rest of sentences, d = {s 1 , . . . , s i-1 , s i+1 , . . . , s n }. See (q 1 ,d) in Figure <ref type="figure" target="#fig_1">2</ref> as an example. This task captures the semantic context of a sentence and was originally proposed by <ref type="bibr" target="#b23">Lee et al. (2019)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Body First Selection (BFS)</head><p>We propose BFS to capture semantic relationship outside of the local paragraph. Here, the query q 2 is a random sentence in the first section of a Wikipedia page, and the document d is a random passage from the same page (Figure <ref type="figure" target="#fig_1">2</ref>). Since the first section of a Wikipedia article is often the description or summary of the whole page, we expect it to contain information central to the topic.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Wiki Link Prediction (WLP)</head><p>We propose WLP to capture inter-page semantic relation. The query q 3 is a random sentence in the first section of a Wikipedia page, and the document d is a passage from another page where there is a hyperlink link to the page of q 3 (Figure <ref type="figure" target="#fig_1">2</ref>). Intuitively, a hyperlink link indicates relationship between the two Wikipedia pages. Again, we take a sentence from the first section because it is often the description or summary of the topic.</p><p>Masked LM (MLM) In addition to the above tasks, we also consider the classic masked language model (MLM) pre-training task as a baseline: predict the randomly masked tokens in a sentence. MLM is the primary pre-training task used in BERT <ref type="bibr" target="#b10">(Devlin et al., 2019</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">EXPERIMENTS</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">EXPERIMENTAL SETTING</head><p>The two-tower retrieval model Each tower of the retrieval model follows the architecture and hyper-parameters of the 12 layers BERT-base model. For both towers, the final embedding is generated by applying a linear layer on the hidden state of the [CLS] token. The embedding dimension is 512. The sequence length for the query encoder and document encoder are set to be 64 and 288, respectively. We pre-train the model on 32 TPU v3 chips for 100K steps with an Adam optimizer and batch size of 8192. This process takes about 2.5 days. We use the Adam optimizer with an initial learning rate 1 × 10 -4 with the warm-up ratio 0.1, followed by a linear learning rate decay.</p><p>For fine-tuning, the learning rate of Adam is set to 5 × 10 -5 with 2000 training steps and batch size 512.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Pre-training tasks</head><p>We compare the token-level pre-training task MLM with the three paragraphlevel pre-training tasks, ICT, BFS and WLP. The data of ICT, BFS and WLP are generated from the Wikipedia corpus. The data statistics are reported in Table <ref type="table" target="#tab_0">1</ref>. Note that #tokens represents the number of sub-words tokenized by WordPiece <ref type="bibr" target="#b37">(Wu et al., 2016)</ref>. The pre-training tasks define the positive (q, d) pair for learning the two-tower Transformer models. For ICT, the d is a pair of article title and passage separated by [SEP] symbol as input to the doc-tower.</p><p>We propose to pre-train the two-tower Transformer models jointly with all three paragraph-level pretraining tasks, hence the name ICT+BFS+WLP. Here the model is pre-trained on one combined set of (q, d) pairs, where each pair is uniformly sampled from the three pre-training tasks in Table <ref type="table" target="#tab_0">1</ref>. See Section 4.2 and 4.3 for its outstanding performance over other baselines.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Downstream tasks</head><p>We consider the Retrieval Question-Answering (ReQA) benchmark, proposed by <ref type="bibr" target="#b0">Ahmad et al. (2019)</ref>. <ref type="foot" target="#foot_1">2</ref> The two QA datasets we consider are SQuAD and Natural Questions.</p><p>Note that each entry of QA datasets is a tuple (q, a, p), where q is the question, a is the answer span, and p is the evidence passage containing a. Following <ref type="bibr" target="#b0">Ahmad et al. (2019)</ref>, we split a passage into sentences, p = s 1 s 2 . . . s n and transform the original entry (q, a, p) to a new tuple (q, s i , p) where s i is the sentence contains the answer span a.</p><p>The retrieval problem is that given a question q, retrieve the correct sentence and evidence passage pair (s, p) from all candidates. For each passage p, we create a set of candidate pairs (s i , p) where i = 1 . . . n, and the retrieval candidate set is built by combining such pairs for all passages. This problem is more challenging than retrieving the evidence passage only since the larger number of candidates to be retrieved. The data statistics of the downstream ReQA benchmark are shown in For the evaluation metric, we focus on recall@k<ref type="foot" target="#foot_2">3</ref> because the goal of the retrieval phase is to capture the positives in the top-k results. The retrieval performance can be understood independently of the scoring model used by measuring recall at different k. In fact, in the extreme cases when the scoring model is either oracle or random, the final precision metric is proportional to recall@k.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">MAIN RESULTS</head><p>Table <ref type="table" target="#tab_3">3</ref> and Table <ref type="table" target="#tab_4">4</ref> compare the proposed combination of pre-training tasks, ICT+BFS+WLP, to various baselines on SQuAD and Natural Questions, respectively. In both benchmarks, ICT+BFS+WLP notably outperforms all other methods. This suggests that one should use a twotower Transformer model with properly designed pre-training tasks in the retrieval stage to replace the widely used BM-25 algorithm. We present some of the detailed findings below.</p><p>The BM-25 baseline In retrieval, BM-25 is a simple but tough-to-beat unsupervised baseline using token-matching with TF-IDF weights as the scoring function. BM-25 performs especially well for the SQuAD benchmark, as the data collection process and human annotations of this dataset are biased towards question-answer pairs with overlapping tokens <ref type="bibr" target="#b28">(Rajpurkar et al., 2016;</ref><ref type="bibr" target="#b21">Kwiatkowski et al., 2019)</ref>. For instance, in the limited fine-tuning data scenario (e.g., 1% and 5%), BM-25 outperforms the two-tower transformer models with no pre-training (No Pretraining) or with lesseffective pre-training tasks (MLM). This result verifies that BM-25 is a robust retrieval model and therefore widely used in recent works <ref type="bibr" target="#b6">(Chen et al., 2017;</ref><ref type="bibr" target="#b38">Yang et al., 2017;</ref><ref type="bibr" target="#b23">Lee et al., 2019)</ref>  Finally, The advantage of increasing number of layers is manifest by comparing Index 1 and Index 6, while Index 7, 8 and 9 show the benefit of increasing the dimension of the embedding space.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">EVALUATION OF OPEN-DOMAIN RETRIEVAL</head><p>We consider the open-domain retrieval setting by augmenting the candidate set of the ReQA benchmark with large-scale (sentence, evidence passage) pairs extracted from general Wikipedia articles.</p><p>In particular, we preprocess/sub-sample the open-domain Wikipedia retrieval set of the DrQA paper <ref type="bibr" target="#b6">(Chen et al., 2017)</ref> into one million (sentence, evidence passage) pairs, and add this external 1M candidate pairs into the existing retrieval candidate set of the ReQA benchmark.</p><p>train/test ratio Pre-training task R@1 R@5 R@10 R@50 R@100 1%/99% The results of open-domain retrieval on Natural Questions are presented in Table <ref type="table" target="#tab_6">6</ref>. Firstly, we see that the two-tower Transformer models pretrained with ICT+BFS+WLP and ICT substantially outperform the BM-25 baseline. Secondly, ICT+BFS+WLP pre-training method consistently improves the ICT pre-training method in most cases. Interestingly, the improvements are more noticeable at R@50 and R@100, possibly due to that the distant multi-hop per-training supervision induces better retrieval quality at the latter part of the rank list. Finally, we conclude that the evaluation results of the 1M open-domain retrieval are consistent with our previous empirical evaluation on the ReQA benchmark with smaller retrieval candidate sets (Section 4.2).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">CONCLUSION</head><p>We conducted a comprehensive study on how various pre-training tasks help in the large-scale retrieval problem such as evidence retrieval for question-answering. We showed that the two-tower Transformer models with random initialization (No Pretraining) or the unsuitable token-level pretraining task (MLM) are no better than the robust IR baseline BM-25 in most cases. With properly designed paragraph-level pre-training tasks inlcuding ICT, BFS and WLP, the two-tower Transformer models can considerably improve over the widely used BM-25 algorithm.</p><p>For future works, we plan to study how the pre-training tasks apply to other types of encoders architectures, generating the pre-training data from corpora other than Wikipedia, and how pretraining compares with different of regularizations.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Difference between two-tower models and cross-attention models. Following previous works, we consider [CLS] embedding and average pooling as the aggregator's output for the twotower Transformer model and the two-tower MLP model, respectively.</figDesc><graphic coords="3,117.90,81.86,376.21,176.03" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure2: An illustrative example of the three pre-training tasks where each query q is highlighted in different colors. All queries are paired with the same text block d. Concretely, (q 1 ,d) of ICT is defined locally within a paragraph; (q 2 ,d) of BFS is defined globally within an article; (q 3 ,d) of WLP is defined distantly across two related articles hyper-linked by the Wikipedia entity.</figDesc><graphic coords="5,108.00,81.86,395.99,196.13" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>). Data statistics of three pre-training tasks. #query tokens represent average number of tokens per query, and #doc tokens represent average number of tokens per passage.</figDesc><table><row><cell cols="4">Pre-training tasks #tokens #pairs avg. #query tokens #doc tokens</cell></row><row><cell>ICT</cell><cell>11.2B 50.2M</cell><cell>30.41</cell><cell>193.89</cell></row><row><cell>BFS</cell><cell>3.3B 17.5M</cell><cell>28.02</cell><cell>160.46</cell></row><row><cell>WLP</cell><cell>2.7B 24.9M</cell><cell>29.42</cell><cell>82.14</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 .</head><label>2</label><figDesc>Note that, similar to<ref type="bibr" target="#b0">Ahmad et al. (2019)</ref>, the ReQA benchmark is not entirely opendomain QA retrieval as the candidates (s, p) only cover the training set of QA dataset instead of entire Wikipedia articles. For the open-domain retrieval experiment, see details in Section 4.4.</figDesc><table><row><cell>Evaluation For each dataset, we consider different training/test split of the data (1%/99%,</cell></row><row><cell>5%/95% and, 80%/20%) in the fine-tuning stage and the 10% of training set is held out as the</cell></row></table><note><p>validation set for hyper-parameter tuning. The split is created assuming a cold-start retrieval scenario where the queries in the test (query, document) pairs are not seen in training.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Data statistics of ReQA benchmark. candidate represents all (sentence, passage) pairs.</figDesc><table><row><cell>train/test ratio</cell><cell>Encoder</cell><cell cols="6">Pre-training task R@1 R@5 R@10 R@50 R@100</cell></row><row><cell></cell><cell>BM-25</cell><cell cols="4">No Pretraining 41.86 58.00 63.64</cell><cell>74.15</cell><cell>77.91</cell></row><row><cell></cell><cell>BoW-MLP</cell><cell>No Pretraining</cell><cell>0.14</cell><cell>0.35</cell><cell>0.49</cell><cell>1.13</cell><cell>1.72</cell></row><row><cell>1%/99%</cell><cell cols="5">BoW-MLP Transformer No Pretraining ICT+BFS+WLP 22.55 41.03 49.93 0.02 0.06 0.08</cell><cell>69.70 0.31</cell><cell>77.01 0.54</cell></row><row><cell></cell><cell>Transformer</cell><cell>MLM</cell><cell>0.18</cell><cell>0.51</cell><cell>0.82</cell><cell>2.46</cell><cell>3.93</cell></row><row><cell></cell><cell cols="5">Transformer ICT+BFS+WLP 37.43 61.48 70.18</cell><cell>85.37</cell><cell>89.85</cell></row><row><cell></cell><cell>BM-25</cell><cell cols="4">No Pretraining 41.87 57.98 63.63</cell><cell>74.17</cell><cell>77.91</cell></row><row><cell></cell><cell>BoW-MLP</cell><cell>No Pretraining</cell><cell>1.13</cell><cell>2.68</cell><cell>3.62</cell><cell>7.16</cell><cell>9.55</cell></row><row><cell>5%/95%</cell><cell cols="5">BoW-MLP Transformer No Pretraining ICT+BFS+WLP 26.23 46.49 55.68 0.17 0.36 0.54</cell><cell>75.28 1.43</cell><cell>81.89 2.17</cell></row><row><cell></cell><cell>Transformer</cell><cell>MLM</cell><cell>1.19</cell><cell>3.59</cell><cell>5.40</cell><cell>12.52</cell><cell>17.41</cell></row><row><cell></cell><cell cols="5">Transformer ICT+BFS+WLP 45.90 70.89 78.47</cell><cell>90.49</cell><cell>93.64</cell></row><row><cell></cell><cell>BM-25</cell><cell cols="4">No Pretraining 41.77 57.95 63.55</cell><cell>73.94</cell><cell>77.49</cell></row><row><cell></cell><cell>BoW-MLP</cell><cell cols="4">No Pretraining 19.65 36.31 44.19</cell><cell>62.40</cell><cell>69.19</cell></row><row><cell>80%/20%</cell><cell cols="5">BoW-MLP Transformer No Pretraining 12.32 26.88 34.46 ICT+BFS+WLP 32.24 55.26 65.49</cell><cell>83.37 53.74</cell><cell>88.50 61.53</cell></row><row><cell></cell><cell>Transformer</cell><cell>MLM</cell><cell cols="3">27.34 49.59 58.17</cell><cell>74.89</cell><cell>80.33</cell></row><row><cell></cell><cell cols="5">Transformer ICT+BFS+WLP 58.35 82.76 88.44</cell><cell>95.87</cell><cell>97.49</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 :</head><label>3</label><figDesc>Recall@k on SQuAD. Numbers are in percentage (%).</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4 :</head><label>4</label><figDesc>Encoder architecture We justify the use of Transformer as encoders by comparing it with a shallow bag-of-word MLP model (BoW-MLP). Specifically, BoW-MLP looks up uni-grams from the embedding table 5 , aggregates the embeddings with average pooling, and passes them through a shallow two-layer MLP network with tanh activation to generate the final 512-dimensional query/document embeddings. For fair comparison, the BoW-MLP encoder has a comparable model size to the Transformer encoder (i.e., 128M v.s. 110M parameters, slightly favorable to BoW-MLP encoder).With a properly designed pre-training task (e.g., ICT+BFS+WLP), the Transformer encoder considerably outperforms its shallow counterpart (BoW-MLP), suggesting that the former benefits more from the unsupervised pre-training tasks. On the other hand, without any pre-training, the performance of the Transformer encoder is worse than BoW-MLP encoder, possibly because the former is over-fitting on the limited amount of labeled fine-tuning data.Pre-training tasksWhen pre-training the two-tower Transformer model, we compare the pretraining tasks to two baselines: No Pretraining and MLM. No Pretraining represents random initializing the model, and MLM is the token-level masked-LM task introduced in Section 3.On both datasets, the token-level pre-training task MLM only marginally improves over the nopretraining baseline (No Pretraining). In contrast, combining the paragraph-level pre-training tasks ICT+BFS+WLP provides a huge boost on the performance. This verifies our assumption that the design of task-related pre-training tasks is crucial. The performance of adding individual pre-training tasks is presented in the next section. Recall@k on Natural Questions. Numbers are in percentage (%).</figDesc><table><row><cell>train/test ratio</cell><cell>Encoder</cell><cell cols="6">Pre-training task R@1 R@5 R@10 R@50 R@100</cell></row><row><cell></cell><cell>BM-25</cell><cell>No Pretraining</cell><cell cols="3">4.99 11.91 15.41</cell><cell>24.00</cell><cell>27.97</cell></row><row><cell></cell><cell>BoW-MLP</cell><cell>No Pretraining</cell><cell>0.28</cell><cell>0.80</cell><cell>1.08</cell><cell>2.02</cell><cell>2.66</cell></row><row><cell>1%/99%</cell><cell cols="5">BoW-MLP Transformer No Pretraining ICT+BFS+WLP 9.22 24.98 33.36 0.07 0.19 0.28</cell><cell>53.67 0.56</cell><cell>61.30 0.85</cell></row><row><cell></cell><cell>Transformer</cell><cell>MLM</cell><cell>0.18</cell><cell>0.56</cell><cell>0.81</cell><cell>1.95</cell><cell>2.98</cell></row><row><cell></cell><cell cols="5">Transformer ICT+BFS+WLP 17.31 43.62 55.00</cell><cell>76.59</cell><cell>82.84</cell></row><row><cell></cell><cell>BM-25</cell><cell>No Pretraining</cell><cell cols="3">5.03 11.96 15.47</cell><cell>24.04</cell><cell>28.00</cell></row><row><cell></cell><cell>BoW-MLP</cell><cell>No Pretraining</cell><cell>1.36</cell><cell>3.77</cell><cell>4.98</cell><cell>8.56</cell><cell>10.77</cell></row><row><cell>5%/95%</cell><cell cols="5">BoW-MLP Transformer No Pretraining ICT+BFS+WLP 11.40 30.64 40.63 0.37 1.07 1.40</cell><cell>62.95 2.73</cell><cell>70.85 3.82</cell></row><row><cell></cell><cell>Transformer</cell><cell>MLM</cell><cell>1.10</cell><cell>3.42</cell><cell>4.89</cell><cell>10.49</cell><cell>14.37</cell></row><row><cell></cell><cell cols="5">Transformer ICT+BFS+WLP 21.46 51.03 62.99</cell><cell>83.04</cell><cell>88.05</cell></row><row><cell></cell><cell>BM-25</cell><cell>No Pretraining</cell><cell cols="3">4.93 11.52 14.96</cell><cell>23.64</cell><cell>27.77</cell></row><row><cell></cell><cell>BoW-MLP</cell><cell>No Pretraining</cell><cell cols="3">9.78 26.76 34.16</cell><cell>50.34</cell><cell>56.44</cell></row><row><cell>80%/20%</cell><cell cols="5">BoW-MLP Transformer No Pretraining ICT+BFS+WLP 13.58 37.78 50.40 7.49 20.11 25.40</cell><cell>76.11 38.26</cell><cell>82.98 43.75</cell></row><row><cell></cell><cell>Transformer</cell><cell>MLM</cell><cell cols="3">16.74 40.48 49.53</cell><cell>67.91</cell><cell>73.91</cell></row><row><cell></cell><cell cols="5">Transformer ICT+BFS+WLP 30.27 63.97 75.85</cell><cell>91.84</cell><cell>94.60</cell></row><row><cell cols="2">4.3 ABLATION STUDY</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="8">We conduct a more thorough ablation study on Natural Questions involving (1) the number of</cell></row><row><cell cols="8">layers in Transformer; (2) different pre-training tasks; and (3) dimension of the embedding space.</cell></row><row><cell cols="2">The result is presented in Table 5.</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table><note><p><p>4 </p>. Index 1, 2, and 3 show the individual performance of three pre-training tasks. All of these tasks are much more effective than MLM. Among them, ICT has the best performance, followed by BFS, and then WLP. This suggests that the (query, document) pairs defined by local context within passage are suitable for the ReQA task.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 5 :</head><label>5</label><figDesc>Ablation study on Natural Questions based on Recall@100. Index 9 represents the proposed method in Table4. Also note ICT+BFS+WLP pre-training is better than ICT with 1.5% absolute improvement over ICT in the low-data regime. This reflects that, when theres no sufficient downstream training data, more globally pre-training tasks is beneficial as it encodes multi-hop reasoning priors such as different passages within the same article (BFS) or even going beyond to different articles linked by the same entities (WLP).</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 6 :</head><label>6</label><figDesc>Open-domain retrieval results of Natural Questions dataset, where existing candidates are augmented with additional 1M retrieval candidates (i.e., 1M of (s, p) candidate pairs) extracted from open-domain Wikipedia articles.</figDesc><table><row><cell></cell><cell>BM-25</cell><cell>3.70</cell><cell>9.58</cell><cell>12.69</cell><cell>20.27</cell><cell>23.83</cell></row><row><cell></cell><cell>ICT</cell><cell cols="3">14.18 37.36 48.08</cell><cell>69.23</cell><cell>76.01</cell></row><row><cell></cell><cell cols="4">ICT+BFS+WLP 13.19 37.61 48.77</cell><cell>70.43</cell><cell>77.20</cell></row><row><cell></cell><cell>BM-25</cell><cell>3.21</cell><cell>8.62</cell><cell>11.50</cell><cell>18.59</cell><cell>21.78</cell></row><row><cell>5%/95%</cell><cell>ICT</cell><cell cols="3">17.94 45.65 57.11</cell><cell>76.87</cell><cell>82.60</cell></row><row><cell></cell><cell cols="4">ICT+BFS+WLP 17.62 45.92 57.75</cell><cell>78.14</cell><cell>83.78</cell></row><row><cell></cell><cell>BM-25</cell><cell>3.12</cell><cell>8.45</cell><cell>11.18</cell><cell>18.05</cell><cell>21.30</cell></row><row><cell>80%/20%</cell><cell>ICT</cell><cell cols="3">24.89 57.89 69.86</cell><cell>87.67</cell><cell>91.29</cell></row><row><cell></cell><cell cols="4">ICT+BFS+WLP 25.41 59.36 71.12</cell><cell>88.25</cell><cell>91.71</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>This also includes cosine similarity scoring functions when the embeddings φ(q), ψ(d) are normalized.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>Different from<ref type="bibr" target="#b0">(Ahmad et al., 2019)</ref>, whose goal is to use other large-scale weakly-supervised queryanswer pair datasets (e.g. reddit data) to improve the model, the goal of this paper is to study different unsupervised pre-training tasks not identical to the downstream task. Therefore our approaches are not directly comparable to the results presented in their paper.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>The correctness is based on when the system retrieves the gold sentence and evidence paragraph pair , not just any paragraph containing the answer text.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_3"><p>Our BM-25 results are consistent with<ref type="bibr" target="#b0">Ahmad et al. (2019)</ref>. Their numbers are slightly higher because they consider passage-level retrieval, which has smaller candidate set compared to our sentence-level retrieval.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_4"><p>We empirically found that adding bi-grams does not further improve the performance on these tasks possibly due to over-fitting.</p></note>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">ReQA: An evaluation for end-to-end answer retrieval models</title>
+		<author>
+			<persName><forename type="first">Amin</forename><surname>Ahmad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><surname>Constant</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinfei</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Cer</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D19-5819</idno>
+		<ptr target="https://www.aclweb.org/anthology/D19-5819" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2nd Workshop on Machine Reading for Question Answering</title>
+		<meeting>the 2nd Workshop on Machine Reading for Question Answering<address><addrLine>Hong Kong, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019-11">November 2019</date>
+			<biblScope unit="page" from="137" to="146" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Adaptive importance sampling to accelerate training of a neural probabilistic language model</title>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jean-Sébastien</forename><surname>Senécal</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 35th International Conference on Machine Learning (ICML)</title>
+		<meeting>the 35th International Conference on Machine Learning (ICML)</meeting>
+		<imprint>
+			<date type="published" when="2008">2008. 2018</date>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="page" from="590" to="599" />
+		</imprint>
+	</monogr>
+	<note>Guy Blanc and Steffen Rendle. Adaptive sampled softmax with kernel based sampling</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">A large annotated corpus for learning natural language inference</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Samuel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gabor</forename><surname>Bowman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Angeli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">D</forename><surname>Potts</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Manning</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2015 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2015 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="632" to="642" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Universal sentence encoder</title>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Cer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinfei</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sheng-Yi</forename><surname>Kong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nan</forename><surname>Hua</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicole</forename><surname>Limtiaco</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rhomni</forename><surname>St John</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><surname>Constant</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mario</forename><surname>Guajardo-Cespedes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steve</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Tar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACL</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<author>
+			<persName><forename type="first">Wei-Cheng</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hsiang-Fu</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Zhong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yiming</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Inderjit</forename><surname>Dhillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">. X-Bert</forename></persName>
+		</author>
+		<idno type="arXiv">arXiv:1905.02331</idno>
+		<title level="m">eXtreme multi-label text with BERT</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Yahoo! learning to rank challenge overview</title>
+		<author>
+			<persName><forename type="first">Olivier</forename><surname>Chapelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Chang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the learning to rank challenge</title>
+		<meeting>the learning to rank challenge</meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="1" to="24" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Reading Wikipedia to answer opendomain questions</title>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Fisch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics (ACL)</title>
+		<meeting>the 55th Annual Meeting of the Association for Computational Linguistics (ACL)</meeting>
+		<imprint>
+			<publisher>Long Papers</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="1870" to="1879" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Strategies for training large vocabulary neural language models</title>
+		<author>
+			<persName><forename type="first">Welin</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Grangier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Auli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics (ACL)</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics (ACL)</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="1975" to="1985" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Together we stand: Siamese networks for similar question retrieval</title>
+		<author>
+			<persName><forename type="first">Arpita</forename><surname>Das</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harish</forename><surname>Yenala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manoj</forename><surname>Chinnakotla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manish</forename><surname>Shrivastava</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics (ACL)</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics (ACL)</meeting>
+		<imprint>
+			<publisher>Long Papers</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="378" to="387" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Multi-step retrieverreader interaction for scalable open-domain question answering</title>
+		<author>
+			<persName><forename type="first">Rajarshi</forename><surname>Das</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shehzaad</forename><surname>Dhuliawala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manzil</forename><surname>Zaheer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Mccallum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Learning Representations (ICLR)</title>
+		<meeting>the International Conference on Learning Representations (ICLR)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Bert: Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter</title>
+		<meeting>the 2019 Conference of the North American Chapter</meeting>
+		<imprint>
+			<publisher>the Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Efficient softmax approximation for gpus</title>
+		<author>
+			<persName><forename type="first">Edouard</forename><surname>Grave</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Armand</forename><surname>Joulin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Moustapha</forename><surname>Cissé</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hervé</forename><surname>Jégou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 34th International Conference on Machine Learning (ICML)</title>
+		<meeting>the 34th International Conference on Machine Learning (ICML)</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1302" to="1310" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Quantization based fast inner product search</title>
+		<author>
+			<persName><forename type="first">Ruiqi</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanjiv</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Krzysztof</forename><surname>Choromanski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Simcha</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 19th International Conference on Artificial Intelligence and Statistics (AISTATS)</title>
+		<meeting>the 19th International Conference on Artificial Intelligence and Statistics (AISTATS)</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="482" to="490" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<author>
+			<persName><forename type="first">Matthew</forename><surname>Henderson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rami</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brian</forename><surname>Strope</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yun-Hsuan</forename><surname>Sung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">László</forename><surname>Lukács</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruiqi</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanjiv</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Balint</forename><surname>Miklos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ray</forename><surname>Kurzweil</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1705.00652</idno>
+		<title level="m">Efficient natural language response suggestion for smart reply</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Distilling the knowledge in a neural network</title>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeff</forename><surname>Dean</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1503.02531</idno>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Retrieve, read, rerank: Towards end-toend multi-document reading comprehension</title>
+		<author>
+			<persName><forename type="first">Minghao</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxing</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongsheng</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of InProceedings of the 57th Annual Meeting of the Association for Computa-tional Linguistics (ACL)</title>
+		<meeting>In the 57th Annual Meeting of the Association for Computa-tional Linguistics (ACL)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">Poly-encoders: Transformer architectures and pre-training strategies for fast and accurate multi-sentence scoring</title>
+		<author>
+			<persName><forename type="first">Samuel</forename><surname>Humeau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kurt</forename><surname>Shuster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marie-Anne</forename><surname>Lachaux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1905.01969</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Slice: Scalable linear extreme classifiers trained on 100 million labels for related searches</title>
+		<author>
+			<persName><forename type="first">Himanshu</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Venkatesh</forename><surname>Balasubramanian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bhanu</forename><surname>Chunduri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manik</forename><surname>Varma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twelfth ACM International Conference on Web Search and Data Mining</title>
+		<meeting>the Twelfth ACM International Conference on Web Search and Data Mining</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="528" to="536" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Discourse-based objectives for fast unsupervised sentence representation learning</title>
+		<author>
+			<persName><forename type="first">Yacine</forename><surname>Jernite</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Samuel R Bowman</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sontag</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1705.00557</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Skip-thought vectors</title>
+		<author>
+			<persName><forename type="first">Ryan</forename><surname>Kiros</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yukun</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ruslan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Raquel</forename><surname>Zemel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antonio</forename><surname>Urtasun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanja</forename><surname>Torralba</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Fidler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems (NIPS)</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="3294" to="3302" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Efficient training on very large corpora via gramian estimation</title>
+		<author>
+			<persName><forename type="first">Walid</forename><surname>Krichene</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Mayoraz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steffen</forename><surname>Rendle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinyang</forename><surname>Yi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lichan</forename><surname>Hong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ed</forename><surname>Chi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Anderson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Learning Representations (ICLR)</title>
+		<meeting>the International Conference on Learning Representations (ICLR)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Natural questions: a benchmark for question answering research</title>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Kwiatkowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jennimaria</forename><surname>Palomaki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Olivia</forename><surname>Redfield</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Collins</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ankur</forename><surname>Parikh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Alberti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danielle</forename><surname>Epstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Illia</forename><surname>Polosukhin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Transactions of the Association for Computational Linguistics (TACL)</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="page" from="453" to="466" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Distributed representations of sentences and documents</title>
+		<author>
+			<persName><forename type="first">Quoc</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Mikolov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1188" to="1196" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Latent retrieval for weakly supervised open domain question answering</title>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics (ACL)</title>
+		<meeting>the 57th Annual Meeting of the Association for Computational Linguistics (ACL)</meeting>
+		<imprint>
+			<date type="published" when="2019-07">July 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<author>
+			<persName><forename type="first">Yinhan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Myle</forename><surname>Ott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naman</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingfei</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mandar</forename><surname>Joshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Omer</forename><surname>Levy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Veselin</forename><surname>Stoyanov</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Roberta</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1907.11692</idno>
+		<title level="m">A robustly optimized bert pretraining approach</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">An efficient framework for learning sentence representations</title>
+		<author>
+			<persName><forename type="first">Lajanugen</forename><surname>Logeswaran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Honglak</forename><surname>Lee</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Learning Representations (ICLR)</title>
+		<meeting>the International Conference on Learning Representations (ICLR)</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Training millions of personalized dialogue agents</title>
+		<author>
+			<persName><forename type="first">Pierre-Emmanuel</forename><surname>Mazaré</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samuel</forename><surname>Humeau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Raison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">EMNLP</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">MS MARCO: A human-generated machine reading comprehension dataset</title>
+		<author>
+			<persName><forename type="first">Tri</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mir</forename><surname>Rosenberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xia</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saurabh</forename><surname>Tiwary</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rangan</forename><surname>Majumder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Deng</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Squad: 100,000+ questions for machine comprehension of text</title>
+		<author>
+			<persName><forename type="first">Pranav</forename><surname>Rajpurkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Konstantin</forename><surname>Lopyrev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Percy</forename><surname>Liang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2016 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2016 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2383" to="2392" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Stochastic negative mining for learning with large output spaces</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Sashank</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Satyen</forename><surname>Reddi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Kale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiecao</forename><surname>Holtmann-Rice</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanjiv</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kumar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd International Conference on Artificial Intelligence and Statistics (AISTATS)</title>
+		<meeting>the 22nd International Conference on Artificial Intelligence and Statistics (AISTATS)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Sentence-BERT: Sentence embeddings using siamese BERTnetworks</title>
+		<author>
+			<persName><forename type="first">Nils</forename><surname>Reimers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Iryna</forename><surname>Gurevych</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing (EMNLP)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">The probabilistic relevance framework: BM25 and beyond</title>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Robertson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hugo</forename><surname>Zaragoza</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Foundations and Trends R in Information Retrieval</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="333" to="389" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Asymmetric LSH (ALSH) for sublinear time maximum inner product search (mips)</title>
+		<author>
+			<persName><forename type="first">Anshumali</forename><surname>Shrivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ping</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems (NIPS)</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="2321" to="2329" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">Distilling taskspecific knowledge from BERT into simple neural networks</title>
+		<author>
+			<persName><forename type="first">Raphael</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yao</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Linqing</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lili</forename><surname>Mou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Olga</forename><surname>Vechtomova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Lin</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1903.12136</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Few-shot learning through an information retrieval lens</title>
+		<author>
+			<persName><forename type="first">Eleni</forename><surname>Triantafillou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Zemel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Raquel</forename><surname>Urtasun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="2255" to="2265" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">Ashish</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niki</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Llion</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aidan</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Łukasz</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Illia</forename><surname>Polosukhin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">A broad-coverage challenge corpus for sentence understanding through inference</title>
+		<author>
+			<persName><forename type="first">Adina</forename><surname>Williams</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nikita</forename><surname>Nangia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samuel</forename><surname>Bowman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics : Human Language Technologies (NAACL-HLT 2018)</title>
+		<title level="s">Long Papers</title>
+		<meeting>the 2018 Conference of the North American Chapter of the Association for Computational Linguistics : Human Language Technologies (NAACL-HLT 2018)</meeting>
+		<imprint>
+			<date type="published" when="2018-06">June 2018</date>
+			<biblScope unit="volume">1</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<title level="m" type="main">Google&apos;s neural machine translation system: Bridging the gap between human and machine translation</title>
+		<author>
+			<persName><forename type="first">Yonghui</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Schuster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhifeng</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Quoc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohammad</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wolfgang</forename><surname>Norouzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maxim</forename><surname>Macherey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Krikun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qin</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Klaus</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Macherey</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1609.08144</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Anserini: Enabling the use of lucene for information retrieval research</title>
+		<author>
+			<persName><forename type="first">Peilin</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hui</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Lin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 40th International ACM SIGIR Conference on Research and Development in Information Retrieval</title>
+		<meeting>the 40th International ACM SIGIR Conference on Research and Development in Information Retrieval</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1253" to="1256" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">End-to-end open-domain question answering with BERTserini</title>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuqing</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aileen</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xingyu</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luchen</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kun</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Lin</surname></persName>
+		</author>
+		<idno>NAACL-HLT 2019</idno>
+	</analytic>
+	<monogr>
+		<title level="m">InProceedings of the 2019 Conference of the North American Chapter</title>
+		<imprint>
+			<publisher>Demonstrations</publisher>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">XLNet: Generalized autoregressive pretraining for language understanding</title>
+		<author>
+			<persName><forename type="first">Zhilin</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zihang</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yiming</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jaime</forename><surname>Carbonell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruslan</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quoc V</forename><surname>Le</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Selection of negative samples for one-class matrix factorization</title>
+		<author>
+			<persName><forename type="first">Hsiang-Fu</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mikhail</forename><surname>Bilenko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chih-Jen</forename><surname>Lin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2017 SIAM International Conference on Data Mining</title>
+		<meeting>the 2017 SIAM International Conference on Data Mining</meeting>
+		<imprint>
+			<publisher>SIAM</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="363" to="371" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

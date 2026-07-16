@@ -1,0 +1,1871 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">PiPAD: Pipelined and Parallel Dynamic GNN Training on GPUs</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2023-01-05">5 Jan 2023</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Chunyang</forename><surname>Wang</surname></persName>
+							<email>wangchunyang@buaa.edu.cn</email>
+						</author>
+						<author>
+							<persName><forename type="first">Desen</forename><surname>Sun</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Yuebin</forename><surname>Bai</surname></persName>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution">Beihang University</orgName>
+								<address>
+									<settlement>Beijing</settlement>
+									<country key="CN">China</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">Beihang University</orgName>
+								<address>
+									<settlement>Beijing</settlement>
+									<country key="CN">China</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff2">
+								<orgName type="institution">Beihang University</orgName>
+								<address>
+									<settlement>Beijing</settlement>
+									<country key="CN">China</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">PiPAD: Pipelined and Parallel Dynamic GNN Training on GPUs</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2023-01-05">5 Jan 2023</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">C85B10BF1DBD5E3D747BCBC3F78DFD4B</idno>
+					<idno type="arXiv">arXiv:2301.00391v2[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:45+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>1 Dynamic Graph Neural Networks (DGNNs) have been broadly applied in various real-life applications, such as link prediction and pandemic forecast, to capture both static structural information and temporal characteristics from dynamic graphs. Combining both time-dependent and -independent components, DGNNs manifest substantial parallel computation and data reuse potentials, but suffer from severe memory access inefficiency and data transfer overhead under the canonical one-graph-at-a-time training pattern. To tackle the challenges, we propose PiPAD, a Pipelined and PArallel DGNN training framework for the end-to-end performance optimization on GPUs. From both the algorithm and runtime level, PiPAD holistically reconstructs the overall training paradigm from the data organization to computation manner. Capable of processing multiple graph snapshots in parallel, PiPAD eliminates the unnecessary data transmission and alleviates memory access inefficiency to improve the overall performance. Our evaluation across various datasets shows PiPAD achieves 1.22 × -9.57× speedup over the state-of-theart DGNN frameworks on three representative models.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Graph Neural Networks (GNNs) have been broadly adopted to process graph-structured data and extract the underlying dependencies <ref type="bibr" target="#b0">[1]</ref> in varieties of graph-related applications ranging from node classification <ref type="bibr" target="#b9">[10]</ref>, recommendation <ref type="bibr" target="#b24">[25]</ref> to link prediction <ref type="bibr" target="#b43">[44]</ref>. Among numerous variants of GNNs, such as Graph Convolution Network (GCN) <ref type="bibr" target="#b19">[20]</ref>, a common and prevalent method is combining both graph (aggregation) and neural (update) operations. The aggregation function collects and aggregates feature vectors from the neighbors of each node while the update phase utilizes neural network operations, such as a fully connected (FC) layer, to update each vertex with the aggregated information. With retrieving the sparse adjacent matrices that renders irregular memory accesses and sparse computation, the Sparse-Dense Matrix-Matrix-Multiplication-like (SpMM-like) aggregation operation <ref type="bibr" target="#b14">[15]</ref> is generally considered as the main bottleneck of GNN and attracts lots of research attentions <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b15">16,</ref><ref type="bibr" target="#b47">48]</ref>.</p><p>In many real-world scenarios, such as financial transaction <ref type="bibr" target="#b4">[5]</ref>, social media <ref type="bibr" target="#b21">[22]</ref> and molecular biology <ref type="bibr" target="#b7">[8]</ref>, the topology and node features of graphs may dynamically evolve over time. According to the partition principle and granularity, the dynamic graph representation can be categorized into two classes <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b18">19,</ref><ref type="bibr" target="#b50">51]</ref>: Continuous Time Dynamic Graphs (CTDGs) and Discrete Time Dynamic Graphs (DTDGs). And the GNN research community proposes various dynamic GNNs (DGNNs) to capture both temporal and structural information in the mobility graph. For DTDGs that represent the dynamic graph as a sequence of snapshots sampled at regular intervals, a general method is to use static GNNs (e.g., GCN) for spatial graph learning on individual snapshots at all timesteps while deploying Recurrent Neural Networks (RNNs) to obtain temporal characteristics among different snapshots <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b11">12,</ref><ref type="bibr" target="#b38">39]</ref>. Besides, the sliding window mechanism that feeds multiple continuous snapshots to the model simultaneously, is widely adopted to better capture the temporal dependence and improve the accuracy <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b31">32,</ref><ref type="bibr" target="#b32">33,</ref><ref type="bibr" target="#b38">39]</ref>. In this paper, we focus on DTDG-based DGNNs and refer to the sliding window as frame for simplicity.</p><p>Compared to traditional GNNs, DGNNs integrate timeseries components operating a mass of snapshots, which leads to two main performance issues. First, since DGNN training requires updating graph snapshots continuously along the timeline, the data transfer overhead dominates overall training time and further exacerbates GPU underutilization that already exists due to the memory-intensive GNN aggregation operation. Our preliminary experiments ( § 3.1) based on the state-of-the-art DGNN framework, Py-Torch Geometric Temporal (PyGT) <ref type="bibr" target="#b37">[38]</ref>, show the data transmission via PCIe occupies nearly 39% of total execution and GPU utilization is lower than 42% on average. Second, as introduced detailedly in § 3.3, the combination of timeindependent (GNN) and time-dependent (RNN) components produces substantial parallelism opportunities (e.g., executing those independent operations from multiple snapshots concurrently) while the snapshot overlap among adjacent frames offers plenty of data reuse chances. These acceleration potentials desperately need to be sufficiently exploited.</p><p>Over the most recent years, certain research efforts have been made to realize efficient DGNN computation on GPUs <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b11">12,</ref><ref type="bibr" target="#b21">22,</ref><ref type="bibr" target="#b37">38,</ref><ref type="bibr" target="#b50">51]</ref> and some of them involve the above issues. However, the related solutions either mainly focus on the scaling of large graphs and distributed training <ref type="bibr" target="#b4">[5]</ref> or restrict their input scenarios by assuming the graph topology (or node features) not changing along the time <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b21">22]</ref>, which weakens the applicability. Furthermore, they all fail to tackle both aforementioned issues at the same time for maximal end-to-end training performance optimizations.</p><p>Instead of analyzing the two problems separately, we address them from a more holistic angle and in a collaborative way. The idea is motivated by two key discoveries. First, real-world dynamic graphs normally change at a slow pace rendering massive topology overlaps among the adjacent snapshots <ref type="bibr" target="#b4">[5]</ref>. Second, except the irregular access pattern of the SpMM-like aggregation, GNN suffers from other kinds of memory inefficiency stemming from the diverse node feature dimensions. Performing the aggregation over single graph tends to incur the bandwidth unsaturation, low thread utilization or request burst problems ( § 3.2). In summary, the canonical one-snapshot-at-a-time training paradigm inevitably causes not only substantial redundant data transmission but also inefficient memory accesses. Therefore, our insight is that the GPU underutilization and parallelism neglect issues could be alleviated simultaneously. Specifically, the expensive aggregation operates on the adjacent matrices that are exactly the main source of redundant data transfer. Extracting the overlapped topology and conducting single time-irrelevant aggregation operation for multiple snapshots can not only reduce the communication volume but also have more opportunities to enable coalescent memory accesses and address the low bandwidth utilization issue.</p><p>To this end, we propose PiPAD, a Pipelined and PArallel DGNN training framework to optimize the end-to-end performance on single GPU from both algorithm and runtime level. Without making any assumption on the input scenarios, PiPAD enables pipelined and parallel execution via reconstructing the overall DGNN training process from the data organization and transfer method to computation manner. First, capitalizing on the gradual changing characteristic of dynamic graphs, we propose a slice-based graph representation format and overlap-aware multi-snapshot transfer method. The design objective is to reduce the data loading time from CPU to GPU and facilitate the efficient parallel computation. Second, we devise the intra-frame parallelism and inter-frame reuse mechanism to sufficiently unleash the acceleration potential in DGNN. The former realizes a dimension-aware parallel GNN with thread-aware slice coalescing to boost the aggregation and locality-optimized weight reuse for the update. Our parallel GNN supports processing multiple snapshots simultaneously for better computation performance and alleviating the memory access inefficiency. Inter-frame reuse can eliminate the redundant transfer and computation overhead to the maximum extent. Third, to optimize the overall training performance, we implement a pipeline execution framework to orchestrate CPU-side operations, data transmission over PCIe and GPU computation. Besides, PiPAD integrates a runtime tuner to dynamically adjust the parallelism-and reuse-level of DGNN training for better adaptation to various datasets.</p><p>Since our objective is to reduce the end-to-end execution time, we conduct our additional data processing (graph slicing) online and avoid any offline model-scale profiling. Specifically, PiPAD only previously profiles and analyzes our parallel GNN kernel to guide the online tuning. As GCN is the most popular GNN employed in DGNNs nowadays <ref type="bibr" target="#b38">[39]</ref>, this paper targets GCN-based models. But with the SpMMlike aggregation being the foundation of mainstream GNNs <ref type="bibr" target="#b14">[15,</ref><ref type="bibr" target="#b15">16]</ref> (e.g., Graph Attention Network <ref type="bibr" target="#b43">[44]</ref>), our methodology thus can be applied to various types of DGNNs.</p><p>Overall, this paper makes three contributions:</p><p>• We conduct a comprehensive analysis of the execution and performance characteristics for three typical DGNN models ( § 2. • Our evaluation across various datasets shows PiPAD achieves 1.22 × -9.57× speedup over the state-of-theart DGNN frameworks on three representative models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Background</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Dynamic Graph Neural Networks</head><p>A DTDG is a ordered set of snapshots {G 1 , G  denotes the feature vector of vertex 𝑣 at layer 𝑘 -1 and N (𝑣) denotes all one-hop neighbors of vertex 𝑣. The computing pattern of GNN on layer 𝑘 can be represented in Equation 1. After K layers of propagation, we will get the final features for each vertex.</p><formula xml:id="formula_0">ℎ 𝑘 𝑣 = Update 𝑘 (Aggregation 𝑘 (ℎ 𝑘-1 𝑢 |∀𝑢 ∈ N (𝑣) ∪ {𝑣 }))<label>(1</label></formula><p>) Different GNNs differ in the specific functions used for the two key phases. In GCN, the aggregation processes the gathered features with mean function to obtain the aggregation results 𝑎 𝑘 𝑣 (namely hidden representations) for each vertex while the FC-layer-based update computes ℎ 𝑘 𝑣 using the weights 𝑤 𝑘 and bias parameters 𝑏 𝑘 .</p><p>DTDG-based DGNNs follow the sliding-window/frame processing pattern and may encompass multiple layers. As shown in Figure <ref type="figure" target="#fig_0">1</ref>, inside each layer, GNN components learn the structural information from each snapshot while RNN modules capture the temporal characteristics along the timeline. DGNNs can be classified into two categories <ref type="bibr" target="#b38">[39]</ref>: stacked  and integrated. We choose three representative models for the analysis and evaluation in the rest of this paper. MPNN-LSTM <ref type="bibr" target="#b31">[32]</ref> (Figure <ref type="figure" target="#fig_1">2</ref>(a)) stacks one 2-layer GCN and two LSTM <ref type="bibr" target="#b13">[14]</ref> models in a plain manner. LSTM operations are applied over the features produced by GCN. The only data dependence across multiple snapshots exists in the hidden state updating process for LSTM.</p><p>EvolveGCN <ref type="bibr" target="#b32">[33]</ref> (Figure <ref type="figure" target="#fig_1">2</ref>(b)) involves a 1-layer GCN and one GRU <ref type="bibr" target="#b5">[6]</ref> in each of its two layers. The GCN in the second layer takes outputs from the first layer as input features. Different from MPNN-LSTM, EvolveGCN enables the weights evolving by applying the RNN module over GCN weight matrices, which generates cross-snapshot dependence. The survey <ref type="bibr" target="#b38">[39]</ref> categories EvolveGCN into the integrated type.</p><p>T-GCN <ref type="bibr" target="#b49">[50]</ref> (Figure <ref type="figure" target="#fig_1">2</ref>(c)) integrates several 1-layer GCNs into GRU by replacing the original general matrix-matrix multiplication (GEMM). The hidden state propagation over the timeline creates the dependence similar to MPNN-LSTM.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">GNN Acceleration</head><p>Static GNN. Over the last few years, there have been substantial research achievements for static GNN acceleration on GPUs covering general runtime frameworks <ref type="bibr" target="#b6">[7,</ref><ref type="bibr" target="#b25">26,</ref><ref type="bibr" target="#b46">47,</ref><ref type="bibr" target="#b51">52]</ref>, the SpMM-like aggregation optimization <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b15">16,</ref><ref type="bibr" target="#b47">48]</ref> and the scaling of distributed training <ref type="bibr" target="#b17">[18,</ref><ref type="bibr" target="#b22">23,</ref><ref type="bibr" target="#b40">41,</ref><ref type="bibr" target="#b42">43,</ref><ref type="bibr" target="#b44">45,</ref><ref type="bibr" target="#b45">46,</ref><ref type="bibr" target="#b48">49]</ref>.</p><p>DGNN. PyGT <ref type="bibr" target="#b37">[38]</ref> and TGL <ref type="bibr" target="#b50">[51]</ref> are two general frameworks aiming to implement the ubiquitous support for as many DGNN models as possible. By contrast, DynaGraph <ref type="bibr" target="#b11">[12]</ref> and CacheG <ref type="bibr" target="#b21">[22]</ref> focus on optimizing a certain group of models. Also discovering the parallelism/reuse opportunities ( § 3.3) in DGNN, they leverage the timestep fusion and intermediate results cache to improve the performance, respectively. However, DynaGraph only targets integrated DGNNs and assumes the graph topology not evolving over time while CacheG demands the node features remaining unchanged. Cambricon-G <ref type="bibr" target="#b39">[40]</ref> and ESDG <ref type="bibr" target="#b4">[5]</ref> both involve DGNN's data transfer overhead issue ( § 3.1). The hardware accelerator solution Cambricon-G, devises a cuboid-based processing architecture that supports the fine-grained data transmission to avoid unnecessary snapshot topology updating. ESDG employs a similar graph-difference based transfer method to reduce the communication volume for the scaling of large graphs and multi-GPU training. But those two studies neglect the intrinsic parallelism potentials in DGNN and blunder away the chance of fulfilling further acceleration.</p><p>Pipeline/parallel training for GNN or traditional DNN is widely adopted in the distributed environment <ref type="bibr" target="#b16">[17,</ref><ref type="bibr" target="#b26">27,</ref><ref type="bibr" target="#b27">28,</ref><ref type="bibr" target="#b40">41,</ref><ref type="bibr" target="#b44">45,</ref><ref type="bibr" target="#b48">49]</ref> and concurrent multi-model computation <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b41">42]</ref>. OOB <ref type="bibr" target="#b30">[31]</ref> and nimble <ref type="bibr" target="#b20">[21]</ref> are two similar studies to us enabling parallel training for single DNN on single GPU. But the former's motivation lies on the backward propagation while the latter focuses on using CUDA Graph <ref type="bibr" target="#b10">[11]</ref> and dependency pre-analysis mechanisms to remove the multistream overhead. Their work are orthogonal to our concern.</p><p>Summary. Works about the SpMM-like aggregation optimization for static GNNs are more general and can be applied to the DGNN domain. But some studies <ref type="bibr" target="#b14">[15,</ref><ref type="bibr" target="#b47">48]</ref> rely on the onerous node reordering (up to seconds per snapshot) that could badly damage the end-to-end performance. Besides, these solutions and the existing DGNN optimization methods cannot address both key issues simultaneously.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Motivation</head><p>This section first reveals the bottleneck and underlying execution inefficiency of DGNN training via preliminary experiments with our evaluation setting ( § 5.1). Then we dissect the data reuse and parallel computation potentials, which can be leveraged to resolve these issues simultaneously.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Performance Bottlenecks of DGNN Training</head><p>Data transfer overhead. We analyze the overall performance characteristic of DGNN training using PyGT, which is built on top of the popular GNN computing framework Py-Torch Geometric (PyG) <ref type="bibr" target="#b6">[7]</ref>. Compared to the static GNN targeting single graph, DGNN operates on a snapshot sequence and needs to constantly load new graph data from CPU to GPU. Figure <ref type="figure" target="#fig_2">3</ref> depicts the breakdown of GPU-related training time (left-axis) and SM utilization (right-axis). As presented, the arduous data transfer occupies the total execution time   with an average 38.7% proportion. Subsequently, this leads to severe GPU underutilization where Streaming Multiprocessor (SM) utilization measured by PyTorch Profiler <ref type="bibr" target="#b34">[35]</ref> is lower than 41.2% on average. Leveraging CUDA streams to enable asynchronous data transmission is a straightforward and elementary way to ease the problem.</p><p>Topology overlap. The changing rate of the topology among adjacent snapshots in real-life dynamic graphs is generally limited (nearly 10% on average across our datasets). ESDG <ref type="bibr" target="#b4">[5]</ref> utilizes this fact to employ a graph-difference transfer method that only updates changed parts of the topology, but still follows the one-snapshot-at-a-time training manner.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Memory Access Inefficiency in GNN</head><p>Still being the major computation burden in DGNN models (Figure <ref type="figure" target="#fig_3">4</ref>), GNN suffers from the low memory access efficiency. The access irregularity in the aggregation, brought by the sparsity of input graphs, is revealed by previous GNN studies <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b15">16,</ref><ref type="bibr" target="#b47">48]</ref>. They refactor access patterns to the sparse adjacent matrices and accordingly implement the locality-aware computation to increase the parallelism. However, there are other types of inefficiency stemming from the dimension of dense matrices (input or aggregated feature vectors), neglected by those existing solutions. In a common implementation of SpMM, one warp takes charge of processing single element from the sparse matrix and one entire row from the dense matrix for each outer iteration. To leverage the locality and reduce expensive off-chip accesses, GPU cores load the features from global memory and store the intermediate results of the current iteration on shared memory for reuse in the next iteration. Note that mainstream GPUs (e.g., NVIDIA) normally employ a minimum 32-byte granularity for global memory access. Besides, following the Single Instruction Multiple Thread (SIMT) fashion, a warp consisting of 32 threads can fetch 128 (32 × 4) bytes at most with one request. Considering the row length in bytes of the feature matrix equal to 4 times of its feature dimension (F), there are two types of memory access inefficiency:</p><p>• Bandwidth unsaturation with F less than 32/4, which means that the size of useful data is smaller than the minimum access granularity of single transaction. • Request burst with F larger than 128/4, which means that a warp accessing one row needs multiple requests to both shared and global memory to finish. We further demonstrate the above insights via experiments of running GCN with GNNAdvisor <ref type="bibr" target="#b47">[48]</ref>, a cuttingedge GNN aggregation optimization work. As shown in Figure <ref type="figure" target="#fig_4">5</ref>, when the feature length lower than 8, the number of global memory requests (#𝑅) and transactions (#𝑇 ) are nearly the same and both barely change. Then #𝑇 increases as the dimension exceeds 8 while #𝑅 begins to rise when the dimension larger than 32. Considering the diversity of dimension features used in real-life graph-based applications, these issues definitely need to be resolved. Moreover, assigning one row to one warp when processing the feature matrix with F less than 32, means many threads inside the warp stay idle during the execution. The low thread utilization issue can be reflected by the warp_execution_efficiency metric ( § 5.3).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Opportunities for Data Reuse and Parallelism</head><p>Data Reuse. The forward stride size of the frame mechanism (Figure <ref type="figure" target="#fig_0">1</ref>) is normally set to 1 for sufficient temporal interaction capture among all snapshots. Therefore, there are plenty of overlaps among contiguous frames, which means some related redundant data transfer and computation can be avoided. Specifically, the aggregation operation in the first GCN layer operates over the adjacent matrix of the graph topology and the original node features, which is independent of the parameter updating along the timeline. We can cache the related aggregation results (𝑎 𝑘 𝑣 in § 2.1) and reuse them in the next frame or training epoch.</p><p>Parallelism. As depicted in Figure <ref type="figure" target="#fig_1">2</ref>, the cross-snapshot dependence of three various DGNNs all exists in the timedependent RNN components. It means that the same operation of GNN for different snapshots can be conducted in parallel for better performance. With careful design and optimizations, the multi-snapshot processing manner may hit two birds with one stone. Specifically, we first take topology overlap into consideration cooperatively and design a new graph format that can extract the overlaps efficiently to eliminate the redundant transfer. Then we devise a "parallel" GNN computation pattern that can process multiple graphs simultaneously. The basic idea is to directly perform the aggregation on the overlap topology of one snapshot group with all their feature matrices. In this way, we can enable coalesced memory accesses to multiple features and alleviate the bandwidth unsaturation issue. Further, employing flexible access granularities for huge dimension situations can avoid the request burst.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">PiPAD</head><p>We holistically design and implement PiPAD to facilitate the end-to-end DGNN training performance. Our optimization is three-fold: reducing data transfer volume via the overlapaware data organization and inter-frame reuse, accelerating GNN computation with intra-frame parallelism and maximizing the overlap among different operations through the pipeline. This section presents those mechanisms in detail.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Overlap-aware Data Organization</head><p>By extracting the overlap topology among adjacent snapshots and constructing a new individual adjacent matrix for it, we can avoid the needless transmission and further realize the parallel computation idea. Due to the frame mechanism, one snapshot may be coalesced with separate snapshots for processing in different frames. Therefore, the overlap analysis and extraction will be conducted constantly throughout the opening training epochs. The widely-used format to store the sparse adjacent matrix, Compressed Sparse Row (CSR) manages the graph using a coarse row granularity and a tightly ordered layout (Figure <ref type="figure" target="#fig_5">6</ref>). These characteristics directly restrict the flexibility of overlap extraction leading to poor efficiency. Besides, the sparsity in real-world graphs could easily cause load imbalance in SpMM computation since a warp is normally set to handle one or several rows of the adjacent matrix based on the CSR representation way.</p><p>Slice-based graph representation. There are two choices to support a finer storing granularity and tackle the above challenges: two-dimensional tile and one-dimensional slice. The former (e.g., Block CSR <ref type="bibr" target="#b3">[4]</ref>) splits the original matrix into multiple smaller matrices while the latter divides each row and transforms the whole matrix into many slices. Since the non-zero elements (nnz) in each tiled sub-matrix are discrete leading to the more uneven sparsity, the slice way not only incurs less space overhead but also offers better load balance with the compression. Therefore, we devise a sliced CSR format shown in Figure <ref type="figure" target="#fig_5">6</ref>. As single slice is within one row, we modify the original Row Offsets array in CSR to Row Indices (RI) and add a new array Slice Offsets (SO). RI indicates the row index of every slice and SO stores the offset of the first element of each slice in Column Indices field. Our method manages the whole graph at a slice granularity and each slice stores certain nnz with a upper bound (2 in Figure <ref type="figure" target="#fig_5">6</ref>). This can enable quick slice-grained overlap construction and assist to achieve better load balance in the computation.</p><p>Overlap-aware data transfer. Introduced later, PiPAD performs the parallel training by dividing each frame into several partitions that each contain continuous snapshots. We thus adjust the data transfer into a partition-grained pattern. The topology data (adjacent matrices) are regrouped as one overlap part for all snapshots and several exclusive parts for each to reduce the transmission volume. Then we utilize separate GPU streams and pinned memory to enable asynchronous data transfer in the on-demand manner.</p><p>Space overhead. The main cost comes from the modified RI and newly added SO. Let #𝑛𝑛𝑧 denotes the number of nnz in the matrix. Our sliced CSR requires (2×#𝑛𝑛𝑧+2×#𝑆𝑙𝑖𝑐𝑒+1) space while CSR needs (2 × #𝑛𝑛𝑧 + #𝑣𝑒𝑟𝑡𝑖𝑐𝑒𝑠 + 1). Another popular graph representation way Coordinate Format (COO), employed by PyG, uses three arrays to respectively store all nnz's values, the row and column indices with the (3 × #𝑛𝑛𝑧) space usage. We set single slice can hold up to 32 nnz and our spatial cost thus normally falls in between CSR and COO.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Intra-frame Parallelism</head><p>We implement intra-frame parallelism based on our dimensionaware parallel GNN that performs the aggregation and update operations over multiple snapshots simultaneously (❶ and ❷ in Figure <ref type="figure" target="#fig_5">6</ref>). We further devise three key optimizations: vector-memory-instruction based memory access for the large-dimension situation, thread-aware slice coalescing (❸) to resolve the low thread utilization issue for the smalldimension case and Locality-optimized weight reuse (❹) to enable the efficient parallel update.</p><p>Dimension-aware parallel GNN. As analyzed in § 3.3, two types of memory access inefficiency can be alleviated through the multi-snapshot computation manner and flexible access granularities. First, coalescing the feature matrices from different snapshots to perform one aggregation can more efficiently utilize the bandwidth especially for those graphs with node features in the small dimension. Following the overlap-aware data organization, we split the original aggregation into two parts: the parallel aggregation on adjacent matrices of the overlap with all features of one snapshot group (referred to as the coalescent features: ❺ in Figure <ref type="figure" target="#fig_5">6</ref>), and the non-parallel aggregations on the exclusive topology parts with respective features from each snapshot. Second, leveraging the vector memory instructions <ref type="bibr" target="#b23">[24]</ref> that support loading 32/64/128 floats for one request is a feasible option for the request burst problem. Based on those vector instructions with different data-fetching widths, we realize loading the data in an efficient larger-grained way when processing graphs with features in the large dimension (larger than 32). We introduce our aggregation implementation with slice coalescing together later.</p><p>Thread-aware slice coalescing. Even if merging multiple feature matrices to a coalescent one, the total row length (dimension) may still be less than 32 and the low thread utilization problem remains. In this situation, to further increase the number of active threads per warp, we coalesce adjacent slices in the adjacent matrix as a group and set it as the basic processing unit for each warp. Correspondingly, threads inside the same warp are uniformly divided into several thread groups (TGs) and each TG is assigned to exclusively operate on one slice. Then we implement the slice-group data layout on shared memory in a interleave pattern (❸ in Figure <ref type="figure" target="#fig_5">6</ref>) so that the access address of single data load is continuous from the warp view. Each TG operates on one element from the corresponding slice and one row from the coalescent feature matrices at each computing iteration. The maximal size of the slice group (𝑐𝑜𝑎𝑙𝑒𝑠𝑐𝑒_𝑛𝑢𝑚), namely the number of TGs per warp, is set as 4 to ensure each TG's data access granularity not exceed single memory transaction length (32 bytes). Algorithm 1 presents the detailed procedure of our parallel aggregation (for the small dimension cases) with the inputs: the coalescent features, the max number of nnz each slice owns <ref type="bibr" target="#b31">(32)</ref> and 𝑐𝑜𝑎𝑙𝑒𝑠𝑐𝑒_𝑛𝑢𝑚. In the implementation, each thread is first assigned to load elements in one particular slice from global memory to shared memory with a fixed stride and the slice index is directly corresponding to the thread index (Line 3 and 9-20). This design is based on the aforementioned interleaving data layout for each warp's continuous memory access. Then the thread fetches the data corresponding to one specific dimension of the features that is distributed to it (Line 6 and 26), loads the elements of one target slice on shared memory with the same stride pattern and finally performs the computation (Line 4 and Line 21-30).</p><p>Locality-optimized weight reuse. To cooperate with the parallel aggregation, we utilize the weight reuse principle to enable the parallel update with better locality. Instead of naively conducting GEMM for one snapshot and then moving to the next, we choose to keep one weight tile staying on shared memory, and compute with the features of all snapshots successively (❹) and then move to the next weight tile for the same iteration. This locality-optimized computation paradigm can reuse the weights to the maximal extent. Note that this technique can not be applied to EvolveGCN since it updates the weights along the timeline.</p><p>For other kernels in DGNN, we execute them sequentially in the order of computation and data dependence. Besides,  we reference OOB <ref type="bibr" target="#b30">[31]</ref> and leverage CUDA Graph API <ref type="bibr" target="#b10">[11]</ref> to launch these kernels together and reduce the issue overhead.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Pipeline Execution Framework</head><p>As illustrated in Figure <ref type="figure" target="#fig_7">7</ref>, PiPAD consists of the algorithmlevel optimization for the efficient multi-snapshot computation and several runtime-level components to coordinate the general training process.</p><p>Specifically, in the algorithm level, we devise the sliced CSR for convenient extraction of graph overlaps and reconstruct GNN to enable parallel computation over multiple snapshots within a frame. In the runtime level, to fit with the new graph format, we first realize a low-overhead online graph analyzer (❶ in Figure <ref type="figure" target="#fig_7">7</ref>) to efficiently transform the format of all snapshots from the original CSR to ours. The adjacent matrices data for each partition includes the common overlap and exclusives for separate snapshots. A data preparation module ❷ is used to conduct the overlap extraction among adjacent snapshots and prepare for the partition-wise computation manner. The above two components only need to function once during the first several epochs (namely preparing epochs). In the following epochs, PiPAD performs the parallel training at the partition granularity for each frame. As for supporting data reuse among different frames, we maintain both CPU-and GPU-side buffers ❸ to cache the aggregation results. On the upper tier of our runtime, we implement a dynamic tuner ❹ to online adjust the parallelismlevel (the number of snapshots per partition inside a frame) and reuse-level (the size of aggregation results to cache in GPU-side), based on the offline analysis of our parallel GNN kernel and online profiling in the preparing epochs. Note that the preliminary offline experiments ( § 4.4) only involve the GNN part for sensitivity analysis. Finally, our pipeline controller ❺ regulates the overall training procedure.</p><p>Figure <ref type="figure" target="#fig_8">8</ref> provides a PiPAD's pipelined execution example with the setting of two snapshots per partition and the frame size equal to 4. In the preparing epochs, the training abides by the traditional one-snapshot fashion with asynchronous data transfer. In the host, we collect the necessary statistics including the input data size, execution time and maximal memory consumption of each snapshot/frame. This profiling executes online to avoid early offline model-scale test and amortize the overhead for end-to-end performance improvements. These data will be leveraged to guide our dynamic tuner to choose the optimized parallel options without triggering the out-of-memory (OOM) exception ( § 4.4). Besides, since extracting the graph overlaps and preparing the partition-wise adjacent matrices would also take time, we perform the graph slicing and subsequent extractions in the beginning once for all. The configurations of the snapshot amount per partition is a finite set (e.g., 2, 4 &amp; 8), thus the extraction overhead is controllable. Meanwhile, we also store the graph evolving rates among snapshots within each frame for the online tuning decision in the future. Then during the following epochs, the training proceeds in a partition manner with reduced data loading overhead and high computation parallelism. Compared to the canonical pattern, we first determine the parallelism-level for current frame ( § 4.4), and then transport the partition-wise training data. Due to the performance similarity among different epochs in the training, we only perform this procedure once and stick to the generated configurations for each subsequent epoch.</p><p>Overhead analysis. PiPAD introduces certain time and space overheads. First, our slice-based graph format requires extra space ( § 4.1) and an auxiliary graph slicing process in the preparing epochs. We also need to extract the overlaps to build the overlap-based adjacent matrices for each partition previously. Note that our slicing strategy manages graphs at a fine granularity and can accelerate the extraction. By the actual measurements under our evaluation settings, those preprocessing can be accomplished within the first two epochs. Second, the data transfer for each partition can only proceed after the partition decision completes. The cost can also be amortized since this one-off operation is conducted asynchronously in CPU and overlap with other operations of the former partition/frame (Figure <ref type="figure" target="#fig_8">8</ref>).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Inter-frame Reuse and Dynamic Tuning</head><p>This section presents our design of the data reuse across different frames and dynamic tuning on two key parameters.</p><p>Inter-frame reuse. As summarized in § 3.3, the aggregation operation in the first GCN layer is unaffected by the parameter updating along the timeline. Therefore, a straightforward way is to store all relative aggregation results derived in the preparing epochs to CPU memory and reuse them for subsequent epochs. This can avoid repeatedly transmitting the adjacent matrices of those overlapped snapshots (for the models with only one single-layer GCN) and eliminate the redundant aggregation computation. But those aggregation results still need to be transferred to GPU for the next frame.</p><p>To further facilitate the reuse level, we maintain a GPUside buffer to cache some aggregation results based on the used order in the next frame. The maximal buffer size is limited by the memory consumption of DGNN training process and GPU memory capacity. According to the framewise memory usage statistics provided by our profiling in the preparing epochs, we dynamically allocate the buffer with different sizes for each frame according to the demand. Note that, since the malloc/free function execution is timeconsuming, we only reallocate the buffer when its previous size is too small to accommodate the new intermediates.</p><p>Dynamic Tuning. To reduce the complexity of online decision-making, we uniformly distribute the snapshots in single frame to each partition. Then the dynamic tuner needs to determine two key parameters for each frame: the number of snapshots per partition (𝑆 𝑝𝑒𝑟 ) and the size of aggregation results to cache in GPU for the next frame reuse. The latter is decided by the memory usage conditions as explained above. With regard to 𝑆 𝑝𝑒𝑟 , there are three impact factors:</p><p>• Memory consumption: Multiple-snapshot computing would increase the GPU memory usage at a certain stage compared to the one-snapshot pattern since processing each partition needs GPU to hold all related snapshots' data. We should avoid the OOM exception. • Computation speedup of the parallel GNN: The acceleration effects of our intra-frame parallelism may vary over different input graphs and values of 𝑆 𝑝𝑒𝑟 . • Overlap level between the computation and data transfer: Multi-snapshot processing not only promotes performance in the computing phase but also augments the data size of single transmission, which may stall the pipeline and lower GPU utilization instead.</p><p>We decide the value of 𝑆 𝑝𝑒𝑟 with the following procedure. First, since we employ the overlap-aware data organization method and the training data size gets reduced, the maximal memory consumption in the 𝑁 -snapshot mode would not exceed 𝑁 times of that in the one-snapshot computation. Leveraging our online profiling statistics, we can derive an upper bound 𝑈 that assures our option not to trigger OOM.</p><p>Second, the computing speedup is mainly relevant to three elements: 𝑆 𝑝𝑒𝑟 , the node feature dimension of single graph and topology overlap rate (OR) among all snapshots within  the partition. Simultaneously operating more snapshots normally means more parallelism but lower OR. Since the main optimization of our intra-frame parallelism lies in utilizing the overlaps to enable the efficient aggregation, the damage from low OR is not negligible. Therefore, we perform the offline analysis regarding our parallel GNN to guide the online decision. Figure <ref type="figure" target="#fig_10">9</ref>(a) and 9(b) show the average speedup that different 𝑆 𝑝𝑒𝑟 settings achieve across our datasets under various OR and feature dimension conditions, respectively. We construct the OR configurations with randomly selecting snapshot groups that satisfy the target overlap requirements. The results clearly show larger 𝑆 𝑝𝑒𝑟 is preferred under the same OR or feature dimension settings. More importantly, the sketchy speedup distribution for separate OR sections can assist us to estimate the accelerating effects of different 𝑆 𝑝𝑒𝑟 settings at runtime. We leverage the results from the offline analysis and the actual frame-wise topology changing rate statistics obtained online in the preparing epochs to derive the estimated execution latency of all available 𝑆 𝑝𝑒𝑟 options.</p><p>Third, we previously analyze the data transfer latency for each option with the profiled data size information. Then, we reject those schemes rendering the pipeline stall and choose the one with the highest computing speedup from leftovers. With a specific parallelism and reuse option for each frame, our pipeline controller orchestrates the overall training.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.5">Discussion</head><p>We implement PiPAD on top of PyTorch <ref type="bibr" target="#b33">[34]</ref> with C++, CUDA C and Python. But our methodology is general and independent of the specific deep learning or GNN frameworks.</p><p>Limitation. The multi-snapshot parallel training inevitably increases the phase-based memory consumption and causes the inherent scaling issue of large graphs. This limitation can be resolved through extending PiPAD to support multi-GPU training since our sliced CSR offers the convenience to further split the graphs. We leave it as our future work. Table <ref type="table">1</ref>. Graph Datasets for Evaluation. The number of vertices (#N), edges (#E), feature dimension (D) and edges after graph smoothening with edge-life <ref type="bibr" target="#b4">[5]</ref> (#E-S) across all snapshots as well as the number of snapshots (#S) are shown. Models &amp; Datasets. We choose three representative DGNN models ( § 2.1): MPNN-LSTM <ref type="bibr" target="#b31">[32]</ref>, T-GCN <ref type="bibr" target="#b49">[50]</ref> and EvolveGCN <ref type="bibr" target="#b32">[33]</ref>. As shown in Table <ref type="table">1</ref>, the datasets for our evaluation cover various real-world applications and are obtained from Network Repository <ref type="bibr" target="#b35">[36,</ref><ref type="bibr" target="#b36">37]</ref> (used by ESDG <ref type="bibr" target="#b4">[5]</ref>), ASTGNN <ref type="bibr" target="#b12">[13]</ref> and MPNN-LSTM <ref type="bibr" target="#b31">[32]</ref>. Considering the memory capacity limit of single GPU, we set the input feature dimension of small and large-scale graph datasets to 16 and 2, respectively. And the hidden dimension is set to 32 and 6, respectively.</p><formula xml:id="formula_1">Dataset #N #E D #S #E-S</formula><p>Baselines. Since DynaGraph <ref type="bibr" target="#b11">[12]</ref> and CacheG <ref type="bibr" target="#b21">[22]</ref> restrict the input scenarios while ESDG <ref type="bibr" target="#b4">[5]</ref> targets the distributed training, we compare PiPAD with the baseline PyGT and its three variants: (1) PyGT-A: an enhanced version of PyGT enabling asynchronous data transfer; (2) PyGT-R: a solution that integrates our inter-frame reuse mechanism into PyGT-A; (3) PyGT-G: compared to PyGT-R, PyGT-G replaces the original PyG-version of GCN module with GE-SpMM <ref type="bibr" target="#b14">[15]</ref>, a state-of-the-art aggregation optimization work without previous node reordering over the graphs like <ref type="bibr" target="#b47">[48]</ref> and <ref type="bibr" target="#b15">[16]</ref>. GE-SpMM leverages shared memory to cache rows from sparse matrices and increases the locality for the CSRbased aggregation computation. We utilize this incremental comparison design to evaluate the overall performance and our individual optimization techniques simultaneously.</p><p>Environment settings &amp; Metrics. Our hardware platform is a 24-core Intel(R) Xeon(R) E5-2680 v3 CPU with 128GB host memory and one NVIDIA Tesla V100 GPU with 16GB HBM. We set the frame size to 16 and conduct all experiments on Ubuntu 18.04 with CUDA 11.3. And the version of PyGT and PyTorch is 0.53.0 and 1.10 respectively. In the overall performance comparison, we train for 200 epochs and measure the end-to-end training time including the graph slicing, data loading and GPU computation as well as the hardware utilization. We also perform the detailed analysis of our parallel GNN and sliced CSR.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Overall Performance Comparison</head><p>Figure <ref type="figure" target="#fig_11">10</ref> shows the end-to-end training time speedup of three models over PyGT. In general, with the holistic design covering data organization, transfer and computation manner, PiPAD outperforms all compared methods and achieves 1.54 × -9.57× improvements over the baseline PyGT (4.71×, 3.98× and 5.18× on average for EvolveGCN, MPNN-LSTM and T-GCN, respectively). As the small-scale datasets (HepTh, PEMS08 and Covid19) have less vertices and smaller feature vector size, our topology-wise data transfer reduction and computation optimizations can make a larger impact. Besides, due to the huge node amount and total memory usage, PiPAD can only enable 2-snapshot parallelism in the evaluation for the large datasets, which restricts our acceleration space. Thus our speedup is generally higher in the small-scale datasets while PyGT-A presents the opposite characteristic since the asynchronous transfer is its only optimization. PyGT-G obtains the second-best performance for almost all scenarios due to the three-fold optimizations: asynchronous data transfer to reduce transmission overhead, interframe reuse to eliminate the redundancy and GE-SpMM to accelerate the expensive aggregation. Compared with PyGT-G, our main advantage is the intra-frame parallelism that can The specific speedups vary greatly in different situations. We next perform the detailed analysis from the model aspect with the help of our experiments in Figure <ref type="figure" target="#fig_2">3</ref> and Figure <ref type="figure" target="#fig_3">4</ref>.</p><p>EvolveGCN. Incorporating two layers that each contain one GCN, EvolveGCN still needs to perform the aggregation in the GCN of the 2nd layer even if deployed with data reuse optimizations. This offers more acceleration space to our intra-frame parallelism. In addition, the other kernels besides GNN module in EvolveGCN only take small portions of total computation time (Figure <ref type="figure" target="#fig_3">4</ref>), which further amplifies the effects of the parallel GNN. Therefore, PiPAD achieves the highest average speedup (2.13×) against the second-best PyGT-G here among three models.</p><p>MPNN-LSTM. Contrast to other two models, MPNN-LSTM has the higher computation proportion and more timeconsuming RNN components under the larger datasets with massive vertices (e.g., Youtube in Figure <ref type="figure" target="#fig_2">3</ref> and<ref type="figure" target="#fig_3">4</ref>). Therefore, when dealing with the large-scale datasets, PiPAD achieves the lowest speedup here among all cases (down to 1.22× over PyGT-G). But the RNN-related execution latency of MPNN-LSTM is much smaller for small datasets (Figure <ref type="figure" target="#fig_3">4</ref>). And MPNN-LSTM deploys a 2-layer GCN but dose not update weights along the timeline like EvolveGCN. The acceleration in both aggregation and update operation of our parallel GNN can fully function under those small-scale datasets (up to 9.57× over PyGT).</p><p>T-GCN. With multiple GCNs executing in parallel, all aggregation operations are eliminated in T-GCN with the interframe reuse. Therefore, PyGT-R, PyGT-G and PiPAD all gain considerable speedups. But as mentioned above, the effects of GE-SpMM in PyGT-G are also removed with inter-frame reuse while PiPAD still can leverage the locality-optimized weight reuse to accelerate the update phase.</p><p>With PyTorch Profiler not support CUDA Graph, we utilize NVIDIA System Management Interface <ref type="bibr" target="#b29">[30]</ref> to collect the GPU utilization data where running memory copy kernels also counts towards the final utilization (Table <ref type="table" target="#tab_4">2</ref>). Therefore, PyGT-R and PyGT-A counter-intuitively perform better because PiPAD and PyGT-G greatly reduce the computation time ( § 5.3) and amplify the percentage of total time taken by CPU-side operations. But we still outperform PyGT-G with the parallel GNN decreasing the number of issued kernels.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Parallel GNN Analysis</head><p>Since the data transfer greatly impacts the end-to-end training time especially in large-scale datasets, this section specially analyzes our algorithm-level optimization: intra-frame parallelism. We profile the execution time and kernel-level global memory access statistics of GNN (1-layer) module during the overall DGNN training process. PyGT and PyGT-G are chosen for comparison. We disable inter-frame reuse to thoroughly reveal the characteristics of GNN.  following the inefficient one-snapshot manner and only targeting the SpMM-like aggregation, our parallel GNN processes multiple snapshots simultaneously and optimizes both aggregation and update phases. We achieve an average 5.6× and 3.1× improvements over PyGT and PyGT-G, respectively. From the dataset respective, since PiPAD and GE-SpMM both use shared memory to cache elements from the adjacent matrix in the aggregation, our higher speedups locate at the denser graph datasets with better locality in the graph structure (e.g., Flickr, HepTh and Epinions) similar to PyGT-G.</p><p>Memory efficiency. Unlike GE-SpMM only leveraging shared memory to optimize the access to the adjacent matrix, our parallel execution can enable coalescent memory access to multiple feature matrices. For the large datasets with 2dimensional features, the parallel GNN can load the 16-byte feature with one transaction for two graphs simultaneously while GE-SpMM needs two individual transactions to do this. For the small-scale datasets with 16-dimensional features, single 64-byte data load generates one memory request and two transactions for one graph under GE-SpMM. But with the vector memory instructions, PiPAD can load the 256byte data with one memory request and eight transactions for four graphs simultaneously. We access memory with the larger granularity while avoiding the request burst. Hence, we can decrease the total number of global memory requests and transactions against PyGT-G by average 57% and 45% respectively (right-axis in Figure <ref type="figure" target="#fig_13">11</ref>(a)). The improvements under Youtube stand out due to the excessive sparsity of this dataset. Numerous empty rows in CSR lead to the vast redundant memory accesses under GE-SpMM while our sliced CSR avoids this problem via the finer managing granularity.</p><p>Thread utilization. The warp_execution_efficiency metric measured via NVIDIA profiler <ref type="bibr" target="#b28">[29]</ref> directly shows the ratio of the average active threads per warp. To better demonstrate the low thread utilization issue, we set the input and hidden dimension of all seven datasets as 2 and 6. Our evaluation shows that the average thread utilization of the GNNrelated kernels under PyGT-G is 57.2% while PiPAD achieves 64.9% based on our thread-aware slice coalescing.</p><p>Sensitivity. We perform the dimension sensitivity test to prove the dimension-awareness of our parallel GNN with the results shown in Figure <ref type="figure" target="#fig_13">11(b)</ref>. Due to the memory capacity limit of our testbed GPU, we only test three small-scale datasets. Employing both vector memory instructions and thread-aware slice coalescing, our parallel GNN can achieve considerable speedups (at least 5.2×) for various feature dimension settings. But due to the memory consumption factor, we can enable the higher parallelism-level (larger 𝑆 𝑝𝑒𝑟 in § 4.4) in the small-dimensional case for higher speedups.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">Sliced CSR Analysis</head><p>We further implement the variant of PiPAD using the original CSR and conduct comparison experiments to analyze our sliced CSR. Referencing the methodology in <ref type="bibr" target="#b15">[16]</ref>, we plot our effects of promoting load balance for the GNN kernels in Figure <ref type="figure" target="#fig_14">12</ref> (left-axis). The Balanced bars (green-colored portion) represent the ideal execution latency in perfect load balance, derived through dividing the total time of all thread blocks by the maximal number of active thread blocks a GPU can accommodate <ref type="bibr" target="#b15">[16]</ref>. The gap between this ideal value and the actual execution time (Actual bars) reflects the degree of load imbalance, which is reduced by our sliced CSR across all datasets. The improvements are less significant under the small-scale datasets since they are more dense and easy to achieve load balance in the computation even with the original CSR. Besides, the speedups of overall training time from the model perspective (right-axis) show the similar trend to the results of load balance. Specially, the prominent improvement of EvolveGCN under Youtube is brought together by the large execution portion of GNN kernels in EvolveGCN (computation) and sliced CSR's less space usage than CSR due to the extreme sparsity of Youtube (data transfer).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>This paper proposes PiPAD, a pipelined and parallel DGNN training framework to optimize the end-to-end performance on GPUs. With efficient parallel multi-snapshot processing and the runtime-level pipeline orchestration, PiPAD addresses the challenges of excessive data transmission, unexploited parallelism and memory access inefficiency in DGNN computing. Our evaluation shows that PiPAD achieves 1.22× -9.57× speedup over the state-of-the-art DGNN frameworks.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 .</head><label>1</label><figDesc>Figure 1. DGNN Execution Flow.</figDesc><graphic coords="3,66.82,72.00,131.04,114.56" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 .</head><label>2</label><figDesc>Figure 2. DGNN Model Structure. →: Data Propagation.</figDesc><graphic coords="3,216.71,90.99,79.84,88.98" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 .</head><label>3</label><figDesc>Figure 3. Latency Breakdown and SM Utilization of DGNN Training.</figDesc><graphic coords="4,59.46,72.00,156.22,124.98" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 .</head><label>4</label><figDesc>Figure 4. Breakdown of GPU Computation Time in DGNN Training.</figDesc><graphic coords="4,227.88,72.00,156.22,124.98" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 .</head><label>5</label><figDesc>Figure 5. The number of Global Memory Requests and Transactions.</figDesc><graphic coords="4,396.30,79.80,156.23,117.18" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 6 .</head><label>6</label><figDesc>Figure 6. An Example of the Sliced Graph Representation and the Parallel GNN Computation. 𝐹 𝑖 : Input Features of 𝑆𝑛𝑎𝑝𝑠ℎ𝑜𝑡 𝑖 . 𝐴 𝑖 : Adjacent Matrix of the Exclusive Parts of 𝑆𝑛𝑎𝑝𝑠ℎ𝑜𝑡 𝑖 . 𝐴 𝑂𝑣𝑒𝑟 : Adjacent Matrix of the Overlap Part. TG: Thread Group.</figDesc><graphic coords="5,76.68,72.00,458.64,147.58" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Algorithm 1 : 9 / 21 /</head><label>1921</label><figDesc>Parallel aggregation &amp; Slice coalescing Input: features, slice_size, coalesce_num Output: aggregation_result 1 𝑙𝑎𝑛𝑒_𝑖𝑑 = getIndexInWarp() 2 /* Compute the index of the specific slice distributed to current thread for load and computation, respectively*/ 3 𝑙𝑜𝑎𝑑_𝑖𝑛𝑑𝑒𝑥 = 𝑙𝑎𝑛𝑒_𝑖𝑑 % 𝑐𝑜𝑎𝑙𝑒𝑠𝑐𝑒_𝑛𝑢𝑚 4 𝑐𝑜𝑚𝑝_𝑖𝑛𝑑𝑒𝑥 = 𝑙𝑎𝑛𝑒_𝑖𝑑 / 𝑓 𝑒𝑎𝑡𝑢𝑟𝑒𝑠.𝑑𝑖𝑚 5 /* Compute the specific dimension of the coalescent features distributed to current thread for load and computation */ 6 𝑐𝑜𝑚𝑝 𝑑𝑖𝑚 = 𝑙𝑎𝑛𝑒_𝑖𝑑 % 𝑓 𝑒𝑎𝑡𝑢𝑟𝑒𝑠.𝑑𝑖𝑚 7 /* Check whether the current thread is distributed with work*/ 8 if comp_index &lt; coalesce_num then *Compute the specific workload size (within a slice) for the thread*/ 10 𝑙𝑜𝑎𝑑 𝑠𝑖𝑧𝑒 , 𝑐𝑜𝑚𝑝 𝑠𝑖𝑧𝑒 = compWork(𝑙𝑜𝑎𝑑_𝑖𝑛𝑑𝑒𝑥, 𝑐𝑜𝑚𝑝_𝑖𝑛𝑑𝑒𝑥) 11 /*Load the target elements in the slice*/ 12 for 𝑛𝑖𝑑 ← 𝑙𝑎𝑛𝑒_𝑖𝑑 to (𝑠𝑙𝑖𝑐𝑒_𝑠𝑖𝑧𝑒 * 𝑐𝑜𝑎𝑙𝑒𝑠𝑐𝑒_𝑛𝑢𝑚) do 13 /*Compute the element offset in the slice for load*/ 14 𝑙𝑜𝑎𝑑_𝑜 𝑓 𝑓 𝑠𝑒𝑡 = 𝑛𝑖𝑑 / 𝑐𝑜𝑎𝑙𝑒𝑠𝑐𝑒_𝑛𝑢𝑚 15 if 𝑙𝑜𝑎𝑑_𝑜 𝑓 𝑓 𝑠𝑒𝑡 &gt; 𝑙𝑜𝑎𝑑 𝑠𝑖𝑧𝑒 then 𝑓 𝑓 𝑠𝑒𝑡 ) 19 𝑛𝑖𝑑 + = 𝑐𝑜𝑎𝑙𝑒𝑠𝑐𝑒_𝑛𝑢𝑚 * 𝑓 𝑒𝑎𝑡𝑢𝑟𝑒𝑠.𝑑𝑖𝑚 20 end *Load the target dimension in the features and then compute*/ 22 for 𝑖𝑑𝑥 ← 0 to 𝑐𝑜𝑚𝑝 𝑠𝑖𝑧𝑒 do 23 /*Compute the element offset in the slice for computation*/ 24 𝑐𝑜𝑚𝑝_𝑜 𝑓 𝑓 𝑠𝑒𝑡 = 𝑖𝑑𝑥 * 𝑐𝑜𝑎𝑙𝑒𝑠𝑐𝑒_𝑛𝑢𝑚 + 𝑐𝑜𝑚𝑝_𝑖𝑛𝑑𝑒𝑥 25 𝑆𝑙𝑖𝑐𝑒 = LoadSliceFromSharedMemToReg(𝑐𝑜𝑚𝑝_𝑜 𝑓 𝑓 𝑠𝑒𝑡 ) 26 𝐹𝑒𝑎𝑡𝑢𝑟𝑒 = LoadFeatFromGlobalMemToReg(𝑐𝑜𝑚𝑝 𝑑𝑖𝑚 )</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 7 .</head><label>7</label><figDesc>Figure 7. The Overall Architecture of PiPAD.</figDesc><graphic coords="7,63.03,77.88,277.26,109.34" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 8 .</head><label>8</label><figDesc>Figure 8. A Pipelined Execution Example.</figDesc><graphic coords="7,347.37,72.00,209.88,115.22" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head></head><label></label><figDesc>(a) Speedup of different 𝑆 𝑝𝑒𝑟 settings as OR changes normalized to the onesnapshot execution. (b) Normalized speedup of different 𝑆 𝑝𝑒𝑟 settings as the feature dimension changes.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Figure 9 .</head><label>9</label><figDesc>Figure 9. The Offline Analysis Results of the Parallel GNN.</figDesc><graphic coords="8,320.67,76.98,112.32,84.24" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head>Figure 10 .</head><label>10</label><figDesc>Figure 10. Training Speedup over PyGT.</figDesc><graphic coords="9,339.54,528.92,194.40,64.80" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head></head><label></label><figDesc>(a) Speedup of GNN execution time (left-axis) and Memory access performance (right-axis) (b) Normalized speedup over PyGT as the feature dimension changes.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_13"><head>Figure 11 .</head><label>11</label><figDesc>Figure 11. Detailed Analysis.</figDesc><graphic coords="10,358.98,551.65,155.52,77.76" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_14"><head>Figure 12 .</head><label>12</label><figDesc>Figure 12. Load Balance Analysis and Overall Performance Comparison for the Sliced CSR.</figDesc><graphic coords="11,340.78,72.00,194.40,116.64" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>1 &amp; § 3). Several key discoveries of DGNN training are revealed and motivate our design.</figDesc><table /><note><p>• We propose PiPAD to optimize the end-to-end performance for single-GPU DGNN training. Incorporating the overlap-aware data organization ( § 4.1), intraframe parallelism ( § 4.2), pipeline execution mechanism ( § 4.3) and inter-frame reuse with dynamic tuning technique ( § 4.4), PiPAD holistically enables pipelined and parallel training in a multi-snapshot manner.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>2 </figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 2 .</head><label>2</label><figDesc>GPU Utilization (%) of Different Methods. AA: amz-Automotive; EP: Epinions; FL: Flickr; YT: Youtube; HT: HepTh; CE: Covid19-England; PE: PEMS08. The low values under small-scale datasets arise from the relatively larger CPU-side latency. GCN that executes multiple GCNs simultaneously and behaves like only owning one GCN. Second, GE-SpMM requires both CSR and Compressed Sparse Column (CSC) format to store the graphs for backward propagation in its implementation. This incurs more transfer overhead and damages the performance in large-scale datasets like Youtube.</figDesc><table><row><cell>Method</cell><cell>AA</cell><cell>EP</cell><cell>FL</cell><cell cols="3">EvolveGCN YT HT</cell><cell>CE</cell><cell>PE</cell><cell>AA</cell><cell>EP</cell><cell>FL</cell><cell cols="3">MPNN-LSTM YT HT</cell><cell>CE</cell><cell>PE</cell><cell>AA</cell><cell>EP</cell><cell>FL</cell><cell>T-GCN YT</cell><cell>HT</cell><cell>CE</cell><cell>PE</cell></row><row><cell>PyGT</cell><cell>75.18</cell><cell>70.75</cell><cell cols="2">76.47</cell><cell>78.85</cell><cell>31.9</cell><cell>12.04</cell><cell>10.87</cell><cell>84.81</cell><cell>80.44</cell><cell cols="2">81.36</cell><cell>89.91</cell><cell>36.01</cell><cell>11.89</cell><cell>10.99</cell><cell>83.8</cell><cell>79.56</cell><cell>81.93</cell><cell>87.67</cell><cell>35.41</cell><cell>13.15</cell><cell>11.92</cell></row><row><cell>PyGT-A</cell><cell>93.45</cell><cell>92.47</cell><cell cols="2">99.08</cell><cell>94.94</cell><cell>35.67</cell><cell>12.16</cell><cell>10.95</cell><cell>96.42</cell><cell>96.31</cell><cell cols="2">99.38</cell><cell>97.94</cell><cell>39.14</cell><cell>11.92</cell><cell>11.0</cell><cell>94.44</cell><cell>93.45</cell><cell>99.08</cell><cell>95.92</cell><cell>37.43</cell><cell>13.19</cell><cell>11.98</cell></row><row><cell>PyGT-R</cell><cell>94.78</cell><cell>94.45</cell><cell cols="2">99.08</cell><cell>96.03</cell><cell>45.81</cell><cell>13.6</cell><cell>11.52</cell><cell>97.3</cell><cell>96.91</cell><cell cols="2">99.16</cell><cell>98.65</cell><cell>50.17</cell><cell>13.8</cell><cell>12.51</cell><cell>95.39</cell><cell>94.5</cell><cell>99.13</cell><cell>97.72</cell><cell>50.96</cell><cell>15.36</cell><cell>13.59</cell></row><row><cell>PyGT-G</cell><cell>78.86</cell><cell>91.33</cell><cell cols="2">88.16</cell><cell>91.98</cell><cell>34.86</cell><cell>8.81</cell><cell>8.44</cell><cell>91.05</cell><cell>94.28</cell><cell>93.5</cell><cell></cell><cell>94.27</cell><cell>42.57</cell><cell>8.97</cell><cell>8.9</cell><cell>89.5</cell><cell>93.55</cell><cell>92.25</cell><cell>93.46</cell><cell>40.64</cell><cell>10.47</cell><cell>11.23</cell></row><row><cell>PiPAD</cell><cell>87.75</cell><cell>91.8</cell><cell cols="2">92.28</cell><cell>94.12</cell><cell>36.25</cell><cell>11.75</cell><cell>10.91</cell><cell>96.31</cell><cell>95.13</cell><cell cols="2">93.96</cell><cell>98.55</cell><cell>67.92</cell><cell>12.6</cell><cell>14.25</cell><cell>94.39</cell><cell>94.68</cell><cell>92.33</cell><cell>98.07</cell><cell>50.61</cell><cell>12.18</cell><cell>14.23</cell></row><row><cell cols="12">not only process multiple snapshots for larger throughput</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="12">but also facilitate the update function with the weight reuse.</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="12">PyGT-R performs very close to PyGT-G or even better in</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="12">some cases. First, employing inter-frame reuse would directly</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="12">skip the aggregation in the first GCN layer and GE-SpMM</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="12">targeting the aggregation acceleration thus turns nearly use-</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>less in T-</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Computing graph neural networks: A survey from algorithms to accelerators</title>
+		<author>
+			<persName><forename type="first">Akshay</forename><surname>Sergi Abadal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jorge</forename><surname>Guirado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eduard</forename><surname>López-Alonso</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Alarcón</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Computing Surveys (CSUR)</title>
+		<imprint>
+			<biblScope unit="volume">54</biblScope>
+			<biblScope unit="page" from="1" to="38" />
+			<date type="published" when="2021">2021. 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Adaptive graph convolutional recurrent network for traffic forecasting</title>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lina</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Can</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xianzhi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Can</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="17804" to="17815" />
+			<date type="published" when="2020">2020. 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">{PipeSwitch}: Fast Pipelined Context Switching for Deep Learning Applications</title>
+		<author>
+			<persName><forename type="first">Zhihao</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yibo</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Jin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">14th USENIX Symposium on Operating Systems Design and Implementation (OSDI 20)</title>
+		<imprint>
+			<publisher>USENIX Association, USA</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="499" to="514" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Implementing Sparse Matrix-Vector Multiplication on Throughput-Oriented Processors</title>
+		<author>
+			<persName><forename type="first">Nathan</forename><surname>Bell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Garland</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/1654059.1654078</idno>
+		<ptr target="https://doi.org/10.1145/1654059.1654078" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Conference on High Performance Computing Networking, Storage and Analysis</title>
+		<meeting>the Conference on High Performance Computing Networking, Storage and Analysis<address><addrLine>Portland, Oregon; New York, NY, USA, Article</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="volume">18</biblScope>
+		</imprint>
+	</monogr>
+	<note>SC &apos;09)</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Yogish Sabharwal, Toyotaro Suzumura, and Shashanka Ubaru. 2021. Efficient scaling of dynamic graph neural networks</title>
+		<author>
+			<persName><surname>Venkatesan T Chakaravarthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saurabh</forename><surname>Shivmaran S Pandian</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Raje</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis</title>
+		<meeting>the International Conference for High Performance Computing, Networking, Storage and Analysis<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<biblScope unit="page" from="1" to="15" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Learning Phrase Representations using RNN Encoder-Decoder for Statistical Machine Translation</title>
+		<author>
+			<persName><forename type="first">Kyunghyun</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bart</forename><surname>Van Merriënboer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Caglar</forename><surname>Gulcehre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dzmitry</forename><surname>Bahdanau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fethi</forename><surname>Bougares</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Holger</forename><surname>Schwenk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<idno type="DOI">10.3115/v1/D14-1179</idno>
+		<ptr target="https://doi.org/10.3115/v1/D14-1179" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)<address><addrLine>Doha, Qatar</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1724" to="1734" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Fast Graph Representation Learning with PyTorch Geometric</title>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>Eric Lenssen</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1903.02428</idno>
+		<ptr target="http://arxiv.org/abs/1903.02428" />
+		<imprint>
+			<date type="published" when="2019">2019. 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Protein Interface Prediction using Graph Convolutional Networks</title>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Fout</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathon</forename><surname>Byrd</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Basir</forename><surname>Shariat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Asa</forename><surname>Ben-Hur</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2017/file/" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">I</forename><surname>Guyon</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">U</forename><surname>Von Luxburg</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Bengio</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Fergus</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Vishwanathan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Garnett</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Long Beach, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="page" from="6530" to="6539" />
+		</imprint>
+	</monogr>
+	<note>f507783927f2ec2737ba40afbd17efb5-Paper.pdf</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">TLPGNN: A Lightweight Two-Level Parallelism Paradigm for Graph Neural Network Computation on GPU</title>
+		<author>
+			<persName><forename type="first">Qiang</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuede</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">Howie</forename><surname>Huang</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3502181.3531467</idno>
+		<ptr target="https://doi.org/10.1145/3502181.3531467" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 31st International Symposium on High-Performance Parallel and Distributed Computing (Minneapolis, MN, USA) (HPDC &apos;22)</title>
+		<meeting>the 31st International Symposium on High-Performance Parallel and Distributed Computing (Minneapolis, MN, USA) (HPDC &apos;22)<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="122" to="134" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Learning Graph Representations with Embedding Propagation</title>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>García-Durán</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mathias</forename><surname>Niepert</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2017/hash/e0688" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 30: Annual Conference on Neural Information Processing Systems</title>
+		<meeting><address><addrLine>Long Beach, CA, USA; USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2017">2017. 2017. 2017. 13958</date>
+			<biblScope unit="volume">4</biblScope>
+			<biblScope unit="page" from="5119" to="5130" />
+		</imprint>
+	</monogr>
+	<note>a19e087e123148555e4b4-Abstract.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Getting Started with CUDA Graphs</title>
+		<author>
+			<persName><forename type="first">Alan</forename><surname>Gray</surname></persName>
+		</author>
+		<ptr target="https://developer.nvidia.com/blog/cuda-graphs/" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Dyna-Graph: Dynamic Graph Neural Networks at Scale</title>
+		<author>
+			<persName><forename type="first">Anand Padmanabha</forename><surname>Mingyu Guan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Taesoo</forename><surname>Iyer</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kim</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3534540.3534691</idno>
+		<ptr target="https://doi.org/10.1145/3534540.3534691" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 5th ACM SIGMOD Joint International Workshop on Graph Data Management Experiences &amp; Systems (GRADES) and Network Data Analytics (NDA)</title>
+		<meeting>the 5th ACM SIGMOD Joint International Workshop on Graph Data Management Experiences &amp; Systems (GRADES) and Network Data Analytics (NDA)<address><addrLine>Philadelphia, Pennsylvania; New York, NY, USA, Article 6</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">10</biblScope>
+		</imprint>
+	</monogr>
+	<note>GRADES-NDA &apos;22)</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Learning Dynamics and Heterogeneity of Spatial-Temporal Graph Data for Traffic Forecasting</title>
+		<author>
+			<persName><forename type="first">Shengnan</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Youfang</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huaiyu</forename><surname>Wan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiucheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gao</forename><surname>Cong</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/TKDE.2021.3056502</idno>
+		<ptr target="https://doi.org/10.1109/TKDE.2021.3056502" />
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Trans. Knowl. Data Eng</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="5415" to="5428" />
+			<date type="published" when="2022">2022. 2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Long short-term memory</title>
+		<author>
+			<persName><forename type="first">Sepp</forename><surname>Hochreiter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jürgen</forename><surname>Schmidhuber</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neural computation</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="1735" to="1780" />
+			<date type="published" when="1997">1997. 1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">GE-SpMM: general-purpose sparse matrix-matrix multiplication on GPUs for graph neural networks</title>
+		<author>
+			<persName><forename type="first">Guyue</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guohao</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huazhong</forename><surname>Yang</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/SC41405.2020.00076</idno>
+		<ptr target="https://doi.org/10.1109/SC41405.2020.00076" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis</title>
+		<editor>
+			<persName><forename type="first">Christine</forename><surname>Cuicchi</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Irene</forename><surname>Qualters</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">William</forename><forename type="middle">T</forename><surname>Kramer</surname></persName>
+		</editor>
+		<meeting>the International Conference for High Performance Computing, Networking, Storage and Analysis<address><addrLine>SC; Atlanta, Georgia, USA; USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020-11-09">2020. 2020. November 9-19, 2020</date>
+			<biblScope unit="page">72</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Understanding and Bridging the Gaps in Current GNN Performance Optimizations</title>
+		<author>
+			<persName><forename type="first">Kezhao</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jidong</forename><surname>Zhai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Youngmin</forename><surname>Yi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xipeng</forename><surname>Shen</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3437801.3441585</idno>
+		<ptr target="https://doi.org/10.1145/3437801.3441585" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th ACM SIGPLAN Symposium on Principles and Practice of Parallel Programming (Virtual Event</title>
+		<meeting>the 26th ACM SIGPLAN Symposium on Principles and Practice of Parallel Programming (Virtual Event<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="119" to="132" />
+		</imprint>
+	</monogr>
+	<note>Republic of Korea) (PPoPP &apos;21)</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">GPipe: Efficient Training of Giant Neural Networks using Pipeline Parallelism</title>
+		<author>
+			<persName><forename type="first">Yanping</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Youlong</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ankur</forename><surname>Bapna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Orhan</forename><surname>Firat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dehao</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mia</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hyoukjoong</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiquan</forename><surname>Ngiam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Quoc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yonghui</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Chen</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2019/file/093" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<meeting><address><addrLine>USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="103" to="112" />
+		</imprint>
+	</monogr>
+	<note>f65e080a295f8076b1c5722a46aa2-Paper.pdf</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Accelerating training and inference of graph neural networks with fast sampling and pipelining</title>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Kaler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nickolas</forename><surname>Stathas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anne</forename><surname>Ouyang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandros-Stavros</forename><surname>Iliopoulos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Schardl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><forename type="middle">E</forename><surname>Leiserson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of Machine Learning and Systems</title>
+		<meeting>Machine Learning and Systems</meeting>
+		<imprint>
+			<date type="published" when="2022">2022. 2022</date>
+			<biblScope unit="volume">4</biblScope>
+			<biblScope unit="page" from="172" to="189" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Representation learning for dynamic graphs: A survey</title>
+		<author>
+			<persName><forename type="first">Rishab</forename><surname>Seyed Mehran Kazemi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kshitij</forename><surname>Goel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Akshay</forename><surname>Kobyzev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Sethi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pascal</forename><surname>Forsyth</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Poupart</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Mach. Learn. Res</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="page" from="1" to="73" />
+			<date type="published" when="2020">2020. 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Semi-Supervised Classification with Graph Convolutional Networks</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=SJU4ayYgl" />
+	</analytic>
+	<monogr>
+		<title level="m">5th International Conference on Learning Representations</title>
+		<meeting><address><addrLine>Toulon, France</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017-04-24">2017. 2017. April 24-26, 2017</date>
+			<biblScope unit="page" from="1" to="14" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Nimble: Lightweight and parallel gpu task scheduling for deep learning</title>
+		<author>
+			<persName><forename type="first">Woosuk</forename><surname>Kwon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gyeong-In</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eunji</forename><surname>Jeong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Byung-Gon</forename><surname>Chun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="8343" to="8354" />
+			<date type="published" when="2020">2020. 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Cache-Based GNN System for Dynamic Graphs</title>
+		<author>
+			<persName><forename type="first">Haoyang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Chen</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3459637.3482237</idno>
+		<ptr target="https://doi.org/10.1145/3459637.3482237" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 30th ACM International Conference on Information &amp; Knowledge Management (Virtual Event, Queensland, Australia) (CIKM &apos;21)</title>
+		<meeting>the 30th ACM International Conference on Information &amp; Knowledge Management (Virtual Event, Queensland, Australia) (CIKM &apos;21)<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="937" to="946" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Hyperscale FPGA-as-a-Service Architecture for Large-Scale Distributed Graph Neural Network</title>
+		<author>
+			<persName><forename type="first">Shuangchen</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dimin</forename><surname>Niu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuhao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhe</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianchan</forename><surname>Guan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yijin</forename><surname>Guan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Heng</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Linyong</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhaoyang</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fei</forename><surname>Xue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuanwei</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongzhong</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Xie</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3470496.3527439</idno>
+		<ptr target="https://doi.org/10.1145/3470496.3527439" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 49th Annual International Symposium on Computer Architecture</title>
+		<meeting>the 49th Annual International Symposium on Computer Architecture<address><addrLine>New York, New York; New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="946" to="961" />
+		</imprint>
+	</monogr>
+	<note>ISCA &apos;22)</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">CUDA Pro Tip: Increase Performance with Vectorized Memory Access</title>
+		<author>
+			<persName><forename type="first">Justin</forename><surname>Luitjens</surname></persName>
+		</author>
+		<ptr target="https://developer.nvidia.com/blog/cuda-pro-tip-increase-performance-with-vectorized-memory-access/" />
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Memory Augmented Graph Neural Networks for Sequential Recommendation</title>
+		<author>
+			<persName><forename type="first">Chen</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liheng</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yingxue</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianing</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xue</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Coates</surname></persName>
+		</author>
+		<ptr target="https://ojs.aaai.org/index.php/AAAI/article/view/5945" />
+	</analytic>
+	<monogr>
+		<title level="m">The Thirty-Fourth AAAI Conference on Artificial Intelligence, AAAI 2020, The Thirty-Second Innovative Applications of Artificial Intelligence Conference, IAAI 2020, The Tenth AAAI Symposium on Educational Advances in Artificial Intelligence</title>
+		<meeting><address><addrLine>New York, NY, USA; USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2020-02-07">2020. February 7-12, 2020</date>
+			<biblScope unit="volume">2020</biblScope>
+			<biblScope unit="page" from="5045" to="5052" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">NeuGraph: Parallel Deep Neural Network Computation on Large Graphs</title>
+		<author>
+			<persName><forename type="first">Lingxiao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhi</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Youshan</forename><surname>Miao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jilong</forename><surname>Xue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lidong</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yafei</forename><surname>Dai</surname></persName>
+		</author>
+		<ptr target="https://www.usenix.org/conference/atc19/presentation/ma" />
+	</analytic>
+	<monogr>
+		<title level="m">2019 USENIX Annual Technical Conference, USENIX ATC 2019</title>
+		<meeting><address><addrLine>Renton, WA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>USENIX Association, USA</publisher>
+			<date type="published" when="2019-07-10">2019. July 10-12, 2019</date>
+			<biblScope unit="page" from="443" to="458" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">PipeDream: Generalized Pipeline Parallelism for DNN Training</title>
+		<author>
+			<persName><forename type="first">Deepak</forename><surname>Narayanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Harlap</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amar</forename><surname>Phanishayee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vivek</forename><surname>Seshadri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nikhil</forename><forename type="middle">R</forename><surname>Devanur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregory</forename><forename type="middle">R</forename><surname>Ganger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Phillip</forename><forename type="middle">B</forename><surname>Gibbons</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matei</forename><surname>Zaharia</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3341301.3359646</idno>
+		<ptr target="https://doi.org/10.1145/3341301.3359646" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 27th ACM Symposium on Operating Systems Principles</title>
+		<meeting>the 27th ACM Symposium on Operating Systems Principles<address><addrLine>Huntsville, Ontario, Canada; New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="1" to="15" />
+		</imprint>
+	</monogr>
+	<note>SOSP &apos;19)</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Memory-Efficient Pipeline-Parallel DNN Training</title>
+		<author>
+			<persName><forename type="first">Deepak</forename><surname>Narayanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amar</forename><surname>Phanishayee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kaiyu</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xie</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matei</forename><surname>Zaharia</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+		<ptr target="http://proceedings.mlr.press/v139/narayanan21a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 38th International Conference on Machine Learning, ICML 2021</title>
+		<editor>
+			<persName><forename type="first">Marina</forename><surname>Meila</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Tong</forename><surname>Zhang</surname></persName>
+		</editor>
+		<meeting>the 38th International Conference on Machine Learning, ICML 2021<address><addrLine>USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2021-07">2021. 18-24 July 2021</date>
+			<biblScope unit="volume">139</biblScope>
+			<biblScope unit="page" from="7937" to="7947" />
+		</imprint>
+	</monogr>
+	<note>Proceedings of Machine Learning Research</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<author>
+			<persName><surname>Nvidia</surname></persName>
+		</author>
+		<ptr target="https://docs.nvidia.com/cuda/profiler-users-guide/" />
+		<title level="m">Nvidia: Profiler User&apos;s Guide</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<author>
+			<persName><surname>Nvidia</surname></persName>
+		</author>
+		<ptr target="https://developer.nvidia.com/nvidia-system-management-interface" />
+		<title level="m">Nvidia system management interface</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Outof-Order Backprop: An Effective Scheduling Technique for Deep Learning</title>
+		<author>
+			<persName><forename type="first">Hyungjun</forename><surname>Oh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junyeol</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hyeongju</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiwon</forename><surname>Seo</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3492321.3519563</idno>
+		<ptr target="https://doi.org/10.1145/3492321.3519563" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Seventeenth European Conference on Computer Systems</title>
+		<meeting>the Seventeenth European Conference on Computer Systems<address><addrLine>Rennes, France; New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="435" to="452" />
+		</imprint>
+	</monogr>
+	<note>EuroSys &apos;22)</note>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Transfer Graph Neural Networks for Pandemic Forecasting</title>
+		<author>
+			<persName><forename type="first">George</forename><surname>Panagopoulos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giannis</forename><surname>Nikolentzos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michalis</forename><surname>Vazirgiannis</surname></persName>
+		</author>
+		<ptr target="https://ojs.aaai.org/index.php/AAAI/article/view/16616" />
+	</analytic>
+	<monogr>
+		<title level="m">Thirty-Fifth AAAI Conference on Artificial Intelligence, AAAI 2021, Thirty-Third Conference on Innovative Applications of Artificial Intelligence, IAAI 2021, The Eleventh Symposium on Educational Advances in Artificial Intelligence, EAAI 2021, Virtual Event</title>
+		<meeting><address><addrLine>USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2021-02-02">2021. February 2-9, 2021</date>
+			<biblScope unit="page" from="4838" to="4845" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">EvolveGCN: Evolving Graph Convolutional Networks for Dynamic Graphs</title>
+		<author>
+			<persName><forename type="first">Aldo</forename><surname>Pareja</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giacomo</forename><surname>Domeniconi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tengfei</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Toyotaro</forename><surname>Suzumura</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hiroki</forename><surname>Kanezashi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Kaler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Tao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><forename type="middle">E</forename><surname>Schardl</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Leiserson</surname></persName>
+		</author>
+		<ptr target="https://ojs.aaai.org/index.php/AAAI/article/view/5984" />
+	</analytic>
+	<monogr>
+		<title level="m">The Thirty-Fourth AAAI Conference on Artificial Intelligence, AAAI 2020, The Thirty-Second Innovative Applications of Artificial Intelligence Conference, IAAI 2020, The Tenth AAAI Symposium on Educational Advances in Artificial Intelligence</title>
+		<meeting><address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2020-02-07">2020. February 7-12, 2020</date>
+			<biblScope unit="volume">2020</biblScope>
+			<biblScope unit="page" from="5363" to="5370" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">PyTorch: An Imperative Style, High-Performance Deep Learning Library</title>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Paszke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Gross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francisco</forename><surname>Massa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Bradbury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregory</forename><surname>Chanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Trevor</forename><surname>Killeen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zeming</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Natalia</forename><surname>Gimelshein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Antiga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alban</forename><surname>Desmaison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Kopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edward</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zachary</forename><surname>Devito</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Raison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alykhan</forename><surname>Tejani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sasank</forename><surname>Chilamkurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benoit</forename><surname>Steiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lu</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junjie</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soumith</forename><surname>Chintala</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2019/file/bdbca" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<meeting><address><addrLine>USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="8024" to="8035" />
+		</imprint>
+	</monogr>
+	<note>288fee7f92f2bfa9f7012727740-Paper.pdf</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<author>
+			<persName><surname>Pytorch</surname></persName>
+		</author>
+		<ptr target="https://pytorch.org/tutorials/recipes/recipes/profiler_recipe.html" />
+		<title level="m">PyTorch: Pytorch profiler</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<monogr>
+		<title level="m" type="main">NetworkRepository: A Graph Data Repository with Visual Interactive Analytics</title>
+		<author>
+			<persName><forename type="first">Ryan</forename><forename type="middle">A</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nesreen</forename><forename type="middle">K</forename><surname>Ahmed</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1410.3560</idno>
+		<ptr target="http://arxiv.org/abs/1410.3560" />
+		<imprint>
+			<date type="published" when="2014">2014. 2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">The Network Data Repository with Interactive Graph Analytics and Visualization</title>
+		<author>
+			<persName><forename type="first">Ryan</forename><forename type="middle">A</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nesreen</forename><forename type="middle">K</forename><surname>Ahmed</surname></persName>
+		</author>
+		<ptr target="http://www.aaai.org/ocs/index.php/AAAI/AAAI15/paper/view/9553" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-Ninth AAAI Conference on Artificial Intelligence</title>
+		<editor>
+			<persName><forename type="first">Blai</forename><surname>Bonet</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sven</forename><surname>Koenig</surname></persName>
+		</editor>
+		<meeting>the Twenty-Ninth AAAI Conference on Artificial Intelligence<address><addrLine>Austin, Texas, USA; USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2015-01-25">2015. January 25-30, 2015</date>
+			<biblScope unit="page" from="4292" to="4293" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">PyTorch Geometric Temporal: Spatiotemporal Signal Processing with Neural Machine Learning Models</title>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Benedek Rozemberczki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixuan</forename><surname>Scherer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Panagopoulos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maria</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oliver</forename><surname>Astefanoaei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ferenc</forename><surname>Kiss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guzmán</forename><surname>Beres</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>López</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rik</forename><surname>Collignon</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sarkar</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3459637.3482014</idno>
+		<ptr target="https://doi.org/10.1145/3459637.3482014" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 30th ACM International Conference on Information and Knowledge Management (Virtual Event, Queensland, Australia) (CIKM &apos;21)</title>
+		<meeting>the 30th ACM International Conference on Information and Knowledge Management (Virtual Event, Queensland, Australia) (CIKM &apos;21)<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="4564" to="4573" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Foundations and modeling of dynamic networks using dynamic graph neural networks: A survey</title>
+		<author>
+			<persName><forename type="first">Joakim</forename><surname>Skarding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bogdan</forename><surname>Gabrys</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katarzyna</forename><surname>Musial</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Access</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="79143" to="79168" />
+			<date type="published" when="2021">2021. 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Cambricon-G: A polyvalent energy-efficient accelerator for dynamic graph neural networks</title>
+		<author>
+			<persName><forename type="first">Xinkai</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tian</forename><surname>Zhi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhe</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhenxing</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xi</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xing</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zidong</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunji</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems</title>
+		<imprint>
+			<biblScope unit="volume">41</biblScope>
+			<biblScope unit="page" from="116" to="128" />
+			<date type="published" when="2021">2021. 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Adaptive Load Balancing for Parallel GNN Training</title>
+		<author>
+			<persName><forename type="first">Qidong</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Da</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of MLSys Workshop on Graph Neural Networks and Systems (GNNSys). mlsys.org</title>
+		<meeting>MLSys Workshop on Graph Neural Networks and Systems (GNNSys). mlsys.org<address><addrLine>San Jose, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="1" to="8" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">CoGNN: Efficient Scheduling for Concurrent GNN Training on GPUs</title>
+		<author>
+			<persName><forename type="first">Qingxiao</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hailong</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruizhe</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Dun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mingzhen</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoyan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wencong</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yong</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhongzhi</forename><surname>Luan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Depei</forename><surname>Qian</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on High Performance Computing, Networking, Storage and Analysis</title>
+		<meeting>the International Conference on High Performance Computing, Networking, Storage and Analysis<address><addrLine>Dallas, Texas) (SC &apos;22; Los Alamitos, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE Press</publisher>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note>Article 39, 15 pages</note>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Dorylus: Affordable, Scalable, and Accurate GNN Training with Distributed CPU Servers and Serverless Threads</title>
+		<author>
+			<persName><forename type="first">John</forename><surname>Thorpe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yifan</forename><surname>Qiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Eyolfson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shen</forename><surname>Teng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guanzhou</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhihao</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinliang</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Keval</forename><surname>Vora</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ravi</forename><surname>Netravali</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Miryung</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guoqing</forename><forename type="middle">Harry</forename><surname>Xu</surname></persName>
+		</author>
+		<ptr target="https://www.usenix.org/conference/osdi21/presentation/thorpe" />
+	</analytic>
+	<monogr>
+		<title level="m">15th USENIX Symposium on Operating Systems Design and Implementation, OSDI 2021</title>
+		<imprint>
+			<publisher>USENIX Association, USA</publisher>
+			<date type="published" when="2021-07-14">2021. July 14-16, 2021</date>
+			<biblScope unit="page" from="495" to="514" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Graph Attention Networks</title>
+		<author>
+			<persName><forename type="first">Petar</forename><surname>Velickovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillem</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arantxa</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adriana</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>Liò</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=rJXMpikCZ" />
+	</analytic>
+	<monogr>
+		<title level="m">6th International Conference on Learning Representations, ICLR 2018</title>
+		<meeting><address><addrLine>Vancouver, BC, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018-04-30">2018. April 30 -May 3, 2018</date>
+			<biblScope unit="page" from="1" to="12" />
+		</imprint>
+	</monogr>
+	<note>Conference Track Proceedings. OpenReview.net, USA</note>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">PipeGCN: Efficient Full-Graph Training of Graph Convolutional Networks with Pipelined Feature Communication</title>
+		<author>
+			<persName><forename type="first">Youjie</forename><surname>Cheng Wan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cameron</forename><forename type="middle">R</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anastasios</forename><surname>Wolfe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nam</forename><forename type="middle">Sung</forename><surname>Kyrillidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yingyan</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lin</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=kSwqMH0zn1F" />
+	</analytic>
+	<monogr>
+		<title level="m">The Tenth International Conference on Learning Representations, ICLR 2022, Virtual Event</title>
+		<imprint>
+			<date type="published" when="2022-04-25">2022. April 25-29, 2022</date>
+			<biblScope unit="page" from="1" to="24" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">FlexGraph: A Flexible and Efficient Distributed Framework for GNN Training</title>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qiang</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianbang</forename><surname>Chao Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rong</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenyuan</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zihang</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingren</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zhou</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3447786.3456229</idno>
+		<ptr target="https://doi.org/10.1145/3447786.3456229" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Sixteenth European Conference on Computer Systems (Online Event, United Kingdom) (EuroSys &apos;21)</title>
+		<meeting>the Sixteenth European Conference on Computer Systems (Online Event, United Kingdom) (EuroSys &apos;21)<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="67" to="82" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">Deep Graph Library: Towards Efficient and Scalable Deep Learning on Graphs</title>
+		<author>
+			<persName><forename type="first">Minjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lingfan</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Da</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quan</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Gai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zihao</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mufei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinjing</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ziyue</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qipeng</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haibin</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junbo</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinyang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><forename type="middle">J</forename><surname>Smola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1909.01315</idno>
+		<ptr target="http://arxiv.org/abs/1909.01315" />
+		<imprint>
+			<date type="published" when="2019">2019. 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">GNNAdvisor: An Adaptive and Efficient Runtime System for GNN Acceleration on GPUs</title>
+		<author>
+			<persName><forename type="first">Yuke</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Boyuan</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gushu</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuangchen</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yufei</forename><surname>Ding</surname></persName>
+		</author>
+		<ptr target="https://www.usenix.org/conference/osdi21/presentation/wang-yuke" />
+	</analytic>
+	<monogr>
+		<title level="m">15th USENIX Symposium on Operating Systems Design and Implementation, OSDI 2021</title>
+		<editor>
+			<persName><forename type="first">Angela</forename></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Demke</forename><surname>Brown</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jay</forename><forename type="middle">R</forename><surname>Lorch</surname></persName>
+		</editor>
+		<meeting><address><addrLine>USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2021-07-14">2021. July 14-16, 2021</date>
+			<biblScope unit="page" from="515" to="531" />
+		</imprint>
+	</monogr>
+	<note>USENIX Association</note>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">GNNLab: A Factored System for Sample-Based GNN Training over GPUs</title>
+		<author>
+			<persName><forename type="first">Jianbang</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dahai</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoniu</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qiang</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rong</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenyuan</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingren</forename><surname>Zhou</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3492321.3519557</idno>
+		<ptr target="https://doi.org/10.1145/3492321.3519557" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Seventeenth European Conference on Computer Systems</title>
+		<meeting>the Seventeenth European Conference on Computer Systems<address><addrLine>Rennes, France; New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="417" to="434" />
+		</imprint>
+	</monogr>
+	<note>EuroSys &apos;22)</note>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">T-gcn: A temporal graph convolutional network for traffic prediction</title>
+		<author>
+			<persName><forename type="first">Ling</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yujiao</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pu</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Min</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haifeng</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Intelligent Transportation Systems</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="page" from="3848" to="3858" />
+			<date type="published" when="2019">2019. 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<monogr>
+		<title level="m" type="main">TGL: A General Framework for Temporal GNN Training on Billion-Scale Graphs</title>
+		<author>
+			<persName><forename type="first">Hongkuan</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Da</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Israt</forename><surname>Nisa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vasileios</forename><surname>Ioannidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Karypis</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2203.14883</idno>
+		<idno type="arXiv">arXiv:2203.14883</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2203" />
+		<imprint>
+			<date type="published" when="2022">2022. 2022. 14883</date>
+			<biblScope unit="page">2203</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">AliGraph: a comprehensive graph neural network platform</title>
+		<author>
+			<persName><forename type="first">Rong</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kun</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongxia</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chang</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baole</forename><surname>Ai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yong</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingren</forename><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the VLDB Endowment</title>
+		<meeting>the VLDB Endowment</meeting>
+		<imprint>
+			<date type="published" when="2019">2019. 2019</date>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="page" from="2094" to="2105" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

@@ -1,0 +1,1227 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">IRT2: Inductive Linking and Ranking in Knowledge Graphs of Varying Scale</title>
+				<funder ref="#_bkkuTBc">
+					<orgName type="full">BMBF program FH-Kooperativ</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2023-01-02">2 Jan 2023</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Felix</forename><surname>Hamann</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Adrian</forename><surname>Ulges</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Maurice</forename><surname>Falk</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">French</forename><surname>Dawn</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Stephen</forename><surname>Fry</surname></persName>
+						</author>
+						<title level="a" type="main">IRT2: Inductive Linking and Ranking in Knowledge Graphs of Varying Scale</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2023-01-02">2 Jan 2023</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">411C7E8E80D1FDBCB77DD23AE6157610</idno>
+					<idno type="arXiv">arXiv:2301.00716v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:45+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>Text Mining</term>
+					<term>Knowledge Graphs</term>
+					<term>NLP</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We address the challenge of building domain-specific knowledge models for industrial use cases, where labelled data and taxonomic information is initially scarce. Our focus is on inductive link prediction models as a basis for practical tools that support knowledge engineers with exploring text collections and discovering and linking new (so-called open-world) entities to the knowledge graph. We argue that -though neural approaches to text mining have yielded impressive results in the past years -current benchmarks do not reflect the typical challenges encountered in the industrial wild properly. Therefore, our first contribution is an open benchmark coined IRT2 (inductive reasoning with text) that (1) covers knowledge graphs of varying sizes (including very small ones), (2) comes with incidental, low-quality text mentions, and (3) includes not only triple completion but also ranking, which is relevant for supporting experts with discovery tasks.</p><p>We investigate two neural models for inductive link prediction, one based on end-to-end learning and one that learns from the knowledge graph and text data in separate steps. These models compete with a strong bag-of-words baseline. The results show a significant advance in performance for the neural approaches as soon as the available graph data decreases for linking. For ranking, the results are promising, and the neural approaches outperform the sparse retriever by a wide margin.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Knowledge graphs (KG) are known to be powerful tools in various applications such as web search or personal assistants. They are key to addressing complex information needs that require reasoning and cannot be answered with simple text matching. Usually, knowledge graphs are assumed to be available at large scale <ref type="bibr" target="#b15">[Ho21]</ref>, examples include the Linked Open Data Cloud2 or KGs in biomedicine <ref type="bibr" target="#b16">[HSG15]</ref>. However, knowledge graphs may also be interesting in other industries where no large-scale knowledge exists yet, be it in the technical service, where KGs can help reason about the root causes of machine failures, in insurance, where they can model the details of a contract, or in finance rating, where they capture businesses' supply chains. Explicit knowledge is scarce in these domains. However, what is often commonly available in abundance is text data, such as service tickets, insurance claims, or business reports.</p><p>Fig. <ref type="figure">1</ref>: Our two-step approach towards interactive knowledge acquisition: First, the user discovers sentences containing relevant entities (Discovery/Ranking, left). Second, given a mention of interest, triples for this mention are suggested as if it was an entity (Linking, right).</p><p>The focus of this paper is to support experts with building knowledge graphs by inspecting text. To do so, we assume that the expert adds triples to the graph in an iterative process, in which he/she locates and identifies new entities in the text collection and links them to the graph. We address two key steps of this process, as illustrated in Figure <ref type="figure">1:</ref> 1.</p><p>Discovery/Ranking: The expert explores the text collection based on a partial fact of the KG (i.e. a relation-vertex tuple). He/she specifies an information need (such as "find me actors", or more specifically "find sentences likely to contain mentions of entities which have the relation profession with the known entity actor"). The system returns a ranked list of potentially interesting sentences, giving rise to a ranking task.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>2.</head><p>Linking: The expert studies the sentences. Once he/she has discovered an interesting entity 𝑥 (such as Frances McDormand), we would like to link 𝑥 to the graph by adding triples, not only via the profession relation but also via other relations (such as the birthplace, languages she speaks, or movies she appeared in). To do so, the system collects textual evidence on the entity in form of other mentions in the text collection. From those, it infers triples that link 𝑥 to the knowledge graph.</p><p>We address both tasks using embedding-based semi-inductive <ref type="bibr" target="#b1">[Al21]</ref> open-world <ref type="bibr" target="#b31">[SW17]</ref> link prediction, which is targeted at predicting the likelihood of triples (ℎ, 𝑟, 𝑡). In contrast to standard link prediction, semi-inductive link prediction addresses new entities to be linked to the known graph and the open-world scenario connotes that the new entities are solely described via free text.</p><p>Since domain-specific data is often confidential, link prediction research employs open data from graphs such as Freebase <ref type="bibr" target="#b4">[Bo08]</ref> or Wikidata <ref type="bibr" target="#b36">[VK14]</ref>. We argue that the insight these benchmarks offer for industrial knowledge acquisition is limited, and contribute a new benchmark called Inductive Reasoning with Text V2 (IRT2) with the following benefits3:</p><p>(1) To assess models at different stages of graph construction, we benchmark on graphs of varying size. (2) While text contexts in other datasets consist of concise descriptions of entities, text in practice contains rather incidental mentions of entities. We sample our text data accordingly.</p><p>(3) To our knowledge, our study is the first to not only address the linking task but also the ranking task.</p><p>We evaluate three inductive link models on IRT2: One baseline based on keyword matching, and two neural models that combine a transformer text encoder with a link predictor. We show that the end-to-end approach and separate training both work well, while the latter generally performs a little better (even for small graphs). Also, only through evaluation on smaller graphs, the baseline model is outperformed when linking, which favours the neural models in scenarios where structured data becomes sparse.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>Link Prediction Models: Closed-world link prediction (or also knowledge graph completion, KGC) has attracted interest in the research community over the past years. Earlier approaches such as RESCAL <ref type="bibr" target="#b22">[NTK11]</ref>, TransE <ref type="bibr" target="#b5">[Bo13]</ref>, and DistMult <ref type="bibr" target="#b39">[Ya14]</ref> laid the foundations for many following completion models such as ComplEx <ref type="bibr" target="#b33">[Tr16]</ref>, ConvE <ref type="bibr" target="#b8">[De18a]</ref>, RotatE <ref type="bibr" target="#b29">[Su19]</ref>,</p><p>or KBGAT <ref type="bibr" target="#b21">[Na19]</ref>. We are, however, interested in open-world scenarios, where, given a textual description of an entity, geometric reasoning is applied through the alignment of dense graph-and text-representations. This combines KGC-which aims at the prediction of missing links between existing entities-with language modelling [Mi13, <ref type="bibr" target="#b6">Bo16,</ref><ref type="bibr" target="#b9">De18b]</ref> which produces dense vector representations for natural language text. Specifically, in this work, a semi-inductive setting <ref type="bibr" target="#b1">[Al21]</ref> is studied, where out-of-kg entities are to be linked to an existing graph using their textual description. One of the first approaches to combining language-and graph-reasoning models is NTN <ref type="bibr" target="#b28">[So13]</ref>, where entity description embeddings are trained to be similar if their entities are connected in the KG. Later approaches build on this idea: DKRL <ref type="bibr" target="#b38">[Xi16]</ref>, ConMask <ref type="bibr" target="#b31">[SW17]</ref>, MIA <ref type="bibr" target="#b12">[Fu20]</ref>, and KEPLER <ref type="bibr" target="#b37">[Wa21]</ref> introduce models that jointly learn the connection between entity and graph representations. A different approach decouples the KGC scorer and text encoder such that first the scorer is trained independently and in a separate step a projection from text-based entity descriptions to their associated graph-based embeddings is learned [Sh19, SVU20, ZSH20]. We study and compare both approaches with the models described in Sect. 4. Highly related to our work is the recently published approach by Daza et al <ref type="bibr" target="#b7">[DCG21]</ref>. Here, a BERT model (BLP) is trained to directly score KGC triples for plausibility using the textual representations instead of training a separate entity embedding. However, we cannot rely on high quality text and thus a separate entity embedding tuned with many different observations for input text is more suitable.</p><p>KGC Benchmarks: Closed-world KGC models are usually evaluated on subsets of publicly available knowledge graphs such as Freebase <ref type="bibr" target="#b4">[Bo08]</ref>, DBPedia <ref type="bibr" target="#b3">[Au07]</ref> or Wikidata <ref type="bibr" target="#b36">[VK14]</ref>. Famous benchmarks include FB15K <ref type="bibr" target="#b5">[Bo13]</ref>, succeeded by FB15k237 <ref type="bibr" target="#b32">[TC15]</ref>  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Problem Description</head><p>We define a knowledge graph (KG) as a directed graph G = (V, R, T , M, C) where V is the set of vertices 𝑣 (e.g. 𝑣 = Fargo) and R a set of relation types (e.g. 𝑟 = genre).</p><p>Triples (ℎ, 𝑟, 𝑡) ∈ T ⊆ V × R × V connect the vertices, e.g. (Fargo, genre, Thriller Film). Additionally, the set M contains textual mentions, each associated with a vertex via a function 𝑀 : V ↦ → P (M). For example, the entity v=Thriller Film has the mentions M(v) = { "crime thriller", . . . , "gangster film" }. Note that mentions can be ambiguous (e.g. "the film" as mention of Fargo). Furthermore, each of the mentions 𝑚 is assumed to occur in textual context sentences 𝑐 from a corpus C. In general, these contexts do not express triples but solely contain incidental mentions of entities. They are accessible through a function 𝐶 : V × M ↦ → P (C). For example, with 𝑣 = Crime Film and 𝑚 = "gangster film": 𝐶 (𝑣, 𝑚) = { "Corman called it the most accurate, authentic gangster film" , . . . }. Note that -via M and C -we can access an entity's mentions and contexts, and vice versa.</p><p>Open/Closed-World: While the text corpus C contains known (or "closed-world") entities, a second corpus Q contains undiscovered open-world mentions M 𝑜 . Our goal is to discover these and link them to the graph. We define a closed-world graph G 𝑐 (containing subsets of the respective sets of G and the text corpus C) and an open-world graph</p><formula xml:id="formula_0">G 𝑜 = (V 𝑜 , R, T 𝑜 , M 𝑜 , Q) with V 𝑜 ⊆ V, T 𝑜 ⊆ T , M 𝑜 = M \ M 𝑐 :</formula><p>Namely a graph with a set of undiscovered mentions not known in the closed-world graph G 𝑐 . This gives rise to the two tasks we address:</p><p>Ranking Task: The first task is to retrieve text contexts from Q which contain mentions of interest, i.e. unknown mentions of (possibly unseen) entities which should complete a given entity-relation pair. For example, for relation 𝑟 = genre and tail 𝑡 = crime film, we search for text contexts where any crime films are mentioned.</p><p>Linking Task: Now, given an open-world mention was just discovered and marked, all text contexts of Q are bundled by mention. For each such bundle of text, links 𝑟 ∈ R to the graph vertices 𝑉 𝑐 must be found. For example: "What genre is associated with all text contexts that contain the mention fargo?".</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Models</head><p>We tackle the above tasks with three models: (1) JOINT, where a text encoder and a knowledge graph completion (KGC) scorer are trained jointly, (2) OWE, where an encoder learns to project text representations into a pre-trained graph embedding space, and (3) BOW, a model that employs bag-of-words representations for text similarity. All three models are evaluated on both the ranking and linking tasks. Note that, although our notation is (for brevity) generally focused on finding tails, we do also always include head-prediction for given relation-tail pairs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Neural Models</head><p>Both neural models combine a text encoder 𝜙 and a KGC module 𝜓 (see Fig. <ref type="figure">2</ref>). As a text encoder, we use a pre-trained BERT <ref type="bibr" target="#b9">[De18b]</ref>, a popular state of the art transformer <ref type="bibr" target="#b34">[Va17]</ref> encoder. Given a text context 𝑐, we run it through the encoder and select the [CLS]token embedding as the context representation 𝜙(𝑐) CLS ∈ R 𝑑 (following the observations of <ref type="bibr" target="#b14">[Ha21]</ref>). This representation is mapped using a learned affine projection (𝑊, b) into a complex-valued space, obtaining a representation c. The representation is then used to estimate a tripel's plausibility. We use the ComplEx scorer <ref type="bibr" target="#b33">[Tr16]</ref>, which, given complexvalued context, relation and tail embeddings c, r, v ∈ C 𝑑 , calculates the plausibility score as 𝜓(𝑐, 𝑟, 𝑣) = Re(c r v). Note that-since the projection maps from real-valued to complex space-we choose the matrix and bias vector dimensions accordingly</p><formula xml:id="formula_1">(𝑊 ∈ R 𝑑 ×2𝑑 , b ∈ R 2𝑑 ).</formula><p>Overall, our neural models can be written as:</p><formula xml:id="formula_2">𝑠(𝑐, 𝑟, 𝑣) = 𝜓( 𝑊 • 𝜙(𝑐) CLS + b c , r, v )<label>(1)</label></formula><p>Multi-Context Extension As discussed above, instead of a single context 𝑐, a set Σ of multiple contexts may be available describing the same entity. We would like our entity representations to take the whole set Σ into account. To do so, we use a simple early fusion that averages the text representations before projecting them: We then use the resulting representation c as a drop-in replacement in Equation (1).</p><formula xml:id="formula_3">c = 𝑊 • 1 |Σ| ∑︁ 𝑐 ∈Σ 𝜙(𝑐) CLS + b<label>(2)</label></formula><p>Concerning training, we use two variants of this setup: In the first variant (referred to as single), training happens on individual contexts as in Equation ( <ref type="formula" target="#formula_2">1</ref>), but we apply Equation (2) in inference. In the second variant (multi), we apply Equation (2) both in training and inference.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Training</head><p>As illustrated in Figure <ref type="figure">2</ref>, we study two different training strategies to fit the model parameters (text encoder 𝜙, projection 𝑊, b, and knowledge graph embeddings r, v). Our first approach uses a joint (end-to-end) training (JOINT): We iteratively sample a random entity 𝑣 from the knowledge graph. For 𝑣, we draw a random triple (𝑣, 𝑟, 𝑣 ) and context 𝑐. The model's scores 𝑠(𝑐, 𝑟, 𝑣 ) are mapped to a probability distribution using a softmax, and we apply a cross-entropy loss:</p><formula xml:id="formula_4">L JOINT = - ∑︁ 𝑣 ∈V 𝑐 log exp(𝑠(𝑐, 𝑟, 𝑣 )) 𝑢 ∈V 𝑐 exp(𝑠(𝑐, 𝑟, 𝑢 )) • 1 (𝑣,𝑟 ,𝑣 ) ∈T<label>(3)</label></formula><p>Note that -though the above notation samples triples (𝑣, 𝑟, 𝑣 ) to predict tails 𝑣 -we also sample triples (𝑣 , 𝑟, 𝑣) and predict the heads 𝑣 accordingly. </p><formula xml:id="formula_5">L OWE = 1 2𝑑 • ∑︁ 0&lt;𝑖 ≤𝑑 Re(c 𝑖 ) -Re(v 𝑖 ) 2 + Im(c 𝑖 ) -Im(v 𝑖 ) 2<label>(4)</label></formula><p>Inference: This section outlines how the neural models are used in our two tasks. First, in ranking, a closed-world entity 𝑣 and a relation of interest 𝑟 are given, and the task is to retrieve a ranked list of text contexts from the query corpus Q that potentially contain mentions of relevant open-world entities to be identified by the expert. To do so, we compute the single-context scores 𝑠(𝑐, 𝑟, 𝑣) for all contexts 𝑐 ∈ 𝑄, 𝑟 ∈ R and 𝑣 ∈ V 𝑐 . The scores are normalized per relation using the softmax function as to better compare the independently scored contexts 𝑐 (the raw ComplEx scores are unbounded). The contexts in the query corpus are then ranked by this normalized score.</p><p>Second, in linking, the expert is interested in a certain mention of interest 𝑚 ∈ M 𝑜 representing an open-world entity. His/her goal is to link said entity to the graph. To do so, he/she selects a relation 𝑟 ∈ R and collects a set of contexts Σ containing 𝑚 to describe the open-world entity. Using the contexts, all entity candidates 𝑣 ∈ V 𝑐 are ranked by their scores 𝑠(Σ, 𝑟, 𝑣). Note that in principle we can repeat this procedure for each relation and also for predicting heads instead of tails.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">BOW: Bag-of-Words Retrieval</head><p>To evaluate the tasks at hand with a common industrial approach, we compare the above neural models with a bag-of-words approach. Given one or several mentions, this approach concatenates text contexts containing the mentions into documents and then conducts a similarity matching between documents using the well-known BM25 <ref type="bibr" target="#b25">[RW94]</ref> keyword matching implemented by the Elasticsearch search engine4.</p><p>Ranking: Given an entity relation pair such as 𝑣 = Thriller Film, 𝑟 = genre ("Find text contexts which mention thriller films"), the baseline's strategy is to find open-world entities that are similar to known closed-world entities 𝑣 for which (𝑣 , 𝑟, 𝑣) holds (i.e., known thriller films). We sample a set of random representatives 𝑣 and some of their associated text contexts. These contexts are concatenated into a document which is then used as a query against an index containing all open-world contexts Q.</p><p>Linking: Given a mention 𝑚 ∈ M 𝑜 and a relation 𝑟, we sample contexts containing 𝑚 into a document 𝐷 (𝑚), which is used to query against an index containing documents 𝐷 (𝑣) for all closed-world vertices 𝑣 ∈ V 𝑐 . The top-n predicted results allow us to compile a set of reference vertices which we use as blueprints for prediction. For example: When searching for 𝑟 = profession of text contexts containing "s. a. corey" ("Predict the profession of the text contexts containing s. a. corey"), the result list may contain other texts describing authors. The final prediction of vertices is compiled from the retrieved vertices targets of relation 𝑟 and scored by the inverse of the position of the document in the result list.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Benchmark Construction</head><p>Our benchmark picks up the work of <ref type="bibr" target="#b14">[Ha21]</ref> and extends it: (1) We study the behaviour of models with varying knowledge graph size, and particularly for small graphs, (2) we test models for both the ranking and linking task. We offer four variants of the benchmark: tiny, small, medium, and large. The variants offer different ratios of structural information (i.e. graph triples) and associated text. The datasets are based on CoDEx-M [SK20] which is sampled from Wikidata <ref type="bibr" target="#b36">[VK14]</ref>. The following steps are executed:</p><p>1. Identifying Concept Vertices: We assume that in a real-world scenario world-knowledge is more likely to be already modelled in the given KG. Information to be discovered is usually much more volatile. Consider for example a graph for a machine manufacturer. We know that things can catch fire (the world knowledge) but we aim to find the specific parts that actually do. A heuristic to identify such world knowledge is based on the assumption that such entities are characterised by relations which exhibit a strong disproportion between their heads and tails. The ratio between a relation 𝑟's domain size (its number of heads) dom(𝑟) := |{ℎ | ∃ 𝑡 : (ℎ, 𝑟, 𝑡) ∈ T }| and the range size (its number of tails) rg(𝑟) := |{𝑡 | ∃ ℎ : (ℎ, 𝑟, 𝑡) ∈ T }| is min dom(𝑟), rg(𝑟) /max dom(𝑟), rg(𝑟) . Per size variant of the dataset, we select a subset of the relations offered by CoDEx, order by ratio and select a subset of those to determine concept entities that will remain in the closed-world split. The appendix in Sect. 9 enumerates all relations and corresponding selections in greater detail.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Sampling Mentions and Text Contexts:</head><p>As our graph is based on Wikidata, we can exploit its links to Wikipedia. For each vertex 𝑣, we identify the associated Wikipedia page 𝑝 𝑣 and all pages which link back to it N ( 𝑝 𝑣 ). Using the link text of the hyperlinks, we build the set of mentions which are associated with the vertex 𝑀 (𝑣). Lastly, to build the contexts 𝐶 (𝑣, 𝑚), all occurrences of the mentions in N ( 𝑝 𝑣 ) are identified and the surrounding sentence kept as context. This is a heuristic to obtain incidental text contexts: The entity is mentioned but usually not the subject of the sentence. As example for 𝑣 = Scotland: "Aberdeen is a city in northeast Scotland".</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Open/Closed-World Split:</head><p>The open/closed-world split, in this case, is not done on vertex but mention level. We separate the mention set M into a partition M 𝑐 for closed-worldand M 𝑜 for open-world mentions respectively. First, all mentions associated with concept entities are set aside for the closed-world part. Then, for each remaining vertex 𝑣, its associated mentions are distributed randomly between open-and closed-world. We set an additional pruning parameter which limits the maximum amount of mentions allowed for a closed-world vertex. With the information about closed-world mentions, we identify all triples whose vertices are associated with them and set them aside as the closed-world triple set T 𝑐 ⊆ T . The so-called test triples The last four rows of the table describe the scale of the challenges. A ranking query is a tuple (𝑣 ∈ V 𝑐 , 𝑟 ∈ R) (e.g. (writer, profession) -"Find texts with writers in them") and an associated ground truth set of open-world mentions {𝑚 1 , . . . } ∈ 𝑀 𝑜 to be discovered (e.g. { "Tolkiens", "the author", "Corey", . . . }). A linking query is a tuple (𝑚 ∈ 𝑀 𝑜 , 𝑟 ∈ R) (e.g. ("Tolkiens", profession) -"What professions does the entity have, given texts in which "Tolkiens" occurs?") and a set of associated closed-world vertices 𝑣 ∈ V 𝑐 (e.g. { author, linguist, . . . }). One can see that both ranking and linking are different views of the same data: unique (𝑚 ∈ 𝑀 𝑜 , 𝑟 ∈ R, 𝑣 ∈ V 𝑐 ) triples. These triples are presented as test triples in the table above and allow to gauge the ratio of the queries and their associated ground truth. For example, in the most extreme case, ranking on the tiny variant, has 102866/695 ≈ 148 mentions to discover per query on average.</p><formula xml:id="formula_6">(𝑚 ∈ M 𝑜 , 𝑟 ∈ R, 𝑣 ∈ V 𝑐 ) (explained</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Experiments</head><p>We run a series of experiments to build a solid understanding of the challenge's difficulty. We employ all three formerly described models (JOINT, OWE, BOW) for both tasks (ranking, linking) on all four splits (tiny, small, medium, and large). We measure hits@k and the mean reciprocal rank (MRR) for each test triple (i.e. micro-averaged). Following common practice, we apply target filtering <ref type="bibr" target="#b26">[Sh19]</ref> to the scored predictions (mentions for ranking and vertices for ranking). Target filtering is a method where, for a given ranking, only a single true positive of interest is inspected, while all other true positives are removed from the list. This helps to not artificially worsen the result for rankings with many true positives.</p><p>We offer the datasets, dataset creation code, and evaluation protocol online5. The model implementations and all presented trained models are also supplied separately6. We evaluate our models on a subset of the test text contexts Q (400k sentences drawn randomly for ranking; 100 sentences per mention for linking).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1">Hyperparameters</head><p>We determine the final hyperparameters using a combination of random-, and grid searches over the parameter space. A single closed-world ComplEx model is trained per dataset split and commonly used to train the OWE model using Adagrad <ref type="bibr" target="#b10">[DHS11]</ref>. The hyperparameters studied comprise learning rate, L2 regularization weight, and embedding space dimensions. We employ PyKEEN <ref type="bibr" target="#b0">[Al20]</ref> for training and build our own open-world extension. We implement and train the JOINT and OWE models using PyTorch <ref type="bibr" target="#b23">[Pa19]</ref> and PyTorch Lightning <ref type="bibr" target="#b11">[FT19]</ref>. Models are optimized using Adam <ref type="bibr" target="#b17">[KB14]</ref>. For each model architecture and dataset split, we run a random parameter sweep to fix a subset of parameters and subject the remaining to a grid search. We study the effect of regularization of the entity and relation embeddings, weight-decay and learning rate of the optimizer, how many layers of the encoder are frozen during training, how many text contexts are sampled per vertex per training, and whether the mention is masked during training. Additionally, we study how many contexts to provide per optimizer step for multi-context models. Generally, all models share a similar set of values for learning-rate, weight-decay and regularization weight. The other parameters are dependent on the split. We found to freeze parts of the encoder works well against overfitting. Contrary to the observations of <ref type="bibr" target="#b14">[Ha21]</ref>, masking did not significantly increase model performance. The final hyperparameters are provided in the appendix (Sect. 9) and with the models online.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2">Linking</head><p>First, we evaluate the linking task as the designated challenge for the presented models.</p><p>Tab. 1 details our findings. Generally, a few trends can be observed: (1) The neural models significantly outperform the baseline approach on the three smaller variants but yield inferior results on the large dataset. This supports our claim that a benchmark should offer insights into varying degrees of structural data scarcity. Even with an abundance of data (usually favouring neural approaches), the BOW baseline can beat the neural model's performance on large but falls short for the smaller variants. (2) Overall, the OWE approach outperforms JOINT albeit not by a great margin for tiny, small, and large. The biggest performance gap can be observed on medium, where the OWE model profits the most from the decoupled training. We argue that this hints towards the need for better sampling/overfitting strategies during training for JOINT as it seems to struggle with the lower variety of mentions seen during training.</p><p>(3) Although the multi-context models generally perform better than the single-context counterparts, the difference in performance is not as pronounced as reported by <ref type="bibr" target="#b14">[Ha21]</ref>. Contrary to their findings we also did not observe much performance improvement through masking the mention. These observations indicate that both models struggle to incorporate much of the textual clues and instead rely heavily on the structural information present in the vertex-and relation embeddings. Overall, the metrics show that the models can link an entity described by text contexts to a given graph with relatively high precision. Tab. 1: Model performance on the linking task. The bag-of-words model outperforms the neural approaches on the large dataset. The neural models both outperform the baseline on the smaller variants by a large margin. Among the neural models, OWE generally yields better performance on all splits.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.3">Ranking</head><p>Secondly, for ranking, we study whether the models which were originally trained to do link-prediction can be employed for discovery, too. We report the hits@100 performance in Tab. 2. (1) The results show that the scoring mechanism of the neural models outperforms the BM25 search results. At first glance, this is a surprising insight, but can be explained by the nature of text samples. As the mention of interest is usually not the subject of the text context, the query does not directly describe its properties. This leads the ranker astray.</p><p>For example: searching for other comedians (i.e. ?, profession, comedian) the model uses text samples sampled from the Wikipedia page about New York among others. This leads to other text samples to be retrieved which also talk about things in the context of New York but seldom other comedians. This contextualization of queries (by queried relation) is better considered with the neural models. (2) Overall ranking quality is not high enough for practical application.</p><p>We suspect two main factors which hinder effective ranking: First, the scores are calculated independently from each other. This makes an intra-sample comparison of scores difficult. Secondly, the ranking task requires scores first and foremost produced by head prediction. These scores usually are of lower quality because the models are much better at predicting a few biased tails (e.g. professions) than hundreds or thousands of volatile heads (e.g. authors). This is worsened by the formerly described observation that text contexts have a comparatively small influence on the score. To obtain better performance, new approaches must be devised which incorporate the graph context on the one hand and neural semantic retrieval [MC17, LNY21] on the other.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Conclusion</head><p>We present IRT2, a benchmark to study a knowledge acquisition pipeline to extend a knowledge graph (KG) from noisy text. We offer knowledge graphs of different sizes and text associated with its vertices. The benchmark comprises two tasks, ranking and linking, where first, entities need to be discovered from unlabelled text, and in the second stage, linked to the KG. Alongside, we study three approaches for the tasks at hand: two neural open-world triple scorers and a bag-of-words model. We found the models to perform well for the linking task but less so for ranking. For linking, the BOW baseline outperforms the neural models on the large variant. For the remaining, smaller variants, the OWE approach outperforms all other approaches even if graph data is scarce. For ranking, the JOINT model produces the best results. Although the models show a promising direction to be used for ranking, they do not perform at the level for practical application yet. We recommend studying how semantic ranking techniques can profit from the given links between graphand text data. We invite the community to use the benchmark to (1) devise ways to better incorporate the noisy but abundant text data to make better predictions, (2) find ways to contextualize semantic retrievers with the specific graph information, and (3) derive insights for application in an industrial context with similar constraints and conditions. The dataset and evaluation scripts can be found here: https://github.com/lavis-nlp/irt2.  ) and associated text. The resulting triple split behaves correspondingly to the mention split with a proportional behaviour between training/test data. The overall triple count more than doubles between T and L. Associated text data increases with respect to the increase in closed-world mentions.</p><p>The following table shows all relations present in CoDEx ordered by ratio as described in 5.</p><p>On the right-hand side, it is detailed which relations are present in which dataset variant. The respective right side shows whether it is selected to remain in the dataset. The left side marks whether the relation was selected to pick concept entities.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>Fig. 2: Data flow in our model (top) and the two training strategies (bottom): Strategy 1 (JOINT) applies an end-to-end training of both link predictor and text encoder. Strategy 2 (OWE) first trains the link predictor (2a), and then aligns the text-based entity representations c with the graph-based ones v (2b). Learnable parameters are highlighted in orange.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head></head><label></label><figDesc>Our second approach follows Shah et al's OWE model<ref type="bibr" target="#b26">[Sh19]</ref> and applies a separate training. Here, training happens in two steps: First, the link prediction model 𝜓 is trained on the closed-world graph, obtaining a graph-based embedding space. Second, the text encoder 𝜙 and projection (𝑊, b) are trained to align entities' text-based representations with the (now fixed) graph-based ones. To do so, we reduce the geometric distance between context representations c = 𝑊 • 𝜙(𝑐) 𝐶 𝐿𝑆 + b and their associated graph-based representations, using a mean squared error loss:</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>below the table) are derived directly from the triple set T by identifying in which triples the mention's vertex occurs. We set aside a subset of the open-world split for validation. The above steps are executed for the four different dataset variants. These have different parameters set for concept relations, total relations to keep and closed-world mention pruning (see the appendix for more details).</figDesc><table><row><cell></cell><cell>Tiny</cell><cell>Small</cell><cell>Medium</cell><cell>Large</cell></row><row><cell>Relations | R |</cell><cell>5</cell><cell>12</cell><cell>45</cell><cell>45</cell></row><row><cell>Entities | E |</cell><cell>1,174</cell><cell>2,887</cell><cell>3,592</cell><cell>9,952</cell></row><row><cell>Training Triples | T 𝑐 |</cell><cell>2,928</cell><cell>7,527</cell><cell>26,335</cell><cell>102,289</cell></row><row><cell>Training Text | C |</cell><cell>9,100,422</cell><cell>15,117,184</cell><cell>17,398,943</cell><cell>18,654,485</cell></row><row><cell>Test Text | Q |</cell><cell>6,058,557</cell><cell>2,390,017</cell><cell>1,905,151</cell><cell>864,598</cell></row><row><cell>Ranking Queries</cell><cell>695</cell><cell>1,225</cell><cell>4,972</cell><cell>7,336</cell></row><row><cell>Linking Queries</cell><cell>47,857</cell><cell>52,654</cell><cell>97,921</cell><cell>48,801</cell></row><row><cell>Test Triples</cell><cell>102,866</cell><cell>102,616</cell><cell>174,312</cell><cell>90,780</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head></head><label></label><figDesc>Results for the ranking task. The neural models all outperform the baseline and, contrary to the linking task, the multi-context JOINT model is generally the best performing approach.</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell cols="2">HITS@100</cell><cell></cell></row><row><cell></cell><cell></cell><cell cols="4">Tiny Small Med. Large</cell></row><row><cell>BOW</cell><cell></cell><cell>2.86</cell><cell>4.29</cell><cell>6.42</cell><cell>14.83</cell></row><row><cell cols="2">JOINT single</cell><cell>7.91</cell><cell>6.78</cell><cell>6.37</cell><cell>19.47</cell></row><row><cell cols="2">JOINT multi</cell><cell>13.28</cell><cell cols="2">16.17 14.38</cell><cell>30.68</cell></row><row><cell>OWE</cell><cell>single</cell><cell>6.30</cell><cell>8.19</cell><cell>6.88</cell><cell>10.81</cell></row><row><cell>OWE</cell><cell>multi</cell><cell>9.98</cell><cell>13.00</cell><cell>6.36</cell><cell>31.40</cell></row><row><cell>Tab. 2:</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head></head><label></label><figDesc>This appendix details configuration options used for benchmark construction and model training in detail to allow for the reproduction of the reported results.The final benchmark proportions rely heavily on the selected relations and pruning options for construction. The following table enumerates both the configuration which was used for sampling and the resulting key figures for the training, validation and test splits. Relations are picked manually per split, are ordered by their ratio and a subset is selected as concept relations. The Closed World Threshold determines how many mentions per relation are retained at most in the closed world split. The Mention Threshold says to keep only mentions with at least that many associated text contexts. Validation-and Test Vertex Triples are the triple sets (vertex, relation, vertex) from which the final Task Triples are derived (mention, relation, vertex). They are pruned by filtering out true open-world vertices (the necessary zero-shot entity linking is out of scope for the presented tasks)-which explains the decrease that can be observed for the tiny variant. The above figures detail the shift in proportions between the dataset variants. The test mention counts decrease proportionally to the increase in training. Concept mention count increases and is equal for M and L. The proportion concept mentions decreases with increasing dataset size. Correspondingly, validation text context counts stay constant while an increase in training data decreases available test data. The bar plots above report the absolute counts of triples (called Vertex Triples in the former table</figDesc><table><row><cell>9.1 Benchmark</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Split</cell><cell>Tiny</cell><cell>Small</cell><cell>Medium</cell><cell>Large</cell></row><row><cell>Concept Relations</cell><cell>4</cell><cell>8</cell><cell>27</cell><cell>27</cell></row><row><cell>Total Relations</cell><cell>5</cell><cell>12</cell><cell>45</cell><cell>45</cell></row><row><cell>Closed World Threshold</cell><cell>400</cell><cell>800</cell><cell>800</cell><cell>-</cell></row><row><cell>Target Mention Split</cell><cell>70%</cell><cell>70%</cell><cell>70%</cell><cell>70%</cell></row><row><cell>Target Validation Split</cell><cell>10%</cell><cell>20%</cell><cell>20%</cell><cell>80%</cell></row><row><cell>Mention Threshold</cell><cell>5</cell><cell>5</cell><cell>5</cell><cell>5</cell></row><row><cell>Concept Vertices</cell><cell>471</cell><cell>962</cell><cell>2,200</cell><cell>2,200</cell></row><row><cell>Training Vertices</cell><cell>1,174</cell><cell>2,887</cell><cell>3,592</cell><cell>9,952</cell></row><row><cell>Training Mentions</cell><cell>4,945</cell><cell>9,231</cell><cell>14,417</cell><cell>22,866</cell></row><row><cell>Training Triples</cell><cell>2,928</cell><cell>7,527</cell><cell>26,335</cell><cell>102,289</cell></row><row><cell>Training Text Contexts</cell><cell cols="4">9,100,422 15,117,184 17,398,943 18,654,485</cell></row><row><cell>Validation Vertices</cell><cell>1,741</cell><cell>3,375</cell><cell>3,279</cell><cell>2,644</cell></row><row><cell>Validation Mentions</cell><cell>1,894</cell><cell>3,870</cell><cell>3,649</cell><cell>2,940</cell></row><row><cell>Validation Vertex Triples</cell><cell>13,639</cell><cell>24,764</cell><cell>43,532</cell><cell>35,209</cell></row><row><cell>Validation Task Triples</cell><cell>11,588</cell><cell>25,722</cell><cell>43,716</cell><cell>38,582</cell></row><row><cell>Validation Text Contexts</cell><cell>850,351</cell><cell>597,050</cell><cell>505,979</cell><cell>383,351</cell></row><row><cell>Test Vertices</cell><cell>10,909</cell><cell>10,527</cell><cell>10,221</cell><cell>5,607</cell></row><row><cell>Test Mentions</cell><cell>17,055</cell><cell>15,481</cell><cell>14,600</cell><cell>6,860</cell></row><row><cell>Test Vertex Triples</cell><cell>70,094</cell><cell>71,360</cell><cell>124,050</cell><cell>71,951</cell></row><row><cell>Test Task Triples</cell><cell>102,866</cell><cell>102,616</cell><cell>174,312</cell><cell>90,780</cell></row><row><cell>Test Text Contexts</cell><cell>6,058,577</cell><cell cols="2">2,390,017 11,705,151</cell><cell>864,598</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>RheinMain University of Applied Sciences, Wiesbaden, Germany {felix.hamann,adrian.ulges,maurice.falk}@hs-rm.de</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>https://lod-cloud.net</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>The data is publicly available under https://github.com/lavis-nlp/irt2</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_3"><p>https://www.elastic.co</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_4"><p>https://github.com/lavis-nlp/irt2</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="6" xml:id="foot_5"><p>https://github.com/lavis-nlp/irt2m</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><p>Acknowledgement: This work was supported by the <rs type="funder">BMBF program FH-Kooperativ</rs>, project <rs type="projectName">SCENT</rs> (<rs type="grantNumber">13FH003KX0</rs>).</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funded-project" xml:id="_bkkuTBc">
+					<idno type="grant-number">13FH003KX0</idno>
+					<orgName type="project" subtype="full">SCENT</orgName>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0" />			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<author>
+			<persName><forename type="first">Mehdi</forename><forename type="middle">;</forename><surname>Ali</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><forename type="middle">;</forename><surname>Berrendorf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><surname>Hoyt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Tapley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laurent</forename><forename type="middle">;</forename><surname>Vermue</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sharifzadeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Sahand</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jens</forename><surname>Volker; Lehmann</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2007.14175</idno>
+		<title level="m">PyKEEN 1.0: A Python Library for Training and Evaluating Knowledge Graph Emebddings</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Mehdi</forename><forename type="middle">;</forename><surname>Ali</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><forename type="middle">;</forename><surname>Berrendorf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mikhail</forename><forename type="middle">;</forename><surname>Galkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Veronika</forename><forename type="middle">;</forename><surname>Thost</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Tengfei</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Improving Inductive Link Prediction Using Hyperrelational Facts</title>
+		<author>
+			<persName><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jens</forename><surname>Volker; Lehmann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Semantic Web Conference</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="74" to="92" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Dbpedia: A nucleus for a web of open data</title>
+		<author>
+			<persName><forename type="first">Sören</forename><forename type="middle">;</forename><surname>Auer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christian</forename><forename type="middle">;</forename><surname>Bizer</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kobilarov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jens</forename><forename type="middle">;</forename><surname>Georgi; Lehmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><forename type="middle">;</forename><surname>Cyganiak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zachary</forename><surname>Ives</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The semantic web</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="722" to="735" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Freebase: A Collaboratively Created Graph Database for Structuring Human Knowledge</title>
+		<author>
+			<persName><forename type="first">Kurt</forename><forename type="middle">;</forename><surname>Bollacker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Colin</forename><forename type="middle">;</forename><surname>Evans</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Paritosh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Praveen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><forename type="middle">;</forename><surname>Sturge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jamie</forename><surname>Taylor</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2008 ACM SIGMOD International Conference on Management of Data. SIGMOD &apos;08</title>
+		<meeting>the 2008 ACM SIGMOD International Conference on Management of Data. SIGMOD &apos;08<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="1247" to="1250" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multi-relational data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><forename type="middle">;</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><forename type="middle">;</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><forename type="middle">;</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><forename type="middle">;</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="2787" to="2795" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Enriching word vectors with subword information</title>
+		<author>
+			<persName><forename type="first">Piotr</forename><forename type="middle">;</forename><surname>Bojanowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edouard</forename><forename type="middle">;</forename><surname>Grave</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Armand</forename><forename type="middle">;</forename><surname>Joulin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Mikolov</surname></persName>
+		</author>
+		<idno>CoRR abs/1607.04606</idno>
+		<ptr target="http://arxiv.org/abs/1607.04606" />
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Inductive entity representations from text via link prediction</title>
+		<author>
+			<persName><forename type="first">Daniel</forename><forename type="middle">;</forename><surname>Daza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">;</forename><surname>Cochez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Groth</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Web Conference 2021</title>
+		<meeting>the Web Conference 2021</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="798" to="808" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Tim</forename><forename type="middle">;</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><forename type="middle">;</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Pontus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Thirty-Second AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Bert: Pretraining of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><forename type="middle">;</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei;</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><forename type="middle">;</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1810.04805</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Adaptive subgradient methods for online learning and stochastic optimization</title>
+		<author>
+			<persName><forename type="first">John</forename><forename type="middle">;</forename><surname>Duchi</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hazan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Elad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoram</forename><surname>Singer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of machine learning research</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="issue">7</biblScope>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<author>
+			<persName><forename type="first">William</forename><surname>Falcon</surname></persName>
+		</author>
+		<title level="m">The PyTorch Lightning team: PyTorch Lightning</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Chenpeng</forename><forename type="middle">;</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Zhixu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhigang</forename><forename type="middle">;</forename><surname>Qiang; Chen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Junhua</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pengpeng</forename><surname>Zhao</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Multiple interaction attention model for open-world knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Jiajie</forename><surname>Xu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Web Information Systems Engineering</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="630" to="644" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Open-World Knowledge Graph Completion Benchmarks for Knowledge Discovery</title>
+		<author>
+			<persName><forename type="first">Felix</forename><forename type="middle">;</forename><surname>Hamann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adrian</forename><forename type="middle">;</forename><surname>Ulges</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dirk</forename><forename type="middle">;</forename><surname>Krechel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ralph</forename><surname>Bergmann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Industrial, Engineering and Other Applications of Applied Intelligent Systems</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="252" to="264" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Aidan</forename><forename type="middle">;</forename><surname>Hogan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eva</forename><forename type="middle">;</forename><surname>Blomqvist</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Cochez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Claudia</forename><forename type="middle">;</forename><surname>Michael; D'amato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gerard</forename><surname>Melo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Claudio</forename><forename type="middle">;</forename><surname>De; Gutierrez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sabrina</forename><forename type="middle">;</forename><surname>Kirrane</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">José</forename><surname>Gayo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emilio</forename><surname>Labra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Navigli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roberto</forename><forename type="middle">;</forename><surname>Neumaier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Synthesis Lectures on Data, Semantics, and Knowledge</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="1" to="257" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">The role of ontologies in biological and biomedical research: a functional perspective</title>
+		<author>
+			<persName><forename type="first">Robert</forename><forename type="middle">;</forename><surname>Hoehndorf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><forename type="middle">N</forename><surname>Schofield</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gkoutos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Georgios</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Briefings in Bioinformatics</title>
+		<imprint>
+			<biblScope unit="volume">16</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="1069" to="1080" />
+			<date type="published" when="2015-04">04 2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<author>
+			<persName><forename type="first">Diederik P;</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Ba</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6980</idno>
+		<title level="m">Adam: A method for stochastic optimization</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Pretrained transformers for text ranking: Bert and beyond</title>
+		<author>
+			<persName><forename type="first">Jimmy</forename><forename type="middle">;</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rodrigo</forename><forename type="middle">;</forename><surname>Nogueira</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Yates</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Synthesis Lectures on Human Language Technologies</title>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="1" to="325" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<author>
+			<persName><surname>Mitra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nick</forename><surname>Bhaskar; Craswell</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1705.01509</idno>
+		<title level="m">Neural models for information retrieval</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Distributed representations of words and phrases and their compositionality</title>
+		<author>
+			<persName><forename type="first">Tomas</forename><forename type="middle">;</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><forename type="middle">;</forename><surname>Ilya; Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Greg</forename><forename type="middle">S</forename><surname>Corrado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeff</forename><surname>Dean</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="3111" to="3119" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Learning attention-based embeddings for relation prediction in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Deepak</forename><forename type="middle">;</forename><surname>Nathani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jatin</forename><forename type="middle">;</forename><surname>Chauhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charu</forename><forename type="middle">;</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manohar</forename><surname>Kaul</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1906.01195</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<author>
+			<persName><forename type="first">Maximilian</forename><forename type="middle">;</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Volker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hans-Peter</forename><surname>Kriegel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">A Three-Way Model for Collective Learning on Multi-Relational Data</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="page" from="809" to="816" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Adam</forename><forename type="middle">;</forename><surname>Paszke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><forename type="middle">;</forename><surname>Gross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francisco</forename><forename type="middle">;</forename><surname>Massa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><forename type="middle">;</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><forename type="middle">;</forename><surname>Bradbury</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">PyTorch: An Imperative Style, High-Performance Deep Learning Library</title>
+		<author>
+			<persName><forename type="first">Gregory</forename><forename type="middle">;</forename><surname>Chanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Trevor</forename><forename type="middle">;</forename><surname>Killeen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Natalia</forename><forename type="middle">;</forename><surname>Zeming; Gimelshein</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Antiga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alban</forename><forename type="middle">;</forename><surname>Luca; Desmaison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andreas</forename><forename type="middle">;</forename><surname>Kopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edward</forename><forename type="middle">;</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zachary</forename><forename type="middle">;</forename><surname>Devito</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><forename type="middle">;</forename><surname>Raison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alykhan</forename><forename type="middle">;</forename><surname>Tejani</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Chilamkurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Sasank</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Steiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Benoit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lu</forename><forename type="middle">;</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junjie</forename><forename type="middle">;</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soumith</forename><surname>Chintala</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Beygelzimer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">F</forename><surname>; D Alché-Buc</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">E</forename><surname>Fox</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Garnett</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="8024" to="8035" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Some simple effective approximations to the 2-poisson model for probabilistic weighted retrieval</title>
+		<author>
+			<persName><forename type="first">Stephen</forename><forename type="middle">E</forename><surname>Robertson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steve</forename><surname>Walker</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 17th annual international ACM SIGIR conference on Research and development in information retrieval</title>
+		<meeting>the 17th annual international ACM SIGIR conference on Research and development in information retrieval</meeting>
+		<imprint>
+			<publisher>Springer-Verlag New York, Inc</publisher>
+			<date type="published" when="1994">1994</date>
+			<biblScope unit="page" from="232" to="241" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">An Open-World Extension to Knowledge Graph Completion Models</title>
+		<author>
+			<persName><forename type="first">Haseeb</forename><forename type="middle">;</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><forename type="middle">;</forename><surname>Villmow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adrian</forename><forename type="middle">;</forename><surname>Ulges</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ulrich</forename><forename type="middle">;</forename><surname>Schwanecke</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Shafait</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Thirty-Third AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">CoDEx: A Comprehensive Knowledge Graph Completion Benchmark</title>
+		<author>
+			<persName><forename type="first">Tara</forename><forename type="middle">;</forename><surname>Safavi</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Koutra</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Danai</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="8328" to="8350" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Reasoning with neural tensor networks for knowledge base completion</title>
+		<author>
+			<persName><forename type="first">Richard</forename><forename type="middle">;</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><forename type="middle">;</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Manning</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D;</forename><surname>Christopher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Ng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="926" to="934" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title level="m" type="main">Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Zhiqing</forename><forename type="middle">;</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhi-Hong;</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian-Yun;</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1902.10197</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Relation Specific Transformations for Open World Knowledge Graph Completion</title>
+		<author>
+			<persName><forename type="first">Haseeb</forename><forename type="middle">;</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><forename type="middle">;</forename><surname>Villmow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adrian</forename><surname>Ulges</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Graph-based Methods for Natural Language Processing (TextGraphs). Association for Computational Linguistics</title>
+		<meeting>the Graph-based Methods for Natural Language Processing (TextGraphs). Association for Computational Linguistics<address><addrLine>Barcelona, Spain</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020-12">December 2020</date>
+			<biblScope unit="page" from="79" to="84" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<author>
+			<persName><forename type="first">Baoxu</forename><forename type="middle">;</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Weninger</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1711.03438</idno>
+		<title level="m">Open-world knowledge graph completion</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Observed versus latent features for knowledge base and text inference</title>
+		<author>
+			<persName><forename type="first">Kristina</forename><forename type="middle">;</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 3rd Workshop on Continuous Vector Space Models and their Compositionality</title>
+		<meeting>the 3rd Workshop on Continuous Vector Space Models and their Compositionality<address><addrLine>Beĳing, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2015-07">July 2015</date>
+			<biblScope unit="page" from="57" to="66" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Complex embeddings for simple link prediction</title>
+		<author>
+			<persName><forename type="first">Théo</forename><forename type="middle">;</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><forename type="middle">;</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><forename type="middle">;</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Éric</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2071" to="2080" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Ashish</forename><forename type="middle">;</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><forename type="middle">;</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niki</forename><forename type="middle">;</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><forename type="middle">;</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Llion</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">Aidan N;</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Illia</forename><surname>Łukasz; Polosukhin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="5998" to="6008" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Wikidata: a free collaborative knowledgebase</title>
+		<author>
+			<persName><forename type="first">Denny</forename><forename type="middle">;</forename><surname>Vrandečić</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Markus</forename><surname>Krötzsch</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Communications of the ACM</title>
+		<imprint>
+			<biblScope unit="volume">57</biblScope>
+			<biblScope unit="issue">10</biblScope>
+			<biblScope unit="page" from="78" to="85" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">KEPLER: A unified model for knowledge embedding and pre-trained language representation</title>
+		<author>
+			<persName><forename type="first">Xiaozhi</forename><forename type="middle">;</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Tianyu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhaocheng</forename><forename type="middle">;</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhengyan</forename><forename type="middle">;</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan;</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juanzi</forename><forename type="middle">;</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Transactions of the Association for Computational Linguistics</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="176" to="194" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Representation learning of knowledge graphs with entity descriptions</title>
+		<author>
+			<persName><forename type="first">Ruobing</forename><forename type="middle">;</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><forename type="middle">;</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Jia; Luan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Huanbo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Thirtieth AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">Bishan</forename><forename type="middle">;</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau;</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Xiaodong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><forename type="middle">;</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Deng</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6575</idno>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Weighted Aggregator for the Open-World Knowledge Graph Completion</title>
+		<author>
+			<persName><forename type="first">Yueyang</forename><forename type="middle">;</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shumin</forename><forename type="middle">;</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Heyan</forename><surname>Huang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference of Pioneering Computer Scientists, Engineers and Educators</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="283" to="291" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

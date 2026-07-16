@@ -1,0 +1,1530 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Graph Neural Networks for Link Prediction with Subgraph Sketching</title>
+				<funder ref="#_zC9Ta47">
+					<orgName type="full">European Research Council</orgName>
+					<orgName type="abbreviated">ERC</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2023-05-02">2 May 2023</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Benjamin</forename><forename type="middle">P</forename><surname>Chamberlain</surname></persName>
+							<email>benjamin.chamberlain@gmail.com.1</email>
+						</author>
+						<author>
+							<persName><forename type="first">Sergey</forename><surname>Shirobokov</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Sharechat</forename><surname>Ai</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Emanuele</forename><surname>Rossi</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Fabrizio</forename><surname>Frasca</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Michael</forename><forename type="middle">M</forename><surname>Bronstein</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Max</forename><surname>Hansmire</surname></persName>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="department">Charm Therapeutics</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">Imperial College London</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff2">
+								<orgName type="laboratory">Imperial College London Thomas Markovich Twitter Inc. Nils Hammerla Coding</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff3">
+								<orgName type="institution">University of Oxford</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff4">
+								<orgName type="institution">Twitter Inc</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Graph Neural Networks for Link Prediction with Subgraph Sketching</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2023-05-02">2 May 2023</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">C4EBEC2C48CD20B370A583159851D7A3</idno>
+					<idno type="arXiv">arXiv:2209.15486v3[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:40+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Many Graph Neural Networks (GNNs) perform poorly compared to simple heuristics on Link Prediction (LP) tasks. This is due to limitations in expressive power such as the inability to count triangles (the backbone of most LP heuristics) and because they can not distinguish automorphic nodes (those having identical structural roles). Both expressiveness issues can be alleviated by learning link (rather than node) representations and incorporating structural features such as triangle counts. Since explicit link representations are often prohibitively expensive, recent works resorted to subgraph-based methods, which have achieved state-ofthe-art performance for LP, but suffer from poor efficiency due to high levels of redundancy between subgraphs. We analyze the components of subgraph GNN (SGNN) methods for link prediction. Based on our analysis, we propose a novel full-graph GNN called ELPH (Efficient Link Prediction with Hashing) that passes subgraph sketches as messages to approximate the key components of SGNNs without explicit subgraph construction. ELPH is provably more expressive than Message Passing GNNs (MPNNs). It outperforms existing SGNN models on many standard LP benchmarks while being orders of magnitude faster. However, it shares the common GNN limitation that it is only efficient when the dataset fits in GPU memory. Accordingly, we develop a highly scalable model, called BUDDY, which uses feature precomputation to circumvent this limitation without sacrificing predictive performance. Our experiments show that BUDDY also outperforms SGNNs on standard LP benchmarks while being highly scalable and faster than ELPH.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Link Prediction (LP) is an important problem in graph ML with many industrial applications. For example, recommender systems can be formulated as LP; link prediction is also a key process in drug discovery and knowledge graph construction. There are three main classes of LP methods: (i) heuristics (See Appendix C.1) that estimate the distance between two nodes (e.g. personalized page rank (PPR) <ref type="bibr" target="#b26">[27]</ref> or graph distance <ref type="bibr" target="#b51">[52]</ref>) or the similarity of their neighborhoods (e.g Common Neighbors (CN), Adamic-Adar (AA) <ref type="bibr" target="#b1">[2]</ref>, or Resource Allocation (RA) <ref type="bibr" target="#b51">[52]</ref>); (ii) unsupervised node embeddings or factorization methods, which encompass the majority of production recommendation systems <ref type="bibr" target="#b6">[7,</ref><ref type="bibr" target="#b18">19]</ref>; and, recently, (iii) Graph Neural Networks, in particular of the Message-Passing type (MPNNs) <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b13">14,</ref><ref type="bibr" target="#b17">18]</ref>. <ref type="foot" target="#foot_0">1</ref> GNNs excel in graph-and node-level tasks, but often fail to outperform node embeddings or heuristics on common LP benchmarks such as the Open Graph Benchmark (OGB) <ref type="bibr" target="#b15">[16]</ref>.</p><p>There are two related reasons why MPNNs tend to be poor link predictors. Firstly, due to the equivalence of message passing to the Weisfeiler-Leman (WL) graph isomorphism test <ref type="bibr" target="#b24">[25,</ref><ref type="bibr" target="#b41">42]</ref>, standard MPNNs are provably incapable of counting triangles <ref type="bibr" target="#b7">[8]</ref> and consequently of counting Common Neighbors or computing one-hop or two-hop LP heuristics such as AA or RA. Secondly, GNN-based LP approaches combine permutation-equivariant structural node representations (obtained by message passing on the graph) and a readout function that maps from two node representations to a link probability. However, generating link representations as a function of equivariant node representations encounters the problem that all nodes u in the same orbit induced by the graph automorphism group have equal representations. Therefore, the link probability p(u, v) is the same for all u in the orbit independent of e.g. the graph distance d(u, v) (Figure <ref type="figure" target="#fig_0">1</ref>). <ref type="bibr" target="#b34">[35]</ref>. As a result, a conventional GNN will assign the same probability to links <ref type="bibr" target="#b0">(1,</ref><ref type="bibr" target="#b1">2)</ref> and <ref type="bibr" target="#b0">(1,</ref><ref type="bibr" target="#b3">4)</ref>. This is a result of GNN's built-in permutation equivariance, which produces equal representations for any nodes whose enclosing subgraphs (corresponding to the receptive field of the GNN) are isomorphic. <ref type="foot" target="#foot_1">2</ref> We refer to this phenomenon as the automorphic node problem and define automorphic nodes (denoted u ∼ = v) to be those nodes that are indistinguishable by means of a given k-layer GNN. On the other hand, transductive node embedding methods such as TransE <ref type="bibr" target="#b2">[3]</ref> and DeepWalk <ref type="bibr" target="#b30">[31]</ref>, or matrix factorization <ref type="bibr" target="#b18">[19]</ref> do not suffer from this problem as the embeddings are not permutation equivariant.</p><p>Several methods have been proposed to improve GNN expressivity for LP. Most simply, adding unique node IDs immediately makes all structural node representations distinguishable, but at the expense of generalization <ref type="bibr" target="#b0">[1]</ref> and training convergence <ref type="bibr" target="#b32">[33]</ref>. Substructure counts may act as permutation-equivariant approximately unique identifiers <ref type="bibr" target="#b3">[4]</ref>, but they require a precomputation step which may be computationally intractable in the worst case. More successfully, a family of structural features, sometimes referred to as labeling tricks have recently been proposed that solve the automorphic node problem while still being equivariant and having good generalization <ref type="bibr" target="#b20">[21,</ref><ref type="bibr" target="#b44">45,</ref><ref type="bibr" target="#b50">51]</ref>. However, adding structural features amounts to computing structural node representations that are conditioned on an edge and so can no longer be efficiently computed in parallel. For the purpose of tractability, state-of-the-art methods for LP restrict computation to subgraphs enclosing a link, transforming link prediction into binary subgraph classification <ref type="bibr" target="#b43">[44,</ref><ref type="bibr" target="#b47">48,</ref><ref type="bibr" target="#b50">51]</ref>. Subgraph GNNs (SGNN) are inspired by the strong performance of LP heuristics compared to more sophisticated techniques and are motivated as an attempt to learn data-driven LP heuristics.</p><p>Despite impressive performance on benchmark datasets, SGNNs suffer from some serious limitations: (i) Constructing the subgraphs is expensive; (ii) Subgraphs are irregular and so batching them is inefficient on GPUs (iii); Each step of inference is almost as expensive as each training step because subgraphs must be constructed for every test link. These drawbacks preclude many applications, where scalability or efficient inference are required.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Main contributions. (i)</head><p>We analyze the relative contributions of SGNN components and reveal which properties of the subgraphs are salient to the LP problem. (ii) Based on our analysis, we develop an MPNN (ELPH) that passes subgraph sketches as messages. The sketches allow the most important qualities of the subgraphs to be summarized in the nodes. The resulting model removes the need for explicit subgraph construction and is a full-graph MPNN with the similar complexity to GCN. (iii) We prove that ELPH is strictly more expressive than MPNNs for LP and that it solves the automorphic node problem. (iv) As full-graph GNNs suffer from scalability issues when the data exceeds GPU memory, we develop BUDDY, a highly scalable model that precomputes sketches and node features. <ref type="bibr">(v)</ref> We provide an open source Pytorch library for (sub)graph sketching that generates data sketches via message passing on the GPU. Experimental evaluation shows that our methods compares favorably to state-of-the-art both in terms of accuracy and speed.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Preliminaries</head><p>Notation. Let G = (V, E) be an undirected graph comprising the set of n nodes (vertices) V and e links (edges) E. We denote by d(u, v) the geodesic distance (shortest walk length) between nodes u and v.</p><formula xml:id="formula_0">Let S = (V S ⊆ V, E S ⊆ E) be a node-induced subgraph of G satisfying (u, v) ∈ E S iff (u, v) ∈ E for any u, v ∈ V S . We denote by S k uv = (V uv , E uv ) a k-hop subgraph enclosing the link (u, v)</formula><p>, where V uv is the union of the k-hop neighbors of u and v and E uv is the union of the links that can be reached by a k-hop walk originating at u and v (for simplicity, where possible, we omit k). Similarly, S k u is the k-hop subgraph enclosing node u. The given features of nodes V uv are denoted by X uv and the derived structure features by Z uv . The probability of a link (u, v) is denoted by p(u, v). When nodes u and v have isomorphic enclosing subgraphs (i.e., S u ∼ = S v ), we write u ∼ = v.</p><p>Sketches for Intersection Estimation. We use two sketching techniques, HyperLogLog <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b14">15]</ref> and MinHashing <ref type="bibr" target="#b4">[5]</ref>. Given sets A and B, HyperLogLog efficiently estimates the cardinality of the union |A ∪ B| and MinHashing estimates the Jaccard index J(A, B) = |A ∩ B|/|A ∪ B|. We combine these approaches to estimate the intersection of node sets produced by graph traversals <ref type="bibr" target="#b28">[29]</ref>. These techniques represent sets as sketches, where the sketches are much smaller than the sets they represent. Each technique has a parameter p controlling the trade-off between the accuracy and computational cost. Running times for merging two sets, adding an element to a set, and extracting estimates only depend on p, but they are constant with respect to the size of the set. Importantly, the sketches of the union of sets are given by permutation-invariant operations (element-wise min for minhash and element-wise max for hyperloglog). More details are provided in Appendix C.3.</p><p>Graph Neural Networks for Link Prediction. Message-passing GNNs (MPNNs) are parametric functions of the form Y = GNN(X), where X and Y are matrix representations (of size n × d and n × d , where n is the number of nodes and d, d are the input and output dimensions, respectively) of input and output node features. Permutation equivariance implies that ΠGNN(X) = GNN(ΠX) for any n × n node permutation matrix Π. This is achieved in GNNs by applying a local permutation-invariant aggregation function (typically sum, mean, or max) to the neighbor features of every node ('message passing'), resulting in a node-wise update of the form</p><formula xml:id="formula_1">y u = γ x u , v∈N (u) φ (x u , x v ) ,<label>(1)</label></formula><p>where φ, γ are learnable functions. MPNNs are upperbounded in their discriminative power by the Weisfeiler-Leman isomorphism test (WL) <ref type="bibr" target="#b38">[39]</ref>, a procedure iteratively refining the representation of a node by hashing its star-shaped neighborhood. As a consequence, since WL always identically represents automorphic nodes (u ∼ = v), any MPNN would do the same: y u = y v . Given the node representations Y computed by a GNN, link probabilities can then be computed as p(u, v) = R(y u , y v ), where R is a learnable readout function with the property that R(y u , y v ) = R(y u , y w ) for any v ∼ = w. This node automorphism problem is detrimental for LP as</p><formula xml:id="formula_2">p(u, v) = p(u, w) if v ∼ = w even when d(u, v) d(u, w). As an example, in Figure1 2 ∼ = 4, therefore p(1, 2) = p(1, 4) while d(1, 2) = 2 &lt; d(1, 4) = 3.</formula><p>As a result, a GNN may suggest to link totally unrelated nodes (v may even be in a separate connected component to u and w, but still have equal probability of connecting to u <ref type="bibr" target="#b34">[35]</ref>).</p><p>Subgraph GNNs (SGNN). <ref type="bibr" target="#b43">[44,</ref><ref type="bibr" target="#b47">48,</ref><ref type="bibr" target="#b50">51]</ref>   one desires R(Y uv ) = 1 if (u, v) ∈ E and zero otherwise. In order to resolve the automorphic node problem, node features are augmented with structural features <ref type="bibr" target="#b3">[4]</ref> that improve the ability of networks to count substructures <ref type="bibr" target="#b7">[8]</ref>. SGNNs were originally motivated by the strong performance of heuristics on benchmark datasets and attempted to learn generalized heuristics. When the graph is large it is not tractable to learn heuristics over the full graph, but global heuristics can be well approximated from subgraphs that are augmented with structural features with an approximation error that decays exponentially with the number of hops taken to construct the subgraph <ref type="bibr" target="#b47">[48]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Analyzing Subgraph Methods for Link Prediction</head><p>SGNNs can be decomposed into the following steps: (i) subgraph extraction around every pair of nodes for which one desires to perform LP; (ii) augmentation of the subgraph nodes with structure features; (iii) feature propagation over the subgraphs using a GNN, and (iv) learning a graph-level readout function to predict the link. Steps (ii)-(iv) rely on the existence of a set of subgraphs (i), which is either constructed on the fly or as a preprocessing step. In the remainder of this section we discuss the inherent complexity of each of these steps and perform ablation studies with the goal of understanding the relative importance of each.  Structure Features Structure features address limitations in GNN expressivity stemming from the inherent inability of message passing to distinguish automorphic nodes. In SGNNs, permutationequivariant distances d(u, i) and d(v, i) ∀i ∈ V uv are used. The three most well known are Zero-One (ZO) encoding <ref type="bibr" target="#b44">[45]</ref>, Double Radius Node Labeling (DRNL) <ref type="bibr" target="#b47">[48]</ref> and Distance Encoding (DE) <ref type="bibr" target="#b20">[21]</ref>. To solve the automorphic node problem, all that is required is to distinguish u and v from V uv \ {u, v}, which ZO achieves with binary node labels. DRNL has</p><formula xml:id="formula_3">z u = z v = 1 and z j = f (d(u, j), d(v, j)) &gt; 1,</formula><p>where f : N 2 → N is a bijective map. Distance Encoding (DE) generalizes DRNL; each node is encoded with a tuple z j = (d(u, j), d(v, j)) (See Figure <ref type="figure" target="#fig_4">5</ref>). Both of these schemes therefore include a unique label for triangles / common neighbors (See Appendix C. <ref type="bibr" target="#b3">4</ref>  In Figure <ref type="figure" target="#fig_3">3</ref> we investigate the relative importance of DRNL structure features. Feature importance is measured using the weights in a logistic regression link prediction model with only structure feature counts as inputs. We then sum up feature importances corresponding to different max distance r and normalize the total sum to one. The Figure indicates that most of the predictive performance is concentrated in low distances.</p><p>Propagation / GNN In SGNNs, structure features are usually embedded into a continuous space, concatenated to any node features and propagated over subgraphs. While this procedure is necessary for ZO encodings, it is less clear why labels that precisely encode distances and are directly comparable as distances should be embedded in this way. Instead of passing embedded DE or DRNL structure features through a GNN, we fixed the number of DE features by setting the max distance to three and trained an MLP directly on the counts of these nine features (e.g. (1,1): 3, (1,2): 1, etc.). Figure <ref type="figure">4a</ref> shows that doing so, while leaving ceteris paribus (node features still propagated over the subgraph) actually improves performance in two out of three datasets. We also investigated if any features require SGNN propagation by passing both raw node features and structure feature counts through an MLP. The results in the right columns of Figure <ref type="figure">4b</ref> indicate that this reduces performance severely, but by pre-propagating the features as x u = 1/|N (u)| i∈N (u) x i (middle columns) it is possible to almost recover the performance of propagation with the SGNN (left columns). Readout / Pooling Function Given SGNN node representations Y uv on the subgraph, a readout function R(S uv , Y uv ) maps a representations to link probabilities. For graph classification problems, this is most commonly done by pooling node representations (graph pooling) typically with a mean or sum operation plus an MLP. For LP, an alternative is edge pooling with R(y u , y v ), usually with the Hadamard product. A major advantage of edge pooling is that it can be formulated subgraph free. Figure <ref type="figure" target="#fig_1">2b</ref> indicates that edge pooling produces better predictive performance than either mean or sum pooling across all nodes in V uv .</p><formula xml:id="formula_4">u v 1,1 1,1 1,2 1,2 2,1</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Analysis Summary</head><p>The main results of Section 3 are that (i) The inclusion of structure features leads to very large improvements across all datasets (Figure <ref type="figure" target="#fig_1">2a</ref>); (ii) The processing of these features, by embedding them and propagating them with an SGNN is sub-optimal both in terms of efficiency and performance (Figure <ref type="figure">4a</ref>); (iii) Most of the importance of the structure features is located in the lowest distances (Figure <ref type="figure" target="#fig_3">3</ref>); and (iv) edge level readout functions greatly outperform mean or sum pooling over subgraphs (Figure <ref type="figure" target="#fig_1">2b</ref>). If, on one hand, subgraphs are employed as a tractable alternative to the full graph for each training edge, on the other, generating them remains an expensive operation (O(deg k ) time complexity for regular graphs and O(|E|) for complex networks with power law degree distributions<ref type="foot" target="#foot_2">3</ref> , see Appendix C.2). Within this context, our analysis shows that if the information necessary to compute structure features for an edge can be encoded in the nodes, then it is possible to recover the predictive performance of SGNNs without the cost of generating a different subgraph for each edge. We build upon this observation to design an efficient yet expressive model in Section 4.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Link Prediction with Subgraph Sketching</head><p>We now develop a full-graph GNN model that uses node-wise subgraph sketches to approximate structure features such as the counts of DE and DRNL labels, which our analysis indicated are sufficient to encompass the salient patterns governing the existence of a link (Figure <ref type="figure">4a</ref>).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Structure Features Counts</head><formula xml:id="formula_5">Let A uv [d u , d v ]</formula><p>be the number of (d u , d v ) labels for the link (u, v), which is equivalent to the number of nodes at distances exactly d u and d v from u and v respectively (See Figure <ref type="figure" target="#fig_4">5</ref>). We compute A uv [d u , d v ] for all d u , d v less than the receptive field k, which guarantees a number of counts that do not depend on the graph size and mitigates overfitting. To alleviate the loss of information coming from a fixed k, we also compute <ref type="figure" target="#fig_7">6</ref> shows how A and B relate to the neighborhoods of the two nodes. Overall, this results in k 2 counts for A and 2k counts for B (k for the source and k for the destination node), for a total of k(k + 2) count features. These counts can be computed efficiently without constructing the whole subgraph for each edge. Defining N du,dv (u, v) N du (u) ∩ N dv (v), we have</p><formula xml:id="formula_6">B uv [d] = ∞ dv=k+1 A uv [d, d v ], counting the number of nodes at distance d from u and at distance &gt; k from v. We compute B uv [d] for all 1 ≤ d ≤ k. Figure</formula><formula xml:id="formula_7">A uv [d u , d v ] = |N du,dv (u, v)| - x≤du,y≤dv,(x,y) =(du,dv) |N x,y (u, v)|<label>(2)</label></formula><formula xml:id="formula_8">B uv [d] = |N d (u)| -B uv [d -1] - d i=1 d j=1 A uv [i, j]<label>(3)</label></formula><p>where N d (u) are the d-hop neighbors of u (i.e. nodes at distance ≤ d from u). </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Estimating Intersections and Cardinalities</head><formula xml:id="formula_9">u = min v∈N (u) m (d-1) v and h (d) u = max v∈N (u) h (d-1) v</formula><p>, where min and max are elementwise. We can approximate the intersection of neighborhood sets as</p><formula xml:id="formula_10">|N du,dv (u, v)| |N du (u) ∩ N dv (v)| = (4) = J(N du (u), N dv (v)) • |N du (u) ∪ N dv (v)|<label>(5)</label></formula><formula xml:id="formula_11">≈ H m (du) u , m (dv) v • card max(h (du) u , h (dv) v ) ,<label>(6)</label></formula><p>where H(x, y) = 1/n  ). The cost of this operation only depends on additional parameters of HyperLogLog and MinHashing (outlined in more detail in Section 2) which allow for a tradeoff between speed and accuracy, but is nevertheless independent of the graph size. Using this approximations we obtain estimates Â and B of the structure features counts.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Efficient Link Prediction with Hashes (ELPH)</head><p>We present ELPH, a novel MPNN for link prediction. In common with other full-graph GNNs, it employs a feature propagation component with a link level readout function. However, by augmenting the messages with subgraph sketches, it achieves higher expressiveness for the same asymptotic complexity. ELPH's feature propagation fits the standard MPNN formalism <ref type="bibr" target="#b12">[13]</ref>:</p><formula xml:id="formula_12">m (l) u = min v∈N (u) m (l-1) v , h (l) u = max v∈N (u) h (l-1) v (7) e (l) u,v = { Buv [l], Âuv [d u , l], Âuv [l, d v ] : ∀d u , d v &lt; l}<label>(8)</label></formula><p>x</p><formula xml:id="formula_13">(l) u = γ (l) x (l-1) u , v∈N (u) φ (l) x (l-1) u , x (l-1) v , e (l) u,v<label>(9)</label></formula><p>where φ, γ are learnable functions, is a local permutation-invariant aggregation function (typically sum, mean, or max), x</p><p>u are the original node features, and m</p><p>u and h</p><formula xml:id="formula_16">(0)</formula><p>u are the MinHashing and HyperLogLog single node sketches respectively. Minhash and hyperloglog sketches of N l (u) are computed by aggregating with min and max operators respectively the sketches of N l-1 (u) (Eq. 7). These sketches can be used to compute the intersection estimations Buv and Âuv up to the l-hop neighborhood, which are then used as edge features (Eq. 8). Intuitively, the role of the edge features is to modulate message transmission based on local graph structures, similarly to how attention is used to modulate message transmission based on feature couplings. A link predictor is then applied to the final node representations of the form</p><formula xml:id="formula_17">p(u, v) = ψ x (k) u x (k) v , { Buv [d], Âuv [d u , d v ] : ∀ d, d u , d v ∈ [k]} ,<label>(10)</label></formula><p>where [k] = {1, . . . , k}, k is a receptive field, ψ is an MLP and is the element-wise product. p(u, v) decouples the readout function from subgraph generation as suggested in Figure <ref type="figure" target="#fig_1">2b</ref>. This approach moves computation from edgewise operations e.g. generating subgraphs, to nodewise operations (generating sketches) that encapsulate the most relevant subgraph information for LP. We have shown that (i) GNN propagation is either not needed (structure features) or can be preprocessed globally (given features) (ii) structure features can be generated from sketches instead of subgraphs (iii) an edge pooling readout function performs as well as a graph pooling readout. In combination these approaches circumvent the need to explicitly construct subgraphs. The resulting model efficiently combines node features and the graph structure without explicitly constructing subgraphs and is as efficient as GCN <ref type="bibr" target="#b17">[18]</ref>.</p><p>Expressive power of ELPH ELPH combines the advantageous traits of both GNNs and subgraph-based methods, i.e. tractable computational complexity and the access to pair-wise structural features including triangle counts (Appendix C.5). Furthermore, as the following results show, it is more expressive than MPNNs: Proposition 4.1. Let M ELPH be the family of ELPH models as per Equations 7 -9 and 10 where estimates are exact ( Â ≡ A, B ≡ B) <ref type="foot" target="#foot_3">4</ref> . M ELPH does not suffer from the automorphic node problem.</p><p>While we rigorously define the automorphic node problem and prove the above in Section A.2, this result states that there exists non-automorphic links with automorphic nodes that an ELPH model is able to discriminate (thanks to structural features). Contrary to ELPHs, MPNNs are not able to distinguish any of these links; we build upon this consideration, as well as the observation that ELPH models subsume MPNNs, to obtain this additional result: Theorem 4.2. Let M MPNN be the family of Message Passing Neural Networks (Equation <ref type="formula" target="#formula_1">1</ref>). M ELPH is strictly more powerful than M MPNN (M ELPH M MPNN ).</p><p>We prove this in Section A.2. Intuitively, the Theorem states that while all links separated by MPNNs are also separated by ELPHs, there also exist links separated by the latter family but not by the former.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Scaling ELPH with Preprocessing (BUDDY)</head><p>Similarly to other full-graph GNNs (e.g. GCN), ELPH is efficient when the dataset fits into GPU memory. When it does not, the graph must be batched into subgraphs. Batching is a major challenge associated with scalable GNNs and invariably introduces high levels of redundancy across batches. Here we introduce a large scale version of ELPH, called BUDDY, which uses preprocessing to side-step the need to have the full dataset in GPU memory.</p><p>Preprocessing Figure <ref type="figure">4b</ref> indicated that a fixed propagation of the node features almost recovers the performance of learnable SGNN propagation. This propagation can be achieved by efficient sparse scatter operations and done only once in preprocessing. Sketches can also be precomputed in a similar way:</p><formula xml:id="formula_18">M (l) = scatter_min(M (l-1) , G), H (l) = scatter_max(H (l-1) , G), X (l) = scatter_mean(X (l-1) , G)</formula><p>where scatter_min(M (l) , G) u = min v∈N (u) m (l-1) v and scatter_max and scatter_mean are defined similarly, X (0) are the original node features, and M (0) and H (0) are the MinHashing and Hyper-LogLog single node sketches respectively. Similarly to <ref type="bibr" target="#b31">[32]</ref>, we concatenate features diffused at different hops to obtain the input node features: Z = X (0) X (1) ... X (k) .</p><formula xml:id="formula_19">Link Predictor We now have p(u, v) = ψ z (k) u z (k) v , { Buv [d], Âuv [d u , d v ] : ∀ d, d u , d v ∈ [k]} ,</formula><p>where ψ is an MLP and Âuv and Buv are computed using M and H as explained in Section 4.1. Doing so effectively converts a GNN into an MLP, removing the need to sample batches of subgraphs when the dataset overflows GPU memory <ref type="bibr" target="#b31">[32]</ref>. Further improvements in efficiency are possible when multiple computations on the same edge sets are required. In this case, the edge features</p><formula xml:id="formula_20">{ Buv [d], Âuv [d u , d v ]} can be precomputed and cached.</formula><p>Time Complexity Denoting the complexity of hash operations as h, the node representation dimension d and the number of edges E = |E|, the preprocessing complexity of BUDDY is O(kEd + kEh). The first term being node feature propagation and the second sketch propagation. Preprocessing for SEAL and NBFNet are O(1). A link probability is computed by (i) extracting k(k + 2) k-hop structural features, which costs O(k 2 h) and (ii) An MLP on structural and node features, which results in O(k 2 h + kd 2 ) operations. Both are independent of the size of the graph. Since SGNNs construct subgraphs for each link they are O(Ed 2 ) for complex networks (See Section C.2). Finally, the total complexity of NBFNet is O(Ed + N d 2 ) with an amortized time for a single link prediction of O(Ed/N + d 2 ) <ref type="bibr" target="#b52">[53]</ref>. However, this is only realized in situations where the link probability p(u, j) is required ∀j ∈ V. Time complexities are summarized in Table <ref type="table">1</ref> and space complexities in Appendix B.4.</p><p>Expressiveness of BUDDY Similarly to ELPH, BUDDY does not suffer from the automorphic node problem (see Proposition and its Proof in Appendix A.2). However, due to its non-parametric feature propagation, this class of models does not subsume MPNNs and we cannot exclude the presence of links separated by MPNNs, but not by BUDDY. Nevertheless, BUDDY empirically outperforms common MPNNs by large margins (see <ref type="bibr">Section 7)</ref>, while also being extremely scalable.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Related Work</head><p>Table <ref type="table">1</ref>: Time complexity. N and E are the number of nodes and edges respectively. We use d-dimensional node features, k hops for propagation and sketches of size h.</p><formula xml:id="formula_21">Complexity SEAL NBFNet BUDDY Preprocessing O(1) O(1) O(kE(d + h)) Training (1 link) O(Ed 2 ) O(Ed + N d 2 ) O(k 2 h + kd 2 ) Inference O(Ed 2 ) O(Ed + N d 2 ) O(k 2 h + kd 2 )</formula><p>Subgraph methods for link prediction were introduced as the Weisfeiler Leman Neural Machine (WLNM) in <ref type="bibr" target="#b46">[47]</ref>.</p><p>As an MLP is used to learn from subgraphs instead of a GNN their model is not permutation-equivariant and uses a hashing-based WL algorithm <ref type="bibr" target="#b16">[17]</ref> to generate node indices for the MLP. Note that 'hashing' here refers to injective neighbor aggregation functions, distinct from the data sketching methods employed in the current work. The MLP in WLNM was replaced by a GNN in the seminal SEAL <ref type="bibr" target="#b47">[48]</ref>, thus removing the need for a hashing scheme. Additional methodological improvements were made in <ref type="bibr" target="#b49">[50,</ref><ref type="bibr" target="#b50">51]</ref> and subgraph generation was improved in <ref type="bibr" target="#b43">[44]</ref>. Applications to recommender systems were addressed in <ref type="bibr" target="#b48">[49]</ref> and random walks are used to represent subgraph topology in <ref type="bibr" target="#b27">[28,</ref><ref type="bibr" target="#b43">44]</ref>. The DRNL labeling scheme was introduced in SEAL and further labeling schemes are developed in <ref type="bibr" target="#b20">[21,</ref><ref type="bibr" target="#b44">45]</ref> and generalized with equivariant positional encodings <ref type="bibr" target="#b37">[38]</ref>. Neural Bellman-Ford Networks <ref type="bibr" target="#b52">[53]</ref> takes a different approach. It is concerned with single source distances where each layer of the neural networks is equivalent to an iteration of the Bellman-Ford algorithm and can be regarded as using a partial labeling scheme. The same graph and augmentation can be shared among multiple destinations and so it is faster (amortized) than SGNNs. However, it suffers from poor space complexity and thus requires impractically high memory consumption. Neo-GNN <ref type="bibr" target="#b45">[46]</ref> directly learns a heuristic function using an edgewise and a nodewise neural network.</p><p>#GNN <ref type="bibr" target="#b40">[41]</ref> directly hashes node features, instead of graph structure, and is limited to node features that can be interpreted as set memberships. Another paradigm for LP uses self-supervised node embeddings combined with an (often) approximate distance metric. Amongst the best known models are TransE <ref type="bibr" target="#b2">[3]</ref>, DistMult <ref type="bibr" target="#b42">[43]</ref>, or complEx <ref type="bibr" target="#b36">[37]</ref>, which have been shown to scale to large LP systems in e.g. <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b19">20]</ref>. Decoupling feature propagation and learning in GNNs was first implemented in SGC <ref type="bibr" target="#b39">[40]</ref> and then scalably in SIGN <ref type="bibr" target="#b31">[32]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Experiments</head><p>Datasets, Baselines and Experimental Setup We report results for the most widely used Planetoid citation networks Cora <ref type="bibr" target="#b23">[24]</ref>, Citeseer <ref type="bibr" target="#b33">[34]</ref> and Pubmed <ref type="bibr" target="#b25">[26]</ref> and the OGB link prediction datasets <ref type="bibr" target="#b15">[16]</ref>. We report results for: Three heuristics that have been successfully used for LP, Adamic-Adar (AA) <ref type="bibr" target="#b1">[2]</ref>, Resource Allocation (RA) <ref type="bibr" target="#b51">[52]</ref> and Common Neighbors (CN); two of the most popular GNN architectures: Graph Convolutional Network (GCN) <ref type="bibr" target="#b17">[18]</ref> and GraphSAGE <ref type="bibr" target="#b13">[14]</ref>; the state-of-the-art link prediction GNNs Neo-GNN <ref type="bibr" target="#b45">[46]</ref>, SEAL <ref type="bibr" target="#b47">[48]</ref> and NBFNet <ref type="bibr" target="#b52">[53]</ref>. Additional details on datasets and the experimental setup are included in Appendix B.1 and the code is public <ref type="foot" target="#foot_4">5</ref> . Runtimes Wall times are shown in Table <ref type="table" target="#tab_3">3</ref>. We report numbers for both the static mode of SEAL (all subgraphs are generated and labeled as a preprocessing step), and the dynamic mode (subgraphs are generated on the fly). BUDDY is orders of magnitude faster both in training and inference.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Results</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Results are presented in</head><p>In particular, Buddy is 200-1000× faster than SEAL in dynamic mode for training and inference on the Citation dataset. We also show GCN as a baseline. Further runtimes and a breakdown of preprocessing costs are in Appendix D.1 with learning curves in Appendix F.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8">Conclusion</head><p>We have presented a new model for LP that is based on an analysis of existing state-of-the-art models, but which achieves better time and space complexity and superior predictive performance on a range of standard benchmarks. The current work is limited to undirected graphs or directed graphs that are first preprocessed to make them undirected as is common in GNN research. We leave as future work extensions to directed graphs and temporal / dynamically evolving graphs and investigations into the links with graph curvature (See Appendix C.5).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Theoretical Analyses</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.1 Preliminaries</head><p>We introduce some preliminary concepts that will be useful in our analysis. Let us start with the definition of graph isomorphism and automorphism.</p><p>Definition A.1 (Graph isomorphism and automorphism).</p><formula xml:id="formula_22">Let G 1 = (V 1 , E 1 ), G 2 = (V 2 , E 2 ) be two simple graphs. An isomorphism between G 1 , G 2 is a bijective map ϕ : V 1 → V 2 which preserves adjacencies, that is: ∀u, v ∈ V 1 : (u, v) ∈ E 1 ⇐⇒ (ϕ(u), ϕ(v)) ∈ E 2 . If G 1 = G 2 , ϕ is called an automorphism.</formula><p>In view of the definition above, two graphs are also called isomorphic whenever there exists an isomorphism between the two. Intuitively, if two graphs are isomorphic they encode the same exact relational structure, up to relabeling of their nodes. As we shall see next, automorphisms convey a slightly different meaning: they allow to define graph symmetries by formalizing the concept of node structural roles.</p><p>The above definitions can be extended to attributed graphs, more conveniently represented through third-order tensors A ∈ R n 2 ×d , with n = |V |, d &gt; 0 the number of features <ref type="bibr" target="#b22">[23,</ref><ref type="bibr" target="#b50">51]</ref>. Indexes in the first two dimensions of tensor A univocally correspond to vertexes in V through a bijection ι : V → {1, . . . , n}. Here, elements A i,i,: correspond to node features, while elements A i,j,: , i = j to edge features, which include the connectivity information in E. Within this context, a graph is defined as a tuple G = (V, E, ι, A), and isomorphisms and automorphisms are interpreted as permutations acting on A as:</p><formula xml:id="formula_23">σ • A ijk = A σ -1 (i)σ -1 (j)k , ∀σ ∈ S n<label>(11)</label></formula><p>where S n is the set of all bijections (permutations) over n symbols. We then define the concepts of isomorphism and automorphism as:</p><p>Definition A.2 (Graph isomorphism and automorphism on attributed graphs). Let G 1 , G 2 be two attributed graphs represented by tensors</p><formula xml:id="formula_24">A 1 , A 2 ∈ R n 2 ×d . An isomorphism between G 1 , G 2 is a bijective map (permutation) σ ∈ S n such that σ • A 1 = A 2 . For a graph G = A, σ ∈ S n is an automorphism if σ • A = A.</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Let us get back to the information conveyed by automorphisms by introducing the following definition:</head><p>Definition A.3 (Graph automorphism group). Let G be a simple graph and A G be the set of graph automorphisms defined on its vertex set. Aut G = (A G , •) is the group having A G as base set and function composition (•) as its operation.</p><formula xml:id="formula_25">Group Aut G induces an equivalence relation ∼ G ⊆ V × V : ∀u, v ∈ V, u ∼ G v ⇔ ∃ϕ ∈ A G : u = ϕ(v) (it</formula><p>is easily proved that ∼ G is indeed reflexive, symmetric and transitive, thus qualifying as an equivalence relation). The equivalence classes of ∼ G partition the vertex set into orbits:</p><formula xml:id="formula_26">Orb G (v) = u ∈ V u ∼ G v = u ∈ V ∃ϕ ∈ A G : u = ϕ(v)</formula><p>. The set of orbits identifies all structural roles in the graph. Two vertexes belonging to the same orbit have the same structural role in the graph and are called 'symmetric' or 'automorphic'.</p><p>In fact, it is possible to define automorphisms between node-pairs as well <ref type="bibr" target="#b34">[35,</ref><ref type="bibr" target="#b50">51]</ref>:</p><p>Definition A.4 (Automorphic node pairs). Let G = A be an attributed graph and 1 = (u 1 , v 1 ), 2 = (u 2 , v 2 ) ∈ V ×V be two pairs of nodes. We say 1 , 2 are automorphic if there exists an automorphism</p><formula xml:id="formula_27">σ ∈ A G such that σ • 1 = (σ(u 1 ), σ(v 1 )) = (u 2 , v 2 ) = 2 . We write 1 ∼ (2) G 2 .</formula><p>With the above it is possible to extend the definition of orbits to node-pairs, by considering those node-pair automorphisms which are naturally induced by node ones, i.e.: ∀ϕ ∈ A G , ϕ * : (u, v) → (ϕ(u), ϕ(v)).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Notably, for two node pairs</head><formula xml:id="formula_28">1 = (u 1 , v 1 ), 2 = (u 2 , v 2 ) ∈ V × V , u 1 ∼ G u 2 , v 1 ∼ G v 2 =⇒ 1 ∼</formula><p>(2) G 2 , i.e., automorphism between nodes does not imply automorphism between node pairs. For instance, one counter-example of automorphic nodes involved in non-automorphic pairs is depicted in Figure <ref type="figure" target="#fig_0">1</ref>, while another one is constituted by pair (v 0 , v 2 ), (v 0 , v 3 ) in Figure <ref type="figure" target="#fig_8">7</ref>, whose automorphisms are reported in Tables <ref type="table" target="#tab_4">4</ref> and<ref type="table" target="#tab_5">5</ref>. This 'phenomenon' is the cause of the so-called "automorphic node problem". Definition A.5 (Automorphic node problem). Let M be a family of models. We say M suffers from the automorphic node problem if for any model M ∈ M, and any simple (attributed) graph</p><formula xml:id="formula_29">G = (V, E, ι, A) we have that ∀(u 1 , v 1 ), (u 2 , v 2 ) ∈ V ×V , u 1 ∼ G u 2 , v 1 ∼ G v 2 =⇒ M (u 1 , v 1 ) = M (u 2 , v 2 ) .</formula><p>The above property is identified as a 'problem' because there exist examples of non-automorphic node pairs composed by automorphic nodes. A model with this property would inevitably compute the same representations for these non-automorphic pairs, despite they feature significantly different characteristics, e.g. shortest-path distance or number of common neighbors.</p><p>Importantly, as proved by <ref type="bibr" target="#b34">[35]</ref> and restated by <ref type="bibr" target="#b50">[51]</ref>, the model family of Message Passing Neural Networks suffer from the aforementioned problem: Proposition A.6. Let M MPNN be the family of Message Passing Neural Networks (Equation <ref type="formula" target="#formula_1">1</ref>) representing node-pairs as a function of their computed (equivariant) node representations. M MPNN suffers from the automorphic node problem.</p><p>We conclude these preliminaries by introducing the concept of link discrimination, which gives a (more) fine-grained measure of the link representational power of model families.</p><p>Definition A.7 (Link discrimination). Let G = (V, E, ι, A) be any simple (attributed) graph and M a model belonging to some family M.</p><formula xml:id="formula_30">Let 1 = (u 1 , v 1 ), 2 = (u 2 , v 2 ) ∈ V × V be two node pairs. We say M discriminates pairs 1 , 2 iff M ( 1 ) = M ( 2 ). We write 1 = M 2 .</formula><p>If there exists such a model M ∈ M, then family M distinguishes between the two pairs and we write 1 = M 2 .</p><p>Accordingly, M does not discriminate pairs 1 , 2 when it contains no model instances which assign distinct representations to the pairs. We write 1 = M 2 .</p><p>We can compare model families based on their expressiveness, that is, their ability to discriminate node pairs:</p><formula xml:id="formula_31">Definition A.8 (More expressive). Let M 1 , M 2 be two model families. We say M 1 is more expressive than M 2 iff ∀G = (V, E, ι, A), 1 , ∼ (2) G 2 ∈ V × V, 1 = M2 2 =⇒ 1 = M1 2 . We write M 1 M 2 .</formula><p>Put differently, M 1 is more expressive than M 2 when for any two node pairs, if there exists a model in M 2 which disambiguates between the two pairs, then there exists a model in M 1 which does so as well. When the opposite is not verified, we say M 1 is strictly more expressive than M 2 : Definition A.9 (Strictly more expressive). Let M 1 , M 2 be two model families. We say M 1 is strictly more expressive than</p><formula xml:id="formula_32">M 2 iff M 1 M 2 ∧ M 2 M 1 . Equivalently, M 1 M 2 ∧ ∃G = (V, E, ι, A), 1 , ∼ (2) G 2 ∈ V × V, s.t. 1 = M1 2 ∧ 1 = M2 2 .</formula><p>In other words, M 1 is strictly more expressive than M 2 when there exists no model in the latter family disambiguating between two non-automorphic pairs while there exist some models in the former which do so.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 Deferred theoretical results and proofs</head><p>Let us start by reporting the Proof for Proposition 4.1, stating that ELPH models do not suffer from the automorphic node problem.  <ref type="table" target="#tab_4">4</ref>). Hence all nodes are in the same, single orbit. On the contrary, node-pairs are partitioned into three distinct orbits (see Table <ref type="table" target="#tab_5">5</ref>).</p><p>As it is possible to notice, pairs (v 0 , v 2 ) and (v 0 , v 3 ) are not automorphic, while their constituent nodes are.</p><p>Proof of Proposition 4.1. In order to prove the Proposition it is sufficient to exhibit an ELPH model which distinguishes between two node-pairs whose nodes are automorphic. Consider G = C 6 , the chordless cycle graph with 6 nodes, which we depict in Figure <ref type="figure" target="#fig_8">7</ref>. Due to the symmetry of this graph, all nodes are in the same orbit, and are therefore automorphic: we report the set of all graph automorphisms A G in Table <ref type="table" target="#tab_4">4</ref>. Let us then consider pairs 1 = (v 0 , v 2 ), 2 = (v 0 , v 3 ). The two pairs satisfy the premise in the definition of the automorphic node problem, as v 0 ∼ G v 0 , v 2 ∼ G v 3 . One single ELPH message-passing layer (k = 1) produces the following (exact) structural features. Pair 1 :</p><formula xml:id="formula_33">A v0,v2 [1, 1] = 1, B v0,v2 [1] = 1; pair 2 : A v0,v3 [1, 1] = 0, B v0,v3 [1] = 2</formula><p>. Thus, a one-layer ELPH model</p><formula xml:id="formula_34">M is such that 1 = M 2 if the readout layer p(u, v) = ψ x 1 u x 1 v , ( Buv [1], Âuv [1, 1]) = Âuv [1, 1</formula><p>]. An MLP implementing the described ψ is only required to nullify parts of its input and apply an identity mapping on the remaining ones. This MLP trivially exists (it can be even manually constructed).</p><p>We now move to the counterpart of the above result for BUDDY models.</p><p>Proposition A.10. Let M BUDDY be the family of BUDDY models as described per Equations 10 and pre-processed features Z = X (0) X (1) ... X (k) , where estimates are exact ( Â ≡ A, B ≡ B). M BUDDY does not suffer from the automorphic node problem.</p><p>Proof of Proposition A.10. In order to prove the Proposition it is sufficient to notice that the readout in the above Proof completely neglects node features, while only replicating in output the structural features A. This is also a valid BUDDY readout function, and allows BUDDY to output the same exact node-pair representations of the ELPH model described above. As we have observed, these are enough to disambiguate (v 0 , v 2 ), (v 0 , v 3 ) from graph C 6 depicted in Figure <ref type="figure" target="#fig_8">7</ref>. This concludes the proof.</p><p>In these results we have leveraged the assumption that A estimates are exact. We observe that, if the MinHash and HyperLogLog estimators are unbiased, it would be possible to choose a sample size large enough to provide distinct estimates for the two counts of interest, so that the above results continue to hold. Unbiased cardinality estimators are, for instance, described in <ref type="bibr" target="#b9">[10]</ref>.</p><p>A more precise assessment of the representational power of ELPH can be obtained by considering the node-pairs this model family is able to discriminate w.r.t. others.  <ref type="figure" target="#fig_8">7</ref>. As it is possible to notice, there is no automorphism mapping pair (v 0 , v 2 ) to (v 0 , v 3 ) -hence the two are in distinct orbits.</p><p>pair Proof of Lemma A.11. We prove this Lemma by noticing that the ELPH architecture generalizes that of an MPNN, so that an ELPH model can learn to simulate a standard MPNN by ignoring the structural features. Specifically, ELPH defaults to an MPNN with (1)</p><formula xml:id="formula_35">A 1 A 2 A 3 A 4 A 5 A 6 A 7 A 8 A 9 A 10 A 11 A 12 (0, 1) (0, 1) (0, 5) (0, 1) (1, 2) (1, 2) (2, 3) (2, 3) (3, 4) (3, 4) (4, 5) (0, 5) (4, 5) (0, 2) (0, 2) (0, 4) (1, 5) (1, 3) (0, 2) (2, 4) (1, 3) (3, 5) (2, 4) (0, 4) (1, 5) (3, 5) (0, 3) (0, 3) (0, 3) (1, 4) (1, 4) (2, 5) (2, 5) (0, 3) (0, 3) (1, 4) (1, 4) (2, 5) (2, 5) (0, 4) (0, 4) (0, 2) (1, 3) (1, 5) (2, 4) (0, 2) (3, 5) (1, 3) (0, 4) (2, 4) (3, 5) (1, 5) (0, 5) (0, 5) (0, 1) (1, 2) (0, 1) (2, 3) (1, 2) (3, 4) (2, 3) (4, 5) (3, 4) (4, 5) (0, 5) (1, 2) (1, 2) (4, 5) (0, 5) (2, 3) (0, 1) (3, 4) (1, 2) (4, 5) (2, 3) (0, 5) (0, 1)<label>(3, 4) (1, 3) (1, 3) (3, 5) (0, 4) (2, 4) (1, 5) (3, 5) (0, 2) (0, 4) (1, 3) (1, 5) (0, 2) (2, 4) (1, 4) (1, 4) (2, 5) (0, 3) (2, 5) (1, 4) (0, 3) (2, 5) (1, 4) (0, 3) (2, 5) (0, 3) (1, 4) (1, 5) (1, 5) (1, 5) (0, 2) (0, 2) (1, 3) (1, 3) (2, 4) (2, 4) (3, 5) (3, 5) (0, 4) (0, 4) (2, 3) (2, 3) (3, 4) (4, 5) (3, 4) (0, 5) (4, 5) (0, 1) (0, 5) (1, 2) (0, 1) (1, 2) (2, 3) (2, 4) (2, 4) (2, 4) (3, 5) (3, 5) (0, 4) (0, 4) (1, 5) (1, 5) (0, 2) (0, 2) (1, 3) (1, 3) (2, 5) (2, 5) (1, 4) (2, 5) (0, 3) (0, 3) (1, 4) (1, 4) (2, 5) (2, 5) (0, 3) (1, 4) (0, 3) (3, 4) (3, 4) (2, 3) (3</label></formula><formula xml:id="formula_36">φ (l) x (l-1) u , x (l-1) v , e (l) u,v = φ (l) x (l-1) u , x (l-1) v ,<label>(12)</label></formula><p>and ( <ref type="formula" target="#formula_7">2</ref>)</p><formula xml:id="formula_37">ψ x k u x k v , { Buv [d], Âuv [d u , d v ] : ∀ d, d u , d v = 1, . . . , k} = ψ x k u x k v .<label>(13)</label></formula><p>This entails that, anytime a specific MPNN instance distinguishes between two non-automorphic node-pairs, there exists an ELPH model which does so as well: the one which exactly simulates such MPNN.</p><p>Lemma A.12. There exist node-pairs distinguished by an ELPH or BUDDY model (with exact cardinality estimates) which are not distinguished by any MPNN model.</p><p>Proof of Lemma A.12. The Lemma is proved simply by considering non-automorphic pairs (v 0 , v 2 ), (v 0 , v 3 ) from graph C 6 depicted in Figure <ref type="figure" target="#fig_8">7</ref>. We have already shown how there exists both an ELPH and BUDDY model (computing exact estimates of A, B) which separate the two. On the other hand, we have already observed how the nodes in the pairs are automorphic as all belonging to the same orbit. Thus, the two pairs cannot possibly be distinguished by any MPNN, since they suffer from the automorphic node problem <ref type="bibr" target="#b34">[35,</ref><ref type="bibr" target="#b50">51]</ref>, as remarked in Proposition A.6.</p><p>Proof of Theorem 4.2. The Theorem follows directly from Lemmas A.11 and A.12.</p><p>Does this expressiveness result also extend to BUDDY? While we have proved BUDDY does not suffer from the automorphic node problem, its non-parametric message-passing scheme is such that this family of models do not generally subsume MPNNs. On one hand, in view of Lemma A.12, we know there exist node-pairs separated by BUDDY but not by any MPNN; on the other, this does not exclude the presence of node-pairs for which the vice-versa is true.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Additional Experimental Details</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.1 Datasets and Their Properties</head><p>Table <ref type="table" target="#tab_6">6</ref> basic properties of the experimental datasets, together with the scaling of subgraph size with hops. Subgraph statistics are generated by expanding k-hop subgraphs around 1000 randomly selected links. Regular graphs scale as deg k , however as these datasets are all complex networks the size of subgraphs grows far more rapidly than this, which poses serious problems for SGNNs. Furthermore, the size of subgraphs is highly irregular with high standard deviations making efficient parallelization in scalable architectures challenging. The one exception to this pattern is DDI. Due to the very high density of DDI, most two-hop subgraphs include almost every node.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.2 Experimental Setup</head><p>In all cases, we use the largest connected component of the graph. LP tasks require links to play dual roles as both supervision labels and message passing links. For all datasets, at training time the message passing links are equal to the supervision links, while at test and validation time, disjoint sets of links are held out for supervision that are never seen at training time. The test supervision links are also never seen at validation time, but for the Planetoid and ogbl-collab 6 datasets, the message passing edges at test time are the union of the training message passing edges and the validation supervision edges. OGB datasets have fixed splits whereas for Planetoid, random 70-10-20 percent train-val-test splits were generated. On DDI, NBFnet was trained without learned node embeddings and with a batch size of 5.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.3 Hyperparameters</head><p>The p parameter used by HyperLogLog was 8 and the number of permutations used by MinHashing was 128. All hyperparameters were tuned using Weights and Biases random search. The search space was over hidden dimension (64-512), learning rate (0.0001-0.01) and dropout (0-1), layers (1-3) and weight decay (0-0.001). Hyperparameters with the highest validation accuracy were chosen and results are reported on a test set that is used only once.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.4 Space Complexity</head><p>The space complexity for ELPH is almost the same as a GCN based link predictor. We define the number of feature as F , the sketch size H (sum of hll and minhash sketch sizes), number of nodes as N , the number of layers L, the batch size B and the number of edges as E. We split link prediction into i) learning node representations and ii) predicting link probabilities from node representations. Learning node representations with GCN has complexity</p><formula xml:id="formula_38">E + LF 2 + LN F,<label>(14)</label></formula><p>where the second and third terms represent the weight matrices and the node representation respectively. ELPH has complexity,</p><formula xml:id="formula_39">E + LF 2 + LN (F + H)<label>(15)</label></formula><p>And so the only difference is the additional space required to store the node sketches. The GCN link predictor has space complexity</p><formula xml:id="formula_40">BF + F 2 ,<label>(16)</label></formula><p>Where the first term is a batch of edges and the second term are the link predictor weight matrices. ELPH also uses structure features, which assuming the number of GNN layers and the number of hops are the same, take up L(L+2) space per node. The link prediction complexity of ELPH is then</p><formula xml:id="formula_41">B(F + L(L + 2)) + F 2 + F (L(L + 2)).<label>(17)</label></formula><p>Typically the number of layers L is 1,2,3 and so the additional overhead is small. The space complexity of the BUDDY link predictor is the same as ELPH and node representations are built as a preprocessing step. The preprocessing has space complexity</p><formula xml:id="formula_42">E + LN F + LN + LN H,<label>(18)</label></formula><p>which correspond to the adjacency matrix, the propagated node features, the hll cardinality estimates and the minhash and hll sketches respectively. The only difference between this and ELPH is that cardinality estimates are cached (LN) and no weight matrices are used.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.5 Implementation Details</head><p>Our code is implemented in PyTorch <ref type="bibr" target="#b29">[30]</ref>, using PyTorch geometric <ref type="bibr" target="#b10">[11]</ref>. Code and instructions to reproduce the experiments are available at https://github.com/melifluos/subgraph-sketching.</p><p>We utilized either AWS p2 or p3 machines with 8 Tesla K80 and 8 Tesla V100 respectively to perform all the experiments in the paper.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C More on Structural Features</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.1 Heuristic Methods for Link Prediction</head><p>Heuristic methods are classified by the receptive field and whether they measure neighborhood similarity or path length. The simplest neighborhood similarity method is the 1-hop Common Neighbor (CN) count. Many other heuristics such as cosine similarity, the Jaccard index and the Probabilistic Mutual Information (PMI) differ from CN only by the choice of normalization.</p><p>Adamic-Adar and Resource Allocation are two closely related second order heuristics that penalize neighbors by a function of the degree</p><formula xml:id="formula_43">Γ(u, v) = i∈N (u)∩N (v) 1 f (|N (i)|) ,<label>(19)</label></formula><p>where N (u) are the neighbors of u. Shortest path based heuristics are generally more expensive to calculate than neighborhood similarity as they require global knowledge of the graph to compute exactly. The Katz index takes into account multiple paths between two nodes. Each path is given a weight of α d , where α is a hyperparameter attenuation factor and d is the path length. Similarly Personalized PageRank (PPR) estimates landing probabilities of a random walker from a single source node. For a survey comparing 20 different LP heuristics see e.g. <ref type="bibr" target="#b21">[22]</ref>. The value of A 67 [2, 1] = 1 indicates that the is one node in common between the two-hop neighbors of node 6 and the 1-hop neighbors of node 7. The common node is node 2. Similarly B 67 <ref type="bibr" target="#b1">[2]</ref> = 1 means there is one element in the two-hop neighbors of 6 that is not in any of the k-hop neighbors of 7: node 4.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D Additional Experiments</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.1 Runtimes and Discussion</head><p>The results in Tables <ref type="table" target="#tab_3">3</ref> and<ref type="table" target="#tab_7">7</ref> are obtained by running methods on a single Tesla K80 GPU on an AWS p2 machine. In all cases SEAL used GCN (fastest GNN) and parameters were taken from the SEAL OGB repo. For the OGB datasets, SEAL runtimes are estimated based on samples due to the high runtimes.</p><p>Table <ref type="table" target="#tab_8">8</ref> breaks BUDDY preprocessing times down into (i) generating hashes and (ii) propagating features for each node, where the same values are used for training and inference and (iii) constructing structure features from hashes for each query edge, which has a separate cost for inference. We stress that both forms of preprocessing depend only on the dataset and so must only be done once ever for a fixed dataset and not e.g. after every epoch. This is akin to the static behavior of SEAL <ref type="bibr" target="#b47">[48]</ref>, where subgraphs are constructed for each edge (both training and inference) as a preprocessing step.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.2 Ablation Studies</head><p>This section contains ablation studies for (i) the affect of varying the number of Minhash permutations and the HyperLogLog p parameter and (ii) removing either node features or structure features from BUDDY.  The method is relatively insensitive to both parameters allowing smaller values to be chosen when space / time complexity is a constraint. Figure <ref type="figure" target="#fig_10">9a</ref> shows that good performance is achieved providing more than 16 minhash permutations are used, while Figure <ref type="figure" target="#fig_10">9b</ref> shows that p can be as low as 4 in the hyperloglog procedure. For Figure <ref type="figure" target="#fig_13">10</ref> values were calculated with no node features to emphasize the affect of only the hashing parameters. This was not required for Figure <ref type="figure" target="#fig_10">9</ref> because relatively speaking the node features are less important for Collab (See Table <ref type="table" target="#tab_9">9</ref>). Data sketching typically introduces a tradeoff between estimation accuracy and time and space     Figure <ref type="figure" target="#fig_1">12</ref>: runtime of hash generation against number of minhash permutations complexity. However, in our model, the time complexity for generating structure features from hashes is negligible at both training and inference time compared to the cost of a forward pass of the MLP. The only place where these parameters have an appreciable impact on runtimes is in preprocessing the hashes. When preprocessing the hashes, the cost of generating hyperloglog sketches is also negligible compared to the cost of the minhash sketches. The relationship between the number of minhash permutations and the runtime to generate the hashes is shown in Figure <ref type="figure" target="#fig_1">12</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.2.2 Feature Ablation</head><p>Table <ref type="table" target="#tab_9">9</ref> shows the degradation in performance of BUDDY with either structure features or node features removed with all hyperparameters held fixed. DDI has no node features and BUDDY did not use the node features from PPA, which are one-hot species labels. For datasets Collab and PPA, the structure features dominate performance. For the Citation dataset, the contribution of structure features and node features is almost equal, with a relatively small incremental benefit of adding a second feature class. For the Planetoid datasets adding structure features gives a significant, but relatively small incremental benefit beyond the node features. It should also be noted that combining node and structure features dramatically reduces the variance over runs for the Planetoid and Collab datasets. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E Full BUDDY Algorithm</head><p>A sketch of the full algorithm is given in Algorithm 3</p><p>Algorithm 3 Complete Procedure Preprocess structure features and cache propagated node features with Graph G and features X procedure Preprocessing(G, X) H1 = MinHashInitialize(G) H2 = HLLInitialize(G) X = P ropagate(X) end procedure Generate edge probability predictions y using an MLP procedure Predict(H1,H2,X')</p><p>for edge (u, v) ∈ epoch do SF u,v = GetStructureF eatures(u, v, H1, H2) x u = GetN odeF eatures(u, X )</p><p>x v = GetN odeF eatures(v, X ) y = MLP(SF u,v , x u , x v ) end for end procedure</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>F Learning curves</head><p>We provide learning curves in terms of number of epochs in Figures <ref type="figure" target="#fig_3">13</ref><ref type="figure" target="#fig_0">14</ref><ref type="figure" target="#fig_18">15</ref><ref type="figure" target="#fig_19">16</ref><ref type="figure" target="#fig_20">17</ref><ref type="figure" target="#fig_0">18</ref><ref type="figure" target="#fig_10">19</ref>      </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>G Societal Impact</head><p>We study LP in graph-structured datasets focusing primarily on methods rather than applications. Our method, in principle, may be employed in industrial recommendation systems. We have no evidence that our method enhances biases, but were it to be deployed, checks would need to be put in place that existing biases were not amplified.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Nodes 2 and 4 are in the same orbit induced by the graph's automorphism group.As a result, a conventional GNN will assign the same probability to links (1,2) and<ref type="bibr" target="#b0">(1,</ref><ref type="bibr" target="#b3">4)</ref>.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: (a) Structure features in SGNNs. (b) LP readout function over the output of all nodes in S uv (sum or mean) or just u and v (edge).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: The importance of DRNL structure features. Importance is based on the weights in a logistic regression model using all DRNL features without node features.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: The DE node labeling scheme for link (u, v)</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head></head><label></label><figDesc>|N du,dv (u, v)| and |N d (u)| can be efficiently approximated with the sketching techniques introduced in section 2. Let h HyperLogLog and MinHash sketches of node u's d-hop neighborhood, obtained recursively from the initial node sketches h</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>ni</head><label></label><figDesc>δ xi,yi is the Hamming similarity, card is the HyperLogLog cardinality estimation function (see Appendix C.3.1) and max is taken elementwise. MinHashing approximates</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: Blue and red concentric circles indicate 1 and 2-hop neighborhoods of u and v respectively. Structure features A and B measure the cardinalities of intersections of these neighborhoods. the Jaccard similarity (J) between two sets and HyperLogLog approximates set cardinality. |N d (u)| can be approximated as |N d (u)| ≈ card (h (d) u). The cost of this operation only depends on additional parameters of HyperLogLog and MinHashing (outlined in more detail in Section 2) which allow for a tradeoff between speed and accuracy, but is nevertheless independent of the graph size. Using this approximations we obtain estimates Â and B of the structure features counts.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: Graph C 6 with nodes and node-pairs coloured according to the orbit they belong to. Node-pairs corresponding to actual edges are depicted solid, dashed otherwise. There are 2 • n = 12 automorphisms which map any node to any other (see Table4). Hence all nodes are in the same, single orbit. On the contrary, node-pairs are partitioned into three distinct orbits (see Table5). As it is possible to notice, pairs (v 0 , v 2 ) and (v 0 , v 3 ) are not automorphic, while their constituent nodes are.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>11 .</head><label>11</label><figDesc>Let M ELPH be the family of ELPH models (Equations 7, 8, 9, and 10), M MPNN that of Message Passing Neural Networks (Equation1). M ELPH is more powerful than M MPNN (M ELPH M MPNN ).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Figure 9 :</head><label>9</label><figDesc>Figure 9: Ablation study for hashing parameters for Collab dataset</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head></head><label></label><figDesc>by number of minhash permutations Cora Citeseer Pubmed (a) number of minhash permutations.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head></head><label></label><figDesc>hyperloglog p parameter</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_13"><head>Figure 10 :</head><label>10</label><figDesc>Figure 10: Ablation study for hashing parameters for Planetoid datasets</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_14"><head>Figure 11 :</head><label>11</label><figDesc>Figure 11: Ablation study for the number of hops</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_16"><head></head><label></label><figDesc>.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_17"><head>Figure 13 :Figure 14 :</head><label>1314</label><figDesc>Figure 13: Loss and train-val-test learning curves as a function of training epoch, averaged over restarts. Solid line represents mean value and shadowed region shows one standard deviation. Cora dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_18"><head>Figure 15 :</head><label>15</label><figDesc>Figure 15: Loss and train-val-test learning curves as a function of training epoch, averaged over restarts. Solid line represents mean value and shadowed region shows one standard deviation. Pubmed dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_19"><head>Figure 16 :</head><label>16</label><figDesc>Figure 16: Loss and train-val-test learning curves as a function of training epoch, averaged over restarts. Solid line represents mean value and shadowed region shows one standard deviation. ogbl-Collab dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_20"><head>Figure 17 :</head><label>17</label><figDesc>Figure 17: Loss and train-val-test learning curves as a function of training epoch, averaged over restarts. Solid line represents mean value and shadowed region shows one standard deviation. ogbl-PPA dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_21"><head>Figure 18 :Figure 19 :</head><label>1819</label><figDesc>Figure 18: Loss and train-val-test learning curves as a function of training epoch, averaged over restarts. Solid line represents mean value and shadowed region shows one standard deviation. ogbl-Citation2 dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="23,114.52,97.45,340.16,213.59" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>convert LP into binary graph classification. For a pair of nodes u, v and the enclosing subgraph S uv , SGNNs produce node representations Y uv and</figDesc><table><row><cell>HR@100</cell><cell>50 55 60 65 70 75 80 85 90 66.79</cell><cell>None 67.08 53.02 81.21 HR@100 by structure feature type ZO DE DRNL Cora Citeseer Pubmed 81.38 81.71 84.63 85.53 83.89 64.74 68.58 75.54</cell><cell>HR@100</cell><cell>45 50 55 60 65 70 75 80 85 90</cell><cell>76.6</cell><cell>mean 50.18 76.41 77.01 HR@100 by readout function sum edge 47.85 71.22 75.54 81.71 83.89</cell></row><row><cell></cell><cell></cell><cell>(a)</cell><cell></cell><cell></cell><cell></cell><cell>(b)</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Table 2 with metrics given in the first row. Either ELPH or BUDDY achieve the best performance in five of the seven datasets, with SEAL being the closest competitor. Being a full-graph method, ELPH runs out of memory on the two largest datasets, while its scalable counterpart, BUDDY, performs extremely well on both. Despite ELPH being Results on link prediction benchmarks. The top three models are colored by First, Second, Third. Where possible, baseline results are taken directly from the OGB leaderboard. 00±0.44 92.93±0.27 74.10±0.78 65.94±0.58 49.85±0.20 87.56±0.11 78.51±1.36more general than BUDDY, there is no clear winner between the two in terms of performance, with ELPH outperforming BUDDY in three of the five datasets where we have results for both. Ablation studies for number of hops, sketching parameters and the importance of node and structure features are in Appendix D.2.</figDesc><table><row><cell></cell><cell>Cora</cell><cell>Citeseer</cell><cell>Pubmed</cell><cell>Collab</cell><cell>PPA</cell><cell>Citation2</cell><cell>DDI</cell></row><row><cell>Metric</cell><cell>HR@100</cell><cell>HR@100</cell><cell>HR@100</cell><cell>HR@50</cell><cell>HR@100</cell><cell>MRR</cell><cell>HR@20</cell></row><row><cell>CN</cell><cell>33.92±0.46</cell><cell>29.79±0.90</cell><cell>23.13±0.15</cell><cell>56.44±0.00</cell><cell>27.65±0.00</cell><cell>51.47±0.00</cell><cell>17.73±0.00</cell></row><row><cell>AA</cell><cell>39.85±1.34</cell><cell>35.19±1.33</cell><cell>27.38±0.11</cell><cell>64.35±0.00</cell><cell>32.45±0.00</cell><cell>51.89±0.00</cell><cell>18.61±0.00</cell></row><row><cell>RA</cell><cell>41.07±0.48</cell><cell>33.56±0.17</cell><cell>27.03±0.35</cell><cell cols="3">64.00±0.00 49.33±0.00 51.98±0.00</cell><cell>27.60±0.00</cell></row><row><cell>transE</cell><cell>67.40±1.60</cell><cell>60.19±1.15</cell><cell>36.67±0.99</cell><cell>29.40±1.15</cell><cell>22.69±0.49</cell><cell>76.44±0.18</cell><cell>6.65±0.20</cell></row><row><cell>complEx</cell><cell>37.16±2.76</cell><cell>42.72±1.68</cell><cell>37.80±1.39</cell><cell>53.91±0.50</cell><cell>27.42±0.49</cell><cell>72.83±0.38</cell><cell>8.68±0.36</cell></row><row><cell>DistMult</cell><cell>41.38±2.49</cell><cell>47.65±1.68</cell><cell>40.32±0.89</cell><cell>51.00±0.54</cell><cell>28.61±1.47</cell><cell>66.95±0.40</cell><cell>11.01±0.49</cell></row><row><cell>GCN</cell><cell>66.79±1.65</cell><cell>67.08±2.94</cell><cell>53.02±1.39</cell><cell>47.14±1.45</cell><cell>18.67±1.32</cell><cell>84.74±0.21</cell><cell>37.07±5.07</cell></row><row><cell>SAGE</cell><cell>55.02±4.03</cell><cell>57.01±3.74</cell><cell>39.66±0.72</cell><cell>54.63±1.12</cell><cell>16.55±2.40</cell><cell>82.60±0.36</cell><cell>53.90±4.74</cell></row><row><cell cols="4">Neo-GNN 80.42±1.31 84.67±2.16 73.93±1.19</cell><cell>62.13±0.5</cell><cell cols="3">49.13±0.60 87.26±0.84 63.57±3.52</cell></row><row><cell>SEAL</cell><cell cols="7">81.71±1.30 83.89±2.15 75.54±1.32 64.74±0.43 48.80±3.16 87.67±0.32 30.56±3.86</cell></row><row><cell>NBFnet</cell><cell>71.65±2.27</cell><cell>74.07±1.75</cell><cell>58.73±1.99</cell><cell>OOM</cell><cell>OOM</cell><cell>OOM</cell><cell>4.00±0.58</cell></row><row><cell>ELPH</cell><cell cols="4">87.72±2.13 93.44±0.53 72.99±1.43 66.32±0.40</cell><cell>OOM</cell><cell>OOM</cell><cell>83.19±2.12</cell></row><row><cell>BUDDY</cell><cell>88.</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 :</head><label>3</label><figDesc>Wall times. Training time is one epoch. Inference time is the full test set.</figDesc><table><row><cell cols="6">dataset time (s) SEAL dyn SEAL stat ELPH BUDDY GCN</cell></row><row><cell>preproc</cell><cell>0</cell><cell>630</cell><cell>0</cell><cell>5</cell><cell>0</cell></row><row><cell>Pubmed train</cell><cell>70</cell><cell>30</cell><cell>25</cell><cell>1</cell><cell>4</cell></row><row><cell>inference</cell><cell>23</cell><cell>9</cell><cell>0.1</cell><cell>0.06</cell><cell>0.02</cell></row><row><cell>preproc</cell><cell>0</cell><cell>∼ 3,000,000</cell><cell></cell><cell>1,200</cell><cell></cell></row><row><cell>Citation train</cell><cell>∼300,000</cell><cell>∼200,000</cell><cell>OOM</cell><cell>1,500</cell><cell>OOM</cell></row><row><cell>inference</cell><cell>∼300,000</cell><cell>∼100,000</cell><cell></cell><cell>300</cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4 :</head><label>4</label><figDesc>Images, for each node, according to the 12 automorphisms for graph C 6 . See Figure7.vertex A 1 A 2 A 3 A 4 A 5 A 6 A 7 A 8 A 9 A 10 A 11 A 12</figDesc><table><row><cell>0</cell><cell>0</cell><cell>0</cell><cell>1</cell><cell>1</cell><cell>2</cell><cell>2</cell><cell>3</cell><cell>3</cell><cell>4</cell><cell>4</cell><cell>5</cell><cell>5</cell></row><row><cell>1</cell><cell>1</cell><cell>5</cell><cell>0</cell><cell>2</cell><cell>1</cell><cell>3</cell><cell>2</cell><cell>4</cell><cell>3</cell><cell>5</cell><cell>0</cell><cell>4</cell></row><row><cell>2</cell><cell>2</cell><cell>4</cell><cell>5</cell><cell>3</cell><cell>0</cell><cell>4</cell><cell>1</cell><cell>5</cell><cell>2</cell><cell>0</cell><cell>1</cell><cell>3</cell></row><row><cell>3</cell><cell>3</cell><cell>3</cell><cell>4</cell><cell>4</cell><cell>5</cell><cell>5</cell><cell>0</cell><cell>0</cell><cell>1</cell><cell>1</cell><cell>2</cell><cell>2</cell></row><row><cell>4</cell><cell>4</cell><cell>2</cell><cell>3</cell><cell>5</cell><cell>4</cell><cell>0</cell><cell>5</cell><cell>1</cell><cell>0</cell><cell>2</cell><cell>3</cell><cell>1</cell></row><row><cell>5</cell><cell>5</cell><cell>1</cell><cell>2</cell><cell>0</cell><cell>3</cell><cell>1</cell><cell>4</cell><cell>2</cell><cell>5</cell><cell>3</cell><cell>4</cell><cell>0</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 5 :</head><label>5</label><figDesc>Images, for each node-pair, according to the 12 induced node-pair automorphisms for graph C 6 . Pairs are considered as undirected (sets). See Figure</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 6 :</head><label>6</label><figDesc>Properties of link prediction benchmarks. Confidence intervals are ± one standard deviation. Splits for the Planetoid datasets are random and Collab uses the fixed OGB splits. Where possible, baseline results for Collab are taken directly from the OGB leaderboard</figDesc><table><row><cell></cell><cell>Cora</cell><cell cols="2">Citeseer Pubmed</cell><cell>Collab</cell><cell>PPA</cell><cell>DDI</cell><cell>Citation2</cell></row><row><cell>#Nodes</cell><cell>2,708</cell><cell>3,327</cell><cell>18,717</cell><cell>235,868</cell><cell>576,289</cell><cell>4,267</cell><cell>2,927,963</cell></row><row><cell>#Edges</cell><cell>5,278</cell><cell>4,676</cell><cell>44,327</cell><cell cols="4">1,285,465 30,326,273 1,334,889 30,561,187</cell></row><row><cell>splits</cell><cell>rand</cell><cell>rand</cell><cell>rand</cell><cell>time</cell><cell>throughput</cell><cell>time</cell><cell>protein</cell></row><row><cell>avg deg</cell><cell>3.9</cell><cell>2.74</cell><cell>4.5</cell><cell>5.45</cell><cell>52.62</cell><cell>312.84</cell><cell>10.44</cell></row><row><cell>avg deg 2</cell><cell>15.21</cell><cell>7.51</cell><cell>20.25</cell><cell>29.70</cell><cell>2769</cell><cell>97,344</cell><cell>109</cell></row><row><cell>1-hop size</cell><cell>12±15</cell><cell>8±8</cell><cell>12±17</cell><cell>99±251</cell><cell>152±152</cell><cell>901±494</cell><cell>23±28</cell></row><row><cell cols="2">2-hop size 127±131</cell><cell>58±92</cell><cell>260±432</cell><cell>115±571</cell><cell>7790±6176</cell><cell>3830±412</cell><cell>285±432</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 7 :</head><label>7</label><figDesc>Wall time of our methods in comparison to SEAL in dynamic and static mode. Training time is for one epoch. Inference time is for the full test set. Due to high runtimes, values for SEAL are estimated from samples for the OGB datasets</figDesc><table><row><cell cols="2">dataset Wall time (sec)</cell><cell cols="4">SEAL dyn SEAL stat ELPH Buddy</cell></row><row><cell></cell><cell>Preprocessing</cell><cell>0</cell><cell>57</cell><cell>0</cell><cell>0.4</cell></row><row><cell>Cora</cell><cell>Training (1 epoch)</cell><cell>9</cell><cell>5</cell><cell>2</cell><cell>0.7</cell></row><row><cell></cell><cell>Inference</cell><cell>3</cell><cell>2</cell><cell>0.05</cell><cell>0.04</cell></row><row><cell></cell><cell>Preprocessing</cell><cell>0</cell><cell>48</cell><cell>0</cell><cell>0.7</cell></row><row><cell cols="2">Citeseer Training (1 epoch)</cell><cell>13</cell><cell>5</cell><cell>1</cell><cell>0.5</cell></row><row><cell></cell><cell>Inference</cell><cell>20</cell><cell>2</cell><cell>0.03</cell><cell>0.07</cell></row><row><cell></cell><cell>Preprocessing</cell><cell>0</cell><cell>630</cell><cell>0</cell><cell>5</cell></row><row><cell cols="2">Pubmed Training (1 epoch)</cell><cell>70</cell><cell>32</cell><cell>25</cell><cell>1</cell></row><row><cell></cell><cell>inference</cell><cell>23</cell><cell>9</cell><cell>0.1</cell><cell>0.06</cell></row><row><cell></cell><cell>Preprocessing</cell><cell>0</cell><cell>∼25000</cell><cell>0</cell><cell>43</cell></row><row><cell>Collab</cell><cell>Training (1 epoch)</cell><cell>∼5,000</cell><cell>∼330</cell><cell>2100</cell><cell>105</cell></row><row><cell></cell><cell>Inference</cell><cell>∼5,000</cell><cell>∼160</cell><cell>2</cell><cell>1</cell></row><row><cell></cell><cell>Preprocessing</cell><cell>0</cell><cell>∼900,000</cell><cell></cell><cell>840</cell></row><row><cell>PPA</cell><cell>Training (1 epoch)</cell><cell>∼130,000</cell><cell>∼150,000</cell><cell>OOM</cell><cell>75</cell></row><row><cell></cell><cell>Inference</cell><cell>∼20,000</cell><cell>∼16,000</cell><cell></cell><cell>18</cell></row><row><cell></cell><cell>Preprocessing</cell><cell>0</cell><cell>∼ 3,000,000</cell><cell></cell><cell>1,200</cell></row><row><cell cols="2">Citation Training (1 epoch)</cell><cell>∼300,000</cell><cell>∼200,000</cell><cell>OOM</cell><cell>1,450</cell></row><row><cell></cell><cell>inference</cell><cell>∼300,000</cell><cell>∼100,000</cell><cell></cell><cell>280</cell></row><row><cell></cell><cell>Preprocessing</cell><cell>0</cell><cell>∼400,000</cell><cell>0</cell><cell>66</cell></row><row><cell>DDI</cell><cell>Training (1 epoch)</cell><cell>∼150,000</cell><cell>∼250,000</cell><cell>30</cell><cell>27</cell></row><row><cell></cell><cell>Inference</cell><cell>∼1,000</cell><cell>∼19,000</cell><cell>0.6</cell><cell>0.4</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 8 :</head><label>8</label><figDesc>The three types of preprocessing used in BUDDY and associated wall times. Entity gives the entity associated with the preprocessed features. Each node has a hash and propagated features while each edge requires structure features</figDesc><table><row><cell cols="4">Wall time (sec)</cell><cell></cell><cell cols="12">Entity Cora Citeseer Pubmed Collab PPA Citation DDI</cell></row><row><cell cols="2">hashing</cell><cell></cell><cell></cell><cell></cell><cell>node</cell><cell></cell><cell>0.12</cell><cell></cell><cell>0.1</cell><cell></cell><cell cols="2">1.04</cell><cell>26</cell><cell>469</cell><cell></cell><cell>714</cell><cell>20.3</cell></row><row><cell cols="5">feature propagation</cell><cell>node</cell><cell></cell><cell>0.27</cell><cell></cell><cell>0.60</cell><cell></cell><cell cols="2">0.67</cell><cell>4.6</cell><cell>77</cell><cell></cell><cell>126</cell><cell>NA</cell></row><row><cell cols="4">structure features</cell><cell></cell><cell>edge</cell><cell></cell><cell>0.02</cell><cell></cell><cell>0.01</cell><cell></cell><cell>3.3</cell><cell></cell><cell>12.0</cell><cell>294</cell><cell></cell><cell>393</cell><cell>45.76</cell></row><row><cell></cell><cell>70.0</cell><cell></cell><cell cols="6">HR@50 by number of minhash permutations</cell><cell>Collab</cell><cell></cell><cell>70</cell><cell></cell><cell cols="4">HR@50 by hyperloglog p parameter</cell></row><row><cell>HR@50</cell><cell>57.5 60.0 62.5 65.0 67.5</cell><cell></cell><cell></cell><cell>61.35</cell><cell cols="2">64.82 65.33</cell><cell>67.15</cell><cell cols="2">65.15 64.97</cell><cell>HR@50</cell><cell>64 66 68</cell><cell>65.22</cell><cell>66.95</cell><cell>65.65</cell><cell>66.43</cell><cell>68.01</cell><cell>66.36</cell></row><row><cell></cell><cell>55.0</cell><cell></cell><cell>54.7</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>62</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>52.5</cell><cell>51.45</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>50.0</cell><cell>2</cell><cell>4</cell><cell>8</cell><cell>16</cell><cell>32</cell><cell>64</cell><cell>128</cell><cell>256</cell><cell></cell><cell>60</cell><cell>4</cell><cell>6</cell><cell>8</cell><cell>10</cell><cell>12</cell><cell>14</cell></row><row><cell></cell><cell cols="9">(a) number of minhash permutations.</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table><note><p><p>Collab</p>(b) hyperloglog p parameter</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 9 :</head><label>9</label><figDesc>Ablation table showing the affects of removing both structure features and node features from BUDDY with all hyperparameters held fixed. Core heuristics are shown for comparison with the w\o features row. Confidence intervals are ± one sd. Planetoid splits are random and the OGB splits are fixed.</figDesc><table><row><cell></cell><cell>Cora</cell><cell>Citeseer</cell><cell>Pubmed</cell><cell>Collab</cell><cell>PPA</cell><cell>Citation2</cell><cell>DDI</cell></row><row><cell>#Nodes</cell><cell>2,708</cell><cell>3,327</cell><cell>18,717</cell><cell>235,868</cell><cell>576,289</cell><cell>2,927,963</cell><cell>4267</cell></row><row><cell>#Edges</cell><cell>5,278</cell><cell>4,676</cell><cell>44,327</cell><cell>1,285,465</cell><cell cols="2">30,326,273 30,561,187</cell><cell>1,334,889</cell></row><row><cell>avg deg</cell><cell>3.9</cell><cell>2.74</cell><cell>4.5</cell><cell>5.45</cell><cell>52.62</cell><cell>10.44</cell><cell>312.84</cell></row><row><cell>metric</cell><cell>HR@100</cell><cell>HR@100</cell><cell>HR@100</cell><cell>HR@50</cell><cell>HR@100</cell><cell>MRR</cell><cell>HR@20</cell></row><row><cell>CN</cell><cell>33.92±0.46</cell><cell>29.79±0.90</cell><cell>23.13±0.15</cell><cell>56.44±0.00</cell><cell>27.65±0.00</cell><cell>51.47±0.00</cell><cell>17.73±0.00</cell></row><row><cell>AA</cell><cell>39.85±1.34</cell><cell>35.19±1.33</cell><cell>27.38±0.11</cell><cell>64.35±0.00</cell><cell>32.45±0.00</cell><cell>51.89±0.00</cell><cell>18.61±0.00</cell></row><row><cell>RA</cell><cell>41.07±0.48</cell><cell>33.56±0.17</cell><cell>27.03±0.35</cell><cell>64.00±0.00</cell><cell>49.33±0.00</cell><cell>51.98±0.00</cell><cell>27.60±0.00</cell></row><row><cell>BUDDY</cell><cell cols="7">88.00±0.44 92.93±0.27 74.10±0.78 65.94±0.58 49.85±0.20 87.56±0.11 78.51±1.36</cell></row><row><cell cols="2">w\0 Features 48.45±4.83</cell><cell>36.33±5.59</cell><cell>53.50±2.23</cell><cell>60.46±0.33</cell><cell>49.85±0.20</cell><cell>82.27±0.10</cell><cell>NA</cell></row><row><cell>w\0 SF</cell><cell>83.90±2.28</cell><cell>91.24±1.44</cell><cell>65.57±2.86</cell><cell>22.83±1.26</cell><cell>1.20±0.21</cell><cell cols="2">83.59±0.13 74.01±13.18</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>GNNs are a broader category than MPNNs. Since the majority of GNNs used in practice are of the message passing type, we will use the terms synonymously.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>More precisely, WL-equivalent, which is a necessary but insufficient condition for isomorphism.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>Subgraphs can be pre-computed, but the subgraphs combined are much larger than the original dataset, exceeding available memory for even moderately-sized datasets.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_3"><p>For sufficiently large samples, this result can be extended to approximate counts via unbiased estimators.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_4"><p>https://github.com/melifluos/subgraph-sketching</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head n="9">Acknowledgments</head><p>We would like to thank <rs type="person">Junhyun Lee</rs>, <rs type="person">Seongjun Yun</rs> and <rs type="person">Michael Galkin</rs> for useful discussions regarding prior works and are particularly grateful to <rs type="person">Junhyun and Seongjun</rs> for generating additional Neo-GNN results for Table 2. MB is supported in part by <rs type="funder">ERC</rs> <rs type="grantName">Consolidator grant</rs> no <rs type="grantNumber">724228</rs> (LEMAN).</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_zC9Ta47">
+					<idno type="grant-number">724228</idno>
+					<orgName type="grant-name">Consolidator grant</orgName>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.2 Subgraph Generation Complexity</head><p>The complexity for generating regular k-hop subgraph is O(deg k ), where deg is the degree of every node in the subgraph. For graphs that are approximately regular, with a well defined mean degree, the situation is slightly worse. However, in general we are interested in complex networks (such as social networks, recommendation systems or citation graphs) that are formed as a result of preferential attachment. Complex networks are typified by power law degree distributions of the form p(deg) = deg -γ . As a result the mean is only well defined if γ &gt; 2 and the variance is finite only for γ &gt; 3. As most real world complex networks fall into the range 2 &lt; γ &lt; 3, we have that the maximum degree is only bounded by the number of edges in the graph and thus, so is the complexity of subgraph generation. Table <ref type="table">6</ref> includes the average size of one thousand 1-hop and 2-hop randomly generated graphs for each dataset used in our experiments. In all cases, the size of subgraphs greatly exceeds the average degree baseline with very large variances.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.3 Subgraph Sketches</head><p>We make use of both the HyperLogLog and MinHash sketching schemes. The former is used to estimate the size of the union, while the latter estimates the Jaccard similarity between two sets. Together they can be used to estimate the size of set intersections.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.3.1 Hyperloglog</head><p>HyperLogLog efficiently estimates the cardinality of large sets. It accomplishes this by representing sets using a constant size data sketch. These sketches can be combined in time that is constant w.r.t the data size and linear in the sketch size using elementwise maximum to estimate the size of a set union.</p><p>The algorithm takes the precision p as a parameter. From p, it determines the number of registers to use. The sketch for a set S is comprised of m registers M 1 . . . M m where m = 2 p . A hash function h(s) maps elements from S into an array of 64-bits. The algorithm uses the first p bits of the hash to associate elements with a register. From the remaining bits, it computes the number of leading zeros, tracking the maximum number of leading zeros per register. Intuitively a large number of leading zero bits is less likely and indicates a higher cardinality and for a single register the expected cardinality for a set where the maximum number of leading zeros is n is 2 n . This estimate is highly noisy and there are several methods to combine estimates from different registers. We use hyperloglog++ <ref type="bibr" target="#b14">[15]</ref>, for which the standard error is numerically close to 1.04/sqrt(m) for large enough m.</p><p>Hyperloglog can be expressed in three functions Initialize, Union, and Card. Sketches are easily merged by populating a new set of registers with the element-wise max values for each register. To extract the estimate, the algorithm finds the harmonic mean of 2 M [m] for each of the the m registers. This mean estimates the cardinality of the set divided by m. To find the estimated cardinality we multiply by m and α m . α m is used to correct multiplicative bias. Additional information about the computation of α m along with techniques to improve the estimate can be found in <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b14">15]</ref>. The full algorithm is presented in Algorithm 1.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Complexity</head><p>The Initialize operation has a O(m + |S|) running time. Union and Card are both O(m) operations. The size of the sketch for a 64-bit hash is 6 * 2 p bits.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.3.2 Minhashing</head><p>The MinHash algorithm estimates the Jaccard index. It can similarly be expressed in three functions Initialize, Union, and J. The p parameter is the number of permutations on each element of the set. P i (x) computes a permutation of input x where each i specifies a different permutation. The algorithm stores the minimum value for each of the p permutations of all hashed elements. The Jaccard estimate of the similarity of two sets is given by the Hamming similarity of their sketches. The full algorithm is presented as Algorithm 2.</p><p>Complexity The Initialize operation has a O(np|S|) running time. Union and J are both O(np) operations. The size of the sketch is np longs. Minhashing gives an unbiased estimate of the Jaccard with a variance given by the Cramer-Rao lower bound that scales as O(1/np) <ref type="bibr" target="#b5">[6]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Algorithm 1 HyperLogLog: Estimate cardinality</head><p>Parameter p is used to control precision. m = 2 p procedure HLLInitialize(S)</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.4 Labeling Schemes</head><p>Empirically, we found the best performing labeling scheme to be DRNL, which scores each node in S uv based on it's distance to u and v with the caveat that when scoring the distance to u, node v and all of its edges are masked and vice versa. This improves expressiveness as otherwise for positive edges every neighbor of u would always be a 2-hop neighbor of v and vice-versa. The result of masking is that distances can be very large even for 2-hop graphs (for instance one node may have an egonet that is a star graph with a ring around the outside. If the edges of the star are masked then the ring must be traversed). The first few DRNL values are Algorithm 2 MinHash: Estimate Jaccard Similarity Parameter np controls the number of permutations. procedure MinHashInitialize(S) </p><p>where d = d ui + d vi . It is slightly suboptimal to assign infinite distances to 0, which is at least part of the reason that they are one-hot encode them as labels. Indeed, DE <ref type="bibr" target="#b20">[21]</ref> uses a max distance label, which they claim reduces overfitting.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.5 Substructure Counting and Curvature</head><p>The eight features depicted in Figure <ref type="figure">6</ref> can be used to learn local substructures. A uv <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b0">1]</ref> counts the number of triangles that (u, v) participates in assuming that the edge (u, v) exists. A uv <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b0">1]</ref> and A uv <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b1">2]</ref> will double count a four-cycle and single count a four-cycle with a single diagonal. The model can not distinguish a four-clique from two triangles or a five-clique from three triangles.</p><p>A uv <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b1">2]</ref> counts five cycles. LP has also recently been shown to be closely related to notions of discrete Ricci curvature on graphs <ref type="bibr" target="#b35">[36]</ref>, a connection that we plan exploring in future work. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.6 Example Structure Features</head></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">The surprising power of graph neural networks with random node initialization</title>
+		<author>
+			<persName><forename type="first">Ralph</forename><surname>Abboud</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Ismail Ilkan Ceylan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Grohe</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lukasiewicz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IJCAI</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Friends and neighbors on the web</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lada</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eytan</forename><surname>Adamic</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Adar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Social networks</title>
+		<imprint>
+			<biblScope unit="volume">25</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="211" to="230" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multi-relational data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Nips</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Improving graph neural network expressivity via subgraph isomorphism counting</title>
+		<author>
+			<persName><forename type="first">Giorgos</forename><surname>Bouritsas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabrizio</forename><surname>Frasca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefanos</forename><forename type="middle">P</forename><surname>Zafeiriou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Bronstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">PAMI</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">On the resemblance and containment of documents</title>
+		<author>
+			<persName><forename type="first">Andrei</forename><forename type="middle">Z</forename><surname>Broder</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings. Compression and Complexity of SEQUENCES 1997 (Cat. No. 97TB100171)</title>
+		<meeting>Compression and Complexity of SEQUENCES 1997 (Cat. No. 97TB100171)</meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="1997">1997</date>
+			<biblScope unit="page" from="21" to="29" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Real-time community detection in full social networks on a laptop</title>
+		<author>
+			<persName><forename type="first">Josh</forename><surname>Benjamin P Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clive</forename><surname>Levy-Kramer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc</forename><forename type="middle">P</forename><surname>Humby</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Deisenroth</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PloS one</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">188702</biblScope>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Tuning word2vec for large scale recommendation systems</title>
+		<author>
+			<persName><forename type="first">Emanuele</forename><surname>Benjamin P Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suvash</forename><surname>Shiebler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">M</forename><surname>Sedhain</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bronstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">RecSys</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Can graph neural networks count substructures?</title>
+		<author>
+			<persName><forename type="first">Zhengdao</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soledad</forename><surname>Villar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joan</forename><surname>Bruna</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Twhin: Embedding the twitter heterogeneous information network for personalized recommendation</title>
+		<author>
+			<persName><forename type="first">Ahmed</forename><surname>El-Kishky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Markovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Serim</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chetan</forename><surname>Verma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baekjin</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ramy</forename><surname>Eskander</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yury</forename><surname>Malkov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Frank</forename><surname>Portman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sofía</forename><surname>Samaniego</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ying</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aria</forename><surname>Haghighi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SIGKDD</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<author>
+			<persName><forename type="first">Otmar</forename><surname>Ertl</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1706.07290</idno>
+		<title level="m">New cardinality estimation methods for hyperloglog sketches</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Fast graph representation learning with PyTorch Geometric</title>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><forename type="middle">E</forename><surname>Lenssen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR Workshop on Representation Learning on Graphs and Manifolds</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">HyperLogLog: the analysis of a near-optimal cardinality estimation algorithm</title>
+		<author>
+			<persName><forename type="first">Philippe</forename><surname>Flajolet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Éric</forename><surname>Fusy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Olivier</forename><surname>Gandouet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Frédéric</forename><surname>Meunier</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AofA: Analysis of Algorithms</title>
+		<title level="s">DMTCS Proceedings. Discrete Mathematics and Theoretical Computer Science</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Neural message passing for quantum chemistry</title>
+		<author>
+			<persName><forename type="first">Justin</forename><surname>Gilmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Samuel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><forename type="middle">F</forename><surname>Schoenholz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Riley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><forename type="middle">E</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Dahl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Inductive representation learning on large graphs</title>
+		<author>
+			<persName><forename type="first">Rex</forename><surname>William L Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Hyperloglog in practice: Algorithmic engineering of a state of the art cardinality estimation algorithm</title>
+		<author>
+			<persName><forename type="first">Stefan</forename><surname>Heule</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc</forename><surname>Nunkesser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Hall</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 16th International Conference on Extending Database Technology</title>
+		<meeting>the 16th International Conference on Extending Database Technology</meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Open graph benchmark: Datasets for machine learning on graphs</title>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marinka</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michele</forename><surname>Catasta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Power iterated color refinement</title>
+		<author>
+			<persName><forename type="first">Kristian</forename><surname>Kersting</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Mladenov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roman</forename><surname>Garnett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Grohe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Matrix factorization techniques for recommender systems</title>
+		<author>
+			<persName><forename type="first">Yehuda</forename><surname>Koren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Bell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Volinsky</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computer</title>
+		<imprint>
+			<biblScope unit="volume">42</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page" from="30" to="37" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">PyTorch-BigGraph: A Large-scale Graph Embedding System</title>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ledell</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiajun</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothee</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Wehrstedt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhijit</forename><surname>Bose</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Peysakhovich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SysML</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Distance encoding: Design provably more powerful neural networks for graph representation learning</title>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanbang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongwei</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Link prediction in complex networks: A survey</title>
+		<author>
+			<persName><forename type="first">Linyuan</forename><surname>Lü</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Physica A: statistical mechanics and its applications</title>
+		<imprint>
+			<biblScope unit="volume">390</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="1150" to="1170" />
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Provably powerful graph networks</title>
+		<author>
+			<persName><forename type="first">Heli</forename><surname>Haggai Maron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hadar</forename><surname>Ben-Hamu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaron</forename><surname>Serviansky</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lipman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Automating the construction of internet portals with machine learning</title>
+		<author>
+			<persName><forename type="first">Andrew Kachites</forename><surname>Mccallum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kamal</forename><surname>Nigam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Rennie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristie</forename><surname>Seymore</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Information Retrieval</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="127" to="163" />
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Weisfeiler and leman go neural: Higher-order graph neural networks</title>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Morris</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Ritzert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>William L Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gaurav</forename><surname>Eric Lenssen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Rattan</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Grohe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Query-driven active surveying for collective classification</title>
+		<author>
+			<persName><forename type="first">Galileo</forename><surname>Namata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>London</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lise</forename><surname>Getoor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bert</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Umd</forename><surname>Edu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings Mining and Learning with Graphs</title>
+		<meeting>Mining and Learning with Graphs</meeting>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">The pagerank citation ranking: Bringing order to the web</title>
+		<author>
+			<persName><forename type="first">Lawrence</forename><surname>Page</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Brin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rajeev</forename><surname>Motwani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Terry</forename><surname>Winograd</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+			<pubPlace>Stanford InfoLab</pubPlace>
+		</imprint>
+	</monogr>
+	<note type="report_type">Technical report</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Neural link prediction with walk pooling</title>
+		<author>
+			<persName><forename type="first">Liming</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cheng</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><surname>Dokmanić</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Hyperloglog and minhash-a union for itersections</title>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Pascoe</surname></persName>
+		</author>
+		<ptr target="https://tech.nextroll.com/media/hllminhash.pdf" />
+		<imprint>
+			<date type="published" when="2013-05">2013. May-2022</date>
+			<biblScope unit="page">9</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Pytorch: An imperative style, high-performance deep learning library</title>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Paszke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Gross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francisco</forename><surname>Massa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Bradbury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregory</forename><surname>Chanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Trevor</forename><surname>Killeen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zeming</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Natalia</forename><surname>Gimelshein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Antiga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alban</forename><surname>Desmaison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Kopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edward</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zachary</forename><surname>Devito</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Raison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alykhan</forename><surname>Tejani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sasank</forename><surname>Chilamkurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benoit</forename><surname>Steiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lu</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junjie</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soumith</forename><surname>Chintala</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Deepwalk: Online learning of social representations</title>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rami</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Skiena</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SIGKDD</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<author>
+			<persName><forename type="first">Emanuele</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabrizio</forename><surname>Frasca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Davide</forename><surname>Benjamin P Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Eynard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Federico</forename><surname>Michael M Bronstein</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Monti</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2004.11198</idno>
+		<title level="m">SIGN: Scalable inception graph neural networks</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Random features strengthen graph neural networks</title>
+		<author>
+			<persName><forename type="first">Ryoma</forename><surname>Sato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Makoto</forename><surname>Yamada</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hisashi</forename><surname>Kashima</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 SIAM International Conference on Data Mining (SDM)</title>
+		<meeting>the 2021 SIAM International Conference on Data Mining (SDM)</meeting>
+		<imprint>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Collective classification in network data</title>
+		<author>
+			<persName><forename type="first">Prithviraj</forename><surname>Sen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Galileo</forename><surname>Namata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mustafa</forename><surname>Bilgic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lise</forename><surname>Getoor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brian</forename><surname>Galligher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tina</forename><surname>Eliassi-Rad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AI Magazine</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="93" to="93" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">On the equivalence between positional node embeddings and structural graph representations</title>
+		<author>
+			<persName><forename type="first">Balasubramaniam</forename><surname>Srinivasan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bruno</forename><surname>Ribeiro</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Understanding over-squashing and bottlenecks on graphs via curvature</title>
+		<author>
+			<persName><forename type="first">Jake</forename><surname>Topping</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francesco</forename><surname>Di Giovanni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaowen</forename><surname>Benjamin P Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">M</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bronstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Complex embeddings for simple link prediction</title>
+		<author>
+			<persName><forename type="first">Théo</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Equivariant and stable positional encoding for more powerful graph neural networks</title>
+		<author>
+			<persName><forename type="first">Haorui</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haoteng</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">In ICLR</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">The reduction of a graph to canonical form and the algebra which appears therein</title>
+		<author>
+			<persName><forename type="first">Boris</forename><surname>Weisfeiler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrei</forename><surname>Leman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NTI Series</title>
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="issue">9</biblScope>
+			<biblScope unit="page" from="12" to="16" />
+			<date type="published" when="1968">1968</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Simplifying graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amauri</forename><surname>Souza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Fifty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kilian</forename><surname>Weinberger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Hashing-accelerated graph neural networks for link prediction</title>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bin</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chuan</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wolfgang</forename><surname>Nejdl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The WebConf</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">How powerful are graph neural networks?</title>
+		<author>
+			<persName><forename type="first">Keyulu</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefanie</forename><surname>Jegelka</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">Bishan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Deng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Algorithm and system co-design for efficient subgraph-based graph representation learning</title>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Haoteng Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanbang</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianguo</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">VLDB</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Identity-aware graph neural networks</title>
+		<author>
+			<persName><forename type="first">Jiaxuan</forename><surname>You</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Gomes-Selman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rex</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<monogr>
+		<title level="m" type="main">Neo-gnns: Neighborhood overlap-aware graph neural networks for link prediction</title>
+		<author>
+			<persName><forename type="first">Seongjun</forename><surname>Yun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seoyoon</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junhyun</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jaewoo</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hyunwoo J</forename><surname>Kim</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Weisfeiler-lehman neural machine for link prediction</title>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixin</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SIGKDD</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Link prediction based on graph neural networks</title>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixin</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Inductive matrix completion based on graph neural networks</title>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixin</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">In ICLR</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<monogr>
+		<title level="m" type="main">Nested graph neural networks</title>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Li</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021">In NeurIPS, 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<monogr>
+		<title level="m" type="main">Labeling trick: A theory of using graph neural networks for multi-node representation learning</title>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinglong</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Long</forename><surname>Jin</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Predicting missing links via local information</title>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Linyuan</forename><surname>Lü</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi-Cheng</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The European Physical Journal B</title>
+		<imprint>
+			<biblScope unit="volume">71</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="623" to="630" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<monogr>
+		<title level="m" type="main">Neural bellman-ford networks: A general graph neural network framework for link prediction</title>
+		<author>
+			<persName><forename type="first">Zhaocheng</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zuobai</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Louis-Pascal</forename><surname>Xhonneux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

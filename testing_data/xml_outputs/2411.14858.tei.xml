@@ -1,0 +1,1447 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Domain and Range Aware Synthetic Negatives Generation for Knowledge Graph Embedding Models</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-11-22">22 Nov 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Alberto</forename><surname>Bernardi</surname></persName>
+							<email>alberto.bernardi@accenture.com</email>
+							<affiliation key="aff0">
+								<orgName type="laboratory">Accenture Labs</orgName>
+								<address>
+									<settlement>Dublin</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Luca</forename><surname>Costabello</surname></persName>
+							<email>luca.costabello@accenture.com</email>
+							<affiliation key="aff1">
+								<orgName type="laboratory">Accenture Labs</orgName>
+								<address>
+									<settlement>Dublin</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Domain and Range Aware Synthetic Negatives Generation for Knowledge Graph Embedding Models</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-11-22">22 Nov 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">B8BEF1031699D48CDB027B5040EB62C7</idno>
+					<idno type="arXiv">arXiv:2411.14858v1[cs.AI]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:19+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Knowledge Graph Embedding models, representing entities and edges in a lowdimensional space, have been extremely successful at solving tasks related to completing and exploring Knowledge Graphs (KGs). One of the key aspects of training most of these models is teaching to discriminate between true statements (positives) and false ones (negatives). However, the way in which negatives can be defined is not trivial, as facts missing from the KG are not necessarily false and a set of ground truth negatives is hardly ever given. This makes synthetic negative generation a necessity. Different generation strategies can heavily affect the quality of the embeddings, making it a primary aspect to consider. We revamp a strategy that generates corruptions during training respecting the domain and range of relations, we extend its capabilities and we show our methods bring substantial improvement (+10% MRR) for standard benchmark datasets and over +150% MRR for a larger ontology-backed dataset.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Knowledge Graphs (KGs) are a flexible and scalable data representation paradigm to represent complex relationships between different concepts <ref type="bibr" target="#b0">[1]</ref>. Their applicability to model information related to any domain made them reach a significant size, including millions or even billions of edges. This makes manual curation almost impossible and leaves them incomplete and error-prone <ref type="bibr" target="#b1">[2]</ref>.</p><p>In this context, a machine-based approach is necessary to infer missing links and assess the correctness of given links. Pioneer research efforts <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b4">4]</ref> led to Knowledge Graph Embedding (KGE) models, that learn low-dimensional representations for entities and relations to perform a variety of tasks.</p><p>Although some approaches rely uniquely on the true facts that make up a KG, the dominant training approach for KGE models teaches to discriminate between true statements (positives) and false ones (negatives). However, statements missing in a KG are not necessarily false, and rarely ground truth negatives are provided. This makes the generation of synthetic negatives, or Negative Sampling (NS), necessary and determinant during training. A lot of research was carried out, addressing the difficult challenge of coming up with effective and efficient strategies to sample true negatives <ref type="bibr" target="#b5">[5,</ref><ref type="bibr" target="#b6">6]</ref>.</p><p>Our work extends an existing NS strategy <ref type="bibr" target="#b7">[7]</ref> that leverages schema-based information in order to enhance the quality of the negatives. Despite nailing the possibility of using entity type information to generate negatives that are semantically relevant, they neglect how, in case a class has few instances, the likelihood of resampling the same entity from the class increases, so we might end up generating non-diverse and (if the sampled entity coincides with the ground truth one) false negatives. Combining it with random uniform sampling <ref type="bibr" target="#b2">[3]</ref>, we mitigate this issue while also limiting the risk of generating trivial random negatives. The latter problem, indeed, affects the uniform random sampling applied on its own, especially in KGs where some node types are over-represented.</p><p>As an additional contribution, we validate our results on two popular benchmark datasets, where the classes of nodes are inferred based on relation types, and on a biological dataset for which classes are available as part of the ontology. Importantly, we limit our analysis to four traditional KGE models. Indeed, despite recent works have claimed new state-of-the-art results, the performance gain is often marginal and inflated <ref type="bibr" target="#b8">[8]</ref> by computationally expensive training protocols (e.g., 1-N scoring <ref type="bibr" target="#b9">[9]</ref>, high-dimensional embeddings) that are hardly scalable to real-world applications. Therefore, we reimplement and explore models of manageable size, showing how our approach can lead to significant improvements while competing with the state-of-the-art.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>Knowledge Graph Embedding Models. KGE models learn continuous representations of entities and relations in the KG from the graph topology and its soft regularities (symmetries and asymmetries, concept homophily, long-range relationships...) to solve a wide variety of tasks. We refer the interested reader to <ref type="bibr" target="#b10">[10]</ref> for a comprehensive overview.</p><p>Negative Sampling. A lot of methods addressed the challenge of generating negative samples from existing KGs. We can broadly categorize them in 4 groups. (i) Static NS methods consider a pool of possible negatives that does not change during training. Within this group we have: the preeminent random sampling, that corrupts either the tail or the head of a triple picking uniformly at random any entity in the KG <ref type="bibr" target="#b2">[3]</ref>, that might be extended to relations <ref type="bibr" target="#b11">[11]</ref> or limited to entities within the mini-batch <ref type="bibr" target="#b12">[12]</ref>; probabilistic negative sampling methods, that fix a probability to decide whether to corrupt the head or the tail of a triple <ref type="bibr" target="#b13">[13]</ref><ref type="bibr" target="#b14">[14]</ref><ref type="bibr" target="#b15">[15]</ref><ref type="bibr" target="#b16">[16]</ref> or to use random negatives or those sampled from a predetermined list <ref type="bibr" target="#b17">[17]</ref>; methods that leverage a pre-trained external models (e.g., a pre-trained KGE <ref type="bibr" target="#b18">[18]</ref> or Language Model <ref type="bibr" target="#b19">[19]</ref>) to generate corruptions that are similar to the entity to corrupt; auxiliary data-based, that leverage type information <ref type="bibr" target="#b7">[7]</ref>, domain or range information <ref type="bibr" target="#b20">[20,</ref><ref type="bibr" target="#b21">21]</ref>, or the semantics <ref type="bibr" target="#b22">[22]</ref> of a KG to generate negatives. (ii) Self-Adversarial NS strategies use the KGE embeddings to model a probability distribution from which to sample a set of negatives. For example, <ref type="bibr" target="#b23">[23]</ref> makes the distribution of negatives proportional to the score assigned from the KGE model to the negatives, so to guarantee that, as training progresses, the model is influenced more by more plausible negatives. However, this strategy comes with the risk of assigning higher relevance to false negatives. Other works along this line are <ref type="bibr" target="#b24">[24]</ref><ref type="bibr" target="#b25">[25]</ref><ref type="bibr" target="#b26">[26]</ref>. (iii) Adversarial NS methods leverage an external model, trained in a framework that resembles Generative Adversarial Networks <ref type="bibr" target="#b27">[27]</ref>, to generate negatives. (iv) Dynamic negative sampling methods, finally, try to inform the generation of negatives by changing their distribution as training progresses to avoid trivial negatives. However, (iii) and (iv) introduce a significant computational overhead. For non-attributive graphs, <ref type="bibr" target="#b28">[28]</ref> use a similarity score to sample harder negatives, but its efficient definition in KGs is complicated by their heterogeneity. For more details and negative sampling methods, refer to <ref type="bibr" target="#b5">[5,</ref><ref type="bibr" target="#b6">6]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Methods</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Background and Notation</head><formula xml:id="formula_0">A Knowledge Graph G = {(s, p, o)} ⊆ E × R × E is a set of triples t = (s, p, o)</formula><p>, each including a subject (head) s ∈ E, a predicate p ∈ R, and an object (tail) o ∈ E, where E and R are the sets of all entities and relation types, respectively. We refer to the task of predicting unseen triples in a KG as Link Prediction. It is formalised in literature as a learning to rank problem, where the objective is learning a scoring function f : <ref type="figure">s,</ref><ref type="figure">p,</ref><ref type="figure">o</ref>)) ∈ R proportional to the likelihood that the fact t is true. Predictions of true triples t + ∈ T + are ranked against predictions for synthetic negatives t -∈ T -, to gauge how well the model discriminates true from false statements. Finally, we introduce the concept of class. If in KGs this concept is formally tied to the definition of a schema or an ontology, we will more broadly refer to it to also indicate the grouping of entities we can infer from the relation types in case the ontology is missing. In these cases, we are going to define two classes for every relation type p ∈ R:</p><formula xml:id="formula_1">E × R × E → R that, given an input triple t = (s, p, o), assigns a score f (t) = f ((</formula><formula xml:id="formula_2">domain p := {e ∈ E | ∃o ∈ E s.t. (e, p, o) ∈ G}, range p := {e ∈ E | ∃s ∈ E s.t. (s, p, e) ∈ G}.</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Ontology-based Negative Sampling</head><p>The dominant approach to NS while training a KGE model is, given a positive triple t = (s, p, o), to corrupt either the subject or the object with η entities sampled uniformly at random from E <ref type="bibr" target="#b2">[3]</ref>. Formally, the set of negatives to sample from is defined as</p><formula xml:id="formula_3">T - rand = {t -= (s ′ , p, o) | s ′ ∈ E} ∪ {t -= (s, p, o ′ ) | o ′ ∈ E}. Notice that T - rand ∩ G ̸ = ∅</formula><p>, which implies that the above approach might lead to the generation of false negatives. Despite this might slightly slow down the convergence of the training, it allows an extremely efficient generation. The negatives sampled from T - rand , however, might be heavily affected by an unbalanced class distribution. Indeed, if an entity type is overrepresented in a KG, it will also be over-represented in T - rand . Therefore, entities outside this class respecting the "domain" or "range" of a relation might not appear in any of the sampled corruptions, thus significantly limiting the learning process. To address this issue, we take inspiration from <ref type="bibr" target="#b7">[7]</ref>, that proposes to corrupt triples respecting the semantics of relations extracted from the ontology (if given) or from the facts in the training data. Formally, given triple t = (s, p, o), the set of negatives for this approach will be denoted</p><formula xml:id="formula_4">T - t.c. = {(s ′ , p, o) | s ′ ∈ domain p } ∪ (s, p, o ′ ) | o ′ ∈</formula><p>range p , where t.c. stands for Type-Constrained. Unlike <ref type="bibr" target="#b7">[7]</ref>, we do not limit the NS to T - t.c. ; instead, we also sample a proportion of negatives (determined by a hyper-parameter ν) from T - rand (refer to Appendix A for the pseudo-code). Otherwise, in case we had a class including few entities, the corruptions obtained replacing entities within this class would likely be identical and might have led to a significant number of false negatives. In the next sections, we are going to analyse in detail how much this affects KGs with different class distributions and show how our strategy allows to significantly improve results compared to the default approaches.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiments</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Experimental Settings</head><p>Datasets. We evaluate our NS strategy on three KGs: FB15k-237 <ref type="bibr" target="#b29">[29]</ref> and WN18RR <ref type="bibr" target="#b9">[9]</ref> are two of the most widely used benchmarks for link prediction; Hetionet <ref type="bibr" target="#b30">[30]</ref> is a network encoding biological data. Differently from the former two, Hetionet does not come with pre-defined train-test splits. Therefore, we create a test set of 10,000 triples and a validation set of 5,000 extracted at random<ref type="foot" target="#foot_0">1</ref> from the training set so that no entity of the test and validation sets was not present in the training set. A summary of the statistics is available in Appendix A.2.</p><p>Evaluation. We evaluate our models in the filtered setting: for every target triple t = (s, p, o), we separately corrupt the subject and the object with all the entities in the KG not generating a fact in the training, validation or test sets. We then rank test triples against all corruptions. The metrics used are the usual for link prediction: Mean Reciprocal Rank (MRR) and Hits at N (Hits@N).</p><p>Hyperparameter Search. We perform an extensive grid search to validate our results. For FB15k-237 and WN18RR, we explore embedding dimension k = [200, 350], η = <ref type="bibr" target="#b10">[10,</ref><ref type="bibr" target="#b20">20,</ref><ref type="bibr" target="#b30">30]</ref>, loss functions [self-adversarial, multi-class NLL]. As optimizer we use Adam <ref type="bibr" target="#b32">[32]</ref> with learning rate lr = [1e-2, 1e-3, 1e-4, 1e-5] and L p -regularization coefficient λ = [1e-2, 1e-3, 1e-4]. Finally, we test the proportion ν of negatives sampled respecting domain and range constraints: ν = [0.0 -1.0] with step 0.1. We run experiments for 1000 epochs on FB15k-237 and 4000 epochs on WN18RR, enabling early stopping monitoring MRR, with patience set to 10 and validation frequency of 25 epochs. For Hetionet we run experiments for 1000 epochs and explore k = [100, 200] and η = <ref type="bibr" target="#b10">[10,</ref><ref type="bibr" target="#b20">20]</ref>, while we keep the rest of the grid search unchanged.</p><p>Baseline. We compare our NS strategy with KGE models trained following the random uniform NS <ref type="bibr" target="#b2">[3]</ref> and the Type-Constrained approach <ref type="bibr" target="#b7">[7]</ref> we have extended. For a fair comparison, we pick as the best baselines those that share the same (or smaller) embedding size and number of negatives of the best performing model trained with our own NS strategy. The KGE models we consider are TransE <ref type="bibr" target="#b2">[3]</ref>, DistMult <ref type="bibr" target="#b33">[33]</ref>, ComplEx-N3 <ref type="bibr" target="#b34">[34,</ref><ref type="bibr" target="#b35">35]</ref> and RotatE <ref type="bibr" target="#b23">[23]</ref>. Despite some recent works (among the others <ref type="bibr" target="#b36">[36,</ref><ref type="bibr" target="#b37">37]</ref>) claim new state-of-the-art results, the gain is often marginal and inflated by expensive training protocols. Moreover, the impact of our strategy can be gauged independently on the models considered. We leave for future work the analysis of a wider set of models.</p><p>Table <ref type="table">1</ref>: Results for the different Negative Sampling (NS) strategies: "Rand." indicates random uniform sampling, "T.C." the Type-Constrained one. All reported results are obtained with Ampli-Graph <ref type="bibr" target="#b38">[38]</ref>. Random uniform sampling results do not always match SOTA as we deliberately used smaller embedding size and number of negatives for a fair comparison. Best results for each datasets are reported in bold, while across models are underlined.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Model NS WN18RR</head><p>FB15k-237 Hetionet MRR H@1 H@3 H@10 MRR H@1 H@3 H@10 MRR H@1 H@3 H@10 </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Main Results</head><p>The results of our experiments are reported in Table <ref type="table">1</ref>. Our NS method outperforms the random approach and the Type-Constrained one in all cases, with the only exceptions of TransE and DistMult on WN18RR. The improvement is substantial in FB15k-237: +10% MRR on the random baseline for ComplEx-N3 and +33% on the type-constrained baseline. Indeed, some of the classes inferred from relation types for FB15k-237 have extremely reduced cardinality (11 classes have just one node, 24 up to 3 nodes, 56 up to 10), thus making the generation of negatives entirely based on type-constraints harmful, as it leads to many false negatives. On the other hand, on Hetionet, our NS strategy leads to impressive gains of well over +150% MRR relative to the random sampling baseline. The definition of classes based on a proper ontology, indeed, allows for the generation of more significant and diverse negatives, not dominated by over-represented classes (e.g., Gene and Biological Process). At the same time, the proportion of random uniform negative samples helps increasing the diversity for classes that have few instances (e.g., Disease and Pharmacological Class), thus motivating the improvement over the T.C. baseline. As a final remark, the optimal value of η for TransE, DistMult and ComplEx-N3 on WN18RR is 30, while for all the other models is 10. The low (or null) improvement in the performance for the former three models suggests that our strategy impacts more models trained with few negative samples. Indeed, if the number grows, too many domain and range-based negatives can cause issues similar to those outlined for Type-Constrained NS. Random uniform sampling on its own, on the other hand, is enough to yield more meaningful negatives if η grows significantly. This shows how our approach can hugely benefit efficiency, allowing for a reduced number of negative samples. Moreover, the overhead introduced by our strategy is minimal, as ComplEx-N3 run on Hetionet (over 2 million triples) took an average ∼5ms per step extra overhead compared to the random uniform sampling.</p><p>For the detailed list of the optimal hyperparameters refer to Appendix A.4, and for further exploration of the impact of ν on the results refer to Appendix A.5.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusion and Future Work</head><p>With this work, we have proposed a simple and effective NS strategy, that can significantly enhance the performance of KGE models and help improve the size, and thus the efficiency, of these models.</p><p>We have validated results on two popular benchmark KGs and on a biological graph that, given an ontology, was affected the most by our method. The results obtained are extremely promising and, given the flexibility of the approach, we leave for further work its application to a broader set of KGE methods. In addition, we plan to extend the experiments to more datasets, to specifically gauge the impact of ontology-derived classes over relation-inferred ones.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Appendix</head><p>A. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3 Implementation Details</head><p>All experiments are implemented with AmpliGraph library <ref type="bibr" target="#b38">[38]</ref>, using Tensorflow 2.9.0 and Python 3.8.10 in the backend. All our code was run under Ubuntu 20.04 on an Intel Xeon Gold 6226R, 256GB, equipped with Tesla A100 40GB GPUs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.4 Optimal Hyperparameters</head><p>In Tables <ref type="table">3</ref><ref type="table">4</ref>-5 we report the best hyperparameters obtained grid searching our models. k specifies the dimension of the KGE embeddings; η the number of negatives generated for each training triple; lr is the learning rate of the Adam optimizer used in our experiments; ν specifies the proportion of the η negatives that are sampled respecting the domain and range constraints.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.5 Impact of ν on the Results</head><p>As an additional experiment, we report in Figure <ref type="figure" target="#fig_0">1</ref> the performance of the best models for the different scoring functions, modifying the value of ν, the hyper-parameter specifying the proportion of ontology-based negatives to sample for each training triple.</p><p>At a first glance, we can notice how, for the same dataset, the impact of ontology-based sampling has a quite consistent behaviour across all the four models, hinting at its applicability to any other scoring function. Moreover, it looks like there is consistency in the behaviour of the same model across neighbouring values of ν. FB15k-237, for example, favours low values of ν, while Hetionet and WN18RR favour higher values. Importantly, this shows how ν is an hyper-parameter easy to tune. Indeed, it will be enough to test a couple of extreme values and a central one to have a good estimate of what the impact of the strategy could be.</p><p>Another important observation is the difference even a very small ν can make on the random baseline when there are entity types that are over-represented. It is the case of Hetionet. For this dataset, indeed, we can notice how, even the slightest increase of ν makes the the performance spike. Indeed, as already mentioned in the main text in the paper, ontology-based negatives allows the generation of negatives more pertinent for each triple and not dominated by entities of the over-represented types. In FB15k-237 and WN18RR the improvement is less marked as there is no class significantly over-represented.</p><p>On the other side of the spectrum of values for ν, we can observe that some models see a significant decrease of the performance as we approach the Type-Constrained baseline (ν = 1). This is definitely dataset-dependent, as it is really evident in FB15k-237 and Hetionet where the classes with very few instances are a significant share of the total. However, it looks like the different scoring function impacts this behaviour. Indeed, TransE and RotatE seems to be more badly affected by an higher number of negatives compared to DistMult and ComplEx. As a mere speculation, we conjecture that this might be related to the different nature of the scoring function: translational/rotational in the former cases, and projective in the latter. We propose to better inspect this behaviour in future work, extending the datasets considered in the analysis and the set of models.</p><p>As a final remark, we highlight the inconsistent behaviour of TransE on WN18RR with respect to the other models. The decrease of the Hits@10 observed for higher values of ν is due to the poor expressive power of the model, that thus struggles at making sense of the harder ontology-based negatives. The poor MRR of the model on this dataset is a further element in support (notice we have not reported the MRR of TransE on WN18RR in Figure <ref type="figure" target="#fig_0">1</ref> as it was in the range of [0.03, 0.04] for all νs, including the baseline. Being way below all the other values, it would have compromised the clarity of the plot. However, you can refer to the values reported in Table <ref type="table">1</ref>).</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Performance of the different models varying the proportion of ontology-based negatives ν.</figDesc><graphic coords="10,109.98,72.00,392.06,163.10" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>1 Ontology-based Negative Sampling Pseudo-Code We provide the pseudo-code of our Negative Sampling strategy in Algorithm 1. Ensure: S set of negatives for t such that |S| = η. η rand = ⌊η • ν⌋ ▷ Number of negatives to sample uniformly at random η t.c. = ⌈η • (1 -ν)⌉ ▷ Number of Ontology-based negatives to sample S rand ← sample T - rand , η rand S t.c. ← sample T - t.c. , η rand return S ← S rand ∪ S t.c. Statistics of the three datasets are reported in Table 2. Statistics of the datasets.</figDesc><table><row><cell cols="4">Algorithm 1 Ontology-based Negative Sampling</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">Require: t = (s, p, o), T -rand , T -t.c. , ν ∈ [0, 1], η ∈ N.</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="2">A.2 Dataset Statistics</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Dataset</cell><cell>#Entities</cell><cell>#Relations</cell><cell>#Train</cell><cell>#Valid</cell><cell>#Test</cell><cell>Ontology</cell><cell>#Classes</cell></row><row><cell>FB15k-237</cell><cell>15 541</cell><cell>237</cell><cell>272 115</cell><cell>17 535</cell><cell>20 466</cell><cell>✗</cell><cell>474</cell></row><row><cell>WN18RR</cell><cell>40 943</cell><cell>18</cell><cell>86 835</cell><cell>3034</cell><cell>3134</cell><cell>✗</cell><cell>36</cell></row><row><cell>Hetionet</cell><cell>45 158</cell><cell>24</cell><cell>2 235 197</cell><cell>5000</cell><cell>10 000</cell><cell>✓</cell><cell>11</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>We are aware that properly splitting Hetionet poses multiple challenges<ref type="bibr" target="#b31">[31]</ref>. However, the purpose of our analysis is to gauge the relative impact of NS strategies on the performance of the models and not to assess the absolute performance of the models. Therefore, we opted for a simple, random split.</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0" />			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Aidan</forename><surname>Hogan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eva</forename><surname>Blomqvist</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Cochez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Claudia</forename><forename type="middle">D</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gerard</forename><surname>De Melo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Claudio</forename><surname>Gutierrez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sabrina</forename><surname>Kirrane</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">José</forename><surname>Emilio Labra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roberto</forename><surname>Gayo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Navigli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Axel-Cyrille Ngonga</forename><surname>Neumaier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Axel</forename><surname>Ngomo</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Polleres</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sabbir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anisa</forename><surname>Rashid</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lukas</forename><surname>Rula</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juan</forename><surname>Schmelzeisen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steffen</forename><surname>Sequeda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Staab</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zimmermann</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3447772</idno>
+		<ptr target="https://doi.org/10.1145/3447772.1" />
+		<imprint>
+			<date type="published" when="2021-07">jul 2021</date>
+			<biblScope unit="volume">54</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Knowledge vault: a web-scale approach to probabilistic knowledge fusion</title>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evgeniy</forename><surname>Gabrilovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geremy</forename><surname>Heitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wilko</forename><surname>Horn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ni</forename><surname>Lao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Strohmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shaohua</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2623330.2623623</idno>
+		<ptr target="https://doi.org/10.1145/2623330.2623623.1" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, KDD &apos;14</title>
+		<meeting>the 20th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, KDD &apos;14<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="601" to="610" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+		<title level="m">Translating embeddings for modeling multi-relational data</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">J</forename><surname>In</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Burges</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bottou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Welling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">Q</forename><surname>Ghahramani</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Weinberger</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper_files/paper/2013/file/1cecc" />
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">26</biblScope>
+			<biblScope unit="page">3</biblScope>
+		</imprint>
+	</monogr>
+	<note>a77928ca8133fa24680a88d2f9-Paper.pdf. 1, 2</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Factorizing YAGO: scalable machine learning for linked data</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hans-Peter</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kriegel</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2187836.2187874</idno>
+		<ptr target="https://doi.org/10.1145/2187836.2187874.1" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 21st World Wide Web Conference</title>
+		<editor>
+			<persName><forename type="first">Alain</forename><surname>Mille</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Fabien</forename><surname>Gandon</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jacques</forename><surname>Misselis</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Michael</forename><surname>Rabinovich</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Steffen</forename><surname>Staab</surname></persName>
+		</editor>
+		<meeting>the 21st World Wide Web Conference<address><addrLine>Lyon, France</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2012-04-16">2012. 2012. April 16-20, 2012. 2012</date>
+			<biblScope unit="page" from="271" to="280" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Comprehensive analysis of negative sampling in knowledge graph representation learning</title>
+		<author>
+			<persName><forename type="first">Hidetaka</forename><surname>Kamigaito</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katsuhiko</forename><surname>Hayashi</surname></persName>
+		</author>
+		<ptr target="https://proceedings.mlr.press/v162/kamigaito22a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<editor>
+			<persName><forename type="first">Kamalika</forename><surname>Chaudhuri</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Stefanie</forename><surname>Jegelka</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Le</forename><surname>Song</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Csaba</forename><surname>Szepesvári</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Gang</forename><surname>Niu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sivan</forename><surname>Sabato</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Baltimore, Maryland, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022-07-23">17-23 July 2022. 2022</date>
+			<biblScope unit="volume">2022</biblScope>
+			<biblScope unit="page">2</biblScope>
+		</imprint>
+	</monogr>
+	<note>PMLR</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Negative sampling in knowledge graph representation learning: A review</title>
+		<author>
+			<persName><forename type="first">Tiroshan</forename><surname>Madushanka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ryutaro</forename><surname>Ichise</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2402.19195</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2402.19195" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page">2</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Type-constrained representation learning in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Denis</forename><surname>Krompaß</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Baier</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Volker Tresp</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/978-3-319-25007-6_37</idno>
+		<ptr target="https://doi.org/10.1007/978-3-319-25007-6_37.1" />
+	</analytic>
+	<monogr>
+		<title level="m">The Semantic Web -ISWC 2015 -14th International Semantic Web Conference</title>
+		<title level="s">Lecture Notes in Computer Science</title>
+		<editor>
+			<persName><forename type="first">Marcelo</forename><surname>Arenas</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Óscar</forename><surname>Corcho</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Elena</forename><surname>Simperl</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Markus</forename><surname>Strohmaier</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kavitha</forename><surname>Mathieu D'aquin</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Paul</forename><surname>Srinivas</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Michel</forename><surname>Groth</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jeff</forename><surname>Dumontier</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Krishnaprasad</forename><surname>Heflin</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Steffen</forename><surname>Thirunarayan</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Staab</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Bethlehem, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2015">October 11-15, 2015. 2015</date>
+			<biblScope unit="volume">9366</biblScope>
+			<biblScope unit="page">3</biblScope>
+		</imprint>
+	</monogr>
+	<note>Proceedings, Part I</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">You CAN teach an old dog new tricks! on training knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samuel</forename><surname>Broscheit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rainer</forename><surname>Gemulla</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=BkxSmlBFvr.2" />
+	</analytic>
+	<monogr>
+		<title level="m">8th International Conference on Learning Representations, ICLR 2020</title>
+		<meeting><address><addrLine>Addis Ababa, Ethiopia</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020">April 26-30, 2020. 2020</date>
+		</imprint>
+	</monogr>
+	<note>OpenReview.net</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pontus</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<idno type="DOI">10.1609/aaai.v32i1.11573</idno>
+		<ptr target="https://doi.org/10.1609/aaai.v32i1.11573.2" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirty-Second AAAI Conference on Artificial Intelligence, (AAAI-18), the 30th innovative Applications of Artificial Intelligence (IAAI-18), and the 8th AAAI Symposium on Educational Advances in Artificial Intelligence (EAAI-18)</title>
+		<editor>
+			<persName><forename type="first">Sheila</forename><forename type="middle">A</forename><surname>Mcilraith</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kilian</forename><forename type="middle">Q</forename><surname>Weinberger</surname></persName>
+		</editor>
+		<meeting>the Thirty-Second AAAI Conference on Artificial Intelligence, (AAAI-18), the 30th innovative Applications of Artificial Intelligence (IAAI-18), and the 8th AAAI Symposium on Educational Advances in Artificial Intelligence (EAAI-18)<address><addrLine>New Orleans, Louisiana, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2018">February 2-7, 2018. 2018</date>
+			<biblScope unit="page">3</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding: A survey from the perspective of representation spaces</title>
+		<author>
+			<persName><forename type="first">Jiahang</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinyuan</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zaiqiao</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shangsong</forename><surname>Liang</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3643806</idno>
+		<ptr target="https://doi.org/10.1145/3643806.2" />
+	</analytic>
+	<monogr>
+		<title level="j">ACM Comput. Surv</title>
+		<idno type="ISSN">0360-0300</idno>
+		<imprint>
+			<biblScope unit="volume">56</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<date type="published" when="2024-03">mar 2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Investigations on knowledge base embedding for relation prediction and extraction</title>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Denilson</forename><surname>Barbosa</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Pytorch-biggraph: A large scale graph embedding system</title>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ledell</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiajun</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothée</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Wehrstedt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhijit</forename><surname>Bose</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Peysakhovich</surname></persName>
+		</author>
+		<ptr target="https://proceedings.mlsys.org/paper_files/paper/2019/hash/1" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Second Conference on Machine Learning and Systems</title>
+		<editor>
+			<persName><forename type="first">Ameet</forename><surname>Talwalkar</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Virginia</forename><surname>Smith</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Matei</forename><surname>Zaharia</surname></persName>
+		</editor>
+		<meeting>the Second Conference on Machine Learning and Systems<address><addrLine>Stanford, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019-04-02">March 31 -April 2, 2019. mlsys.org, 2019</date>
+		</imprint>
+	</monogr>
+	<note>SysML 2019. eb34d662b67a14e3511d0dfd78669be-Abstract.html. 2</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding by translating on hyperplanes</title>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianwen</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianlin</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Chen</surname></persName>
+		</author>
+		<idno type="DOI">10.1609/aaai.v28i1.8870</idno>
+		<ptr target="https://doi.org/10.1609/aaai.v28i1.8870.2" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-Eighth AAAI Conference on Artificial Intelligence</title>
+		<editor>
+			<persName><forename type="first">Carla</forename><forename type="middle">E</forename><surname>Brodley</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Peter</forename><surname>Stone</surname></persName>
+		</editor>
+		<meeting>the Twenty-Eighth AAAI Conference on Artificial Intelligence<address><addrLine>Québec City, Québec, Canada</addrLine></address></meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2014">July 27 -31, 2014. 2014</date>
+			<biblScope unit="page" from="1112" to="1119" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">An interpretable knowledge transfer model for knowledge base completion</title>
+		<author>
+			<persName><forename type="first">Qizhe</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuezhe</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zihang</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eduard</forename><forename type="middle">H</forename><surname>Hovy</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P17-1088</idno>
+		<ptr target="https://doi.org/10.18653/v1/P17-1088" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics</title>
+		<editor>
+			<persName><forename type="first">Regina</forename><surname>Barzilay</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Min-Yen</forename><surname>Kan</surname></persName>
+		</editor>
+		<meeting>the 55th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Vancouver, Canada</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017-07-30">2017. July 30 -August 4. 2017</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="950" to="962" />
+		</imprint>
+	</monogr>
+	<note>Long Papers</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">A novel negative sample generating method for knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wanhua</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juntao</forename><surname>Liu</surname></persName>
+		</author>
+		<ptr target="https://dl.acm.org/citation.cfm?id=3324417" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 International Conference on Embedded Wireless Systems and Networks, EWSN 2019</title>
+		<editor>
+			<persName><forename type="first">Yunhao</forename><surname>Liu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Guoliang</forename><surname>Xing</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Yuan</forename><surname>He</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Gian</forename><forename type="middle">Pietro</forename><surname>Picco</surname></persName>
+		</editor>
+		<meeting>the 2019 International Conference on Embedded Wireless Systems and Networks, EWSN 2019<address><addrLine>Beijing, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2019">February 25-27, 2019. 2019</date>
+			<biblScope unit="page" from="401" to="406" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">A novel negative sampling based on frequency of relational association entities for knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">Wanhua</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juntao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ziyun</forename><surname>Rao</surname></persName>
+		</author>
+		<idno type="DOI">10.13052/jwe1540-9589.2068</idno>
+		<ptr target="https://doi.org/10.13052/jwe1540-9589.2068.2" />
+	</analytic>
+	<monogr>
+		<title level="j">J. Web Eng</title>
+		<imprint>
+			<biblScope unit="volume">20</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Enhancing knowledge graph embedding with probabilistic negative sampling</title>
+		<author>
+			<persName><forename type="first">Vibhor</forename><surname>Kanojia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hideyuki</forename><surname>Maeda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Riku</forename><surname>Togashi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sumio</forename><surname>Fujita</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3041021.3054238</idno>
+		<ptr target="https://doi.org/10.1145/3041021.3054238.2" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th International Conference on World Wide Web Companion</title>
+		<editor>
+			<persName><forename type="first">Rick</forename><surname>Barrett</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Rick</forename><surname>Cummings</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Eugene</forename><surname>Agichtein</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Evgeniy</forename><surname>Gabrilovich</surname></persName>
+		</editor>
+		<meeting>the 26th International Conference on World Wide Web Companion<address><addrLine>Perth, Australia</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2017">April 3-7, 2017. 2017</date>
+			<biblScope unit="page" from="801" to="802" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Analysis of the impact of negative sampling on link prediction in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Bhushan</forename><surname>Kotnis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vivi</forename><surname>Nastase</surname></persName>
+		</author>
+		<idno>CoRR, abs/1708.06816</idno>
+		<ptr target="http://arxiv.org/abs/1708.06816.2" />
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Language model-driven negative sampling</title>
+		<author>
+			<persName><forename type="first">Md</forename><surname>Mirza Mohtashim Alam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rashad</forename><surname>Al Hasan Rony</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Semab</forename><surname>Ali</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jens</forename><surname>Lehmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sahar</forename><surname>Vahdati</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2203.04703</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2203.04703.2" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Kgboost: A classification-based knowledge base completion method with negative sampling</title>
+		<author>
+			<persName><forename type="first">Yuncheng</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiou</forename><surname>Ge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C.-C. Jay</forename><surname>Kuo</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.patrec.2022.04.001</idno>
+		<ptr target="https://doi.org/10.1016/j.patrec.2022.04.001.2" />
+	</analytic>
+	<monogr>
+		<title level="j">Pattern Recognit. Lett</title>
+		<imprint>
+			<biblScope unit="volume">157</biblScope>
+			<biblScope unit="page" from="104" to="111" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Incorporating domain and range of relations for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Juan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huajun</forename><surname>Chen</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/978-981-15-1956-7_5</idno>
+		<ptr target="https://doi.org/10.1007/978-981-15-1956-7_5.2" />
+	</analytic>
+	<monogr>
+		<title level="m">Knowledge Graph and Semantic Computing: Knowledge Computing and Language Understanding -4th China Conference</title>
+		<editor>
+			<persName><forename type="first">Xiaoyan</forename><surname>Zhu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Bing</forename><surname>Qin</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Xiaodan</forename><surname>Zhu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Ming</forename><surname>Liu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Longhua</forename><surname>Qian</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Hangzhou, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2019-08-24">2019. August 24-27, 2019. 2019</date>
+			<biblScope unit="volume">1134</biblScope>
+			<biblScope unit="page" from="50" to="61" />
+		</imprint>
+	</monogr>
+	<note>CCKS</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Conditional constraints for knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Weyns</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pieter</forename><surname>Bonte</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bram</forename><surname>Steenwinckel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Filip</forename><forename type="middle">De</forename><surname>Turck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Femke</forename><surname>Ongenae</surname></persName>
+		</author>
+		<ptr target="https://ceur-ws.org/Vol-2635/paper3.pdf.2" />
+	</analytic>
+	<monogr>
+		<title level="m">Mehwish Alam, Davide Buscaldi, Michael Cochez, Francesco Osborne, Diego Reforgiato Recupero, and Harald Sack</title>
+		<meeting><address><addrLine>Heraklion, Greece</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020-06-02">June 02, 2020. 2020</date>
+			<biblScope unit="volume">2635</biblScope>
+		</imprint>
+	</monogr>
+	<note>CEUR Workshop Proceedings. CEUR-WS.org</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Zhiqing</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhi-Hong</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian-Yun</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=HkgEQnRqYQ.2" />
+	</analytic>
+	<monogr>
+		<title level="m">7th International Conference on Learning Representations, ICLR 2019</title>
+		<meeting><address><addrLine>New Orleans, LA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">May 6-9, 2019. OpenReview.net, 2019</date>
+			<biblScope unit="page">3</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Confidence-aware negative sampling method for noisy knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">Yingchun</forename><surname>Shan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenyang</forename><surname>Bu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaojian</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shengwei</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Li</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/ICBK.2018.00013</idno>
+		<ptr target="https://doi.org/10.1109/ICBK.2018.00013.2" />
+	</analytic>
+	<monogr>
+		<title level="m">2018 IEEE International Conference on Big Knowledge, ICBK 2018</title>
+		<editor>
+			<persName><forename type="first">Xindong</forename><surname>Wu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Yew-Soon</forename><surname>Ong</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Charu</forename><forename type="middle">C</forename><surname>Aggarwal</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Huanhuan</forename><surname>Chen</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Singapore</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE Computer Society</publisher>
+			<date type="published" when="2018">November 17-18, 2018. 2018</date>
+			<biblScope unit="page" from="33" to="40" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Nscaching: Simple and efficient negative sampling for knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">Yongqi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quanming</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yingxia</forename><surname>Shao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Chen</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/ICDE.2019.00061</idno>
+		<ptr target="https://doi.org/10.1109/ICDE.2019.00061" />
+	</analytic>
+	<monogr>
+		<title level="m">35th IEEE International Conference on Data Engineering</title>
+		<meeting><address><addrLine>Macao, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2019-04-08">2019. April 8-11, 2019. 2019</date>
+			<biblScope unit="page" from="614" to="625" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Adversarial knowledge representation learning without external model</title>
+		<author>
+			<persName><forename type="first">Jingpei</forename><surname>Lei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dantong</forename><surname>Ouyang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ying</forename><surname>Liu</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/ACCESS.2018.2889481</idno>
+		<ptr target="https://doi.org/10.1109/ACCESS.2018.2889481.2" />
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Access</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="page" from="3512" to="3524" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Generative adversarial nets</title>
+		<author>
+			<persName><forename type="first">Ian</forename><forename type="middle">J</forename><surname>Goodfellow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jean</forename><surname>Pouget-Abadie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mehdi</forename><surname>Mirza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bing</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Warde-Farley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sherjil</forename><surname>Ozair</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><forename type="middle">C</forename><surname>Courville</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<idno>html. 2</idno>
+		<ptr target="https://proceedings.neurips.cc/paper/2014/hash/5" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 27: Annual Conference on Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">Zoubin</forename><surname>Ghahramani</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Corinna</forename><surname>Cortes</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Neil</forename><forename type="middle">D</forename><surname>Lawrence</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kilian</forename><forename type="middle">Q</forename><surname>Weinberger</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Montreal, Quebec, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2014-12-08">2014. December 8-13 2014. 2014</date>
+			<biblScope unit="page" from="2672" to="2680" />
+		</imprint>
+	</monogr>
+	<note>ca3e9b122f61f8f06494c97b1afccf3-Abstract</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Reconciling competing sampling strategies of network embedding</title>
+		<author>
+			<persName><forename type="first">Yuchen</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baoyu</forename><surname>Jing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lihui</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruijie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinning</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tarek</forename><surname>Abdelzaher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanghang</forename><surname>Tong</surname></persName>
+		</author>
+		<idno>pdf. 2</idno>
+		<ptr target="https://proceedings.neurips.cc/paper_files/paper/2023/file/15" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Oh</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">T</forename><surname>Naumann</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Globerson</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Saenko</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Hardt</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Levine</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="page" from="6844" to="6861" />
+		</imprint>
+	</monogr>
+	<note>dc2344ea9bdc01ffb8bb2d692e4018-Paper-Conference</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Observed versus latent features for knowledge base and text inference</title>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/W15-4007</idno>
+		<ptr target="https://doi.org/10.18653/v1/W15-4007.3" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 3rd Workshop on Continuous Vector Space Models and their Compositionality, CVSC 2015</title>
+		<editor>
+			<persName><forename type="first">Alexandre</forename><surname>Allauzen</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Edward</forename><surname>Grefenstette</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Karl</forename><forename type="middle">Moritz</forename><surname>Hermann</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Hugo</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Scott</forename><surname>Wen</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">-Tau</forename><surname>Yih</surname></persName>
+		</editor>
+		<meeting>the 3rd Workshop on Continuous Vector Space Models and their Compositionality, CVSC 2015<address><addrLine>Beijing, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2015">July 26-31, 2015. 2015</date>
+			<biblScope unit="page" from="57" to="66" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">Systematic integration of biomedical knowledge prioritizes drugs for repurposing</title>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Scott Himmelstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Lizee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christine</forename><surname>Hessler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Leo</forename><surname>Brueggeman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sabrina</forename><forename type="middle">L</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dexter</forename><surname>Hadley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ari</forename><surname>Green</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pouya</forename><surname>Khankhanian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergio</forename><forename type="middle">E</forename><surname>Baranzini</surname></persName>
+		</author>
+		<idno type="DOI">10.7554/eLife.26726</idno>
+		<ptr target="https://doi.org/10.7554/eLife.26726.3" />
+		<imprint>
+			<date type="published" when="2017-09">sep 2017</date>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="page">26726</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Understanding the performance of knowledge graph embeddings in drug discovery</title>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Bonner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ian</forename><forename type="middle">P</forename><surname>Barrett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cheng</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rowan</forename><surname>Swiers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ola</forename><surname>Engkvist</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2105.10488.3" />
+	</analytic>
+	<monogr>
+		<title level="m">CoRR, abs/2105.10488, 2021</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Adam: A method for stochastic optimization</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ba</surname></persName>
+		</author>
+		<ptr target="http://arxiv.org/abs/1412.6980.3" />
+	</analytic>
+	<monogr>
+		<title level="m">3rd International Conference on Learning Representations, ICLR 2015</title>
+		<meeting><address><addrLine>San Diego, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2015">May 7-9, 2015. 2015</date>
+		</imprint>
+	</monogr>
+	<note>Conference Track Proceedings</note>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">Bishan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Deng</surname></persName>
+		</author>
+		<ptr target="http://arxiv.org/abs/1412.6575.3" />
+	</analytic>
+	<monogr>
+		<title level="m">3rd International Conference on Learning Representations, ICLR 2015</title>
+		<meeting><address><addrLine>San Diego, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2015">May 7-9, 2015. 2015</date>
+		</imprint>
+	</monogr>
+	<note>Conference Track Proceedings</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Complex embeddings for simple link prediction</title>
+		<author>
+			<persName><forename type="first">Théo</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Éric</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2071" to="2080" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Canonical tensor decomposition for knowledge base completion</title>
+		<author>
+			<persName><forename type="first">Timothee</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Obozinski</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="2869" to="2878" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Tensor factorization for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Ivana</forename><surname>Balažević</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carl</forename><surname>Allen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothy</forename><forename type="middle">M</forename><surname>Hospedales</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Tucker</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Empirical Methods in Natural Language Processing</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<title level="m" type="main">A*net: A scalable path-based reasoning approach for knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Zhaocheng</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinyu</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mikhail</forename><surname>Galkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sophie</forename><surname>Xhonneux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maxime</forename><surname>Gazeau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2206.04798</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<monogr>
+		<title level="m" type="main">AmpliGraph: a Library for Representation Learning on Knowledge Graphs</title>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Costabello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Bernardi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adrianna</forename><surname>Janik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aldan</forename><surname>Creo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sumit</forename><surname>Pai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chan</forename><forename type="middle">Le</forename><surname>Van</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rory</forename><surname>Mcgrath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicholas</forename><surname>Mccarthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pedro</forename><surname>Tabacof</surname></persName>
+		</author>
+		<idno type="DOI">10.5281/zenodo.2595043</idno>
+		<ptr target="https://doi.org/10.5281/zenodo.2595043" />
+		<imprint>
+			<date type="published" when="2019-03">March 2019</date>
+			<biblScope unit="volume">4</biblScope>
+			<biblScope unit="page">9</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

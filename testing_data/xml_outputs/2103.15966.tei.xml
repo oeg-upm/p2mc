@@ -1,0 +1,930 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Modeling Graph Node Correlations with Neighbor Mixture Models</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Linfeng</forename><surname>Liu</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Michael</forename><forename type="middle">C</forename><surname>Hughes</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Li-Ping</forename><surname>Liu</surname></persName>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution">Tufts University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">Tufts University Tufts University</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Modeling Graph Node Correlations with Neighbor Mixture Models</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="MD5">6254BF7FBD2D909DEA5F3A6547C86425</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:04+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We propose a new model, the Neighbor Mixture Model (NMM), for modeling node labels in a graph. This model aims to capture correlations between the labels of nodes in a local neighborhood. We carefully design the model so it could be an alternative to a Markov Random Field but with more affordable computations. In particular, drawing samples and evaluating marginal probabilities of single labels can be done in linear time. To scale computations to large graphs, we devise a variational approximation without introducing extra parameters. We further use graph neural networks (GNNs) to parameterize the NMM, which reduces the number of learnable parameters while allowing expressive representation learning. The proposed model can be either fit directly to large observed graphs or used to enable scalable inference that preserves correlations for other distributions such as deep generative graph models. Across a diverse set of node classification, image denoising, and link prediction tasks, we show our proposed NMM advances the state-of-the-art in modeling real-world labeled graphs.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Many real-world applications have data organized in a graph. One important task in the analysis of graphstructured data is to model the discrete labels of nodes, which are either observed or hidden. Probabilistic graphical models <ref type="bibr" target="#b25">(Wainwright et al., 2008)</ref> describe dependencies between nodes in an elegant and extensible way, useful in practice for predicting node labels or edges in ways that account for uncertainty.</p><p>Among graphical models, a Markov Random Field (MRF) <ref type="bibr" target="#b4">(Kindermann, 1980)</ref> is often used to describe a distribution of node labels on an undirected graph, capturing dependencies between nodes via unnormalized potential functions. One well-known variant of the MRF is the Conditional Random Field (CRF) <ref type="bibr" target="#b9">(Lafferty et al., 2001)</ref>, which explicitly includes observed features <ref type="bibr" target="#b16">(Murphy, 2012)</ref> in potential functions. While an MRF has a convenient model definition, running inference for an MRF is a hard computational problem. For example, it is hard to evaluate the marginal probability for even a single node's label; it is also hard to sample a single node's label from its marginal distribution. These computations often require the inference over the entire graph, whose runtime scales exponentially with the number of nodes for the kinds of graphs commonly used to model rich dependencies in applications <ref type="bibr" target="#b25">(Wainwright et al., 2008)</ref>. To scale up, practitioners appeal to approximations such as mean-field variational inference <ref type="bibr" target="#b1">(Blei et al., 2017)</ref> that make strict simplifying assumptions. There is a need for scalable methods that adequately account for correlations between labels.</p><p>Recently, graph neural networks (GNN) <ref type="bibr" target="#b28">(Wu et al., 2019)</ref> have made remarkable progress in learning representations from graph data. These models take in node-specific features and then propagate messages along graph edges through several hidden layers <ref type="bibr" target="#b7">(Kipf and Welling, 2017;</ref><ref type="bibr" target="#b3">Hamilton et al., 2017;</ref><ref type="bibr" target="#b24">Veličković et al., 2018;</ref><ref type="bibr" target="#b29">Xu et al., 2019)</ref>. In the last layer, each node gets a vector representation that encodes information about the local graph structure and its observed features. While GNNs focus on learning informative node representations useful for label or link prediction, they typically assume labels are independent given all observed node features.</p><p>A natural idea is to combine graph neural networks with a probabilistic model to learn an expressive model for node labels given node features. The recent Graph Markov Neural Network (GMNN) <ref type="bibr" target="#b17">(Qu et al., 2019)</ref> combines a CRF model with a graph neural network and shows the obvious benefit of modeling node labels in a probabilistic manner. However, due to the difficulty of MRF inference, GMNN requires substantial approximations such as pseudo-likelihood maximization <ref type="bibr" target="#b0">(Besag, 1975)</ref> and mean-field variational inference, the latter of which depends on an inference neural network that is not easy to train. In this work, we aim to devise an alternative probabilistic model for graph-structured data that can utilize GNNs for effective inference while overcoming these difficulties in inference.</p><p>We propose the Neighbor Mixture Model (NMM), a new probabilistic model that captures correlations in the distribution of node labels through an attention mechanism <ref type="bibr" target="#b24">(Veličković et al., 2018)</ref>. This new model assumes every node attends one of its neighbors in the graph (including itself) to get the latent parameter that determines its label distribution. This parameter sharing induces correlation between nodes that share an edge. Our NMM model itself, a joint distribution over the labels of nodes, can be evaluated or sampled without any specific node ordering. NMM parameters can be efficiently parameterized by a GNN or another task-relevant neural network. The NMM thus leverages the synergistic strengths of its two key components: neural networks for extracting useful representations from the input features and probabilistic graphical models for capturing correlations between nodes.</p><p>To scale to large graphs, we contribute an efficient variational inference method for the NMM, with a tractable lower bound on the likelihood of node labels in a training set which can be efficiently optimized to estimate parameters. We empirically show our proposed variational lower bound on this likelihood to be tight and thus capable of capturing useful correlations between labels, while not requiring any additional parameters beyond the original model.</p><p>Beside modeling observed node labels directly, the NMM can also serve as an amortized inference method to efficiently approximate other models (e.g. MRFs or deep generative models of graphs). Previous methods of amortized variational inference <ref type="bibr" target="#b6">(Kingma and Welling, 2014;</ref><ref type="bibr" target="#b21">Shu et al., 2018;</ref><ref type="bibr" target="#b32">Zhang et al., 2018)</ref> mostly reuse parameters across independent instances. GNNs are recently used to do inference on small graphs <ref type="bibr" target="#b31">(Yoon et al., 2018;</ref><ref type="bibr" target="#b20">Satorras and Welling, 2020)</ref>, but training these GNNs requires "ground-truth" results from another inference method. Unlike previous methods, an NMM can reuse parameters for dependent variables on large graphs. We show how to train an NMM to minimize its KL-divergence to the target distribution, without requiring any ground-truth inference results or extra parameters that scale with the size of the graph.</p><p>We evaluate our proposed NMM on node label classification, prediction of joint label configurations for connected node pairs, image denoising, and link prediction. When directly fit to observed labels in a graph, NMM improves probabilistic predictions over state-ofthe-art baselines. When used to approximate complex distributions such as deep generative models for graphs <ref type="bibr" target="#b15">(Mehta et al., 2019)</ref> where exact inference is difficult, our flexible NMM captures correlations that commonly-used mean-field independence assumptions cannot, while maintaining scalability.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Background and Notation</head><p>Here we establish the learning problem. Let G = (V, E) denote an undirected or directed graph with N vertices, where V = {1, . . . , N } is the vertex set and E is the edge set. Each node i ∈ V is associated with a tuple (x i , y i ), where x i ∈ R F is a real-valued feature vector (observed for all nodes) and y i ∈ {1, 2, . . . C} is a discrete label. We stack all feature vectors into matrix X of size N × F , and stack all labels in a column vector y with length N . Our goal is to model the distribution p(y|X), in a way that captures dependencies between labels y i , y j that are "neighbors" in the graph.</p><p>Let n(i) denote the neighborhood of node i. The definition of the neighborhood, which determines the range of correlation, is a model choice. In this work, we focus on the neighborhood containing the first order neighbors and the node itself: n(i) = {j : (i, j) ∈ E} ∪ {i}. Throughout this text, let D denote the maximum degree across all nodes in the graph, and let ∆ k denote the space of probability vectors with length k.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Method</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">The Neighbor Mixture Model</head><p>The NMM is a generative model for labels y given node features X that requires two key parameters:</p><formula xml:id="formula_0">α = {α i ∈ R C + : i ∈ V } and L = {L i ∈ ∆ n(i) : i ∈ V }. Each α i is a label concentration vector for node i.</formula><p>Each L i is a probability vector over neighbors of node i. These two parameters are computed from a neural network, (α, L) = f (X), which we will discuss later in Sec. 3.4. Given these parameters, the model formally defines p(y|X) = p(y|(α, L) = f (X)) by</p><formula xml:id="formula_1">z j ∼ Dirichlet(α j ), z j ∈ ∆ C , j = 1, . . . , N, c i ∼ Categorical(L i ), c i ∈ n(i), i = 1, . . . , N, y i ∼ Categorical(z ci ), y i ∈ {1, 2, . . . , C}.</formula><p>(1)</p><p>The NMM captures correlations between labels y i , y j by sharing a distribution parameter, vector z j , between neighboring nodes. Vector z j provides the probabilities for a categorical distribution over C possible node labels. Each node has its own z j , generated a priori from a Dirichlet distribution. To generate its label, each node i then selects one node c i from its neighborhood n(i) and then "borrows" the vector z ci from this chosen neighbor to sample its node label y i given this probability vector. This formulation with explicit c i -s is easier for inference later, while the marginalization of all c i -s below gives a clearer understanding of how this model induces correlations between neighbors y i , y j .</p><p>Marginalizing neighbor indicators: After integrating c i -s away, our model for y i given z is:</p><formula xml:id="formula_2">y i ∼ Categorical(u i ), u i = j∈n(i) L ij z j .</formula><p>(2)</p><p>In this equivalent formulation, we view vector L i as node i's attention weights over its neighbors. Each node computes label probability vector u i as a weighted sum of probability vectors z j in its neighborhood. Each z j has a mixing weight L ij . Two nodes with overlapping neighborhoods are tied together by sharing some mixture components z j . The joint density of y given Z = (z j ) j=1:N is decomposable: p(y|Z) = i p(y i |z n(i) ). If we further marginalize out Z, labels y i and y j are correlated if n(i) ∩ n(j) = ∅. While we focus on positive correlations, our model can be modified to model negative correlations (e.g. using a transform of z ci ).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Sampling node labels:</head><p>We can draw samples of y by following the model definition in (1): first draw samples of z and samples of c from their respective priors, then use these values to draw samples of y. We can also leverage (2) to sample y without sampling c.</p><p>By (2), drawing samples for a single node i from its marginal p(y i ) only requires a few vectors z n(i) in its neighborhood, so it is efficient. In contrast, drawing an exact marginal sample for a single node from an MRF usually requires inference over the entire graph.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Exact computation of marginal probability for small node sets</head><p>Consider observing labels for a subset of nodes τ ⊆ V . Given known parameters α, L, we wish to compute the marginal probability of the subset's labels y τ . We can do this using the sum rule:</p><formula xml:id="formula_3">p(y τ |α, L) = cτ p(y τ , c τ |α, L)<label>(3)</label></formula><p>We can further write each term in that sum as marginalizing away all z j variables related to any neighbor j of any node in the set τ . Let n(τ ) = ∪ i∈τ n(i) denote all such unique neighbor nodes. Then the probability of interest becomes:</p><formula xml:id="formula_4">p(y τ , c τ |α, L) = z n(τ ) p(z n(τ ) |α)p(c τ |L) i∈τ p(y i |c i , z n(i) ) = i∈τ L i,ci • j∈cτ B(α j + s j (y τ , c τ )) B(α j ) ,<label>(4)</label></formula><p>where the integral simplifies due to Dirichlet-Categorical conjugacy (see the appendix for derivation).</p><p>We count the number of nodes using neighbor j of each class with vector s</p><formula xml:id="formula_5">j (y τ , c τ ) = i∈τ :ci=j onehot(y i ). B(α) = Γ (α1)Γ (α2)...Γ (α C ) Γ ( C c=1 αc)</formula><p>denotes the multivariate Beta function.</p><p>The computation of p(y τ , c τ |α, L) in (4) takes time O(C|τ |). Thus, we can compute p(y τ |α, L) in (3) by summing over all the D |τ | possible configurations of c τ . When τ is a small set, then the overall computation is manageable (e.g. for one node it is O(CD)). In contrast, for an MRF the marginal of even a single node requires the inference over the entire graph, which is often much more expensive.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Scalable approximation of marginal for large node sets</head><p>For large node sets τ , we need to appeal to approximate inference, as the exact computation of the marginal likelihood becomes infeasible. We use variational inference <ref type="bibr" target="#b25">(Wainwright et al., 2008;</ref><ref type="bibr" target="#b1">Blei et al., 2017)</ref> and derive a variational lower bound L(α, L) ≤ log p(y τ |α, L):</p><formula xml:id="formula_6">L(α, L) := E q log p(y τ , c τ |α, L) q(c τ |y τ , α, L) . (<label>5</label></formula><formula xml:id="formula_7">)</formula><p>Note that the bound becomes an equality when q(c τ |y τ , α, L) is the true posterior p(c τ |y τ , α, L), but this is intractable. The key technical challenge is choosing an approximate posterior distribution q(c τ |y τ , α, L) close to p(c τ |y τ , α, L) that makes the bound tight yet has more affordable computation.</p><p>To address this challenge, we define the distribution q(c τ |y τ , α, L) as a directed graphical model with conditional probabilities derived from the true joint p(c τ , y τ |α, L). Given an ordering π of nodes in τ , we define q as:</p><formula xml:id="formula_8">q(c τ |y τ , α, L) = i∈τ p(c i |y i , c &lt;i , y &lt;i , α, L),<label>(6)</label></formula><p>where we denote the parents of node i within π as</p><formula xml:id="formula_9">(&lt; i) = {i ∈ τ : π(i ) &lt; π(i)}.</formula><p>The conditional p(c i |y i , c &lt;i , y &lt;i , α, L) is calculated exactly by computing the joint for each of the possible c i values in n(i) and then normalizing. Recall that neighborhoods have bounded size (|n(i)| ≤ D), so this is affordable. Each needed joint p(c i , y i , c &lt;i , y &lt;i |α, L) can be efficiently computed from (4) using the subset τ = {i} ∪ (&lt; i). Thus, our chosen q is easy to evaluate and sample from.</p><p>Our ultimate lower bound objective (5) requires an expectation with respect to q. We can estimate this expectation using T Monte Carlo samples {c</p><formula xml:id="formula_10">(t) τ } T t=1 from q(c τ |y τ , α, L).</formula><p>Each sample can use a different ordering of nodes π (t) , sampled from a uniform distribution over permutations. Then the objective can be viewed as an estimate of the average of lower bounds derived from all possible node orders.</p><p>Explanation of the chosen q distribution: The parameterization of q(c|y, α, L) in ( <ref type="formula" target="#formula_8">6</ref>) reuses the same α, L parameters as the NMM model, introducing no extra parameters. Though this choice may not be the most flexible distribution possible, it has several advantages. First, it can capture correlations between neighboring nodes (we do not assume each c i is independent, as typical mean field approximations would). Second, it reduces the number of variables that need to be estimated in the later optimization of the variational lower bound. Otherwise, we may need another neural network to parameterize q. Training two neural networks jointly can lead to severe solution quality issues such as posterior collapse <ref type="bibr" target="#b12">(Lucas et al., 2019)</ref>. Therefore, our chosen q makes training our method far easier and more reliable than alternatives.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4">Parameterization using Neural Networks</head><p>We wish to achieve a parameterization of our NMM that is both scalable and informed by observed node features X. As mentioned earlier, we use a neural network f to determine the parameters: (α, L) = f (X; θ).</p><p>Here symbol θ denotes all network parameters; we assume θ has fixed size that does not depend on graph size (unlike α, L). By leveraging the strong representational power of neural networks, this construction can compute parameters informed by node features X.</p><p>When the model is defined on a graph, we use a GNN as the backbone of f (•; θ). A GNN takes node features and propagates messages between graph nodes to produce a vector representation for each node. For our NMM, let the GNN produce vectors of size C + H, where C is the number of possible labels and H is a free hyperparameter. Denote the first C entries of this output vector as u i ∈ R C , the remainder as</p><formula xml:id="formula_11">v i ∈ R H .</formula><p>We deterministically transform these GNN outputs u, v to produce our parameters α, L:</p><formula xml:id="formula_12">{(u i , v i ) : i ∈ V } ← GNN(X; θ), (<label>7</label></formula><formula xml:id="formula_13">)</formula><formula xml:id="formula_14">α i ← σ(u i ), L ij ← softmax ω 2 v i vj vi vj + γδ(i = j) .</formula><p>To construct α i ∈ R C + , we cast the embedding vector u i of size C to positive values using activation function σ(•). Recall from (1) that positive vector α i determines the label marginal associated with node i.</p><p>To construct L i ∈ ∆ n(i) , the probability vector which determines correlations with neighbors, we use a self-attention transformation of the embedding v i , where parameter γ &gt; 0 increases the probability that i attends to itself. Scalar ω 2 controls the sharpness of the distribution. The softmax function is taken over all indices in the current neighborhood n(i).</p><p>For our GNN parameterization, the learnable model parameters θ include all GNN weights, ω 2 , and γ. For special graphs such as grids for modeling image pixels, we can also use CNNs as the backbone.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.5">Parameter learning</head><p>Given a graph with known labels y τ for a large subset τ , we could estimate parameters α, L by maximizing L(α, L) in ( <ref type="formula" target="#formula_6">5</ref>), which is a lower bound of the NMM's label marginal likelihood log p(y τ |α, L). With the new scalable parameterization, we maximize over θ directly, and our objective is a lower bound of log p(y τ |X):</p><formula xml:id="formula_15">θ ← arg max θ L(α, L), (α, L) = f (X; θ). (8)</formula><p>The gradient of L(α, L) with respect to α, L requires Monte Carlo estimation of gradients of expectations over discrete random variables (since our indicators c τ will be sampled from q given parameters α, L). We estimate these gradients using the well-known REIN-FORCE estimator <ref type="bibr" target="#b27">(Williams, 1992)</ref>, also known as the score function trick. The optimization procedure converges well, but we could also explore improved estimators such as Rebar and RELAX <ref type="bibr" target="#b23">(Tucker et al., 2017;</ref><ref type="bibr" target="#b2">Grathwohl et al., 2018)</ref> in future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.6">Node classification with the NMM</head><p>In graph node classification tasks, a subset of nodes τ have observed labels, and we need to predict the labels of the remaining nodes κ ⊂ V . In training, we learn an NMM defined by θ by maximizing the marginal likelihood p(y τ |X) of observed labels in (8). In prediction, we predict unknown labels with the conditional p(y κ |y τ , X). We stress that we want to account for correlations within y κ .</p><p>We first suggest that for this per-node classification task, our NMM model should be as good or better than standard GNN classifiers. Consider the special case of our NMM, if we enforce that each L i is set as L ii = 1 and L ij = 0 for j = i by setting a large value to γ in (7), then all node labels y i are conditionally independent given X, and the NMM would be equivalent to a standard GNN model. With this analysis, we are certain that our NMM, when L is flexible (not constrained to enforce independence), will always match or beat a GNN classifier in terms of training error.</p><p>Next, we describe our prediction of unknown labels given known labels for node classification with the conditional p(y κ |y τ , X), where κ contains nodes with unknown labels. The conditional can be computed as follows (we omit X in notation below for readability):</p><formula xml:id="formula_16">p(y κ |y τ ) = cτ p(c τ |y τ )p(y κ |c τ , y τ ) = cτ p(c τ |y τ ) p(y κ |z n(κ) )p(z n(κ) |c τ , y τ )dz n(κ) .</formula><p>The posterior p(z n(κ) |c τ , y τ ) is computed using conjugacy and conditional independence such that for each node j ∈ n(κ) we have p(z j |c τ , y τ ) = Dir(α j ), with parameter vector α j = α j + s j (y τ , c τ ), with s j defined in (4). The integral above defines p(y κ |c τ , y τ ) is then computed using the conjugacy again. If τ is a small set of only a few nodes, the summation can be computed in closed form as in the discussion of exact marginals. Otherwise, the exact calculation of p(c τ |y τ ) is not feasible, and neither is the sum over all c τ . We instead approximate the sum using T Monte Carlo samples from q(c τ |y τ ) as derived in (6):</p><formula xml:id="formula_17">p(y κ |y τ ) = 1 T T t=1 p(y κ |c (t) τ , y τ ), c (t) τ ∼ q(c τ |y τ ).</formula><p>When κ is small, we check all configurations of y κ and use the mode of the approximate conditional as the prediction. When κ is large, we predict labels in y κ one by one using each node's marginal mode. Each subsequent predicted label is then merged into y τ to decide the next label.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.7">Time complexity</head><p>In training, the extra cost of NMM compared to a GNN is the computation of q(c τ |y τ , α, L) in ( <ref type="formula" target="#formula_8">6</ref>) and extra optimization iterations. Getting a sample from (6) takes time O(|E|T ) with T being the number of samples and |E| the number of edges. The computation of q(c τ |y τ , α, L) should be faster than a GNN when T is small because it does not deal with features and hidden units as the GNN does. In practice, however, an optimal implementation would need substantial effort for parallelization. In our experiment, we have prioritized a simple implementation without parallelization.</p><p>In prediction for a single node's label, the runtime cost of our NMM is O(CD) given the GNN output, with number of classes C and maximum degree D. We assume D is small (D N ), so prediction time is not burdensome compared to the cost of producing GNN's prediction output. Runtime that is linear in neighborhood size is the most affordable complexity one can have when allowing correlations from all neighbors.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Approximating Other Distributions with the Neighbor Mixture Model</head><p>As a distribution with easy marginal distributions over nodes, NMM can also approximate another distribution p * (y) over node labels y, such as an MRF. We only assume p * (y) to be an unnormalized distribution and to have the ability to evaluate its unnormalized log likelihood log p * (y).</p><p>We Here we use q(c|y, X; θ) = q(c|y, (α, L) ← f (X; θ)) as defined in (6) by setting τ = V . Then we can use Monte Carlo samples to estimate this bound. The gradients of the objective with respect to parameters θ are again estimated by the REINFORCE estimator.</p><p>We want to emphasize that using the NMM as the approximating family will have better KL divergence than mean-field distributions in general. If we fix every L i to a one-hot vector such that p(c i = i) = 1, then both p(c|y, X) and q(c|y) also become deterministic distributions. In this special case, the NMM is a meanfield distribution and the upper bound in ( <ref type="formula">10</ref>) is exactly the KL-divergence of the mean-field distribution. By optimizing L i -s, we can easily improve the upper bound to be smaller than the mean-field KL-divergence, and thus the underlying KL-divergence will be even smaller.</p><p>For tasks where the target contains both labels and latent variables (e.g. <ref type="bibr" target="#b15">Mehta et al. (2019)</ref>), which we write as p * (z, y), we can use the NMM distribution p(z, y|X) to approximate the target distribution:</p><formula xml:id="formula_18">min θ E p(z,y|X) [log p(z, y|X) -log p * (z, y)] . (<label>11</label></formula><formula xml:id="formula_19">)</formula><p>Here we can compute log p(z, y|X) efficiently and need no further approximation. We can also use different priors for z without requiring conjugacy. Using our NMM distribution is better than assuming mean-field independence because our NMM includes mean-field as a special case, while allowing more flexible correlations if needed.</p><p>Our method contributes a way to perform amortization across labels that are dependent under a target model. It greatly reduces the number of optimization parameters and speeds up inference. Even in cases when the target model is being dynamically updated (e.g. during model learning), our NMM can be updated alongside in an integrated way.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Experiment</head><p>We evaluate our NMM on two types of tasks: modeling observed node labels (node classification and denoising) and inference for other models (an MRF and a model for graph generation). Due to limited space, full details of protocols and hyperparameters are in the appendix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Graph Node Classification</head><p>We follow previous literature <ref type="bibr" target="#b7">(Kipf and Welling, 2017;</ref><ref type="bibr" target="#b24">Veličković et al., 2018;</ref><ref type="bibr" target="#b17">Qu et al., 2019)</ref>  We assess each model's accuracy on the test set.</p><p>We use three popular graph neural networks as baselines: Graph Convolutional Network (GCN) <ref type="bibr" target="#b7">(Kipf and Welling, 2017)</ref>, Graph Attention Network (GAT) <ref type="bibr" target="#b24">(Veličković et al., 2018)</ref>, and Approximate Personalized Propagation of Neural Predictions (APPNP) <ref type="bibr" target="#b8">(Klicpera et al., 2019)</ref>. These methods all assume node labels are independent given node features. We then build our proposed NMM model using each one of these GNNs as the backbone neural network in (7). We refer to each variant of our method as NMM-GCN, NMM-GAT, and NMM-APPNP. We also compare against the recent Graph Markov Neural Network (GMNN) <ref type="bibr" target="#b17">(Qu et al., 2019)</ref>, which combines MRFs with GNNs to model node label dependencies. The temperature parameter of GMNN is set to 1.0, leading to a formal probabilistic model as argued in the original paper.</p><p>Our implementation is based on the PyTorch Deep Graph Library (DGL) <ref type="bibr" target="#b26">(Wang et al., 2019)</ref>. We reuse the GCN results from <ref type="bibr" target="#b26">Wang et al. (2019)</ref> to consider the standard deviation. To fairly compare with GAT, we take the best results from either the original paper <ref type="bibr" target="#b24">(Veličković et al., 2018)</ref> or our rerun using DGL and a larger GAT model. Other combinations also outperform the GMNN on two out of three datasets. For all three backbone GNNs, integrating it with NMM leads to significantly improved performances (marked as ) on at least two of the three datasets. This result confirms that incorporating neighborhood label dependencies into GNN models is beneficial.</p><p>To assess robustness, we test all algorithms at different training set sizes (varying the fraction of nodes included in the training set). We vary this fraction from 0.1 to 0.5 while fixing validation and test fractions to 0.2 and 0.3. Figure <ref type="figure">1</ref> shows test accuracy of all algorithms on Cora and Citeseer datasets. Every NMM-GNN combination (solid lines) outperforms its corresponding baseline GNN (same color, dashed). All NMM-GNN models also deliver better performance than GMNN.</p><p>Accurate estimation of probabilistic dependencies is an important aspect of probabilistic models. Node classification accuracy only reflects marginal probabilities of single nodes. To better compare estimated correlations between nodes, we examine the pairwise marginal log likelihood (PLL) reported from both GMNN and NMM models. Formally, we compute PLL as the average log-likelihood per edge: P LL = 1 |Etest| (i,j)∈Etest log p(y i , y j ). We randomly choose an edge set E test such that each edge has two incident nodes from the test node set. We vary the training ratio from 0.2 to 0.6 and fix the validation ratio (0.1) and test ratio (0.3). Table <ref type="table" target="#tab_5">3</ref> shows that our NMM achieves better predictions of pairwise probabilities than GMNN, suggesting that our NMM can better capture correlations between connected nodes.</p><p>Finally, we also inspect the quality of the approximation by the variational distribution in (5). We do so on the pairwise marginals p(y i , y j ), (i, j) ∈ E test . Figure <ref type="figure" target="#fig_0">2</ref> compares the variational lower bound against the exact log marginal. The bound is quite tight, which is a strong evidence that the variational distribution q(c|y, α, L) is an accurate approximation of the true posterior p(c|y, α, L).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Image Denoising</head><p>We also evaluate NMM model on an image denoising task. Recent methods use U-Nets <ref type="bibr" target="#b19">(Ronneberger et al., 2015)</ref> for denoising <ref type="bibr" target="#b13">(Mao et al., 2016;</ref><ref type="bibr" target="#b10">Lehtinen et</ref>   2018), which do not model pixel correlations. In this experiment, we use NMM to model pixel correlations and put a U-Net as the backbone of the NMM. We treat pixel values as discrete labels, and each pixel's neighborhood is the 3 × 3 area around it.</p><p>The baseline U-Net and the NMM are trained with noisy images as inputs and clean images as targets.</p><p>The training set is the BSD300 <ref type="bibr" target="#b14">(Martin et al., 2001)</ref> training set. Due to resource limitations, both models are trained on 32 × 32 patches, not full images. The trained models are evaluated on the BSD300 test set and the Kodak dataset 1 . Following <ref type="bibr" target="#b10">Lehtinen et al. (2018)</ref>, we inject Gaussian noise to obtain training (std. dev. σ ∈ [0, 50]) and test (σ = 25) images.</p><p>Table <ref type="table" target="#tab_8">5</ref> shows the peak Signal-to-Noise Ratio (PSNR) of denoised images by different methods (the larger the better), and Figure <ref type="figure">3</ref> shows a typical example on which the NMM outperforms the baseline. Note that the PSNR is directly computed from the per-pixel Mean  Squared Error (MSE) and the U-Net directly minimizes MSE during training, so the evaluation measure favors the U-Net. Nevertheless, our NMM still achieves better PSNR. The main reason is that images of the natural world have strong correlations between neighboring pixels, and NMM can better capture such correlations. In Figure <ref type="figure">3</ref>, the NMM achieves qualitatively better denoising results in smooth areas while the attention mechanism avoids blurring to keep edges sharp.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Approximating other distributions</head><p>Approximating an MRF. We first use NMM to approximate inference for an MRF, as described in Sec. 4. We create an Ising model on a 128 × 128 grid <ref type="bibr" target="#b16">(Murphy, 2012,</ref>  directly optimizes α and L (NMM-α, L), and one that optimizes a CNN to compute α and L (NMM-CNN).</p><p>The input to the CNN is a grid graph with all MRF edge potential and node potential parameters collated at grid nodes. For the two NMMs, we can only compute an upper bound in (10). Table <ref type="table" target="#tab_9">6</ref> shows that the upper bounds of the two NMMs achieve noticeably better approximations (lower KL) than the mean-field baseline.</p><p>The relatively small difference (&lt;1%) between NMMα, L and NMM-CNN also indicates that the CNN as an inference network is strong enough to get good inference results despite its amortized parameterization.</p><p>Approximating deep generative graph models with latent variables. Next, we use our NMM to do inference for the Deep Generative Latent Feature Relational Model (DGLFRM) <ref type="bibr" target="#b15">(Mehta et al., 2019)</ref>. Formally, DGLFRM itself defines a deep generative stochastic blockmodel with random variables y i and z i 2 . Binary vector y i ∈ {0, 1} K indicates node i's memberships in K communities, and latent variable z i serves as stick-breaking construction of the Indian Buffet Process (IBP) for y i <ref type="bibr" target="#b22">(Teh et al., 2007)</ref>. DGL-FRM pursues variational inference with a structured mean-field approximate posterior:   We adapt our NMM to approximate a target posterior distribution like q(z, y) with slight modifications: instead of sampling y i with probability π i , our NMM still introduces a random variable c i for node i, and then we sample y i from π ci . As in the original NMM definition, the indicator variable c i introduces membership correlations between neighboring nodes, which the original inference above cannot do.</p><formula xml:id="formula_20">q(z, y) = K k=1 N i=1 q(z ik )q (y ik |π ik (z i )) . Here, z ik ∼ Beta(a k , b k ), y ik ∼ Bernoulli (π ik (z i )),</formula><p>We trained two models: DGLFRM with its original inference, and our NMM-DGLFRM. We evaluate link prediction over five datasets: NIPS12, Yeast, Cora, Citeseer, and Pubmed, following <ref type="bibr" target="#b15">Mehta et al. (2019)</ref>.</p><p>For each dataset, 10% and 5% of edges are held out as test and validation sets. We report Average Precision (AP) as the evaluation metric.</p><p>Table <ref type="table" target="#tab_7">4</ref> shows that NMM-DGLFRM outperforms the baseline model on four out of five datasets. We also observe that our model achieves higher variational lower bound than the baseline DGLFRM (see the appendix). Since neighboring nodes often share similar memberships, information sharing between neighbors clearly improves the approximation of the true posterior. Thus, our NMM method's better inference has improved the model's overall probabilistic representation of graph data (e.g. better link prediction).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>In  Baselines. The GMNN model has a "temperature" parameter to sharpen the variational distribution. This ad-hoc parameter leads to slightly better performance but very poor probability estimation. Throughout our experiments, we have tested the model with the temperature parameter setting to 1.0, which yields "standard" variational inference.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.2 Additional Results: Runtime and Convergence Analysis</head><p>Runtime. In addition to time complexity (Sec. 3.7 of main paper), we report mean training time per epoch for 100 epochs to probe practical runtime <ref type="bibr" target="#b7">(Kipf and Welling, 2017)</ref>. Table <ref type="table" target="#tab_10">7</ref> summarizes the results. NMM-GCN introduces minor runtime overhead its backbone GCN. NMM-GCN is faster than GMNN on Citeseer and Pubmed. Similar results are observed when using other backbones for NMM (GAT and APPNP) Convergence Analysis. Figure <ref type="figure" target="#fig_3">4</ref> shows the convergence curves of GCN and NMM-GCN. We see NMM-GCN has similar convergence behavior as its backbone GCN. We did not include convergence curve of GMNN, as GMNN has a pre-training stage beforehand.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.3 Additional Results: Pairwise Probability Assessment</head><p>Table <ref type="table">8</ref> gives full results for pairwise log likelihood (PLL, Table <ref type="table" target="#tab_5">3</ref> of main paper). Mean PLL and standard deviation are reported over five random runs. The results indicate that the NMM has better calibrated probabilities than GMNN.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Image Denoising: Details</head><p>The baseline U-Net <ref type="bibr" target="#b19">(Ronneberger et al., 2015)</ref> is trained to fit pixel values. We also use such a network as the backbone of the NMM. We convert a scalar prediction u i to a positive vector α i as follows by α ik = exp(-(k -u i ) 2 /σ 2 ) * s, k = 0, . . . , 255. Then the Dirchlet distribution with α i can gives a probability vector with probabilities concentrated around u i . Vectors (v i ) i∈V are computed from a two-layer MLP branching out from the second-to-the-last layer of the U-net. To compute L, we set γ = 5.0. We treat each pixel with a surrounding 3 × 3 window as its neighbors. Except for the learning rate as 0.0001, all hyperparameters are kept in line with <ref type="bibr" target="#b10">Lehtinen et al. (2018)</ref>.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 2 :</head><label>2</label><figDesc>Figure2: Marginal log-likelihood of label pairs y i , y j in the test set over many training iterations, using NMM-GCN with 0.2 data fraction. Our scalable bound is a tight approximation of the expensive exact.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head></head><label></label><figDesc>and π ik (z i ) = k j=1 z ij . The probability vector π i (z i ) is a 2 The original paper uses notation p(v, b), which maps to our notation as z = v, y = b. We omit notation of their variable r for conciseness, as we keep the same parameterization of r as the original work.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Convergence curves of GCN and NMM-GCN.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2</head><label>2</label><figDesc>gives the mean node classification accuracy as well as standard deviation over five random repeats. Results of different algorithms are compared via a t-test with p &lt; 0.05. The best results and any statistically indistinguishable from the best are bold. We see that our model combined with APPNP achieves the best performance in general.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 1 :</head><label>1</label><figDesc>al., Dataset statistics. NC is node classification; LP is link prediction; n/e is node/edge counts.</figDesc><table><row><cell>Dataset</cell><cell></cell><cell>Task</cell><cell cols="8">Nodes Edges Features Classes Training n/e Validation n/e Test n/e Label rate n/e</cell></row><row><cell>Cora</cell><cell cols="2">NC/LP</cell><cell>2708</cell><cell>5429</cell><cell>1433</cell><cell>7</cell><cell>140/4616</cell><cell>500/271</cell><cell>1000/</cell><cell>0.05/0.85</cell></row><row><cell cols="3">Citeseer NC/LP</cell><cell>3327</cell><cell>4732</cell><cell>3703</cell><cell>6</cell><cell>120/4023</cell><cell>500/236</cell><cell>1000/473</cell><cell>0.04/0.85</cell></row><row><cell cols="3">Pubmed NC/LP</cell><cell>19717</cell><cell>44338</cell><cell>500</cell><cell>3</cell><cell>60/37689</cell><cell>500/2216</cell><cell>1000/4433</cell><cell>&lt;0.01/0.85</cell></row><row><cell>NIPS12</cell><cell></cell><cell>LP</cell><cell>2037</cell><cell>3134</cell><cell>-</cell><cell>-</cell><cell>-/2665</cell><cell>-/156</cell><cell>-/313</cell><cell>-/0.85</cell></row><row><cell>Yeast</cell><cell></cell><cell>LP</cell><cell>2361</cell><cell>6646</cell><cell>-</cell><cell>-</cell><cell>-/5650</cell><cell>-/332</cell><cell>-/664</cell><cell>-/0.85</cell></row><row><cell cols="2">Algorithm</cell><cell cols="2">Cora</cell><cell>Citeseer</cell><cell cols="2">Pubmed</cell><cell></cell><cell></cell><cell></cell></row><row><cell>GCN</cell><cell></cell><cell cols="2">81.3±0.9</cell><cell>71.0±0.7</cell><cell>79.0±0.4</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>GAT</cell><cell></cell><cell cols="2">83.0±0.7</cell><cell>72.5±0.7</cell><cell>79.0±0.3</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>APPNP</cell><cell></cell><cell cols="2">84.1±0.9</cell><cell>71.7±0.8</cell><cell>79.4±0.3</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>GMNN</cell><cell></cell><cell cols="2">82.1±1.4</cell><cell>71.4±1.1</cell><cell cols="2">80.6±0.7</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="2">NMM-GCN</cell><cell cols="2">84.3±0.5</cell><cell>72.0±0.3</cell><cell>79.2±0.2</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="2">NMM-GAT</cell><cell cols="2">84.4±0.2</cell><cell>73.0±0.5</cell><cell>79.4±0.2</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="4">NMM-APPNP 85.9±0.5</cell><cell>72.6±0.3</cell><cell cols="2">80.4±0.2</cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 2 :</head><label>2</label><figDesc>Node classification results on three datasets. Bold numbers indicates the best performance, and the mark indicates the combination with NMM outperforms the corresponding baseline.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 3 :</head><label>3</label><figDesc>Marginal log-likelihood of label pairs y i , y j in the test set across fractions of observed data included in training set (0.2, 0.4, and 0.6). NMM assigns higher heldout probability than the GMNN. Statistically indistinguishable best values are bold. Full table with standard deviations over multiple runs in appendix.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>89.82 ± 0.64 84.92 ± 0.51 94.16 ± 0.47 94.75 ± 0.38 96.45 ± 0.14Table 4 :</head><label>4</label><figDesc>section 21.3.2). As a baseline, we approximate the MRF with the mean-field distribution (MF). We use two NMMs to approximate the MRF: one that Link prediction results, measured by Average Precision (AP, higher is better). Image denoising result. NMM recovers the sky and sharp propeller edge better than the baseline.</figDesc><table><row><cell>Algorithm</cell><cell cols="2">NIPS12</cell><cell>Yeast</cell><cell>Cora</cell><cell>Citeseer</cell><cell>Pubmed</cell></row><row><cell>DGLFRM</cell><cell cols="2">88.66 ± 0.56</cell><cell>84.03 ± 0.69</cell><cell>93.44 ± 0.40</cell><cell>94.31 ± 0.36</cell><cell>96.47 ± 0.18</cell></row><row><cell cols="3">NMM-DGLFRM Original Image Clean Patch Baseline</cell><cell>NMM</cell><cell></cell><cell></cell></row><row><cell cols="3">Figure 3: Method BSD300 Kodak</cell><cell></cell><cell></cell><cell></cell></row><row><cell>Baseline</cell><cell>30.28</cell><cell>31.07</cell><cell></cell><cell></cell><cell></cell></row><row><cell>NMM</cell><cell>30.33</cell><cell>31.55</cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 5 :</head><label>5</label><figDesc>PSNR (the larger the better) performance for image denoising on BSD300 testing set and Kodak.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 6 :</head><label>6</label><figDesc>KL divergence or upper bounds on KL for methods that approximate an MRF (lower is better).</figDesc><table /><note><p>transformation of i.i.d. random variables z i .</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 7 :</head><label>7</label><figDesc>this paper, we have presented a new model, the Neighbor Mixture Model (NMM), which captures probabilistic correlations among labels arranged in a graph. Parameterized by a GNN, the model learns informative representations from input features. It enables scalable computation via a tractable variational lower bound that requires no additional free parameters. The model can also serve as an approximate distribution to enable scalable inference for other models. The NMM's high-quality performance across multiple tasks indicates promising ability to model node correlations at scale, while easily integrating with many other models. Training time per epoch. Each epoch has a forward pass, a loss computation, and a backward pass.</figDesc><table><row><cell></cell><cell cols="4">Algorithm Cora Citeseer Pubmed</cell></row><row><cell></cell><cell>GCN</cell><cell>0.01s</cell><cell>0.02s</cell><cell>0.04s</cell></row><row><cell></cell><cell>GMNN</cell><cell>0.03s</cell><cell>0.07s</cell><cell>0.14s</cell></row><row><cell></cell><cell cols="2">NMM-GCN 0.04s</cell><cell>0.03s</cell><cell>0.05s</cell></row><row><cell>&amp;RUD</cell><cell></cell><cell>&amp;LWHVHHU</cell><cell></cell><cell>3XEPHG</cell></row><row><cell>7HVW$FF</cell><cell>7HVW$FF</cell><cell></cell><cell></cell><cell>7HVW$FF</cell></row><row><cell>*&amp;1</cell><cell></cell><cell></cell><cell>*&amp;1</cell><cell>*&amp;1</cell></row><row><cell>100*&amp;1</cell><cell></cell><cell></cell><cell>100*&amp;1</cell><cell>100*&amp;1</cell></row><row><cell>,WHUDWLRQ</cell><cell></cell><cell>,WHUDWLRQ</cell><cell></cell><cell>,WHUDWLRQ</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Calculating of the Joint Probability of y and c</head><p>The closed-form of p(y τ , c τ |α, L) is needed for marginalization (Sec. 3.2 of main paper), variational lower bound <ref type="bibr">(Sec. 3.3),</ref><ref type="bibr">and conditional probability (Sec. 3.6</ref>). Here we give a detailed derivation. The general idea is to leverage the Dirichlet-categorical conjugacy to do the computation. </p><p>Here the integral is computed from the Dirichelet-multinomial conjugacy.</p><p>The vector s j (y τ , c τ ) = i∈τ :ci=j onehot(y i ), and B(α</p><p>denotes the multivariate Beta function.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Graph Node Classification: Details and Additional Results</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.1 Experimental Details</head><p>In node classification, we have used several possible GNN architectures (GCN, GAT, and APPNP) to construct α and L. In the paper, we described a single function f (X; θ) that used a GNN to compute hidden representation vectors (u i , v i ) i∈V for every node i, and then compute α from (u i ) i∈V and compute L from (v i ) i∈V . In the actual implementation, we have used two separate graph neural networks to compute (u i ) i∈V and (v i ) i∈V . Essentially, this means our function f in practice does not share structure between computation of u i and v i , but nothing prevents trying other implementations in the future.</p><p>We now review our concrete architectures for computing (u i ) i∈V with each possible GNN architecture. For GCN, we use a two layer GCN with 16 hidden nodes as in <ref type="bibr" target="#b7">Kipf and Welling (2017)</ref>. For GAT, we use a two layer GAT with 8 attention heads in both layers and 16 hidden nodes (slightly larger than the 8 hidden nodes used in <ref type="bibr" target="#b24">Veličković et al. (2018)</ref>). Finally, for APPNP we use a two layer APPNP with 0.1 teleport probability, 10 propagation steps, and 64 hidden nodes as in <ref type="bibr" target="#b8">Klicpera et al. (2019)</ref>.</p><p>Similarly, we can compute (v i ) i∈V with each possible GNN architecture. Our GCN uses a one layer GCN (64 hidden nodes). Our GAT uses a one layer GAT (32 hidden nodes and 8 heads). APPNP uses the same architectures to compute u i -s and v i -s, except that the output dimension for a v i is 32. Experiments are conducted in a Tesla V100 GPU cluster.</p><p>Hyperparameters. Hyperparameters are selected by checking performance on a fixed validation set. Models are trained on a maximum of 200 epochs, stopping early if validation performance has not improved over a contiguous window of 100 epochs. We use Adam with a step size pool {0.01, 0.03, 0.05, 0.07, 0.1}. We apply L 2 regularization with γ = 0.005 and dropout rate from {0.5, 0.7}. The output activation for α inference network is validated from {softplus(•), square(•)} + 1.0, to ensure the α defines valid Dirichlet densities with a unique mode. In our experiment, we observe that softplus(•) is better at stabilizing the training process while square(•) enables faster training, especially when the output logits of the α inference network are negative. For all node classification experiments, to compute L we set the "self-attention" scalar γ to be 0.0, and cosine similarity scale σ 2 is optimized with an initial value 1.0.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D Approximating Other Distributions: Details and Additional Results</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.1 Approximating an MRF</head><p>We give more details about the main paper's Table <ref type="table">6</ref>, an experimental comparison between a mean-field variational inference baseline for the MRF, and using our NMM to approximate the MRF. In this experiment, the function f (X; θ) has two separate CNNs to parameterize α and L. The input to both CNNs is the graph with MRF potentials attached to graph nodes, so X includes all MRF potentials. The first layer of the CNN has kernel size 11 × 11 and filter size 128, followed by a ReLU nonlinearity. The second layer of the CNN has the kernel size 1 × 1, followed by an identity activation. The number of filters in the second layer is set to be 2 for the α and the number of neighbors (49) for the L. We treat each pixel with a surrounding 7 × 7 window as its neighbors. We train our model using Adam optimizer <ref type="bibr" target="#b5">(Kingma and Ba, 2014)</ref> with 1000 maximum epochs and 0.001 step size.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.2 Approximating Deep Generative Graph Models with Latent Variables</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.2.1 Experimental Details</head><p>We follow the same experiment setting as in DGLFRM <ref type="bibr" target="#b15">(Mehta et al., 2019)</ref>. The only difference is that DGLFRM samples y i from the probability vector π i directly, while we sample y i from π ci with c i ∼ Categorical(L i ) to describe neighbor correlations. To compute L i from v i , we use the same amortization structure as DGLFRM. Specifically, the inference network for (v i ) i∈V is a two layer GCN. The first layer has 32/64 hidden nodes for Cora, Citeseer and Pubmed, or 128/256 hidden nodes for NIPS12 and Yeast. The second layer has 50/100/200 hidden nodes to represent the community size. All the models are trained for 500 to 1000 iterations. Adam optimizer is used at a learning rate 0.01.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.2.2 Additional Results: Link Prediction</head><p>The main paper's Table <ref type="table">4</ref> showed link prediction results as measured by Average Precision (AP). Additionally, here we share similar link prediction results evaluated by the Area Under the ROC Curve (AUC). Table <ref type="table">9</ref> compares results from the original DGLFRM and results from our inference method. NMM inference significantly improves the performance of DGLFRM on two out of five datasets (Yeast and Cora).  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.2.3 Additional Results: Likelihood Bound Quality</head><p>As we have mentioned in the submission, using the NMM for inference can better maximize the variational lower bound on the marginal likelihood of observed labels under the DGLFRM model than the original inference method. The trace plot in Figure <ref type="figure">5</ref> shows evidence of this improvement, showing a noticeably higher value of the evidence lower bound (ELBO). From this, we conclude that sharing neighborhood information with our proposed NMM provides improved modeling capabilities for graph data.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Statistical analysis of non-lattice data</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Besag</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the Royal Statistical Society: Series D (The Statistician)</title>
+		<imprint>
+			<biblScope unit="volume">24</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="179" to="195" />
+			<date type="published" when="1975">1975</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Variational inference: A review for statisticians</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">M</forename><surname>Blei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kucukelbir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">D</forename><surname>Mcauliffe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the American statistical Association</title>
+		<imprint>
+			<biblScope unit="volume">112</biblScope>
+			<biblScope unit="issue">518</biblScope>
+			<biblScope unit="page" from="859" to="877" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Backpropagation through the void: Optimizing control variates for black-box gradient estimation</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Grathwohl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Roeder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Duvenaud</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Inductive representation learning on large graphs</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1024" to="1034" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">Markov random fields and their applications</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kindermann</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1980">1980</date>
+			<publisher>American mathematical society</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6980</idno>
+		<title level="m">Adam: A method for stochastic optimization</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Auto-encoding variational bayes</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Predict then propagate: Graph neural networks meet personalized pagerank</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Klicpera</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bojchevski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Günnemann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Conditional random fields: Probabilistic models for segmenting and labeling sequence data</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lafferty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mccallum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">C</forename><surname>Pereira</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Noise2noise: Learning image restoration without clean data</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lehtinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Munkberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hasselgren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Laine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Karras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Aittala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Aila</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="2965" to="2974" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Multiplicative normalizing flows for variational bayesian neural networks</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Louizos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<ptr target="JMLR.org" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 34th International Conference on Machine Learning</title>
+		<meeting>the 34th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">70</biblScope>
+			<biblScope unit="page" from="2218" to="2227" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Understanding posterior collapse in generative latent variable models</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lucas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Tucker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Grosse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Norouzi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR Workshop DeepGenStruct</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Image restoration using convolutional auto-encoders with symmetric skip connections</title>
+		<author>
+			<persName><forename type="first">X.-J</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-B</forename><surname>Yang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1606.08921</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">A database of human segmented natural images and its application to evaluating segmentation algorithms and measuring ecological statistics</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Martin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Fowlkes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Tal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Malik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings Eighth IEEE International Conference on Computer Vision. ICCV</title>
+		<meeting>Eighth IEEE International Conference on Computer Vision. ICCV</meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2001">2001. 2001</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="416" to="423" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Stochastic blockmodels meet graph neural networks</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Mehta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">C</forename><surname>Duke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Rai</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 36th International Conference on Machine Learning</title>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Chaudhuri</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Salakhutdinov</surname></persName>
+		</editor>
+		<meeting>the 36th International Conference on Machine Learning<address><addrLine>Long Beach, California, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="4466" to="4474" />
+		</imprint>
+	</monogr>
+	<note>Proceedings of Machine Learning Research</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">Machine learning: a probabilistic perspective</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">P</forename><surname>Murphy</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<publisher>MIT press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Gmnn: Graph markov neural networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="5241" to="5250" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Hierarchical variational models</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ranganath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Tran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Blei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="324" to="333" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">U-net: Convolutional networks for biomedical image segmentation</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Ronneberger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Fischer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Brox</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Medical image computing and computer-assisted intervention</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="234" to="241" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Neural enhanced belief propagation on factor graphs</title>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">G</forename><surname>Satorras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Amortized inference regularization</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Shu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">H</forename><surname>Bui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">J</forename><surname>Kochenderfer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ermon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="4393" to="4402" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Stick-breaking construction for the indian buffet process</title>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Grür</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ghahramani</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="556" to="563" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Rebar: Low-variance, unbiased gradient estimates for discrete latent variable models</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Tucker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mnih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">J</forename><surname>Maddison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lawson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Sohl-Dickstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="2627" to="2636" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<author>
+			<persName><forename type="first">P</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Liò</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<title level="m">Graph Attention Networks. International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Graphical models, exponential families, and variational inference</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">J</forename><surname>Wainwright</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">I</forename><surname>Jordan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Foundations and Trends® in Machine Learning</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="issue">1-2</biblScope>
+			<biblScope unit="page" from="1" to="305" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Deep graph library: Towards efficient and scalable deep learning on graphs</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Gai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">J</forename><surname>Smola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ICLR Workshop on Representation Learning on Graphs and Manifolds</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Simple statistical gradientfollowing algorithms for connectionist reinforcement learning</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">J</forename><surname>Williams</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Machine learning</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="issue">3-4</biblScope>
+			<biblScope unit="page" from="229" to="256" />
+			<date type="published" when="1992">1992</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Long</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">S</forename><surname>Yu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1901.00596</idno>
+		<title level="m">A comprehensive survey on graph neural networks</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Adaptive neural network for node classification in dynamic networks</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Zong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2019 IEEE International Conference on Data Mining (ICDM)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="1402" to="1407" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Revisiting semi-supervised learning with graph embeddings</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Cohen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Salakhudinov</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of The 33rd International Conference on Machine Learning, Proceedings of Machine Learning Research</title>
+		<meeting>The 33rd International Conference on Machine Learning, Machine Learning Research</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<title level="m" type="main">Inference in probabilistic graphical models by graph neural networks</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Yoon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Liao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Fetaya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Urtasun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Zemel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Pitkow</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Advances in variational inference</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bütepage</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Kjellström</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mandt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE transactions on pattern analysis and machine intelligence</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">41</biblScope>
+			<biblScope unit="page" from="2008" to="2026" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

@@ -1,0 +1,1265 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Enhancing Dense Retrievers&apos; Robustness with Group-level Reweighting</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-10-14">14 Oct 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Peixuan</forename><surname>Han</surname></persName>
+						</author>
+						<author role="corresp">
+							<persName><forename type="first">Zhenghao</forename><surname>Liu</surname></persName>
+							<email>liuzhenghao@mail.neu.edu.cn</email>
+						</author>
+						<author>
+							<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Chenyan</forename><surname>Xiong</surname></persName>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution">Tsinghua University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">Northeastern University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff2">
+								<orgName type="institution">Tsinghua University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff3">
+								<orgName type="institution">Carnegie Mellon University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff4">
+								<orgName type="institution">Carnegie Mellon University</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Enhancing Dense Retrievers&apos; Robustness with Group-level Reweighting</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-10-14">14 Oct 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">2E538961082C2146C074989A77BBCD8E</idno>
+					<idno type="arXiv">arXiv:2310.16605v4[cs.IR]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:59+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>The anchor-document data derived from web graphs offers a wealth of paired information for training dense retrieval models in an unsupervised manner. However, unsupervised data contains diverse patterns across the web graph and often exhibits significant imbalance, leading to suboptimal performance in underrepresented or difficult groups. In this paper, we introduce WebDRO, an efficient approach for clustering the web graph data and optimizing group weights to enhance the robustness of dense retrieval models. Initially, we build an embedding model for clustering anchordocument pairs. Specifically, we contrastively train the embedding model for link prediction, which guides the embedding model in capturing the document features behind the web graph links. Subsequently, we employ the group distributional robust optimization to recalibrate the weights across different clusters of anchordocument pairs during training retrieval models. During training, we direct the model to assign higher weights to clusters with higher loss and focus more on worst-case scenarios. This approach ensures that the model has strong generalization ability on all data patterns. Our experiments on MS MARCO and BEIR demonstrate that our method can effectively improve retrieval performance in unsupervised training and finetuning settings. Further analysis confirms the stability and validity of group weights learned by WebDRO. All codes will be released via GitHub.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Dense retrieval models, which encode the semantics of text into dense vectors, have become prevalent and achieved state-of-the-art performance on many public benchmarks thanks to the surge of pretrained language models like BERT <ref type="bibr" target="#b7">(Devlin et al., 2019)</ref> and T5 <ref type="bibr" target="#b24">(Raffel et al., 2020)</ref>. With enough annotated data, dense retrieval models can adeptly capture semantic features in supervised scenarios, outperforming traditional sparse methods such as BM25 <ref type="bibr" target="#b26">(Robertson et al., 2009</ref><ref type="bibr" target="#b27">(Robertson et al., , 1995))</ref>, which solely retrieves documents containing keywords already present in the query. However, annotated data is inaccessible in many scenarios either due to the extensive effort needed for annotation or privacy concerns. This highlights the necessity for unsupervised dense retrievers. Several paradigms of unsupervised dense retrieval have been proposed, among which leveraging web anchors is a promising choice. Primarily, anchor-document pairs contain weak supervision signal that indicates overlapping information <ref type="bibr">(Xie et al., 2023a;</ref><ref type="bibr" target="#b39">Zhang et al., 2020)</ref> and thus can approximate real search queries better than plain-text-based methods like ICT <ref type="bibr" target="#b13">(Izacard et al., 2021)</ref>. In addition, anchor resources are abundant across the Internet, bearing greater potential for the scalability of retrievers compared to methods based on the title and abstract of the passage.</p><p>Although the web graph contains rich data patterns, the imbalanced data distribution is an inherent flaw of unsupervised retrieval data. Training robust dense retrievers with these data is challenging, as different patterns exhibit significantly different frequencies in training data, leading to imbalanced representation. Due to insufficient exposure to underrepresented data patterns, the model's performance on downstream tasks involving similar patterns is hindered. To mitigate this, previous research has primarily focused on instancelevel data selection to identify data points whose patterns haven't been sufficiently trained by the model. To reach a more tailored selection, these approaches typically leverage feedback signals during the training process to assign a weight to each instance, such as Active Learning <ref type="bibr">(Settles, 2011;</ref><ref type="bibr" target="#b6">Coleman et al., 2020)</ref> and Meta Adaptive Ranking <ref type="bibr" target="#b31">(Sun et al., 2021)</ref>. These methods require the model to be trained multiple times, which is highly time-consuming and computationally intensive.</p><p>We address the lack of both efficient and effective retrieval data reweighting methods by introducing a group-level clustering and reweighting strategy-WebDRO. WebDRO enables us to conduct data reweighting in a single pass, significantly saving computational resources. Additionally, data clustered into groups encapsulates much more information than a single data point and represents the common characteristics of the same pattern, WebDRO can enhance the quality and stability of reweighting.</p><p>Specifically, we employ a two-step approach to train an unsupervised dense retrieval model using WebDRO. The first step (which we denote as</p><p>Step A) is to generate clusters from unsupervised web data. We utilize structural information from the web graph to train an embedding model with contrastive learning (Step A-1). By distinguishing related web pages from unrelated ones, the embedding model can work as a link predictor that captures the semantic features of web documents. Leveraging the embedding model, we generate vector representations for documents in the anchor-document pairs and produce high-quality clusters through K-Means (Step A-2). In the second step (which we denote as Step B), we utilize Group Distributionally Robust Optimization (GroupDRO) <ref type="bibr" target="#b22">(Oren et al., 2019;</ref><ref type="bibr" target="#b28">Sagawa et al., 2019)</ref> to reweight the clusters during the contrastive training of the retrieval model. Originally designed to tackle distributional shifts in language model training, GroupDRO dynamically adjusts the weights of different groups based on the training loss. It increases the weight of the groups with large training loss, therefore highlighting the underrepresented groups that the model has difficulty learning from and enhancing the model's robustness in versatile retrieval tasks.</p><p>We conduct experiments on two widely used retrieval datasets, MS MARCO <ref type="bibr" target="#b20">(Nguyen et al., 2016)</ref> and BEIR <ref type="bibr" target="#b32">(Thakur et al., 2021)</ref>. Results indicate that our method notably enhances retrievers' performance in both unsupervised and finetuned settings. Specifically, WebDRO yields a performance improvement of 1.2% (measured by nDCG@10) on MS MARCO and 1.1% on BEIR compared to our main baseline, Anchor-DR <ref type="bibr">(Xie et al., 2023b)</ref>. Analytical experiments further demonstrate that our model consistently produces stable, high-quality clusters and accurately identifies groups that baseline dense retrievers struggle with.</p><p>The main contributions of our work are:</p><p>• We explored web anchors' usage in training dense retrievers and proposed WebDRO, a clustering and group-level reweighting algorithm for unsupervised dense retriever training.</p><p>• Empirical analysis shows that WebDRO can efficiently enhance dense retrievers' robustness, improving their performances on both unsupervised and finetuned settings.</p><p>• We further confirmed WebDRO's ability to efficiently identify underrepresented and challenging groups, thereby helping the model improve its capabilities more effectively.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>This section describes relevant work, focusing on dense retrieval models and distributionally robust optimization.</p><p>Dense Retrieval. Dense Retrieval is an approach where both the query and document are separately encoded through a neural network. The prevalent training approach, introduced by <ref type="bibr" target="#b14">Karpukhin et al. (2020)</ref>, trains the network with a contrastive loss. Although dense retrieval has outperformed sparse methods <ref type="bibr" target="#b26">(Robertson et al., 2009)</ref> in many tasks, its benefits are generally confined to well-annotated data. Unsupervised dense retrieval efforts focus on using unannotated data to generate query-document pairs that semantically resemble contrastive pairs in supervised scenarios. For instance, ICT <ref type="bibr" target="#b13">(Izacard et al., 2021)</ref> samples a text span in a passage as the query and the rest part as the document, and Codoc <ref type="bibr" target="#b9">(Gao and Callan, 2022)</ref> independently sample two text spans as the query and document. More recently, researchers have exploited unsupervised data at a greater scale and with more diverse constructing methods, namely E5 <ref type="bibr" target="#b33">(Wang et al., 2022)</ref> and BGE M3 <ref type="bibr" target="#b3">(Chen et al., 2024)</ref>. In our work, we focus on one specific method of constructing contrastive pairs. Following Anchor-DR <ref type="bibr">(Xie et al., 2023b)</ref>, we use anchors and corresponding webpages in the Internet to train dense retrievers. Web anchors are proved to be a high-quality data source for unsupervised retrievers, and has great potential of scaling up, considering the ubiquity and large number of anchors available in the Internet.</p><p>Distributionally Robust Optimization. To address the issue of distribution shift <ref type="bibr">(Agarwal et al.</ref>,  2021; <ref type="bibr" target="#b34">Wiles et al., 2022)</ref>, researchers have introduced Distributionally Robust Optimization (DRO) <ref type="bibr" target="#b2">(Ben-Tal et al., 2013;</ref><ref type="bibr" target="#b25">Rahimian and Mehrotra, 2019;</ref><ref type="bibr" target="#b17">Lin et al., 2022)</ref>. The goal of DRO is to optimize the worst-case performance of a model across various data distributions, ensuring its robustness against uncertain distributional changes. Specifically, GroupDRO considers robustness over groups and calculates the worst-case loss over groups by optimizing group weights and model weights concurrently. GroupDRO can be used to train more robust models, as well as to learn the importance of different data groups <ref type="bibr">(Xie et al., 2023a)</ref>. Prior applications of GroupDRO used explicitly prepartitioned groups, and the number of groups is relatively small (&lt; 50). In this work, we extend the applicable scope of GroupDRO to a large number of groups clustered by implicit information.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Methodology</head><p>In this section, we first describe the preliminary of dense retrieval (Sec. 3.1). Then we introduce our WebDRO method, which is shown in Figure <ref type="figure" target="#fig_1">1</ref>. In</p><p>Step A, we use the method in Sec. 3.2 to train an embedding model using the web links. Then, we cluster the anchor-document pairs based on vector representations produced by the embedding model.</p><p>In</p><p>Step B, we train a robust dense retrieval model with Group Distributionally Robust optimization (GroupDRO) as introduced in Sec. 3.3.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Preliminary of Dense Retrieval</head><p>Given a query q, the dense retrieval task aims to search relevant document p to satisfy the information needs of users.</p><p>In dense retrieval, we train one single model to encode both queries and documents as dense vectors and then conduct relevance modeling in an embedding space. We use cosine similarity to measure the relevance between queries and documents. Through contrastive learning <ref type="bibr" target="#b21">(Oord et al., 2018;</ref><ref type="bibr" target="#b4">Chen et al., 2020;</ref><ref type="bibr" target="#b11">He et al., 2020)</ref>, the encoder is optimized to align the queries with related documents and pull away the irrelevant documents from queries. Specifically, the following loss function is minimized during training:</p><formula xml:id="formula_0">l dr (q) = -log e sim(E(q),E(p + )) e sim(E(q),E(p + )) + k i=1 e sim(E(q),E(p - i )) ,<label>(1)</label></formula><p>where τ is the temperature hyperparameter. p + stands for the related document for query and p - 1 , ..., p - k are negative (unrelated) documents.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Step A: Clustering with the Embedding Model</head><p>This subsection introduces our web graph based anchor-document cluster method. It learns the document representations using the document links in the web graph and then clusters the documents according to their semantic features. Document Relations in Web Graph. The web graph models the document relationship with hyperlinks, which allows users to navigate from one web page to another or within the same web page.</p><p>It is evident that the documents linked with a hyperlink will likely share similar or related information. As shown in Figure <ref type="figure" target="#fig_1">1</ref>(a), these four documents are related and are linked with the anchor hyperlink, e.g. the link between document A and document B indicate that "horses and gorillas have some similarities", showing an analogy relationship; the links between document B and document C indicate the definitions of "horses" and "herbivorous", showing the hypernymy relationship.</p><p>Embedding Model Training. We train an embedding model using the document relations in the web graph. We encode the documents using a pretrained language model encoder and contrastively train the encoder. A web page can contain multiple links, so we enumerate each link to construct contrastive pairs as training examples. For each link, we regard the source web page as the query, the target web page as the positive document, and sample unlinked documents as negative documents. The objective function is identical to that in Sec. 3.1. As a result, the embedding model is trained as a link predictor that can distinguish linked web pages from non-linked ones.</p><p>Document Clustering. Since the embedding model is capable of capturing webpages' features, we use it to encode all documents as dense vectors. Then we use Mini-Batch K-Means <ref type="bibr" target="#b29">(Sculley, 2010)</ref>, a variant of K-Means <ref type="bibr" target="#b15">(Krishna and Murty, 1999)</ref> to cluster embedding vectors of documents into a fixed number of groups. Some documents have more than one anchor that links to it, these anchor-document pairs are naturally clustered into the same group. To make sure each group has statistical significance, we set a threshold of the number of documents in a group as M inSize = 128. All the groups with sizes smaller than M inSize will be aggregated together and considered as a larger group. As this large group contains heterogeneous elements with different topics, we should not assign a single weight to represent this group. Therefore, the large group will not be considered in the reweighting discussed in Sec. 3.3.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Step B: Robust Dense Retriever Training</head><p>For each anchor in our corpus, we regard the text of the anchor as the query, and the content of the linked webpage as positive document. The anchor-document pairs contain different types of documents, and the distribution of different types could vary greatly: some occur frequently, while others are rare; some are easy for the model to learn, while others are challenging. Treating all data equally may affect the performance of dense retrievers when faced with underrepresented data types. To alleviate this problem, we follow <ref type="bibr" target="#b28">Sagawa et al. (2019)</ref> to reweight different anchor-document groups and train more robust dense retrievers.</p><p>Following GroupDRO, each group is assigned with a weight that indicates its importance, and the weights are dynamically updated during the training process. Specifically, we denote n as the number of groups after clustering. Then, for a training instance p in step t that belongs to group k, the training loss of WebDRO is calculated as:</p><formula xml:id="formula_1">L WebDRO (p) = l dr (p) • w t k • n • C k ,<label>(2)</label></formula><p>where l dr is the contrastive loss calculated using Eq. 1, w t k is the weight of the k-th group in step t, and C k is size factor of the k-th group. We will next describe C k and w k respectively.</p><p>Size Factor (C k ). In a standard GroupDRO scenario, data are sampled from each group according to the uniform distribution. However, the size of different anchor-document groups in our method may vary significantly. To accommodate this circumstance, WebDRO introduces a size factor C k :</p><formula xml:id="formula_2">C k = 1 N k • n j=1 N j n ,<label>(3)</label></formula><p>where N k is the size of the k-th anchor-document group. Smaller groups will have a larger C k value, which serves as a balance for different group sizes. This is a natural extension of the original DRO, as C k = 1 for all ks when all groups have the same size (all N k s are the same).</p><p>Group Weighting (w k ). The initial weight of all groups is the same: w 0 k = 1 n . In each step, the groups' weights are updated before the calculation of L WebDRO (Eq. 2). First, we increase group weights based on training loss and get intermediate weights</p><formula xml:id="formula_3">w ′ k . For each group k, w ′ k = w t-1 k • e lr•C k •L avgk .<label>(4)</label></formula><p>In this formula, lr is the learning rate of weight updating. L avgk portraits the contribution of group k in step t's training loss, which can be calculated:</p><formula xml:id="formula_4">L avgk = p in group k l dr (p) N t ,<label>(5)</label></formula><p>where N t is the number of training data in step t. This is a natural extension of the case when all training data in a step belongs to a single group. L avgk for that group will thus be the average loss, and other group weights will remain unmodified. After each step, the sum of group weights should be 1, so we normalize the intermediate weights to get w t k . For each group k,</p><formula xml:id="formula_5">w t k = w ′ k n j=1 w ′ j .<label>(6)</label></formula><p>During training, WebDRO aims to increase the weights of groups with higher contrastive loss, which leads the model to draw more attention to groups that are challenging for it. This enhances the model's robustness on underrepresented groups in the source, thereby implicitly improving the model's generalization ability on unseen target queries. Algorithm 1 shows the process of weight updating, which is the same as the above description.</p><p>Algorithm 1 Weight Updating in WebDRO Calculate the contrastive loss l dr (M, p[i])</p><formula xml:id="formula_6">8: L avg [k] ← L avg [k] + l dr (M, p[i]) 9: end for 10: for k = 1 to n do 11: L avg [k] ← L avg [k] / N t 12: w ′ [k] ← w t-1 [k] • exp(lr • C[k] • L avg [k]) 13: end for 14: w sum ← n k=1 w ′ [k] 15: for k = 1 to n do 16: w t [k] ← w ′ [k] / w sum 17: end for 18: RETURN w t [1, . . . , n]</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experimental Methodology</head><p>This section introduces the training dataset, evaluation, baseline models, and details on implementation.</p><p>Training and Evaluation Datasets. We use MS MARCO <ref type="bibr" target="#b20">(Nguyen et al., 2016)</ref> and BEIR <ref type="bibr" target="#b32">(Thakur et al., 2021)</ref>, two widely used English retrieval benchmarks, to evaluate the retrieval effectiveness in both unsupervised and finetuned settings. We collect anchor document pairs from ClueWeb22 <ref type="bibr" target="#b23">(Overwijk et al., 2022)</ref>, a dataset containing extensive web page information, to train dense retrievers in an unsupervised setting. We use the training set of MS MARCO Passage as data for fine-tuning. Following previous work <ref type="bibr" target="#b32">(Thakur et al., 2021;</ref><ref type="bibr">Xie et al., 2023b)</ref>, nDCG@10 is used as our evaluation metric.</p><p>Implementation Details. Our implementation is based on OpenMatch <ref type="bibr" target="#b18">(Liu et al., 2021;</ref><ref type="bibr" target="#b38">Yu et al., 2023)</ref>. During training the embedding model for clustering, we think the URL of web pages contains valuable information about the relations between web pages. Therefore, we incorporate the URL with the title and content as the text representation of web pages. We cluster training data into 500 groups, yet the actual data may contain slightly less than 500 groups because the groups smaller than 128 are merged (as mentioned in Sec. 3.2). We analyzed the effect of using different group numbers in Appendix A.4.</p><p>For unsupervised retrieval models, we start from the T5-base <ref type="bibr" target="#b24">(Raffel et al., 2020)</ref> (with 220M parameters) checkpoint and contrastively train the dense retrieval model on ClueWeb data with inbatch negatives and BM25 retrieved negatives for 1 epoch. Then we reinitialize the group weight and train the model for another epoch using inbatch negatives and more challenging negatives generated with ANCE <ref type="bibr" target="#b37">(Xiong et al., 2021)</ref>. To enhance the stability of WebDRO, we use gradient accumulation and update the group weights every 500 training step (gradients of model parameters are not cached and updated every step).</p><p>For the finetuned setting, we tune base models with the training set of MS MARCO Passage with in-batch negatives and BM25 retrieved negatives for 1 epoch. The finetuning process doesn't involve clustering or reweighting.</p><p>Baseline Models. We compare WebDRO with a commonly used sparse retriever, BM25 <ref type="bibr" target="#b26">(Robertson et al., 2009)</ref>, and five unsupervised dense retrieval models. Anchor-DR <ref type="bibr">(Xie et al., 2023b)</ref> serves as the baseline for direct comparison with WebDRO. Anchor-DR regards anchor texts as queries and uses anchor-document pairs without clustering. For the other four baselines, we describe them in Appendix A.2.</p><p>To evaluate WebDRO in a fine-tuned setting, we compare three different base models: T5-base, Anchor-DR, and WebDRO. These base models are finetuned in exactly the same manner.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Evaluation Results</head><p>In this section, we first show the performance of different retrieval models and analyze different clustering methods in our approach. Then we compare WebDRO's performance in different tasks and analyze the validity of the group weights learned by WebDRO.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Overall Performance</head><p>Table <ref type="table" target="#tab_0">1</ref> shows the unsupervised retrieval results of WebDRO on MS MARCO and BEIR.</p><p>In the unsupervised setting, WebDRO outperforms Anchor-DR, its counterpart without reweighting by achieving a 1.2% improvement on MS MARCO and a 1.1% improvement on the average of BEIR. By utilizing group weights, WebDRO enhances retrieval performance on most datasets compared with Anchor-DR, indicating its effectiveness in identifying and highlighting rare or challenging data patterns in anchor-document pairs. WebDRO also significantly outperforms the first three unsupervised baselines. Although the amount of data used to train WebDRO is only 5.1% of that used to train E5-Large, WebDRO's average score only falls behind by 2.1%. This indicates that anchordocument pairs are a high-quality resource for training unsupervised retrievers. We believe stronger dense retrievers can be trained in the same manner as WebDRO after scaling up, and we leave it for future work.</p><p>As shown in the right part of Table <ref type="table" target="#tab_0">1</ref>, WebDRO also significantly outperforms Anchor-DR and T5-base on most datasets when they are all finetuned with the same MS MARCO data. Additionally, finetuned WebDRO outperforms BM25 on 10 subtasks (out of 19) and has an average performance gain of 2.6%. The performance gain of WebDRO further indicates the advantages of our clustering and reweighting method can be brought to the finetuned scenarios.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Analyses on Clustering Strategy</head><p>To compare the effectiveness of different document clustering strategies, we also implement two variants of WebDRO by using different clustering strategies. DRO w/URL directly clusters the web pages that share the same domain name into the same group. DRO w/Anchor-DR uses Anchor-DR to encode the documents for clustering instead of using a task-specifically trained embedding model. The results in the unsupervised setting are shown in Table <ref type="table" target="#tab_1">2</ref>.</p><p>From the table, we can see WebDRO outperforms DRO w/Anchor-DR by achieving about a 1% improvement. We hypothesize that this disparity arises from the fact that the clustering task concerns the relations between documents, whereas Anchor-DR is trained with anchordocument pairs, emphasizing the modeling of relations between queries and documents. A link predictor style embedding model (the one in WebDRO) focuses more on extracting document features to model the relation between web pages, making it more tailored for clustering documents.</p><p>URLs are commonly employed to encapsulate the content of a web page, and naturally, DRO w/URL exhibits an improvement over vanilla Anchor-DR. However, in comparison to DRO w/URL, WebDRO shows better retrieval performance, illustrating that titles and contents also play a crucial role in enhancing the URL-based representations of web pages. Another reason for DRO w/URL's performance decline compared to WebDRO is its coarse clustering for the documents belong to large domains. For instance, all web pages within Wikipedia will be clustered in one single group (this group contains roughly 1M anchors, constituting 7.2% of whole training data) regardless of their topics.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Retrieval Effectiveness in Different</head><p>Testing Scenarios</p><p>This section focuses on evaluating the role of the group weighting mechanism in training dense retrieval models. In Figure <ref type="figure" target="#fig_3">2</ref>, we present the performance points of all 18 datasets from BEIR and show the relationship between Anchor-DR's performance and the relative performance gain achieved by WebDRO over Anchor-DR.</p><p>The evaluation results show that the performance gap between Anchor-DR and WebDRO tends to be larger when the baseline nDCG@10 is low. It illustrates that WebDRO performs particularly well on difficult retrieval tasks, like scidocs (with a relative gain of 11.26%), hotpotQA (19.60%) and cqadupstack (14.39%). Conversely, on datasets where the baseline already exhibits strong performance, such as trec-covid (-4.30%) and quora (-2.58%), the model's enhancements are marginal or even negative. This aligns with the optimization goal of WebDRO, which is that the groups with larger training losses are assigned larger weights to improve the overall performance across all datasets. This phenomenon suggests that WebDRO's unique optimization strategy effectively identifies and prioritizes challenging tasks during pretraining, offering a strategic advantage for performance gains, particularly in scenarios where traditional models struggle.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">Analyze on the Group Weights Learned by WebDRO</head><p>In this section, two experiments are conducted to show the stability and effectiveness of the group weights learned by WebDRO.</p><p>Trend and Distribution of Group Weights. As shown in Figure <ref type="figure" target="#fig_5">3</ref>, we explore the distributions of group weights that learned by WebDRO.  We first randomly sample 50 groups to track the changes in group weights during training. As seen in Figure <ref type="figure" target="#fig_5">3</ref> Performance of Retrieval Models Trained with Different Weighted Groups. We conduct experiments to pretrain dense retrieval models using groups assigned with different weights derived from WebDRO. Specifically, we select top and bottom 30 groups based on their weight ranks, and then sample 500k anchor-document pairs from top and bottom groups respectively. For comparison, we also train a model using a randomly sampled set of 500k pairs. Subsequently, we utilize these subsets of training data to train dense retrieval models for 1 epoch. <ref type="table" target="#tab_3">3</ref>, the unsupervised retriever trained with top-weighted groups significantly outperforms other models trained with an equal number of 500k anchor-document pairs. This illustrates that the groups assigned higher weights are more informative for the model, indicating that they are underrepresented in the training data and post greater challenges. The retrieval performance of the model that is trained with randomly sampled training data significantly decreases when we replace the training data with instances in bottom-weighted groups. This highlights the capacity of WebDRO to effectively identify data already well-interpreted by the model.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>As shown in Table</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.5">Analyses of the Loss Landscapes</head><p>Loss landscape is a common tool for assessing a model's stability and generalization capabilities <ref type="bibr" target="#b16">(Li et al., 2018;</ref><ref type="bibr" target="#b10">Hao et al., 2019)</ref>. Specifically, we apply small perturbations to the model's parameters from two random directions and visualize the losses after perturbations in a plane. The "flatness" of the loss landscape is defined as the size of the region around the origin where the training loss remains low <ref type="bibr" target="#b12">(Hochreiter et al., 1997)</ref>. A flatter loss landscape usually indicates better robustness to noises and a higher chance of converging to the optimal when randomly initialized. As shown in Figure <ref type="figure" target="#fig_8">4</ref>, we can see that with increasing perturbation, the training loss in WebDRO exhibits a gradual increase in all directions, whereas in Anchor-DR, the rise in training loss is steep in specific directions. Besides, it can be observed that WebDRO encompasses a larger area with low training loss (the area inside the red lines) than Anchor-DR. In summary, WebDRO presents a flatter and more uniform landscape than Anchor-DR, indicating enhanced stability in training and heightened generalization capabilities to different tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>This paper introduces WebDRO, an unsupervised dense retrieval model that utilizes web structures to cluster documents and adjusts group weights during contrastive training. The training process is divided into two steps. In Step-A, we use structures of the web graph to train a link prediction style embedding model for clustering. In Step-B, we utilize GroupDRO to reweight the clusters during training based on training loss. Experiments on MS MARCO and BEIR show that WebDRO achieves significant improvements over baseline models, es-pecially on difficult tasks. Further analysis shows that group weights learned by WebDRO are stable and valid, which means underrepresented and challenging groups are assigned higher weights consistently throughout training. This confirms WebDRO's effectiveness in improving dense retrievers' robustness.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Limitations</head><p>An important part of WebDRO is training the embedding model and generating clusters. However, we only use the cluster information in reweighting, which is a waste of resources. Research has shown that introducing more challenging negatives would enhance the model's performance <ref type="bibr" target="#b37">(Xiong et al., 2021)</ref>. As being in the same group indicates similarity, we hope to build stronger negatives with clusters to achieve better performance.</p><p>In this work, we cluster different contrastive pairs solely by their semantic features, which means contrastive pairs with similar content will be clustered in the same group. This approach is based on a hypothesis: semantically resembled contrastive pairs have similar contributions to retrieval model training. However, other factors may also influence the data point's contribution, like format, style, or even features we can't explicitly describe.</p><p>Data imbalance in unsupervised training data is the key motivation of our method. Although prior work has confirmed this phenomenon and its consequences, we didn't closely examine data distribution in our scenario due to our data's size.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Appendix</head><p>A.1 License Our code base, OpenMatch, uses MIT License. For datasets used in this work, MS MARCO can be used freely without a license, BEIR uses Apache-2.0 license and ClueWeb22 uses an individual agreement, which we have already obtained.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 Training Details</head><p>This subsection describes the training details of our WebDRO model, including data processing, hyperparameters and computational resources.</p><p>Data Processing. All training data are selected from the English documents in the B category of ClueWeb22. We follow <ref type="bibr">(Xie et al., 2023b)</ref> to process the training data by filtering out uninformative anchors (Homepage, Login, etc.), in-domain anchors, headers, and footers using heuristic rules. A miniBERT-based classifier model is also utilized to evaluate the quality of anchor texts. We only retain 25% anchor texts that are top-ranked.</p><p>Sizes of Datasets. The training data for training unsupervised the retrieval model contains 13.8M contrastive pairs, and the training data for the embedding model contains 5.1M contrastive pairs. For evaluation benchmarks, MS MARCO contains 8.8M documents and 8, 960 queries, and BEIR contains 44.0M documents and 47, 282 queries in total.</p><p>Hyperparameters. The learning rate and batch size are set to 3e-5 and 384 for training the embedding model. During the stage of training retrieval models, we set the learning rate of the contrastive loss to 3e -5 and batch size to 768. The learning rate for weight updates is set to 3e -4.</p><p>Computational Resources. The training of our model uses 8 NVIDIA RTX A6000 GPUs (48GB of memory each). Each epoch of dense retrieval model training (for all 13.8M contrastive pairs) takes 9 to 12 hours depending on the inter-node communication efficiency.</p><p>A.3 More Details of Baseline Models coCondenser <ref type="bibr" target="#b9">(Gao and Callan, 2022)</ref> bases on the Condenser model <ref type="bibr" target="#b8">(Gao and Callan, 2021)</ref> and is trained with token-level and span-level language modeling objectives. SPAR <ref type="bibr" target="#b5">(Chen et al., 2022)</ref> further trains dense retrievers on Wikipedia and aims at imitating a sparse retrieval teacher. AugTriever <ref type="bibr">(Meng et al.)</ref> focuses on extracting the queries for the documents and using them to train retrieval models. E5-Large <ref type="bibr" target="#b33">(Wang et al., 2022)</ref> trains retrieval models on CC-Pair, a huge unsupervised dataset collected from multiple sources and curated with a consistency-based filter.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.4 Analyse on the Number of Clusters</head><p>As shown in Sec. 3.2, we use K-Means to cluster the documents and the number of groups (n) is critical for GroupDRO. We conducted a series of experiments to investigate the impact of varying n values on model performance. In Table <ref type="table" target="#tab_4">4</ref>, we can see the model performance initially is improved but later decreases as the n increases. In our training scenario, n = 500 is an appropriate value for WebDRO to achieve the best retrieval performance.</p><p>If n &gt; 500, the number of the clustered groups is too large and the weights of smaller groups are usually unstable or even faulty updated. If n &lt; 500, the clustering is too coarse, and detailed features of documents cannot be represented through clustering. Each group contains a large number of documents, which should be assigned different weights.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Illustration of key steps in WebDRO. Figure 1(a) shows the clustering process in Step A, where we use web links to train an embedding model and use the model to cluster documents. Figure 1(b) shows the training process of the retrieval model in Step B. We aim to align the anchor with the corresponding document while pushing apart unrelated ones. Each group is assigned a weight that is dynamically updated based on the training loss.</figDesc><graphic coords="3,65.17,82.49,87.21,116.28" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>1:</head><label></label><figDesc>Input: Model M , step number t, number of groups n, learning rate for weight updating lr, size factor C[1, . . . , n], size of batch N t , data batch p[1, . . . , N t ], original weights w t-1 [1, . . . , n] 2: Output: Updated weights w t [1, . . . , n] 3: 4: L avg [1, . . . , n] ← [0, . . . , 0] 5: for i = 1 to N t do 6:Find the group number k of p[i]    7:</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: The relationship between performance gain of WebDRO and performance of Anchor-DR. Each point represents a dataset in BEIR. Datasets with high or negative gains are annotated.</figDesc><graphic coords="7,70.87,70.87,218.26,145.51" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head></head><label></label><figDesc>(a) The weight changes of 50 random groups. (b) The weight changes of top and bottom groups.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: The visualization of group weights during training. Group weights are recorded every 500 steps.</figDesc><graphic coords="7,311.82,73.49,102.14,102.14" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head></head><label></label><figDesc>(a), the color gradient within each group gradually shifts towards darker, indicating an approximate monotonic change in group weights. Then we rank the groups according to the weights that are assigned by our final WebDRO model and select the top-ranked and bottom-ranked 30 groups respectively to observe the trend of weight changes during training. As shown in Figure 3(b), the weights of top-weighted groups and bottom-weighted groups are consistently increased and decreased, further demonstrating the stability of the group weights learned by WebDRO.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Loss landscapes of Anchor-DR and WebDRO. We constrain the perturbation in each direction to (-0.3, 0.3). Each closed curve in the figure indicates that the corresponding positions have the same loss.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Retrieval results of different models on MS MARCO and BEIR. All models are evaluated by nDCG@10. Model names in the "Finetuned Dense Retrievers" category only indicate the base model before finetuning. The best result on each task is marked in bold, and the best result among unsupervised dense retrievers is underlined.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Performance of variants of WebDRO using different clustering strategies in an unsupervised setting.</figDesc><table><row><cell>Model</cell><cell cols="2">MS MARCO Avg. on BEIR</cell></row><row><cell>Anchor-DR</cell><cell>26.15</cell><cell>39.50</cell></row><row><cell>DRO w/URL</cell><cell>26.97</cell><cell>39.79</cell></row><row><cell>DRO w/Anchor-DR</cell><cell>26.64</cell><cell>39.65</cell></row><row><cell>WebDRO</cell><cell>27.37</cell><cell>40.60</cell></row></table><note><p>1 Average score of 14 public datasets in BEIR.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 :</head><label>3</label><figDesc>Performance of unsupervised retriever trained with different groups. Models are evaluated with nDCG@10.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4 :</head><label>4</label><figDesc>Retrieval performance of WebDRO with different group numbers (#Group). Results are in nDCG@10.</figDesc><table><row><cell cols="3">#Group MS MARCO Average on BEIR</cell></row><row><cell>50</cell><cell>26.93</cell><cell>40.40</cell></row><row><cell>200</cell><cell>27.43</cell><cell>40.48</cell></row><row><cell>500</cell><cell>27.37</cell><cell>40.70</cell></row><row><cell>1,000</cell><cell>27.11</cell><cell>40.49</cell></row><row><cell>5,000</cell><cell>26.82</cell><cell>40.17</cell></row><row><cell>15,000</cell><cell>27.29</cell><cell>40.00</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<idno>Pairs - 22.6M 52.4M 8.8M 270M 13.8M 13</idno>
+		<title level="m">Model BM25 Unsupervised Dense Retrievers Finetuned Dense Retrievers SPAR AugTriever coCondenser E5-Large Anchor-DR WebDRO T5-Base Anchor-DR WebDRO # Training</title>
+		<meeting><address><addrLine>MS MARCO</addrLine></address></meeting>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">On the theory of policy gradient methods: Optimality, approximation, and distribution shift</title>
+		<author>
+			<persName><forename type="first">Alekh</forename><surname>Agarwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><forename type="middle">D</forename><surname>Kakade</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gaurav</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mahajan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Mach. Learn. Res</title>
+		<imprint>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="page">76</biblScope>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Robust solutions of optimization problems affected by uncertain probabilities</title>
+		<author>
+			<persName><forename type="first">Aharon</forename><surname>Ben-Tal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dick</forename><forename type="middle">Den</forename><surname>Hertog</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anja</forename><surname>De Waegenaere</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bertrand</forename><surname>Melenberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gijs</forename><surname>Rennen</surname></persName>
+		</author>
+		<idno type="DOI">10.1287/mnsc.1120.1641</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Management Science</title>
+		<imprint>
+			<biblScope unit="volume">59</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="341" to="357" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Bge m3-embedding: Multi-lingual, multi-functionality, multi-granularity text embeddings through self-knowledge distillation</title>
+		<author>
+			<persName><forename type="first">Jianlv</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shitao</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peitian</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kun</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Defu</forename><surname>Lian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Liu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2402.03216</idno>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">A simple framework for contrastive learning of visual representations</title>
+		<author>
+			<persName><forename type="first">Ting</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Kornblith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohammad</forename><surname>Norouzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><forename type="middle">E</forename><surname>Hinton</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of ICML</title>
+		<meeting>ICML</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">119</biblScope>
+			<biblScope unit="page" from="1597" to="1607" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Salient phrase aware dense retrieval: Can a dense retriever imitate a sparse one?</title>
+		<author>
+			<persName><forename type="first">Xilun</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kushal</forename><surname>Lakhotia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Barlas</forename><surname>Oguz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anchit</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stan</forename><surname>Peshterliev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yashar</forename><surname>Mehdad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sonal</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of EMNLP Findings</title>
+		<meeting>EMNLP Findings<address><addrLine>Abu Dhabi</addrLine></address></meeting>
+		<imprint>
+			<publisher>United Arab Emirates. Association for Computational Linguistics</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="250" to="262" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Selection via proxy: Efficient data selection for deep learning</title>
+		<author>
+			<persName><forename type="first">Cody</forename><surname>Coleman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Yeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Mussmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baharan</forename><surname>Mirzasoleiman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Bailis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Percy</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matei</forename><surname>Zaharia</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of ICLR. OpenReview.net</title>
+		<meeting>ICLR. OpenReview.net</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">BERT: Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N19-1423</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of NAACL-HLT</title>
+		<meeting>NAACL-HLT<address><addrLine>Minneapolis, Minnesota</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="4171" to="4186" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Condenser: a pretraining architecture for dense retrieval</title>
+		<author>
+			<persName><forename type="first">Luyu</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jamie</forename><surname>Callan</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.emnlp-main.75</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of EMNLP</title>
+		<meeting>of EMNLP</meeting>
+		<imprint>
+			<publisher>Dominican Republic. Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="981" to="993" />
+		</imprint>
+		<respStmt>
+			<orgName>Online and Punta Cana</orgName>
+		</respStmt>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Unsupervised corpus aware language model pre-training for dense passage retrieval</title>
+		<author>
+			<persName><forename type="first">Luyu</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jamie</forename><surname>Callan</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.acl-long.203</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of ACL</title>
+		<meeting>of ACL<address><addrLine>Dublin, Ireland</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="2843" to="2853" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Visualizing and understanding the effectiveness of BERT</title>
+		<author>
+			<persName><forename type="first">Yaru</forename><surname>Hao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Furu</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ke</forename><surname>Xu</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D19-1424</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of EMNLP</title>
+		<meeting>EMNLP<address><addrLine>Hong Kong, China</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="4143" to="4152" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Momentum contrast for unsupervised visual representation learning</title>
+		<author>
+			<persName><forename type="first">Kaiming</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haoqi</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxin</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saining</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ross</forename><forename type="middle">B</forename><surname>Girshick</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/CVPR42600.2020.00975</idno>
+	</analytic>
+	<monogr>
+		<title level="m">2020 IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2020</title>
+		<meeting><address><addrLine>Seattle, WA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2020-06-13">2020. June 13-19, 2020</date>
+			<biblScope unit="page" from="9726" to="9735" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Flat minima</title>
+		<author>
+			<persName><forename type="first">Sepp</forename><surname>Hochreiter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sepp</forename><surname>Hochreiter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sepp</forename><surname>Hochreiter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jürgen</forename><surname>Schmidhuber</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neural computation</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="42" />
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Unsupervised dense information retrieval with contrastive learning</title>
+		<author>
+			<persName><forename type="first">Gautier</forename><surname>Izacard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mathilde</forename><surname>Caron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lucas</forename><surname>Hosseini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Piotr</forename><surname>Bojanowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Armand</forename><surname>Joulin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edouard</forename><surname>Grave</surname></persName>
+		</author>
+		<idno>abs/2112.09118</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">ArXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Dense passage retrieval for open-domain question answering</title>
+		<author>
+			<persName><forename type="first">Vladimir</forename><surname>Karpukhin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Barlas</forename><surname>Oguz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sewon</forename><surname>Min</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ledell</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Edunov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-main.550</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of EMNLP</title>
+		<meeting>EMNLP</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="6769" to="6781" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Genetic k-means algorithm</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Krishna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Narasimha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Murty</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Transactions on Systems, Man, and Cybernetics</title>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="page" from="433" to="439" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Visualizing the loss landscape of neural nets</title>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gavin</forename><surname>Taylor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christoph</forename><surname>Studer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Goldstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of NeurIPS</title>
+		<meeting>NeurIPS</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="6391" to="6401" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Distributionally robust optimization: A review on theory and applications</title>
+		<author>
+			<persName><forename type="first">Fengming</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaolei</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheming</forename><surname>Gao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Numerical Algebra, Control and Optimization</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="159" to="212" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Openmatch: An open source library for neu-ir research</title>
+		<author>
+			<persName><forename type="first">Zhenghao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kaitao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenyan</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3404835.3462789</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 44th International ACM SIGIR Conference on Research and Development in Information Retrieval</title>
+		<meeting>the 44th International ACM SIGIR Conference on Research and Development in Information Retrieval</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="2531" to="2535" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ye</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Semih</forename><surname>Yavuz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Divyansh</forename><surname>Agarwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lifu</forename><surname>Tu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ning</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianguo</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meghana</forename><surname>Bhat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yingbo</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Augtriever</surname></persName>
+		</author>
+		<title level="m">Unsupervised dense retrieval by scalable data augmentation</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Ms marco: A human generated machine reading comprehension dataset</title>
+		<author>
+			<persName><forename type="first">Tri</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mir</forename><surname>Rosenberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xia</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saurabh</forename><surname>Tiwary</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rangan</forename><surname>Majumder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Deng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">choice</title>
+		<imprint>
+			<biblScope unit="page">660</biblScope>
+			<date type="published" when="2016">2016. 2640</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Representation learning with contrastive predictive coding</title>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Van Den Oord</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yazhe</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+		<idno>abs/1807.03748</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">ArXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Distributionally robust language modeling</title>
+		<author>
+			<persName><forename type="first">Yonatan</forename><surname>Oren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shiori</forename><surname>Sagawa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Tatsunori</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Percy</forename><surname>Hashimoto</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Liang</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D19-1432</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of EMNLP</title>
+		<meeting>EMNLP<address><addrLine>Hong Kong, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="4227" to="4237" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Clueweb22: 10 billion web documents with rich information</title>
+		<author>
+			<persName><forename type="first">Arnold</forename><surname>Overwijk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenyan</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jamie</forename><surname>Callan</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3477495.3536321</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 45th International ACM SIGIR Conference on Research and Development in Information Retrieval</title>
+		<meeting>the 45th International ACM SIGIR Conference on Research and Development in Information Retrieval</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="3360" to="3362" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Exploring the limits of transfer learning with a unified text-to-text transformer</title>
+		<author>
+			<persName><forename type="first">Colin</forename><surname>Raffel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Roberts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katherine</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sharan</forename><surname>Narang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Matena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanqi</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><forename type="middle">J</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Mach. Learn. Res</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="page">67</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Distributionally robust optimization: A review</title>
+		<author>
+			<persName><forename type="first">Hamed</forename><surname>Rahimian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanjay</forename><surname>Mehrotra</surname></persName>
+		</author>
+		<idno>abs/1908.05659</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">ArXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">The probabilistic relevance framework: Bm25 and beyond</title>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Robertson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hugo</forename><surname>Zaragoza</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Foundations and Trends® in Information Retrieval</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="333" to="389" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Okapi at trec-3</title>
+		<author>
+			<persName><forename type="first">Steve</forename><surname>Stephen E Robertson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Susan</forename><surname>Walker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Micheline</forename><forename type="middle">M</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Hancock-Beaulieu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gatford</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nist Special Publication Sp</title>
+		<imprint>
+			<biblScope unit="volume">109</biblScope>
+			<biblScope unit="page">109</biblScope>
+			<date type="published" when="1995">1995</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Distributionally robust neural networks for group shifts: On the importance of regularization for worst-case generalization</title>
+		<author>
+			<persName><forename type="first">Shiori</forename><surname>Sagawa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pang</forename><surname>Wei Koh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tatsunori</forename><forename type="middle">B</forename><surname>Hashimoto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Percy</forename><surname>Liang</surname></persName>
+		</author>
+		<idno>abs/1911.08731</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">ArXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Web-scale k-means clustering</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sculley</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/1772690.1772862</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 19th International Conference on World Wide Web, WWW 2010</title>
+		<meeting>the 19th International Conference on World Wide Web, WWW 2010<address><addrLine>Raleigh, North Carolina, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2010-04-26">2010. April 26-30, 2010</date>
+			<biblScope unit="page" from="1177" to="1178" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">From theories to queries: Active learning in practice</title>
+	</analytic>
+	<monogr>
+		<title level="m">Active learning and experimental design workshop in conjunction with AISTATS 2010</title>
+		<imprint>
+			<publisher>ACM. Burr Settles</publisher>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="1" to="18" />
+		</imprint>
+	</monogr>
+	<note>JMLR Workshop and Conference Proceedings</note>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Few-shot text ranking with meta adapted synthetic weak supervision</title>
+		<author>
+			<persName><forename type="first">Si</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yingzhuo</forename><surname>Qian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhenghao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenyan</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kaitao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Bao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Bennett</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.acl-long.390</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of ACL</title>
+		<meeting>ACL</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="5030" to="5043" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<title level="m" type="main">Beir: A heterogenous benchmark for zero-shot evaluation of information retrieval models</title>
+		<author>
+			<persName><forename type="first">Nandan</forename><surname>Thakur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nils</forename><surname>Reimers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Rücklé</surname></persName>
+		</author>
+		<idno>abs/2104.08663</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">ArXiv preprint</note>
+	<note>Abhishek Srivastava, and Iryna Gurevych</note>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<author>
+			<persName><forename type="first">Liang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaolong</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Binxing</forename><surname>Jiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Linjun</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daxin</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rangan</forename><surname>Majumder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Furu</forename><surname>Wei</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2212.03533</idno>
+		<title level="m">Text embeddings by weaklysupervised contrastive pre-training</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">A fine-grained analysis on distribution shift</title>
+		<author>
+			<persName><forename type="first">Olivia</forename><surname>Wiles</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sven</forename><surname>Gowal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Florian</forename><surname>Stimberg</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sylvestre-Alvise</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ira</forename><surname>Rebuffi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Krishnamurthy</forename><surname>Ktena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ali</forename><surname>Dvijotham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cemgil</forename><surname>Taylan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of ICLR. OpenReview</title>
+		<meeting>of ICLR. OpenReview</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note>net</note>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<monogr>
+		<title level="m" type="main">2023a. Doremi: Optimizing data mixtures speeds up language model pretraining</title>
+		<author>
+			<persName><forename type="first">Sang</forename><surname>Michael Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hieu</forename><surname>Pham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuanyi</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nan</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanxiao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yifeng</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Percy</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Quoc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tengyu</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adams</forename><forename type="middle">Wei</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Yu</surname></persName>
+		</author>
+		<idno>ArXiv preprint, abs/2305.10429</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<monogr>
+		<title level="m" type="main">2023b. Unsupervised dense retrieval training with web anchors</title>
+		<author>
+			<persName><forename type="first">Yiqing</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenyan</forename><surname>Xiong</surname></persName>
+		</author>
+		<idno>abs/2305.05834</idno>
+		<imprint/>
+	</monogr>
+	<note type="report_type">ArXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Approximate nearest neighbor negative contrastive learning for dense text retrieval</title>
+		<author>
+			<persName><forename type="first">Lee</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenyan</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ye</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kwok-Fung</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jialin</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><forename type="middle">N</forename><surname>Bennett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junaid</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arnold</forename><surname>Overwijk</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of ICLR. OpenReview.net</title>
+		<meeting>of ICLR. OpenReview.net</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Openmatch-v2: An all-in-one multimodality plm-based information retrieval toolkit</title>
+		<author>
+			<persName><forename type="first">Shi</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhenghao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenyan</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3539618.3591813</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 46th International ACM SIGIR Conference on Research and Development in Information Retrieval</title>
+		<meeting>the 46th International ACM SIGIR Conference on Research and Development in Information Retrieval</meeting>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="3160" to="3164" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Selective weak supervision for neural information retrieval</title>
+		<author>
+			<persName><forename type="first">Kaitao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenyan</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhenghao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3366423.3380131</idno>
+		<ptr target="ACM/IW3C2" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of WWW</title>
+		<meeting>WWW</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="474" to="485" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

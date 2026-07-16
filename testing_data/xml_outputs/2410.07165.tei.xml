@@ -1,0 +1,864 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Complex Logical Query Answering by Calibrating Knowledge Graph Completion Models</title>
+				<funder ref="#_CBmf6wh">
+					<orgName type="full">National Key Research and Development Program of China</orgName>
+				</funder>
+				<funder ref="#_JA4Ctep">
+					<orgName type="full">National Natural Science Foundation of China</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">CCCD Key Lab of Ministry of Culture and Tourism</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-09-30">30 Sep 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Changyi</forename><surname>Xiao</surname></persName>
+							<email>changyi@mail.ustc.edu.cn</email>
+							<affiliation key="aff0">
+								<orgName type="department">School of Data Science</orgName>
+								<orgName type="institution">University of Science</orgName>
+								<address>
+									<country>Technology of China</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Yixin</forename><surname>Cao</surname></persName>
+							<email>caoyixin2011@gmail.com</email>
+							<affiliation key="aff1">
+								<orgName type="department">School of Computer Science</orgName>
+								<orgName type="institution">Fudan University</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Complex Logical Query Answering by Calibrating Knowledge Graph Completion Models</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-09-30">30 Sep 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">326E11C6033D740224D472255C48CF8B</idno>
+					<idno type="arXiv">arXiv:2410.07165v1[cs.AI]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:17+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Complex logical query answering (CLQA) is a challenging task that involves finding answer entities for complex logical queries over incomplete knowledge graphs (KGs). Previous research has explored the use of pre-trained knowledge graph completion (KGC) models, which can predict the missing facts in KGs, to answer complex logical queries. However, KGC models are typically evaluated using ranking evaluation metrics, which may result in values of predictions of KGC models that are not well-calibrated. In this paper, we propose a method for calibrating KGC models, namely CKGC, which enables KGC models to adapt to answering complex logical queries. Notably, CKGC is lightweight and effective. The adaptation function is simple, allowing the model to quickly converge during the adaptation process. The core concept of CKGC is to map the values of predictions of KGC models to the range [0, 1], ensuring that values associated with true facts are close to 1, while values linked to false facts are close to 0. Through experiments on three benchmark datasets, we demonstrate that our proposed calibration method can significantly boost model performance in the CLQA task. Moreover, our approach can enhance the performance of CLQA while preserving the ranking evaluation metrics of KGC models. The code is available at https://github. com/changyi7231/CKGC.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Knowledge graphs (KGs) are composed of structured representations of facts in the form of triplets and have been widely used in various domains. One of the key tasks associated with KGs is complex logical query answering <ref type="bibr" target="#b14">(Ren et al., 2023)</ref>. Complex logical queries are typically expressed using first-order logic (FOL), which encompasses logical operations such as conjunction (∧), disjunction (∨), negation (¬), and existential quantifier (∃). For example, the query "Which universities do the Turing Award winners not in the field of deep learning work in?" can be formulated as a FOL query, as illustrated in Figure <ref type="figure" target="#fig_0">1</ref>.</p><p>Many well-known knowledge graphs (KGs) suffer from incompleteness, rendering it challenging to answer complex queries through simple KG traversal. Building on the accomplishments of knowledge graph completion (KGC) methods <ref type="bibr" target="#b3">(Bordes et al., 2013;</ref><ref type="bibr" target="#b17">Sun et al., 2018;</ref><ref type="bibr" target="#b20">Trouillon et al., 2017)</ref> in addressing one-hop KG queries, a research avenue has emerged focusing on learning embeddings for queries to handle complex logical queries <ref type="bibr" target="#b7">(Hamilton et al., 2018;</ref><ref type="bibr" target="#b15">Ren et al., 2020;</ref><ref type="bibr" target="#b26">Zhang et al., 2021)</ref>. Nonetheless, these methodologies often require extensive training on numerous complex logical queries, leading to substantial training time overhead and limited generalization to out-ofdistribution query structures.</p><p>In addressing these challenges, CQD <ref type="bibr" target="#b0">(Arakelyan et al., 2020)</ref> introduces a method for CLQA by leveraging one-hop atom results derived from a pretrained KGC model, thereby removing the necessity for training on complex queries. CQD frames CLQA as an optimization problem and employs techniques like beam search or continuous approximation to estimate the optimal solution. Despite its effectiveness, the approximations made during the process could lead to a decrease in accuracy for CQD. Furthermore, CQD is reliant on a KGC model whose values of output might not be specifically calibrated for CLQA, potentially resulting in inaccuracies in the outcomes.</p><p>In this paper, we introduce a method for calibrating KGC models, namely CKGC, which can make KGC models adapt to handling complex logical queries. Our method is lightweight and effective. It is lightweight, as the adaptation function is simple and the model can quickly converge in adaptation process. Moreover, it is effective in significantly enhancing the performance of CLQA.</p><p>We first represent every complex logical query as a computation graph over fuzzy sets, of which nodes represent fuzzy sets and edges represent the fuzzy set operations over fuzzy sets. To obtain the answers of a query, we traverse the computation graph and execute the fuzzy set operations through a straightforward forward propagation process, eliminating the need for optimization compared to CQD <ref type="bibr" target="#b0">(Arakelyan et al., 2020)</ref>. We define four fundamental fuzzy set operations for CLQA: projection operation, complement operation, intersection operation, and union operation, all of which require the KGC model to be calibrated.</p><p>However, a KGC model is typically measured by the ranking metrics, which do not need it to be calibrated. Thus, we propose a calibration method for KGC models to make it adapted to CLQA. We define the adaptation function as a monotonically increasing function that preserves the ranking evaluation metrics of the KGC model. The main idea of our method is to map the values of output of a KGC model to the interval [0, 1], and makes the values corresponding to true triplets be as close as possible to 1, while the values corresponding to false triplets be as close as possible to 0.</p><p>Our experimental evaluation on three standard datasets demonstrates the efficacy of CKGC in CLQA. The results reveal that CKGC achieves state-of-the-art performance across three datasets, showcasing an average relative improvement of 6.7% on existential positive first-order queries and 53.9% on negation queries compared to the prior state-of-the-art method.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>Knowledge Graph Completion The task of KGC involves predicting missing triplets within a knowledge graph, which can be viewed as predicting answers for one-hop queries. Various methodologies have been proposed to address this task, encompassing embedding techniques <ref type="bibr" target="#b3">(Bordes et al., 2013;</ref><ref type="bibr" target="#b17">Sun et al., 2018;</ref><ref type="bibr" target="#b20">Trouillon et al., 2017)</ref>, reinforcement learning approaches <ref type="bibr" target="#b22">(Xiong et al., 2017;</ref><ref type="bibr" target="#b6">Das et al., 2018;</ref><ref type="bibr" target="#b8">Hildebrandt et al., 2020;</ref><ref type="bibr" target="#b25">Zhang et al., 2022)</ref>, rule learning strategies <ref type="bibr" target="#b24">(Yang et al., 2017;</ref><ref type="bibr" target="#b16">Sadeghian et al., 2019;</ref><ref type="bibr" target="#b12">Qu et al., 2020)</ref>, and graph neural network methodologies <ref type="bibr" target="#b16">(Schlichtkrull et al., 2018;</ref><ref type="bibr" target="#b21">Vashishth et al., 2019;</ref><ref type="bibr" target="#b18">Teru et al., 2020)</ref>. Embedding methods aim to embed entities and relations into a continuous space and de-fine a scoring function based on these embeddings. Reinforcement learning methods train an agent to explore the knowledge graph to predict the missing triplets. Rule learning methods adopt a distinct approach by initially identifying confident logical rules from the knowledge graph. These rules are then utilized to infer missing triplets. Lastly, graph neural network methods utilize graph neural networks to learn representations of entities and relations by leveraging the graph structure.</p><p>Complex Logical Query Answering CLQA over KGs extends KGC to predict answers for FOL queries, which additionally requires defining relationships between sets of entities. Embeddingbased methods represent sets of entities as geometric objects <ref type="bibr" target="#b7">(Hamilton et al., 2018;</ref><ref type="bibr" target="#b15">Ren et al., 2020;</ref><ref type="bibr" target="#b26">Zhang et al., 2021)</ref> or probability distributions <ref type="bibr" target="#b15">(Ren and Leskovec, 2020)</ref>, and then minimize the distance between embeddings of queries and embeddings of their corresponding answers. However, the quality of representation of sets may be compromised when dealing with large sets. To overcome this limitation, some studies have incorporated powerful fuzzy set theory to handle FOL queries <ref type="bibr" target="#b4">(Chen et al., 2022;</ref><ref type="bibr" target="#b27">Zhu et al., 2022)</ref>. For instance, FuzzQE <ref type="bibr" target="#b4">(Chen et al., 2022)</ref> embeds entities and queries into a fuzzy space and leverages fuzzy set operations to perform logical operations on the embeddings. Similarly, GNN-QE <ref type="bibr" target="#b27">(Zhu et al., 2022)</ref> decomposes the query into relational projections operations and fuzzy set operations over fuzzy sets, and subsequently learns a graph neural network to execute relational projections.</p><p>Nevertheless, the aforementioned methods generally necessitate training on numerous complex logical queries, resulting in significant training time overhead and limited generalization to outof-distribution query structures. Another line of methods first pre-trains a KGC model and then integrates it with fuzzy set theory to infer answers. CQD <ref type="bibr" target="#b0">(Arakelyan et al., 2020)</ref> formulates CLQA as an optimization problem and proposes two strategies to approximate the optimal solution: CQD-CO, which directly optimizes in the continuous space, and CQD-Beam, which utilizes beam search. Despite CQD avoiding the need to train on complex logical queries, it suffers from accuracy loss due to the approximated optimization and uncalibrated KGC models. To enhance accuracy, <ref type="bibr" target="#b2">Bai et al. (2023)</ref> introduce QTO, which efficiently finds the theoretically optimal solution through a forward-backward propagation on a treelike computation graph. Additionally, <ref type="bibr" target="#b1">Arakelyan et al. (2023)</ref> propose CQD A , a parameter-efficient adaptation method, to calibrate KGC models. However, the KGC model for QTO is not well calibrated for complex queries, and the optimal solution for CQD A is still approximated. In contrast, our proposed model not only delivers accurate solutions but also effectively calibrates the KGC models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Background</head><p>In this section, we introduce the related background of our method, complex logical query answering on knowledge graphs and fuzzy sets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Complex Logical Query Answering on Knowledge Graphs</head><p>Knowledge Graphs Completion Given a set of entities V and a set of relations R, a knowledge graph G contains a set of triplets {(h, r, t)} ⊂ V × R × V, where each triplet is a fact from head entity h to tail entity t with a relation type r. KGC models define scoring functions f (h, r, t) to measure the likelihood of triplets (h, r, t) based on their corresponding embeddings.</p><p>First-Order Logic Queries Complex logical queries can be represented by FOL queries with logical operations including conjunction (∧), disjunction (∨), negation (¬), and existential quantifier (∃). A first-order logic query q can be described in its disjunctive normal form, which consists of a set of non-variable anchor entities V a ⊆ V, existentially quantified bound variables V 1 , . . . , V k and a single target variable V ? , which provides the answers of query q. The disjunctive normal form of a logical query q is a disjunction of one or more conjunctions.</p><formula xml:id="formula_0">q = V j .∃V 1 , . . . , V k : c 1 ∧ c 2 ∧, • • • , c n .</formula><p>Each c represents a conjunctive query with one or more literals e, i.e.,</p><formula xml:id="formula_1">c i = e i1 ∨ e i2 ∨ • • • ∨ e im .</formula><p>Each literal e represents an atomic formula or its negation, i.e.,</p><formula xml:id="formula_2">e ij = R(v a , V ) or ¬R(v a , V ) or ¬R(V ′ , V ) or ¬R(V ′ , V ), where v a ∈ V a , V ∈ {V ? , V 1 , . . . , V k }, V ∈ {V ? , V 1 , . . . , V k }, V ̸ = V ′ , R(•, •) is a binary function R : V × V - → {0, 1}. Each relation r ∈ R corresponds to a binary func- tion R(•, •). If (h, r, t)is a true fact, then R(h, t) = 1. If (h, r, t)is a false fact, then R(h, t) = 0.</formula><p>Computation Graph Given a FOL query, we can represent it as a computation graph, of which nodes represent sets of entities and edges represent set operations over sets of entities. The set operations include the complement operation, intersection operation, union operation and projection operation. The root node represent the set of answer entities. See Figure <ref type="figure" target="#fig_0">1</ref> for an example. We map logical operations to set operations according to the following rules.</p><p>• Negation-→ Complement Operation:</p><p>Given a set of entities S ⊆ V, the complement operator performs set complement to obtain S = V\S.</p><p>• Conjunction-→ Intersection Operation:</p><p>Given n sets of entities {S 1 , S 2 , . . . S n }, the intersection operator performs set intersection to obtain ∩ n i=1 S i .</p><p>• Disjunction-→ Union Operation: Given n sets of entities {S 1 , S 2 , . . . S n }, the union operator performs set union to obtain ∪ n i=1 S i .</p><p>• Relation Projection-→ Projection Operation: Given a set of entities S ⊆ V and a relation r ∈ R, the projection operator outputs all the adjacent entities ∪ v∈S N (v, r), where N (v, r) is the set of entities such that (v, r, v ′ )</p><p>are true triplets for all v ′ ∈ N (v, r).</p><p>In order to answer a given FOL query, we can traverse the computation graph and execute the set operations. The answers of a query can be obtained by looking at the set of entities in the root node.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Fuzzy sets</head><p>Definition A fuzzy set is a pair (U, m), where U is a set and m : U -→ [0, 1] is a membership function. For each x ∈ U , the value m(x) measures the degree of membership of x in (U, m). The function m = µ A is called the membership function of the fuzzy set A = (U, m). Classical sets are be seen as special cases of fuzzy sets, if the membership functions only takes values 0 or 1. Fuzzy Set Operations Fuzzy set operations are a generalization of classical set operations for fuzzy sets. The three primary fuzzy set operations are fuzzy complements, fuzzy intersections, and fuzzy unions. For a given fuzzy set A, its complement A is commonly defined by the following membership function:</p><formula xml:id="formula_3">∀x ∈ U, µ A (x) = 1 -µ A (x)</formula><p>Given a pair of fuzzy sets A, B, their intersection</p><formula xml:id="formula_4">A ∩ B is defined by a t-norm T (Klement et al., 2004): ∀x ∈ U, µ A∩B (x) = T (µ A (x), µ B (x))</formula><p>Prominent examples of t-norms include product t-norm T (a, b) = ab, Gödel t-norm T (a, b) = min{a, b} and so on <ref type="bibr" target="#b10">(Klement et al., 2004)</ref>. Given a t-norm T and a pair of fuzzy sets A, B, their union A ∪ B is defined by De Morgan's law:</p><formula xml:id="formula_5">∀x ∈ U, µ A∪B (x) = 1 -T (1 -µ A (x), 1 -µ B (x))</formula><p>4 Method</p><p>We first define four fuzzy set operations over fuzzy sets in Section 4.1, and then propose a calibration method for KGC models in Section 4.2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Fuzzy Set Operations</head><p>As demonstrated in Section 3.1, a query can be represented as a computation graph. To obtain the fuzzy sets of answers, it is necessary to define the fuzzy set operations utilized in computation graphs. These operations encompass the projection operation, intersection operation, union operation, and complement operation. We represent every fuzzy set of entities as a vector e ∈ [0, 1] d , where d = |V| and e i denotes the grade of membership of entity i. The anchor entity is represented by a vector with a single element set to 1 and all other elements set to 0.</p><p>Complement Operation: The complement operation maps a fuzzy set to the complement of the fuzzy set. We define the complement operation as</p><formula xml:id="formula_6">C : [0, 1] d - →[0, 1] d C(e) =1 -e</formula><p>Intersection Operation: The intersection operation maps several fuzzy sets into the intersection set of these fuzzy sets. We define the intersection operation by utilizing the product t-norm, which is as follows:</p><formula xml:id="formula_7">I : [0, 1] nd - →[0, 1] d I(e 1 , e 2 , . . . , e n ) =e 1 ⊙ e 2 ⊙ • • • ⊙ e n</formula><p>where {e i ∈ [0, 1] d |1 ≤ i ≤ n} are vector representations of fuzzy sets and ⊙ is the Hadamard product.</p><p>Union Operation: The union operation maps several fuzzy sets into the union set of these fuzzy sets. Due to the De Morgan's Law, we do not need to define the union operation directly. We define the union operation by utilizing the intersection operation and complement operation as follows:</p><formula xml:id="formula_8">U :[0, 1] nd - → [0, 1] d</formula><p>U(e 1 , e 2 , . . . , e n ) =C(I(C(e 1 ), C(e 2 ), . . . , C(e n )))</p><p>Projection Operation: The projection operation maps a fuzzy set into another fuzzy set with a relation type r. We implement the projection operation by utilizing the Gödel t-norm as follows:</p><formula xml:id="formula_9">P r :[0, 1] d - → [0, 1] d P r (e) j =1 -min 1≤i≤d (1 -e i X i,r,j ) = max 1≤i≤d e i X i,r,j</formula><p>where X ∈ [0, 1] |V|×|R|×|V| is the KG tensor and X i,r,j denotes the likelihood of a triplet (i, r, j), which is provided by the KGC model. We do not use product t-norm here because continued product often leads to accumulated errors for large d.</p><p>Compared to QTO <ref type="bibr" target="#b2">(Bai et al., 2023)</ref>, we define the projection operation and the complement operation separately, which make our method more flexible.</p><p>In the training process, since the value of X i,r,j is constantly changed, we need to recompute the value of X i,r,j . The primary bottleneck of the projection operation is the computation. We can take the nonzero entries of e and multiply them with the corresponding entries in X to get results. Thus, the computational complexity of projection operation is O(|V||{e i |e i &gt; 0}|).</p><p>In the test process, since the value of X i,r,j is fixed, we pre-compute the value of X i,r,j to reduce the computation. The primary bottleneck of the projection operation is the memory consumption of tensor X. Xcontains |V| 2 |R| entries. Due to the sparsity of the KG, most entries of X have small values, which can be filtered to 0 by a threshold ϵ &gt; 0 while maintaining precision <ref type="bibr" target="#b2">(Bai et al., 2023)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Calibration</head><p>Upon establishing the four fuzzy set operations, the sole requirement for computing the results of queries is a calibrated KG tensor X. The entries of a calibrated KG tensor X are expected to fall within the range of 0 to 1, with values associated with true triplets approaching 1, and those linked to false triplets nearing 0. In the event of possessing a fully calibrated KG tensor X, accurate answers of queries can be attained through the utilization of the four fuzzy set operations.</p><p>The KG tensor X is furnished by a KGC model, which defines a scoring function f (h, r, t) to measure the likelihood of a triplet (h, r, t). The ranking metrics, MRR and H@N <ref type="bibr" target="#b3">(Bordes et al., 2013)</ref>, are commonly used to evaluate KGC models. For example, the definition of MRR is as follows:</p><formula xml:id="formula_10">MRR = (h,r,t)∈G 1 |G| 1 rank(h, r, t)</formula><p>where G is a dataset and rank(h, r, t) is the rank of tail entity t in the predicted list for the query (h, r, ?). rank(h, r, t) is computed based on the scoring function f (h, r, t). The ranking metrics mainly focus on ranking rather than the specific numerical value of f (h, r, t), which is important for complex query answering. Subsequently, an illustrative example is provided to elucidate this concept.</p><p>For example, supposing we have a query</p><formula xml:id="formula_11">q = V ? : R 1 (a 1 , V ? ) ∧ R 2 (a 2 , V ? )</formula><p>where entity a 1 can be represented by a vector a 1 = [1, 0, 0, 0], entity a 2 can be represented by a vector a 2 = [0, 1, 0, 0]. Assuming the KG tensor X is satisfied with X 1,1,: = [0.6, 0.4, 0.2, 0.1] and X 2,2,: = [0.5, 0.7, 0.2, 0.1]. Then, we have that P 1 (a 1 ) = X 1,1,: = [0.6, 0.4, 0.2, 0.1], P 2 (a 2 ) = X 2,2,: = [0.5, 0.7, 0.2, 0.1] and the predicted answers I(P 1 (a 1 ), P 2 (a 2 )) = [0.30, 0.28, 0.04, 0.01]</p><p>Then the largest entry in I(P 1 (a 1 ), P 2 (a 2 )) is the first entry.</p><p>If we let X1,1,: = 0.1X 1,1,: + 0.1, then we have that P 1 (a 1 ) = X1,1,: = [0.16, 0.14, 0.12, 0.11], P 2 (a 2 ) = X 2,2,: = [0.5, 0.7, 0.2, 0.1] and the predicted answers I(P 1 (a 1 ), P 2 (a 2 )) = [0.08, 0.098, 0.024, 0.011] Then the largest entry in I(P 1 (a 1 ), P 2 (a 2 )) is the second entry.</p><p>While the aforementioned transformation does not alter the ranking metrics of KGC models, it can affect the ranking metrics of CLQA models. Hence, it is imperative to calibrate the KGC models to acquire a calibrated KG tensor X for the CLQA task.</p><p>We get a calibrated KG tensor X in the following steps:</p><p>1. We train a KGC model to get a scoring function f (h, r, t).</p><p>2. We use softmax function to normalize f (h, r, t) and denote the new scoring function as f (h, r, t).</p><formula xml:id="formula_12">f (h, r, t) = min(N exp(f (h, r, t)) |V| t ′ =1 exp(f (h, r, t ′ ))</formula><p>, 1)</p><formula xml:id="formula_13">N = M, M &gt; 0 α, M = 0 M = |{(h ′ , r ′ , t ′ ) ∈ G train |h ′ = h, r ′ = r}|</formula><p>where G train denotes the training set of a KG. and α ≥ 0 is a hyper-parameter. Figure <ref type="figure">2</ref>: Fourteen types of queries used in the datasets, where "p" denotes relation projection, "i" denotes intersection, "u" denotes union, and "n" denotes negation.</p><p>3. We adapt the KGC models to complex queries datasets.</p><formula xml:id="formula_14">f (h, r, t) = min(W h,r f (h, r, t), 1)</formula><p>where W ∈ (0, + inf) |V|×|R| is a parameter matrix. For a query-answer pair (q, [[q]]), where <ref type="bibr">[[q]</ref>] denotes the set of answers of query q, we optimize W by the following loss function:</p><formula xml:id="formula_15">L = - 1 |[[q]]| i∈[[q]] log a i - 1 |[[q]]| i∈[[q]] log(1-a i )</formula><p>where a is the vector representation of predicted answers.</p><p>4. We replace the values of f (h, r, t) with 1 for triplets (h, r, t) ∈ G train ∪ G validation to get the calibrated tensor X, i.e.,</p><formula xml:id="formula_16">X h,r,t = 1 (h, r, t) ∈ G train ∪ G validation f (h, r, t) (h, r, t) / ∈ G train ∪ G validation</formula><p>where G validation denotes the validation set of a KG.</p><p>The first step is to get a pre-train KGC model, which lays the foundation for subsequent steps. Although any KGC model is allowed, it is better to choose a KGC model with good performance.</p><p>The second step is to normalize the scoring function f (h, r, t) provided by the first step, which can make the values of f (h, r, t) between 0 and 1, and the larger the value of f (h, r, t), the larger the value of f (h, r, t). A good property of softmax function is that it is invariant under translation transformation, i.e., softmax(x + c) = softmax(x) for any c ∈ R. The meaning of N is the number of answer tail entities for a query (h, r, ?). As there can be multiple answer tail entities for a query (h, r, ?), each of their corresponding predicted values should be close to 1. Thus, we multiply softmax(f (h, r, t)) by N to make it close to 1. The operation of taking the minimum value is to prevent the value from exceeding 1. The hyperparameter α is to prevent f (h, r, t) from becoming 0 for the case where M = 0.</p><p>The third step adapts the KGC models to CLQA datasets. Since the adaptation function, linear function, is a monotonically increasing function, the new scoring function f (h, r, t) have the same results of KGC ranking metrics as f (h, r, t). Thus, our method can improve the performance of CLQA while maintaining the evaluation results of KGC. This step is lightweight because the adaptation function is simple and only the parameter matrix W is optimized.</p><p>The fourth step replaces the value of f (h, r, t) with 1 for known true triplets to get a calibrated KG tensor X. While evaluating KGC models, the known true triplets are not typically taken into account. Nonetheless, this step is crucial for CLQA as it ensures the calibration of the tensor X for better performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Experiments</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Experimental Settings</head><p>Datasets We evaluate our method on three popular knowledge graph datasets, including FB15k <ref type="bibr" target="#b3">(Bordes et al., 2013)</ref>, FB15k-237 <ref type="bibr" target="#b19">(Toutanova et al., 2015)</ref>, NELL995 <ref type="bibr" target="#b22">(Xiong et al., 2017)</ref>. We use the standard FOL queries generated in Be-taE <ref type="bibr" target="#b15">(Ren and Leskovec, 2020)</ref>, consisting of 9 types of existential positive first-order queries (1p/2p/3p/2i/3i/pi/ip/2u/up) and 5 types of queries with negation (2in/3in/inp/pin/pni). Specifically, "p", "i", "u", and "n" stand for "projection", "intersection", "union", and 'negation' in the query structure, respectively. The query types are shown in Figure <ref type="figure">2</ref>. During adaptation, we only use queries of type 1p, 2i, 3i, 2in and 3in of the training dataset to reduce computation.</p><p>Baselines We compare our method with stateof-the-art methods on complex query answering, query embedding methods, including GQE <ref type="bibr" target="#b7">(Hamilton et al., 2018)</ref>, Q2B <ref type="bibr" target="#b15">(Ren et al., 2020)</ref>, BetaE (Ren and Leskovec, 2020)), ConE <ref type="bibr" target="#b26">(Zhang et al., 2021)</ref>, FuzzQE <ref type="bibr" target="#b4">(Chen et al., 2022)</ref>, GNN-QE <ref type="bibr" target="#b27">(Zhu et al., 2022)</ref>, complex query decomposition methods, including CQD-CO <ref type="bibr" target="#b0">(Arakelyan et al., 2020)</ref>, CQD-beam <ref type="bibr" target="#b0">(Arakelyan et al., 2020)</ref> CQD <ref type="bibr" target="#b1">(Arakelyan et al., 2023)</ref> and QTO <ref type="bibr" target="#b2">(Bai et al., 2023)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Evaluation Metrics</head><p>We adopt the evaluation framework introduced in BetaE (Ren and Leskovec, 2020), which involves categorizing the answers to each complex query into two distinct groups: easy answers and hard answers. For validation/test queries, easy answers refer to entities that can be reached by edges in training/validation graph, while hard answers are those that can only be inferred by predicting missing edges in the validation/test graph. We evaluate the method on complex queries by calculating the rank for each hard answer against non-answers and computing the mean reciprocal rank (MRR) <ref type="bibr" target="#b3">(Bordes et al., 2013)</ref>.</p><p>Implementation Details For pre-train, our method can be incorporated with any KGC model. We select a state-of-the-art KGC model, ComplEx <ref type="bibr" target="#b20">(Trouillon et al., 2017)</ref> trained with N3 regularization <ref type="bibr" target="#b11">(Lacroix et al., 2018)</ref> and auxiliary relation prediction task <ref type="bibr" target="#b5">(Chen et al., 2021)</ref>. We choose the hyper-parameters with the best MRR on the validation set.</p><p>For training of CLQA, we train at most 5 epochs. For testing of CLQA, we pre-compute the KG tensor X to make our method achieve higher efficiency compared to previous query embedding methods <ref type="bibr" target="#b2">(Bai et al., 2023)</ref>. To save the memory usage of X, we select an appropriate ϵ such that after filtering all entries that less than ϵ can be stored on a single GPU. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Results</head><p>See Table <ref type="table" target="#tab_1">1</ref> for the results. avg p is the average on existential positive first-order queries. avg n is the average on queries with negation. GQE, Q2B, CK-GCO, and CQD-Beam do not support queries with negation, so the corresponding entries are empty.</p><p>We observe that our model significantly outperforms baseline methods across all datasets. Our model yields a relative gain of 6.8% and 52.3% on avg p and avg n compared to previous state-ofthe-art model QTO. This shows that our method has better reasoning skills and superior adaptability when tackling complex query answering tasks. We attribute this improvement to our calibration method, which can adapt the KGC models to answering complex queries very well. The adaptation function of CKGC is simple, making the model quickly converge during the adaptation process. We next show the training time. The running time for FB15k dataset is an average of 67 seconds per epoch, the running time for FB15k -237 dataset is an average of 32 seconds per epoch, the running time for NELL995 dataset is an average of 83 seconds per epoch. All models can converge within 5 epochs, resulting in a very short training time. In contrast, previous embedding-based models, such as BetaE, ConE, FuzzQE, GNN-QE and so on, often require hundreds of epochs to converge. For instance, BetaE takes 105 epochs to converge and has an average training running time of 63 seconds per epoch on the FB15k-237 dataset. Compared to our model (32 seconds x 2 epoch = 64 seconds), these models require significantly more runtime for training. The running time is the running time on one NVIDIA A40 GPU.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Ablation Studies</head><p>As stated in Section 4.2, we obtain a calibrated knowledge graph completion model by executing four steps. To analyze the impact of each step, we obtain calibrated models by performing only a few steps. We denote the calibrated model with steps 1 and 2 as S12, the model with steps 1, step 2, and step 3 as S123, and the model with steps 1, step 2, step 3, and step 4 as S1234. S12 primarily serves as a baseline. S123 is mainly used to study the impact of adaptation (step 3). S1234 is mainly used to study the impact of calibrating the predicted values corresponding to true triplets (step 4).</p><p>See Table <ref type="table" target="#tab_2">2</ref> for the results. S123 has an average relative improvement of 1.3% on avg p metric compared to S12, and S1234 has an average relative improvement of 4.8% on avg p metric compared to S123. S123 has an average relative improvement of 64.8% on avg n metric compared to S12, and S1234 has an average relative improvement of 64.3% on avg n metric compared to S123.</p><p>The results show that the avg n metric has been significantly improved. Since step 3 calibrates both predicted values corresponding to true triplets and predicted values corresponding to false triplets, we cannot determine from this step whether the main improvement on avg n comes from the calibration for true triplets or false triplets. Since step 4 only changes the predicted values corresponding to the true triplets, this indicates that the significant improvement on avg n is primarily due to the more accurate calibration of the predicted values corresponding to the true triplets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">Hyper-parameters Analysis</head><p>We analyze the experimental results of our method with respect to the hyper-parameter ϵ. We study the changes in memory usage, sparsity level (the ratio of zero entries in the KG tensor X), avg p and avg n as ϵ decreases.</p><p>We show the results in Table <ref type="table" target="#tab_3">3</ref>, which show that as ϵ decreases, memory usage increases, sparsity level decreases, running time increases, avg p increases, and avg n increases. Thus, we can select a proper ϵ to balance the computation or memory usage and model performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>CLQA is one of the crucial tasks associated with KGs. In this paper, we introduce CKGC, a calibration method developed to enhance the adaptability of KGC models for CLQA. Through experimental analysis, we illustrate that the implementation of CKGC leads to a substantial improvement in model performance for the CLQA task. Therefore, the calibration of KGC models holds significant importance for the optimization of CLQA models. Moving forward, we encourage the exploration and proposal of additional calibration methods to further enhance the performance of CLQA.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Limitations</head><p>One limitation of our method is the space complexity and time complexity of projection operation. We use an approach to make the predicted tensor X sparse. This approach can make the model performance decreases as shown in Table <ref type="table" target="#tab_3">3</ref>. We plan to explore methods that can reduce the computational complexity and memory usage of the method while maintaining good performance.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: An query, its corresponding FOL form and its corresponding computation graph.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>Complex Query Answering results on FB15k, FB15k-237 and NELL995 test sets with MRR metrics. avg p is the average on existential positive first-order queries. avg n is the average on queries with negation.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Complex Query Answering results on FB15k, FB15k-237 and NELL995 test sets with different settings.</figDesc><table><row><cell>Models</cell><cell>avg p</cell><cell>avg n</cell><cell>1p</cell><cell>2p</cell><cell>3p</cell><cell>2i</cell><cell>3i</cell><cell>pi</cell><cell>ip</cell><cell>2u</cell><cell>up</cell><cell>2in</cell><cell>3in</cell><cell>inp</cell><cell>pin</cell><cell>pni</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">FB15k</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>S12</cell><cell>78.1</cell><cell>29.5</cell><cell>89.9</cell><cell>73.9</cell><cell>68.0</cell><cell>82.2</cell><cell>84.9</cell><cell>78.0</cell><cell>77.0</cell><cell>78.7</cell><cell>70.0</cell><cell>33.8</cell><cell>34.3</cell><cell>31.7</cell><cell>23.7</cell><cell>23.8</cell></row><row><cell>S123</cell><cell>78.7</cell><cell>45.6</cell><cell>89.9</cell><cell>74.0</cell><cell>68.7</cell><cell>83.3</cell><cell>86.3</cell><cell>79.4</cell><cell>77.9</cell><cell>78.7</cell><cell>69.9</cell><cell>51.4</cell><cell>50.3</cell><cell>45.4</cell><cell>39.5</cell><cell>41.3</cell></row><row><cell>S1234</cell><cell>80.6</cell><cell>71.0</cell><cell>89.9</cell><cell>76.5</cell><cell>72.8</cell><cell>84.6</cell><cell>88.1</cell><cell>82.1</cell><cell>80.4</cell><cell>78.7</cell><cell>72.1</cell><cell>75.0</cell><cell>74.3</cell><cell>62.6</cell><cell>70.7</cell><cell>72.5</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">FB15k-237</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>S12</cell><cell>32.3</cell><cell>9.6</cell><cell>49.2</cell><cell>20.5</cell><cell>19.8</cell><cell>41.4</cell><cell>54.8</cell><cell>35.9</cell><cell>26.6</cell><cell>22.7</cell><cell>19.9</cell><cell>9.8</cell><cell>16.4</cell><cell>10.0</cell><cell>7.1</cell><cell>4.7</cell></row><row><cell>S123</cell><cell>32.9</cell><cell>15.7</cell><cell>49.2</cell><cell>20.9</cell><cell>20.4</cell><cell>42.2</cell><cell>56.5</cell><cell>37.1</cell><cell>26.9</cell><cell>22.4</cell><cell>20.2</cell><cell>15.8</cell><cell>25.4</cell><cell>14.1</cell><cell>12.9</cell><cell>10.2</cell></row><row><cell>S1234</cell><cell>34.8</cell><cell>25.3</cell><cell>49.2</cell><cell>22.3</cell><cell>22.3</cell><cell>45.1</cell><cell>60.3</cell><cell>40.3</cell><cell>29.1</cell><cell>22.9</cell><cell>22.0</cell><cell>23.9</cell><cell>37.5</cell><cell>21.0</cell><cell>23.2</cell><cell>21.2</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">NELL995</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>S12</cell><cell>32.8</cell><cell>7.3</cell><cell>61.4</cell><cell>23.4</cell><cell>20.9</cell><cell>42.5</cell><cell>51.0</cell><cell>31.8</cell><cell>26.4</cell><cell>20.4</cell><cell>17.6</cell><cell>7.4</cell><cell>9.9</cell><cell>9.9</cell><cell>4.6</cell><cell>4.4</cell></row><row><cell>S123</cell><cell>33.2</cell><cell>11.3</cell><cell>61.4</cell><cell>23.8</cell><cell>21.4</cell><cell>43.3</cell><cell>52.5</cell><cell>32.0</cell><cell>26.7</cell><cell>20.4</cell><cell>17.8</cell><cell>12.2</cell><cell>16.6</cell><cell>13.5</cell><cell>8.0</cell><cell>6.3</cell></row><row><cell>S1234</cell><cell>35.3</cell><cell>19.9</cell><cell>61.4</cell><cell>25.7</cell><cell>24.1</cell><cell>45.8</cell><cell>58.8</cell><cell>33.9</cell><cell>29.2</cell><cell>20.5</cell><cell>18.7</cell><cell>19.8</cell><cell>27.5</cell><cell>20.4</cell><cell>17.4</cell><cell>14.6</cell></row><row><cell>ϵ</cell><cell cols="2">0.05</cell><cell>0.01</cell><cell></cell><cell cols="2">0.005</cell><cell cols="2">0.001</cell><cell cols="2">0.0005</cell><cell cols="2">0.0001</cell><cell cols="2">0.00005</cell><cell cols="2">0.00001</cell></row><row><cell cols="3">Memory Usage 22M</cell><cell cols="2">60M</cell><cell cols="2">103M</cell><cell cols="2">383M</cell><cell cols="2">676M</cell><cell cols="2">2.77G</cell><cell cols="2">5.99G</cell><cell cols="2">Out of Memory</cell></row><row><cell>Sparsity Level</cell><cell cols="15">99.999% 99.997% 99.995% 99.980% 99.965% 99.851% 99.678% -</cell><cell></cell></row><row><cell>Running Time</cell><cell cols="2">290s</cell><cell cols="2">311s</cell><cell>314s</cell><cell></cell><cell>348s</cell><cell></cell><cell>373s</cell><cell></cell><cell>482s</cell><cell></cell><cell>558s</cell><cell></cell><cell>-</cell><cell></cell></row><row><cell>avg p</cell><cell cols="2">27.9</cell><cell>32.0</cell><cell></cell><cell>32.9</cell><cell></cell><cell>34.0</cell><cell></cell><cell>34.3</cell><cell></cell><cell>34.7</cell><cell></cell><cell>34.8</cell><cell></cell><cell>-</cell><cell></cell></row><row><cell>avg n</cell><cell cols="2">24.5</cell><cell>25.2</cell><cell></cell><cell>25.3</cell><cell></cell><cell>25.3</cell><cell></cell><cell>25.3</cell><cell></cell><cell>25.3</cell><cell></cell><cell>25.3</cell><cell></cell><cell>-</cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 :</head><label>3</label><figDesc>Effect of ϵ on memory usage, sparsity level, and avg p and avg n . The experiments are conducted on FB15K-237 datasets. The time is the running time on one NVIDIA A40 GPU.</figDesc><table /></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgements</head><p>This work is supported by the <rs type="funder">National Key Research and Development Program of China</rs> (<rs type="grantNumber">2020AAA0106000</rs>), the <rs type="funder">National Natural Science Foundation of China</rs> (<rs type="grantNumber">U19A2079</rs>), and the <rs type="funder">CCCD Key Lab of Ministry of Culture and Tourism</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_CBmf6wh">
+					<idno type="grant-number">2020AAA0106000</idno>
+				</org>
+				<org type="funding" xml:id="_JA4Ctep">
+					<idno type="grant-number">U19A2079</idno>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Hyper-parameters Settings Table <ref type="table">5</ref> shows the best hyper-parameters we searched for pre-training KGC models.   </p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Complex query answering with neural link predictors</title>
+		<author>
+			<persName><forename type="first">Erik</forename><surname>Arakelyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Daza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Cochez</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Adapting neural link predictors for data-efficient complex query answering</title>
+		<author>
+			<persName><forename type="first">Erik</forename><surname>Arakelyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Daza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Cochez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Isabelle</forename><surname>Augenstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Thirty-seventh Conference on Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Answering complex logical queries on knowledge graphs via query computation tree optimization</title>
+		<author>
+			<persName><forename type="first">Yushi</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Lv</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juanzi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Hou</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="1472" to="1491" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Translating embeddings for modeling multirelational data. Advances in neural information processing systems</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page">26</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Fuzzy logic based logical query answering on knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Xuelu</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ziniu</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yizhou</forename><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="page" from="3939" to="3948" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Relation prediction as an auxiliary training objective for improving multirelational graph representations</title>
+		<author>
+			<persName><forename type="first">Yihong</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pontus</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note>rd Conference on Automated Knowledge Base Construction</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Go for a walk and arrive at the answer: Reasoning over paths in knowledge bases using reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Rajarshi</forename><surname>Das</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shehzaad</forename><surname>Dhuliawala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manzil</forename><surname>Zaheer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Vilnis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ishan</forename><surname>Durugkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Akshay</forename><surname>Krishnamurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Smola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Mccallum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Embedding logical queries on knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Will</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Payal</forename><surname>Bajaj</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marinka</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Jurafsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page">31</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Reasoning on knowledge graphs with debate dynamics</title>
+		<author>
+			<persName><forename type="first">Marcel</forename><surname>Hildebrandt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jorge</forename><surname>Andres Quintero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunpu</forename><surname>Serna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mitchell</forename><surname>Ringsquandl</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Joblin</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Volker Tresp</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="4123" to="4131" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Simple embedding for link prediction in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Seyed</forename><surname>Mehran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kazemi</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Poole</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 32nd International Conference on Neural Information Processing Systems</title>
+		<meeting>the 32nd International Conference on Neural Information Processing Systems</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="4289" to="4300" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Triangular norms. position paper ii: general constructions and parameterized families</title>
+		<author>
+			<persName><forename type="first">Erich</forename><surname>Peter Klement</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Radko</forename><surname>Mesiar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Endre</forename><surname>Pap</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Fuzzy sets and Systems</title>
+		<imprint>
+			<biblScope unit="volume">145</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="411" to="438" />
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Canonical tensor decomposition for knowledge base completion</title>
+		<author>
+			<persName><forename type="first">Timothée</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Obozinski</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="2863" to="2872" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Rnnlogic: Learning logic rules for reasoning on knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junkun</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Louis-Pascal</forename><surname>Xhonneux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Query2box: Reasoning over knowledge graphs in vector space using box embeddings</title>
+		<author>
+			<persName><surname>H Ren</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Neural graph reasoning: Complex logical query answering meets graph databases</title>
+		<author>
+			<persName><forename type="first">Mikhail</forename><surname>Hongyu Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Galkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhaocheng</forename><surname>Cochez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Leskovec</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2303.14617</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Beta embeddings for multi-hop logical reasoning in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="19716" to="19726" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Drum: End-toend differentiable rule mining on knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Ali</forename><surname>Sadeghian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohammadreza</forename><surname>Armandpour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daisy</forename><surname>Zhe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wang</forename><forename type="middle">;</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Bloem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rianne</forename><surname>Van Den</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><surname>Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Titov</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<meeting><address><addrLine>Cham</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018">2019. 2018</date>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="593" to="607" />
+		</imprint>
+	</monogr>
+	<note>15th Extended Semantic Web Conference (ESWC)</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Zhiqing</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhi-Hong</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian-Yun</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Inductive relation prediction by subgraph reasoning</title>
+		<author>
+			<persName><forename type="first">Komal</forename><surname>Teru</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Etienne</forename><surname>Denis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Will</forename><surname>Hamilton</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="9448" to="9457" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Representing text for joint embedding of text and knowledge bases</title>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Pantel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hoifung</forename><surname>Poon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pallavi</forename><surname>Choudhury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Gamon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2015 conference on empirical methods in natural language processing</title>
+		<meeting>the 2015 conference on empirical methods in natural language processing</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="1499" to="1509" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Knowledge graph completion via complex tensor factorization</title>
+		<author>
+			<persName><forename type="first">Théo</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Éric</forename><surname>Christopher R Dance</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="page" from="1" to="38" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Composition-based multirelational graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Shikhar</forename><surname>Vashishth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soumya</forename><surname>Sanyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nitin</forename><surname>Vikram</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Partha</forename><surname>Talukdar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Deeppath: A reinforcement learning method for knowledge graph reasoning</title>
+		<author>
+			<persName><forename type="first">Wenhan</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thien</forename><surname>Hoang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wang</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2017 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="564" to="573" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">Bishan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Deng</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page">1412</biblScope>
+		</imprint>
+	</monogr>
+	<note>arXiv e-prints</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">Differentiable learning of logical rules for knowledge base reasoning. Advances in neural information processing systems</title>
+		<author>
+			<persName><forename type="first">Fan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhilin</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">W</forename><surname>Cohen</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page">30</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Learning to walk with dual agents for knowledge graph reasoning</title>
+		<author>
+			<persName><forename type="first">Denghui</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zixuan</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hui</forename><surname>Xiong</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="page" from="5932" to="5941" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<author>
+			<persName><forename type="first">Zhanqiu</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiajun</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuiwang</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Feng</forename><surname>Wu</surname></persName>
+		</author>
+		<title level="m">Cone embeddings for multi-hop reasoning over knowledge graphs. Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="19172" to="19183" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Neural-symbolic models for logical queries on knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Zhaocheng</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mikhail</forename><surname>Galkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zuobai</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="27454" to="27478" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

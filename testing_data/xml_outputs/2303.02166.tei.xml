@@ -1,0 +1,1310 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Towards a GML-Enabled Knowledge Graph Platform</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2023-03-03">3 Mar 2023</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Hussein</forename><surname>Abdallah</surname></persName>
+							<email>hussein.abdallah@concordia.ca</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Concordia University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Essam</forename><surname>Mansour</surname></persName>
+							<email>essam.mansour@concordia.ca</email>
+							<affiliation key="aff1">
+								<orgName type="institution">Concordia University</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Towards a GML-Enabled Knowledge Graph Platform</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2023-03-03">3 Mar 2023</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">87600F2C1A18C6E9FD2981B0E668901A</idno>
+					<idno type="arXiv">arXiv:2303.02166v1[cs.DB]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:48+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>This vision paper proposes KGNet, an on-demand graph machine learning (GML) as a service on top of RDF engines to support GML-enabled SPARQL queries. KGNet automates the training of GML models on a KG by identifying a task-specific subgraph. This helps reduce the task-irrelevant KG structure and properties for better scalability and accuracy.</p><p>While training a GML model on KG, KGNet collects metadata of trained models in the form of an RDF graph called KGMeta, which is interlinked with the relevant subgraphs in KG. Finally, all trained models are accessible via a SPARQL-like query. We call it a GML-enabled query and refer to it as SPARQL ML . KGNet supports SPARQL ML on top of existing RDF engines as an interface for querying and inferencing over KGs using GML models. The development of KGNet poses research opportunities in several areas, including meta-sampling for identifying taskspecific subgraphs, GML pipeline automation with computational constraints, such as limited time and memory budget, and SPARQL ML query optimization. KGNet supports different GML tasks, such as node classification, link prediction, and semantic entity matching. We evaluated KGNet using two real KGs of different application domains. Compared to training on the entire KG, KGNet significantly reduced training time and memory usage while maintaining comparable or improved accuracy. The KGNet source-code 1 is available for further study.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>Knowledge graphs (KGs) are constructed based on semantics captured from heterogeneous datasets using various Artificial Intelligence (AI) techniques, such as representation learning and classification models <ref type="bibr" target="#b0">[1]</ref>. Graph machine learning (GML) techniques, such as graph representation learning and graph neural networks (GNNs), are powerful tools widely used to solve real-world problems by defining them as prediction tasks on KGs. For instance, node classification tasks for problems, such as recommendations <ref type="bibr" target="#b1">[2]</ref> and entity alignment <ref type="bibr" target="#b2">[3]</ref>, can be solved using GML techniques. Similarly, drug discovery <ref type="bibr" target="#b3">[4]</ref> and fraud detection <ref type="bibr" target="#b4">[5]</ref>, <ref type="bibr" target="#b5">[6]</ref> problems are tackled as link prediction tasks using GML techniques.</p><p>Data scientists often work with KGs, which are typically stored in RDF engines. They are responsible for developing GML pipelines using frameworks, such as PyG <ref type="bibr" target="#b6">[7]</ref> and DGL <ref type="bibr" target="#b7">[8]</ref>, to train models on these KGs. However, there is often a gap between the GML frameworks and RDF engines. This necessitates an initial step of transforming the entire KG from RDF triple format into adjacency matrices in a traditional GML pipeline. Afterward, the data scientist needs to select a suitable GML method from a wide range of KG embedding (KGE) or GNN methods <ref type="bibr" target="#b8">[9]</ref>, <ref type="bibr" target="#b9">[10]</ref> to train the model. For the average user, this responsibility is time-consuming.   Furthermore, the trained models are isolated from the RDF engine, where the KG is stored. Therefore, automating the training of GML models on KGs and providing accessibility to the trained models via a SPARQL-like query is essential. We refer to this query as a SPARQL ML query.</p><p>The KG shown in Figure <ref type="figure" target="#fig_0">1</ref> contains information about published papers in DBLP <ref type="bibr" target="#b10">[11]</ref>. However, the traditional SPARQL query language cannot be used to apply GML models on top of a KG, such as predicting a node's class or a missing affiliation link for an author. For instance, the venue node in Figure <ref type="figure" target="#fig_0">1</ref> is a virtual node that could be predicted using a node classification (NC) model. It would be fascinating to query this KG using a GML model for NC through a SPARQL-like query to obtain the paper-venue node, as shown in the SPARQL ML pv in Figure <ref type="figure">2</ref>. This query uses a model of type kgnet:NodeClassifier to predict a venue for each paper. The SPARQL ML triple patterns in lines 8-10 will retrieve all models of type kgnet:NodeClassifier that predict a class of type dblp:venue. In the triple pattern ?paper, ?NodeClassifier, ?venue , we refer to ?NodeClassifier as a user-defined predicate.</p><p>Enabling queries like SPARQL ML pv , shown in Figure <ref type="figure">2</ref>, presents several challenges. These include: (i) automatically training GML models for various tasks, (ii) optimizing SPARQL ML for GML model selection based on accuracy and inference time, and (iii) efficiently interacting with the selected model during query execution. Additionally, seamless integration of GML models into RDF engines is necessary. As a result, users should be able to express their SPARQL ML queries easily by following the SPARQL logic of pattern matching, avoiding the explicit use of user-defined functions (UDFs).</p><p>There is a growing adoption of integrating GML with existing graph databases, such as Neo4j <ref type="bibr" target="#b11">[12]</ref> or Stardog <ref type="bibr" target="#b12">[13]</ref>. However, while these databases offer some machine learning primitive methods, such as PageRank and shortest-path using the Cypher language, they do not address the challenges of integrating GML models with RDF engines. For example, Neo4j Graph Data Science <ref type="bibr" target="#b13">[14]</ref> supports limited graph embedding methods in a beta version, such as FastRP <ref type="bibr" target="#b14">[15]</ref>, Node2Vec <ref type="bibr" target="#b15">[16]</ref>, and Graph-SAGE <ref type="bibr" target="#b16">[17]</ref>. However, a user must train the models separately as an initial step. To address these challenges, there is a need to bring GML to data stored in RDF engines instead of getting data to machine learning pipelines. This would encourage the development of KG data science libraries powered by the expressiveness of SPARQL, enabling better analysis and insight discovery based on KG structure and semantics. These libraries would empower data scientists with a full breadth of KG machine learning services on top of KGs stored in RDF engines.</p><p>This vision paper proposes KGNet, an on-demand GMLas-a-service on top of RDF engines to support SPARQL ML queries, as illustrated in Figure <ref type="figure" target="#fig_2">3</ref>. KGNet extends existing RDF engines with two main components GML-as-aservice (GMLaaS) and SPARQL ML as a Service. KGNet automatically trains a GML model on a KG for tasks, such as node classification or like prediction, and maintains metadata of the trained model as an RDF graph called KGMeta. To reduce training time and memory usage while improving accuracy on a specific task A, KGNet performs meta-sampling to identify a task-specific subgraph KG of the larger KG that preserves essential characteristics relevant to A. This enables KGNet to scale on large KGs. GMLaaS is in charge of: (i) selecting the near-optimal GML method for training A using KG based on a given time or memory budget, and (ii) communicating with RDF engines via HTTP calls requesting inferencing of a specific trained model, (iii) storing the trained models and embeddings related to KGs. The SPARQL ML service transparently: (i) maintains and interlinks the KGMeta with associated KGs, (ii) optimizes the GML model selection for a user-defined predicate, and (iii) finally rewrites the SPARQL ML query as a SPARQL query.</p><p>In summary, the contributions of this paper are:</p><p>• a fully-fledged GML-enabled KG platform 2 on top of existing RDF engines. • GML-as-a-service to provide automatic training of GML models based on a given memory or time budget.  This automatic training utilizes task-specific subgraphs extracted using our meta-sampling approach. The remainder of this paper is organized as follows. Section II provides a background about existing graph machine learning pipelines. Section III outlines the main research challenges of developing a GML-enabled KG engine. Section IV presents the KGNet platform. Section V discusses the results of evaluating our automated pipeline for training GML models. Sections VI and VII are related work and conclusion.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. BACKGROUND: ML PIPELINES FOR KGS</head><p>ML pipelines developed to train models on a KG can be grouped into three main categories: (i) traditional ML on KG data in tabular format, (ii) traditional ML on KG embeddings, and (iii) graph neural networks (GNNs) trained directly on the KG. In the traditional ML approach using KG data in tabular format, data from the KG is transformed into inmemory data frames, and classical ML classifiers are trained using feature engineering techniques and libraries, such as Scikit-Learn or SparkMLib. In contrast, traditional ML on KG embeddings avoids the feature engineering process and generates embeddings for nodes and edges. Apple Saga <ref type="bibr" target="#b17">[18]</ref> is an example of this approach, which uses graph ML libraries like DGL-KE <ref type="bibr" target="#b7">[8]</ref> to generate KG embeddings. Data scientists have the flexibility to choose the ML method for training.</p><p>GNNs have gained significant popularity in recent years. Hence, data scientists frequently utilize them to perform GML tasks. The Open Graph Benchmark (OGB) <ref type="bibr" target="#b18">[19]</ref> standardized the GNN training pipeline, emphasizing the best practices for tackling GML tasks and building a GNN training pipeline. The pipeline starts with extracting the graph data, followed by data transformation into sparse matrices to train models for a GML task. Finally, the inference step is ready to predict results in isolation from the graph databases.</p><p>KG nodes and edges, generating adjacency matrices, loading them into memory, and training GNNs using specific methods.</p><p>Various GML frameworks, such as DGL <ref type="bibr" target="#b7">[8]</ref> and PyG <ref type="bibr" target="#b6">[7]</ref>, offer multiple implementations of GNN methods. These frameworks support data transformation by loading graphs into memory as graph data structures and applying transformations. However, existing GML frameworks require significant memory and processing time for large KGs and a deep understanding of various GNN methods. In comparison, the OGB pipeline is simple, but it is a semi-automated process that necessitates human intervention and ML expertise to construct an effective pipeline and select an appropriate GNN method. Data scientists may choose the most appropriate GNN method based on various constraints, such as time or memory limitations. Furthermore, as depicted in Figure <ref type="figure">4</ref>, the separation of the trained models from the KG engines adds an extra layer of complexity for data scientists to apply their models when inferring the KG.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. CHALLENGES OF GML-ENABLED KG ENGINE</head><p>This section highlights the open research challenges and opportunities raised by developing GML-enabled KG Engine.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Automatic Training: Method Selection and Meta-sampling</head><p>There are numerous methods for training models for GML tasks, as summarized in Figure <ref type="figure" target="#fig_5">5</ref>. These methods could be classified mainly into two categories KG embeddings (KGE) or graph neural network (GNN) methods. Examples of KGE methods are TransE, RotatE, ComplEx, and DistMult <ref type="bibr" target="#b9">[10]</ref>. Some GNN methods support sampling on full graph, such as Graph-SAINT <ref type="bibr" target="#b19">[20]</ref>, Shadow-SAINT <ref type="bibr" target="#b20">[21]</ref>, and MorsE <ref type="bibr" target="#b21">[22]</ref>. Examples of GNN full-batch training (without sampling) methods are RGCN <ref type="bibr" target="#b22">[23]</ref> and GAT <ref type="bibr" target="#b23">[24]</ref>. Our taxonomy has more categories, as shown in Figure <ref type="figure" target="#fig_5">5</ref>.</p><p>GML methods vary significantly in terms of their accuracy, training time, and memory requirements. Furthermore, the complexity of each GML task may differ depending on various factors, such as the size of KGs and the number of node/edge types related to the task. For example, link prediction can be more resource-intensive than node classification. Different  GML methods may perform differently under the same budget constraints, and selecting the best method can depend on several factors. Hence, automating a training pipeline for a specific GML task based on a user's budget for time and memory is challenging. For instance, some GML methods perform fullbatch training, which requires more memory budget. These methods require huge memory to train models on large KGs. Some other GNN methods may suffer from over-smoothing, which can cause accuracy degradation. Sampling-based GNN (mini-batch training) methods use different types of sampling, which vary in avoiding these limitations. Therefore, automating the selection of GML methods for a specific task based on a given time or memory budget is challenging.</p><p>Real KGs can contain millions to billions of triples, such as DBLP <ref type="bibr" target="#b10">[11]</ref> and MAG <ref type="bibr" target="#b24">[25]</ref>. However, training GML models on these large KGs requires colossal computing resources that exceed the capabilities of a single machine. As a result, there is a need for identifying a smaller training dataset of the KG, which is specific to the task at hand. This process is known as meta-sampling. It has been proposed in various application domains, including computer vision <ref type="bibr" target="#b25">[26]</ref>, <ref type="bibr" target="#b26">[27]</ref> and speech recognition <ref type="bibr" target="#b27">[28]</ref>, to extract a training dataset that is tailored to the given task. In the context of GML, meta-sampling presents an opportunity to optimize training models on large KGs by selecting a representative sub-graph that is relevant to the task. This approach can help reduce time and memory requirements without sacrificing accuracy. Therefore, exploring the potential benefits of using meta-sampling in training GML models to extract task-specific subgraphs is crucial. By doing so, we can improve the efficiency and effectiveness of GML methods on large-scale KGs. This raises a research opportunity to explore different meta-sampling approaches for GML methods on large knowledge graphs (KGs).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Seamless Integration Between GML Models and KGs</head><p>Enabling GML on top of RDF engines poses significant challenges, mainly interfacing between the trained models and the underlying data management engine. One common approach is to use user-defined functions (UDFs) to implement this interface <ref type="bibr" target="#b28">[29]</ref>- <ref type="bibr" target="#b30">[31]</ref>. However, this comes with a cost for query optimizations in data systems <ref type="bibr" target="#b31">[32]</ref>. The existence of an extensive catalog of UDFs can limit the expressiveness of MLbased queries. For instance, a large catalog of UDFs makes it difficult for users to choose between UDFs and find the  right one for their needs. Most existing query optimizers do not have models estimating the cost of these UDFs. Hence, automating the query optimization of SPARQL ML queries is challenging. There is a research opportunity for seamless integration between trained GML models and RDF. To address these challenges, we proposed KGMeta as a graph representation of metadata of trained models interlinked with the KGs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Optimizing SPARQL ML Queries and Benchmarks</head><p>User-defined predicates were first proposed for SQL <ref type="bibr" target="#b32">[33]</ref>. In SPARQL ML , a user-defined predicate is used to get a prediction from one of the trained models associated with a specific node in the graph. Estimating the cost of evaluating a user-defined predicate is more complex than estimating the cost of a traditional RDF predicate. While cardinality estimation is used to optimize only the execution time for the latter, a user-defined predicate in a SPARQL ML query can be inferred by multiple models, each with varying accuracy and inference time. RDF engines are unaware of this information, leading to the problem of selecting the best model for inference.</p><p>For a SPARQL ML query, the inference step in an RDF engine using a chosen model is a challenging task that requires optimization, specifically for rank-ordering the inference process. The challenge lies in deciding whether to perform the inference in a single call to a UDF or per instance, which may result in an extensive number of UDF calls. Additionally, each model has a unique cardinality, i.e., the total number of predictions it can make. This makes predicting rank-ordering complex as RDF engines lack accurate estimation of UDF costs.</p><p>To address these challenges, there are research opportunities for developing benchmarks to evaluate optimization approaches for SPARQL ML queries. These benchmarks should consider various models for different user-defined predicates and be designed to work with large datasets. Furthermore, each SPARQL ML query should vary in the number of user-defined predicates and be associated with variables of different cardinalities. This will enable a comprehensive evaluation of the performance and scalability of varying optimization approaches for SPARQL ML queries.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. THE KGNET PLATFORM</head><p>KGNet provides two main services, namely GML as a Service (GMLaaS) and SPARQL ML as a Service on top of existing RDF engines, as shown in Figure <ref type="figure" target="#fig_2">3</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. GML as a Service (GMLaaS)</head><p>KGNet is a platform that offers end-to-end automation of GML training on KGs, as depicted in Figure <ref type="figure" target="#fig_6">6</ref>. The platform provides GMLaaS, a Restful service that manages GML models in terms of automatic training and interactive inferencing. Additionally, it utilizes an embedding store to facilitate entity similarity search tasks by computing the similarity between embedding vectors. The GML training manager automates the training pipeline per task. However, the automation of GML training on KGs is challenging due to the complexity and size of KGs. Therefore, KGNet leverages our meta-sampling approach to optimize the training process by selecting a taskspecific subgraph (KG ) that is specific to the given task. This step helps reduce the time and memory required without trading accuracy. The pipeline takes as input a task-specific subgraph (KG ), the GML task, the task budget, and the available resources within the ML environment.</p><p>The Data Transformer step converts the subgraph into a sparse-matrix format optimized for in-memory and matrix operations. This format is compatible with popular graph ML data loaders, such as Py-Geometric and DGL, and is ideal for sparse KGs. Our pipeline ensures data consistency by validating node/edge types counts, removing literal data and target class edges, and generating graph statistics. We also perform a train-validation-test split using different strategies like random and community-based. KGNet automates this transformation, making ad-hoc GML training queries possible.</p><p>The Optimal GML Method Selection step selects the best GML method for a given task. KGNet supports various GNN methods, including GCN, RGCN, Graph-SAINT, Shadow-SAINT, Morse, and KGE methods such as ComplEx. We estimate the required memory for each method based on the size and the number of generated sparse-matrices, as well as the training time based on the matrix dimensions and feature aggregation approach. Moreover, we estimate the training time   based on the dimension of the sparse-matrices and GNN neighbour nodes features aggregation approach adopted by each method. For GNN sampling-based methods, the sampling cost basically depends on the sampling heuristic used <ref type="bibr" target="#b33">[34]</ref>. Thus, we are working on a more advanced estimation method based on sampling the sparse-matrices and running a few epochs on them.</p><p>KGNet's GML-optimizer determines the necessary resources for each method and optimizes the training settings, ensuring scalability in distributed environments. The automated pipeline trains a model and collects evaluation metrics and inference time statistics. A URI is generated for the trained model to distinguish it from other models used for inference tasks. The model meta-data is returned to the KGMeta Manager to update the KGMeta graph. Figure <ref type="figure" target="#fig_1">7</ref>.a and b show the generated meta-data for link prediction and node classification models, respectively. The Embedding Store sub-component, shown in Figure <ref type="figure" target="#fig_2">3</ref>, is used for fast similarity search by storing, indexing, and searching embeddings. The GML Inferencing receives HTTP calls for inference, serializes the result into a JSON Restful-API response, and sends it back to the RDF engine, as shown in Figure <ref type="figure" target="#fig_2">3</ref>. The current version uses FAISS embedding store <ref type="bibr" target="#b34">[35]</ref> to enable ad-hoc queries for node similarity search. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. The SPARQL ML as a Service</head><p>We offer a SPARQL ML as a Service, which comprises three main components: Query Manager, KGMeta Governor, and Meta-sampler. In addition, we provide an interfacing language called SPARQL ML that enables users to express SPARQLlike queries for INSERT, DELETE, or SELECT operations, such that: (i) a SPARQL ML INSERT query is used to train a GML model and maintain its metadata in KGMeta (as shown in Figure <ref type="figure" target="#fig_8">8</ref>), (ii) a SPARQL ML DELETE query is used to delete trained model files and associated embeddings from the GML-aaS component and then deletes its metadata from the KGMeta (as in Figure <ref type="figure">9</ref>), (iii) a SPARQL ML SELECT query is for querying and inferencing the KG, e.g., the query in Figure <ref type="figure" target="#fig_9">10</ref>. When a SPARQL ML query is received, the Query Manager parses it. An INSERT or DELETE query is sent to the KGMeta Governor. If it is a SELECT query, it is optimized and rewritten as a SPARQL query.</p><p>1) KGMeta Governor: The KGMeta Governor maintains a KGMeta graph for each KG, using statistics and metadata collected from trained GML models specific to that KG. The INSERT query is a request to train a task on a certain KG. The parsed information includes the task type (such as node classification or link prediction), the task inputs (such as the target nodes and classification labels (Y classes) for a classification task), and a budget (such as memory and time budget). Experienced ML users can provide additional information, such as hyperparameters or a specific GML method. This information is encapsulated as a JSON object, as shown in Figure <ref type="figure" target="#fig_8">8</ref>. At line 4, the TrainGML is a UDF that takes as input a JSON object that encapsulates all required information to train a GML model. The KGMeta Governor sends the task to the meta-sampler to obtain a task-specific subgraph (KG ) for the given task. Then governor interacts with the GML Training Manager to automate the training </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>7</head><p>?paper dblp:title ?title. 8 } Fig. <ref type="figure" target="#fig_0">11:</ref> A candidate SPARQL for SPARQL ML pv pipeline for this task. Once training is complete, the KGMeta Governor receives the trained model's metadata, including accuracy and inference time, to maintain the KGMeta, as illustrated in Figure <ref type="figure" target="#fig_1">7</ref>.</p><p>2) Meta-sampler: Our meta-sampler aims to identify a task-specific subgraph (KG ) for training a GML task. Each GML task targets nodes of a specific type, such as dblp:Publication in SPARQL ML pv . Our meta-sampler extracts a task-specific subgraph (KG ), which comprises a set of triples with representative triples associated with the target nodes. Based on the KG schema structure the size of KG is much smaller than the size of KG. This smaller size will optimize training time and require less memory for training the GML task A. However, the KG may contain triples that are not reachable from a target node v T or connected via more than three hops from v T . These triples do not assist the model in generalizing and may lead to over-smoothing problems <ref type="bibr" target="#b35">[36]</ref>, <ref type="bibr" target="#b36">[37]</ref>.</p><p>Our SPARQL-based meta-sampling method determines the scope of the extracted subgraph based on two parameters: (i) the direction d, where d = 1 for outgoing and d = 2 for bidirectional (i.e., both outgoing and incoming), and (ii) the number of hops h. We evaluated the performance of our method using four combinations of d ∈ {1, 2} and h ∈ {1, 2}. Our metasampling approach achieved better results with d = 1 and h = 1 for node classification, whereas for link prediction, our metasampling method performed better with d = 2 and h = 1.</p><p>3) The Query Manager: The Query Manager is responsible for optimizing SPARQL ML queries for model selection and rank-ordering to evaluate user-defined predicates. In the case of SPARQL ML pv shown in Figure <ref type="figure">2</ref>, the query optimizer fetches all URIs of the models satisfying the conditions associated with the user-defined predicate ?NodeClassifier. The KGMeta is an RDF graph containing optimizer statistics, such as model accuracy, inference time, and model cardinality. Therefore, we use a SPARQL query to obtain the models' URIs, accuracy, inference time, and cardinality. The query optimizer selects the near-optimal GML model that achieves high accuracy and low inference time. We define this problem as an integer programming optimization problem to minimize total execution time or maximize inference accuracy.</p><p>The SPARQL ML Query Re-writer uses the near-optimal GML model with URI m to generate a candidate SPARQL query. KGNet currently supports two possible execution plans, whose query templates are shown in Figures <ref type="figure" target="#fig_0">11</ref> and<ref type="figure" target="#fig_0">12</ref>. The core idea is to map a user-defined predicate into a user-defined function (UDF), such as sql:UDFS.getNodeClass, to send HTTP calls during the execution time to the GML Inference </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>7</head><p>?paper dblp:title ?title.</p><p>8 {select sql:UDFS.getNodeClass($m,dblp:Publication) 9</p><p>as ?venues _ dic where { } }} Fig. <ref type="figure" target="#fig_0">12:</ref> A candidate SPARQL for SPARQL ML pv Manager in our GMLaaS to get inference based on the pretrained model m. The number of HTTP calls may dominates the query execution cost. For example, SPARQL ML pv predicts the venue of all papers, whose size is |?papers|.</p><p>The query template shown in Figure <ref type="figure" target="#fig_0">11</ref> will generate |?papers| HTTP calls. However, the query template shown in Figure <ref type="figure" target="#fig_0">12</ref> reduces the number of HTTP calls to one by enforcing an inner select query constructing a dictionary of all papers and their predicted venues. Then, sql:UDFS.getKeyValue is used to look up the venue of each paper. Our query optimizer decomposes the triple patterns related quering the KG triples in the SPARQL ML query into sets per variable associated with a user-defined predicate. For example, in the SPARQL ML pv query shown in Figure <ref type="figure">2</ref>, our optimizer identifies two triple patterns that match the variable ?paper and one triple pattern that matches the variable ?venue. We use a SPARQL query to get the cardinality of each set, which is the number of distinct values of the variable in the dataset. We formulate this problem as another integer programming optimization problem <ref type="bibr" target="#b37">[38]</ref> that minimizes the total number of HTTP calls or minimizes the constructed dictionary size, which is based on the model cardinality. For instance, in the query shown in Figure <ref type="figure" target="#fig_0">12</ref>, our optimizer generates a dictionary of all papers and their predicted venues, which is then used to retrieve the venue of each paper using the UDF sql:UDFS.getKeyValue.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>V. EXPERIMENTAL EVALUATION</head><p>This section analyzes the ability of KGNet in automating pipelines to train a model for a specific task with less time and memory w.r.t traditional pipelines on full graphs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Evaluation Setup</head><p>Compared Methods: We used RGCN <ref type="bibr" target="#b22">[23]</ref> as a full-batch training method and GraphSAINT <ref type="bibr" target="#b19">[20]</ref>, ShadowSAINT <ref type="bibr" target="#b20">[21]</ref> as mini-batch sampling-based methods for node classification and MorsE <ref type="bibr" target="#b21">[22]</ref> as edge sampling-based method for link prediction. The OGB <ref type="bibr" target="#b18">[19]</ref> default configurations are used in both sampling and training. Node features are initialized randomly using Xavier weight initialization in all experiments.</p><p>Computing Infrastructure: All experiments are conducted on Ubuntu server virtual machine that is equipped with dual 64-core Intel Xeon 2.4 GHZ (Skylake, IBRS) CPUs, 256 GB of main memory and 1TB of disk storage.</p><p>Real KGs: We mainly focus on two benchmark KGs distinguishing in graph size, graph data domain, task type, and connection density including (DBLP <ref type="bibr" target="#b10">[11]</ref> and Yago-4  [39]). We conducted two node classification tasks and one link prediction. We followed the tasks used in OGB <ref type="bibr" target="#b18">[19]</ref>. Statistics about used KG and tasks are provided in Table <ref type="table" target="#tab_7">I</ref>.</p><p>Endpoints: We use Virtuoso 07.20.3229 as a SPARQL endpoint, as it is widely adopted as an endpoint for large KGs, such as DBLP. The standard, unmodified installation of the Virtuoso engine was run at the endpoints and used in all experiments.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. GML Experiments With Real KGs</head><p>Three GML tasks are conducted to evaluate the KGNet automated GML pipeline. For Node classification task, GNN methods are used to train node classifiers to predict a venue for each DBLP paper. The KG is loaded into the Virtuoso RDF engine. KGNet performs meta-sampling using d1h1 to extract the task-specific subgraph (KG ) to train RGCN, Graph-SAINT, and Shadow-SAINT methods. The task results in Figures <ref type="figure" target="#fig_10">13</ref> and<ref type="figure" target="#fig_0">14</ref> show that our KGNet training pipeline using (KG ) outperforms the traditional pipeline on the full KG in all methods with up to 11% accuracy score. The automated training pipeline of KGNet has successfully enabled GNN methods to achieve significant reductions in memory consumption and training time. Specifically, KGNet has demonstrated a reduction of at least 22% in memory consumption and 27% in training time. These results demonstrate that KGNet can effectively discover task-specific subgraphs for each task.</p><p>Our Link prediction task aims to predict an author's affiliation link based on their publications and affiliations history on the DBLP knowledge graph. MorsE <ref type="bibr" target="#b21">[22]</ref> is the state-of-theart link-prediction sampling-based method. We use the MorsE in the traditional pipeline with the full KG. In the KGNet pipeline, our meta-sampling first extracts the task-specific subgraph (KG ) using d2h1 to train MorsE. The results, shown in Figure <ref type="figure" target="#fig_5">15</ref>, demonstrate that the KGNet automated pipeline outperforms the pipeline trained on the full KG in terms of Hits@10 MRR score. KGNet achieves a significant reduction in memory usage and training time, with a reduction of 94% compared to the pipeline trained on the full KG.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VI. RELATED WORK</head><p>The adoption of combining AI and database systems has been growing rapidly, with two main approaches emerging: AI models incorporated in DB systems (AI4DB) and database techniques optimized for AI systems for better scalability (DB4AI) <ref type="bibr" target="#b39">[40]</ref>. In KGNet, we classify SPARQL ML as part of the AI4DB approach since we have extended the KG engine to query and perform inference on KGs using GML models. However, we classify GMLaaS as part of the DB4AI approach since we have optimized the training pipeline using our meta-sampling approach, which queries a KG to extract a task-specific subgraph. Works RDFFrames <ref type="bibr" target="#b40">[41]</ref>, DistRDF2ML <ref type="bibr" target="#b41">[42]</ref>, and Apple Saga <ref type="bibr" target="#b17">[18]</ref> aim to bridge the gap between ML and RDF systems by enabling the user to extract data from heterogeneous graph engines in a standard tabular format to apply traditional ML tasks such as classification, regression, and clustering or use KGE methods to generate node/edge embeddings for similarity search applications.</p><p>Yuo Lu et.al. addressed the problem of AI-enabled query optimization for SQL in <ref type="bibr" target="#b28">[29]</ref> and introduced the probabilistic predicates (PPs) method that can be trained without any knowledge of the inference models. In Learned B+tree <ref type="bibr" target="#b42">[43]</ref>, the B+tree index is optimized based on AI models that map each query key to its page. Hasan et al <ref type="bibr" target="#b43">[44]</ref> allow fast join queries by utilizing auto-regressive densities model to represent the joint data distribution among columns. ITLCS <ref type="bibr" target="#b44">[45]</ref> introduced an index selection ML-based method that uses a classifier model as well as a genetic algorithm that selects the accurate index. Stardog <ref type="bibr" target="#b12">[13]</ref> supports supervised learning to build predictive analytics models. Stardog enables users to write SPARQL queries that collect the ML training features set in a tabular format and apply classical ML, i.e., classification, clustering, and regression that can be used for inference queries.</p><p>Google's BigQuery ML <ref type="bibr" target="#b45">[46]</ref> provides user-friendly tools to support AI models in SQL statements by introducing a hybrid language model that contains both AI and DB operations, which executes AI operations on AI platforms such as TensorFlow and Keras. SQL4ML <ref type="bibr" target="#b46">[47]</ref> translates ML operators implemented in SQL into a TensorFlow pipeline for efficient training. To enable ad-hoc GML pipelines using SPARQL, RDF engines require this level of support.</p><p>Bordawekar et al. <ref type="bibr" target="#b47">[48]</ref> built a cognitive relation database engine that queries database records utilizing word similarity using word2vec embeddings and extends results with external data sources. The cognitive DB represents a step towards linking representation learning with DB using text embedding techniques. EmbDI <ref type="bibr" target="#b48">[49]</ref> automatically learns local relation embeddings with high quality from relational datasets using a word embedding to support datasets schema matching. Unlike all the above-mentioned systems, KGNet proposed a platform combining DB4AI and AI4DB approaches to bridge the gap between GML frameworks and RDF engines.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VII. CONCLUSION</head><p>The lack of integration between GML frameworks and RDF engines necessitates that data scientists manually optimize GML pipelines to retrieve KGs stored in RDF engines and select appropriate GML methods that align with their computing resources. Furthermore, the trained models cannot be directly used for querying and inference over KGs, which impedes systems' scalability, particularly as KGs grow in size and require excessive computing resources. Additionally, these limitations impact the system's flexibility, as descriptive query languages are incapable of incorporating GML models. To overcome these limitations, this vision paper proposed KGNet, an on-demand GML-as-a-service (GMLaaS) platform on top of RDF engines to support GML-enabled SPARQL queries (SPARQL ML ). KGNet uses meta-sampling to extract a task-specific subgraph (KG ) as a search query against a KG for a specific task. Our GMLaaS automates a costeffective pipeline using KG to train a model within a given time or memory budget. KGNet maintains the metadata and statistics of trained models as an RDF graph called KGMeta, which is stored alongside associated KGs. KGMeta leads to a seamless integration between GML models and RDF engines, allowing users to easily express their SPARQL ML queries based on the SPARQL logic of pattern matching. Moreover, KGMeta enables KGNet to optimize SPARQL ML queries for model selection and rank-ordering for the inferencing process. KGNet raises research opportunities spanning across data management and AI.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 :</head><label>1</label><figDesc>Fig.1:A KG with nodes/edges in red, which could be predicted by classification and link prediction models on the fly.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>7 ?</head><label>7</label><figDesc>Fig. 2: SPARQL ML pv : a SPARQL ML query uses a node classification model to predict a paper's venue by querying and inferencing over the KG shown in Figure 1.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 3 :</head><label>3</label><figDesc>Fig.3: The KGNet architecture, which provides an interface language (SPARQL ML ) and enables AI applications and data scientists to automatically train GML models on top of KGs for querying and inferencing KGs based on the trained models.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 Fig. 4 :</head><label>44</label><figDesc>Fig.4: A traditional GML pipeline<ref type="bibr" target="#b18">[19]</ref> using a GML framework. The pipeline starts with extracting the graph data, followed by data transformation into sparse matrices to train models for a GML task. Finally, the inference step is ready to predict results in isolation from the graph databases.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Fig. 5 :</head><label>5</label><figDesc>Fig. 5: A taxonomy of methods for training GML models.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Fig. 6 :</head><label>6</label><figDesc>Fig.6: The automation of training pipeline and inference in our GML-as-a-service (GMLaaS). GMLaaS interacts with the KGMeta Manager to train a model for a specific task with limited budget. The automated pipeline opt to the near-optimal GML method for training a model within a limited budget. GMLaaS supports task inference through RestAPI that is called by a UDF.</figDesc><graphic coords="4,409.36,75.52,236.75,145.54" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Fig. 7 :</head><label>7</label><figDesc>Fig. 7: A KGMeta graph of two trained models for node classification and link prediction tasks. The white nodes are nodes from the original data KG. The dashed nodes/edges are metadata collected per trained model.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Fig. 8 :</head><label>8</label><figDesc>Fig.8: A SPARQL ML insert query that trains a paper-venue classifier on DBLP. The TrainGML function is a UDF that is implemented inside the RDF engine.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Fig. 10 :</head><label>10</label><figDesc>Fig. 10: A SPARQL ML query predicting author affiliation link (edge) on DBLP KG.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Fig. 13 :</head><label>13</label><figDesc>Fig. 13: (a) Accuracy, (B) Training Time, and (C) Training Memory for DBLP KG Paper-Venue node classification task. The KGNet task-oriented sampled subgraph (KG') significantly improves accuracy, training time, and memory.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head>Fig. 14 :Fig. 15 :</head><label>1415</label><figDesc>Fig. 14: (a) Accuracy, (B) Training Time, and (C) Training Memory for YAGO-4 KG Place-Country node classification task. The KGNet task-oriented sampled subgraph (KG') significantly improves accuracy, training time, and memory.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head></head><label></label><figDesc>1 prefix dblp: &lt;https://www.dblp.org/&gt; 2 prefix kgnet: &lt;https://www.kgnet.com/&gt; 3 select ?title 4</figDesc><table><row><cell>sql:UDFS.getNodeClass($m,?paper) as ?venue</cell></row><row><cell>5 where {</cell></row><row><cell>6</cell></row></table><note><p>?paper a dblp:Publication.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head></head><label></label><figDesc>1 prefix dblp: &lt;https://www.dblp.org/&gt; 2 prefix kgnet: &lt;https://www.kgnet.com/&gt; 3 select ?title 4 sql:UDFS.getKeyValue(?venues _ dic,?paper) as ?venue</figDesc><table><row><cell>5 where {</cell></row><row><cell>6</cell></row></table><note><p>?paper a dblp:Publication.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>TABLE I :</head><label>I</label><figDesc>Statistics of the used KGs and GNN tasks. We used four times larger KGs (DBLP and Yago) than the ones reported in OGB<ref type="bibr" target="#b18">[19]</ref>.</figDesc><table><row><cell></cell><cell>Knowledge Graph</cell><cell>DBLP</cell><cell>YAGO4</cell></row><row><cell></cell><cell>#Triples</cell><cell>252M</cell><cell>400M</cell></row><row><cell></cell><cell></cell><cell>50 Venue</cell></row><row><cell></cell><cell>#Targets</cell><cell>51K Affiliations</cell><cell>200 Country</cell></row><row><cell></cell><cell></cell><cell>1.2M paper</cell></row><row><cell></cell><cell>#Edge Types</cell><cell>48</cell><cell>98</cell></row><row><cell></cell><cell>#Node Types</cell><cell>42</cell><cell>104</cell></row><row><cell></cell><cell>Tasks</cell><cell>NC,LP,ES</cell><cell>NC</cell></row><row><cell>0</cell><cell>G-SAINT RGCN SH-SAINT</cell><cell></cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>prefix dblp:&lt;https://www.dblp.org/&gt;</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>prefix kgnet:&lt;https://www.kgnet.com/&gt;</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0" />			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Knowledge graphs</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Aidan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Eva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<idno type="DOI">10.1145/3447772</idno>
+		<ptr target="https://doi.org/10.1145/3447772" />
+	</analytic>
+	<monogr>
+		<title level="j">ACM Comput. Surv</title>
+		<imprint>
+			<biblScope unit="volume">54</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Graph neural networks in recommender systems: A survey</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Cui</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3535101</idno>
+		<ptr target="https://doi.org/10.1145/3535101" />
+	</analytic>
+	<monogr>
+		<title level="j">ACM Comput. Surv</title>
+		<imprint>
+			<biblScope unit="volume">55</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="1" to="97" />
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Cross-lingual knowledge graph alignment via graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Lv</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Lan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<ptr target="https://aclanthology.org/D18-1032" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="349" to="357" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<author>
+			<persName><forename type="first">X</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Quan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zeng</surname></persName>
+		</author>
+		<idno type="DOI">10.24963/ijcai.2020/380</idno>
+		<ptr target="https://doi.org/10.24963/ijcai.2020/380" />
+		<title level="m">Proceedings of the International Joint Conference on Artificial Intelligence (IJCAI)</title>
+		<meeting>the International Joint Conference on Artificial Intelligence (IJCAI)</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="2739" to="2745" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Enhancing graph neural network-based fraud detectors against camouflaged fraudsters</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Dou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">S</forename><surname>Yu</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3340531.3411903</idno>
+		<ptr target="https://doi.org/10.1145/3340531.3411903" />
+	</analytic>
+	<monogr>
+		<title level="m">The ACM International Conference on Information and Knowledge Management (CIKM)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="315" to="324" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Enhancing graph neural network-based fraud detectors against camouflaged fraudsters</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Dou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<idno type="DOI">10.1145/3340531.3411903</idno>
+		<ptr target="https://doi.org/10.1145/3340531.3411903" />
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<publisher>ACM</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Torch geometric documentation</title>
+		<author>
+			<persName><surname>Pyg</surname></persName>
+		</author>
+		<ptr target="https://pytorch-geometric.readthedocs.io/en/latest/index.html" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Distdgl: Distributed graph neural network training for billion-scale graphs</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE/ACM,10th</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">A comprehensive survey on graph neural networks</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<idno type="DOI">10.1109/TNNLS.2020.2978386</idno>
+		<ptr target="https://doi.org/10.1109/TNNLS.2020.2978386" />
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Trans. Neural Networks Learn. Syst</title>
+		<imprint>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="4" to="24" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding: A survey of approaches and applications</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Knowledge and Data Engineering</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">12</biblScope>
+			<biblScope unit="page" from="2724" to="2743" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">R</forename><surname>Ackermann</surname></persName>
+		</author>
+		<ptr target="https://blog.dblp.org/2022/03/02/dblp-in-rdf/" />
+		<title level="m">dblp in rdf</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Fulltext search in neo4j</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Gordon</surname></persName>
+		</author>
+		<ptr target="https://neo4j.com/developer/kb/fulltext-search-in-neo4j/" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Stardog documentation-machine learning</title>
+		<ptr target="https://docs.stardog.com/machine-learning#machine-learning" />
+	</analytic>
+	<monogr>
+		<title level="m">docs@stardog.com</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Neo4j graph data science for machine learning</title>
+		<ptr target="https://neo4j.com/docs/graph-data-science/current/machine-learning/machine-learning/" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<publisher>Neo4j.Inc</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Fast and accurate network embeddings via very sparse random projection</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">F</forename><surname>Sultan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<idno type="DOI">10.1145/3357384.3357879</idno>
+		<ptr target="https://doi.org/10.1145/3357384.3357879" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th ACM International Conference on Information and Knowledge Management, ser. CIKM &apos;19</title>
+		<meeting>the 28th ACM International Conference on Information and Knowledge Management, ser. CIKM &apos;19</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="399" to="408" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">node2vec: Scalable feature learning for networks</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Grover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2939672.2939754</idno>
+		<ptr target="https://doi.org/10.1145/2939672.2939754" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd ACM SIGKDD</title>
+		<meeting>the 22nd ACM SIGKDD</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="855" to="864" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">Inductive representation learning on large graphs</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2017/hash/5" />
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1024" to="1034" />
+		</imprint>
+	</monogr>
+	<note>dd9db5e033da9c6fb5ba83c7a7ebea9-Abstract.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Saga: A platform for continuous construction and serving of knowledge at scale</title>
+		<author>
+			<persName><forename type="first">I</forename><forename type="middle">F</forename><surname>Ilyas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Rekatsinas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Konda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pound</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Qi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">A</forename><surname>Soliman</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3514221.3526049</idno>
+		<ptr target="https://doi.org/10.1145/3514221.3526049" />
+	</analytic>
+	<monogr>
+		<title level="m">SIGMOD</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="2259" to="2272" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Open graph benchmark: Datasets for machine learning on graphs</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Catasta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Graphsaint: Graph sampling based inductive learning method</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=BJe8pkHFwS" />
+		<imprint/>
+	</monogr>
+	<note>in ICLR(8), 2020. [Online</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Decoupling the depth and scope of graph neural networks</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<idno>abs/2201.07858</idno>
+		<ptr target="https://arxiv.org/abs/2201.07858" />
+	</analytic>
+	<monogr>
+		<title level="j">CoRR</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Meta-knowledge transfer for inductive knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<idno type="DOI">10.1145/3477495.3531757</idno>
+		<ptr target="https://doi.org/10.1145/3477495.3531757" />
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGIR</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="927" to="937" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Modeling relational data with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">S</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">A</forename><surname>Peter Bloem</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/978-3-319-93417-4_38</idno>
+		<ptr target="https://doi.org/10.1007/978-3-319-93417-4_38" />
+	</analytic>
+	<monogr>
+		<title level="j">ESWC</title>
+		<imprint>
+			<biblScope unit="volume">10843</biblScope>
+			<biblScope unit="page" from="593" to="607" />
+			<date type="published" when="2018">2018</date>
+			<publisher>Springer</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">r-gat: Relational graph attention network for multi-relational graphs</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Kou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<idno>abs/2109.05922</idno>
+		<ptr target="https://arxiv.org/abs/2109.05922" />
+	</analytic>
+	<monogr>
+		<title level="j">CoRR</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">The microsoft academic knowledge graph: A linked data source with 8 billion triples of scholarly data</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Färber</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/978-3-030-30796-7_8</idno>
+		<ptr target="https://doi.org/10.1007/978-3-030-30796-7_8" />
+	</analytic>
+	<monogr>
+		<title level="m">ISWC</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">11779</biblScope>
+			<biblScope unit="page" from="113" to="129" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Metasampler: Almost-universal yet task-oriented sampling for point clouds</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">Y</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Trigoni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Markham</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2203.16001</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2203.16001" />
+	</analytic>
+	<monogr>
+		<title level="j">ECCV</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Learning to sample</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Dovrat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Lang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Avidan</surname></persName>
+		</author>
+		<ptr target="http://openaccess.thecvf.com/content_CVPR_2019/html/Dovrat_Learning_to_Sample_CVPR_2019_paper.html" />
+	</analytic>
+	<monogr>
+		<title level="m">IEEE CVPR</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2760" to="2769" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Adversarial meta sampling for multilingual low-resource speech recognition</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Gong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Lin</surname></persName>
+		</author>
+		<ptr target="https://ojs.aaai.org/index.php/AAAI/article/view/17661" />
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">120</biblScope>
+			<biblScope unit="page" from="14" to="112" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Accelerating machine learning inference with probabilistic predicates</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Chowdhery</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kandula</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chaudhuri</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3183713.3183751</idno>
+		<ptr target="https://doi.org/10.1145/3183713.3183751" />
+	</analytic>
+	<monogr>
+		<title level="m">SIGMOD, ser. SIGMOD &apos;18</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1493" to="1508" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Enabling cognitive intelligence queries in relational databases using low-dimensional word embeddings</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Bordawekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Shmueli</surname></persName>
+		</author>
+		<idno>abs/1603.07185</idno>
+		<ptr target="http://arxiv.org/abs/1603.07185" />
+	</analytic>
+	<monogr>
+		<title level="j">CoRR</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">In-database machine learning with sql on gpus</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Schule</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Springer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kemper</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Neumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gunnemann</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3468791.3468840</idno>
+		<ptr target="https://doi.org/10.1145/3468791.3468840" />
+	</analytic>
+	<monogr>
+		<title level="m">SSDBM</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Cost estimation across heterogeneous sql-based big data infrastructures in teradata intellisphere</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Awada</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">Y</forename><surname>Eltabakh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Al-Kateb</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Nair</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Au</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">EDBT</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Optimization of queries with user-defined predicates</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chaudhuri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Shim</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/320248.320249</idno>
+		<ptr target="https://doi.org/10.1145/320248.320249" />
+	</analytic>
+	<monogr>
+		<title level="j">ACM Trans. Database Syst</title>
+		<imprint>
+			<biblScope unit="volume">24</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="177" to="228" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Scalable graph neural network training: The case for sampling</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Serafini</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3469379.3469387</idno>
+		<ptr target="https://doi.org/10.1145/3469379.3469387" />
+	</analytic>
+	<monogr>
+		<title level="j">ACM SIGOPS Oper. Syst. Rev</title>
+		<imprint>
+			<biblScope unit="volume">55</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="68" to="76" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Billion-scale similarity search with gpus</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Johnson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Douze</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Jégou</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/TBDATA.2019.2921572</idno>
+		<ptr target="https://doi.org/10.1109/TBDATA.2019.2921572" />
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Trans. Big Data</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="535" to="547" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Measuring and relieving the over-smoothing problem for graph neural networks from the topological view</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IAAI</title>
+		<imprint>
+			<biblScope unit="page" from="3438" to="3445" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Eignn: Efficient infinite-depth graph neural networks</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kawaguchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Hooi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Xiao</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2021/file/9" />
+	</analytic>
+	<monogr>
+		<title level="j">NIPS</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="762" to="780" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note>bd5ee6fe55aaeb673025dbcb8f939c1-Paper.pdf</note>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bradley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hax</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hax</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Magnanti</surname></persName>
+		</author>
+		<title level="m">Chapter 9: Integer Programming</title>
+		<imprint>
+			<publisher>Addison-Wesley</publisher>
+			<date type="published" when="1977">1977</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">YAGO 4: A reasonable knowledge base</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">P</forename><surname>Tanon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Weikum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">M</forename><surname>Suchanek</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/978-3-030-49461-2_34</idno>
+		<ptr target="https://doi.org/10.1007/978-3-030-49461-2_34" />
+	</analytic>
+	<monogr>
+		<title level="j">ESWC</title>
+		<imprint>
+			<biblScope unit="volume">12123</biblScope>
+			<biblScope unit="page" from="583" to="596" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Database meets artificial intelligence: A survey</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Chai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE TKDE</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="1096" to="1116" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Rdfframes: Knowledge graph access for machine learning tools</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Abuoda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<ptr target="http://www.vldb.org/pvldb/vol13/p2889-mohamed.pdf" />
+	</analytic>
+	<monogr>
+		<title level="j">PVLDB</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="issue">12</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Distrdf2ml-scalable distributed in-memory machine learning pipelines for rdf knowledge graphs</title>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">F</forename><surname>Draschner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Stadler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Bakhshandegan Moghaddam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lehmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Jabeen</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3459637.3481999</idno>
+		<ptr target="https://doi.org/10.1145/3459637.3481999" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 30th ACM</title>
+		<meeting>the 30th ACM</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="4465" to="4474" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">The case for learned index structures</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Kraska</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Beutel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">H</forename><surname>Chi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Dean</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Polyzotis</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3183713.3196909</idno>
+		<ptr target="https://doi.org/10.1145/3183713.3196909" />
+	</analytic>
+	<monogr>
+		<title level="m">SIGMOD</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="489" to="504" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Multi-attribute selectivity estimation using deep learning</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hasan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Thirumuruganathan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Augustine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Koudas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Das</surname></persName>
+		</author>
+		<ptr target="http://arxiv.org/abs/1903.09999" />
+	</analytic>
+	<monogr>
+		<title level="j">CoRR</title>
+		<imprint>
+			<date type="published" when="1903">1903.09999, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">An adaptive approach for index tuning with learning classifier systems on hybrid storage environments</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">G</forename><surname>Pedrozo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">C</forename><surname>Nievola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">C</forename><surname>Ribeiro</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/978-3-319-92639-1_60</idno>
+		<ptr target="https://doi.org/10.1007/978-3-319-92639-1_60" />
+	</analytic>
+	<monogr>
+		<title level="j">HAIS</title>
+		<imprint>
+			<biblScope unit="volume">10870</biblScope>
+			<biblScope unit="page" from="716" to="729" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">What is bigquery?</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Fernandes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bernardino</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 19th International Database Engineering &amp; Applications Symposium</title>
+		<meeting>the 19th International Database Engineering &amp; Applications Symposium</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">sql4ml A declarative end-to-end workflow for machine learning</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Makrynioti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ley-Wild</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Vassalos</surname></persName>
+		</author>
+		<ptr target="http://arxiv.org/abs/1907.12415" />
+	</analytic>
+	<monogr>
+		<title level="j">CoRR</title>
+		<imprint>
+			<date type="published" when="1907">1907.12415, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<monogr>
+		<title level="m" type="main">Cognitive database: A step towards endowing relational databases with artificial intelligence capabilities</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Bordawekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Bandyopadhyay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Shmueli</surname></persName>
+		</author>
+		<idno>abs/1712.07199</idno>
+		<ptr target="http://arxiv.org/abs/1712.07199" />
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Creating embeddings of heterogeneous relational datasets for data integration tasks</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Riccardo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Paolo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Saravanan</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3318464.3389742</idno>
+		<ptr target="https://doi.org/10.1145/3318464.3389742" />
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGMOD, USA</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1335" to="1349" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

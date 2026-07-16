@@ -1,0 +1,775 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">STABILIZING THE KUMARASWAMY DISTRIBUTION</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-10-01">1 Oct 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Max</forename><surname>Wasserman</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Dept. of Computer Science</orgName>
+								<orgName type="institution">University of Rochester Rochester</orgName>
+								<address>
+									<postCode>14620</postCode>
+									<region>NY</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author role="corresp">
+							<persName><forename type="first">Gonzalo</forename><surname>Mateos</surname></persName>
+							<email>gmateosb@ece.rochester.edu</email>
+							<affiliation key="aff1">
+								<orgName type="department">Dept. of Electrical and Computer Engineering</orgName>
+								<orgName type="institution">University of Rochester Rochester</orgName>
+								<address>
+									<postCode>14620</postCode>
+									<region>NY</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">STABILIZING THE KUMARASWAMY DISTRIBUTION</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-10-01">1 Oct 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">C71C732732B5FB42016BC29476E8226D</idno>
+					<idno type="arXiv">arXiv:2410.00660v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:16+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Large-scale latent variable models require expressive continuous distributions that support efficient sampling and low-variance differentiation, achievable through the reparameterization trick. The Kumaraswamy (KS) distribution is both expressive and supports the reparameterization trick with a simple closed-form inverse CDF. Yet, its adoption remains limited. We identify and resolve numerical instabilities in the inverse CDF and log-pdf, exposing issues in libraries like PyTorch and TensorFlow. We then introduce simple and scalable latent variable models based on the KS, improving exploration-exploitation trade-offs in contextual multi-armed bandits and enhancing uncertainty quantification for link prediction with graph neural networks. Our results support the stabilized KS distribution as a core component in scalable variational models for bounded latent variables.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>Probabilistic models use probability distributions as building blocks to model complex joint distributions between random variables. Such distributions can model unobserved 'latent' variables z, or observed 'data' variables x. Bounded interval-supported latent variables are central to many key applications, such as unobserved probabilities (e.g., user clicks in recommendation systems or links between network nodes), missing measurements in control systems (e.g., joint angles in [0, 2π]), and stochastic policies over bounded actions in reinforcement learning (e.g., motor torque in <ref type="bibr">[-10, 10]</ref>).</p><p>To meet the demands of large-scale latent variable models, bounded interval-supported distributions must satisfy the following criteria: (i) support the reparameterization trick through an explicit reparameterization function, such as a closed-form inverse CDF, enabling efficient sampling and lowvariance gradient estimates; (ii) provide sufficient expressiveness to capture complex latent spaces; and (iii) offer simple distribution-related functions (log-pdf, explicit reparameterization function, and gradients) that allow fast and accurate evaluation. In Section 2, we argue that the Kumaraswamy (KS) distribution uniquely meets these criteria, yet remains surprisingly underused.</p><p>In this paper, we make the following technical contributions:</p><p>• We identify and resolve numerical instabilities in the KS's log-pdf and inverse CDF, impacting core auto-differentiation libraries. To this end, we introduce an unconstrained logarithmic parameterization, enhancing its compatibility with neural network (NN) settings (Section 3).</p><p>• We propose the Variational Bandit Encoder (VBE), addressing exploration-exploitation trade-offs in contextual Bernoulli multi-armed bandits (Section 4.2).</p><p>• We propose the Variational Edge Encoder (VEE) for improved uncertainty quantification in link prediction with graph neural networks (Section 4.3).</p><p>With the stabilized KS distribution at their core, these simple and scalable variational models open new avenues for addressing pressing challenges in large-scale latent variable models, including those in recommendation systems, reinforcement learning, and network analysis. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">BACKGROUND</head><p>The KS distribution <ref type="bibr" target="#b15">(Kumaraswamy, 1980;</ref><ref type="bibr" target="#b11">Jones, 2009)</ref> has pdf f (x) = abx a-1 (1 -x a ) b-1 and inverse CDF F -1 (u) = (1-u b -1 ) a -1 , both defined for x, u ∈ (0, 1) and parameterized by a, b &gt; 0.</p><p>Continuous distributions with bounded interval support. Among bounded interval-supported distributions, the KS uniquely satisfies criteria (i)-(iii) in Section 1. It supports the reparameterization trick through its closed-form, differentiable inverse CDF, providing efficient sampling and low-variance gradients. The KS supports four distinct prototypical shapes -bell, U, increasing, and decreasing (Figure <ref type="figure" target="#fig_0">1</ref>, right) -providing expressivity for diverse modeling tasks. Its log-pdf and inverse CDF, along with their gradients, are composed only of affine transformations, exponentials, and logarithms, and can be parameterized directly in terms of unconstrained logarithmic values. This enables straightforward implementation with minimal dependencies and keeps most computation in the more stable and accurate log-space. The unconstrained logarithmic parameterization makes it well-suited for NNs, eliminating the need for positivity-enforcing link functions. Additionally, the KS has differentiable, closed-form expressions for moments, entropy H, and the Kullback-Leibler (KL) divergence to the Beta distribution, facilitating efficient incorporation of prior information.</p><p>Other common interval-supported distributions face limitations. The Continuous Bernoulli (CB) distribution is less expressive with only a single parameter. Truncated distributions lack the reparameterization trick and often require slower, rejection-based sampling methods <ref type="bibr" target="#b5">(Figurnov et al., 2018)</ref>. Squashed Gaussian distributions, like the tanh-normal (tanh N ), support the reparameterization trick but suffer from numerical instabilities in the log-pdf and require sample approximations for moments, entropy, and KL divergences to distributions outside their family. Mitigating log-pdf instability typically requires careful control of the underlying Gaussian parameters and clipping of log-pdf values <ref type="bibr" target="#b7">(Haarnoja et al., 2018)</ref>. The two-parameter Beta distribution shares the same four fundamental shapes as the KS and benefits from being in the exponential family, which provides a rich set of KL divergences. However, it lacks the reparameterization trick, relying on rejection sampling for generation and implicit reparameterization (reviewed later in this section) for gradient computation. Figure <ref type="figure" target="#fig_0">1</ref> (left) shows Beta sampling is nearly an order of magnitude slower than KS sampling on an Apple M2 CPU. See Appendix A.1 for more distributional comparisons.</p><p>Latent variable modeling with stochastic variational inference (SVI). The primary method for fitting large-scale latent variable models is SVI <ref type="bibr" target="#b8">(Hoffman et al., 2013)</ref>. Consider a model p θ (x) = p θ (x|z)p(z)dz, where x ∈ R M is the observation, z ∈ R D is a vector-valued latent variable, p θ (x|z) is the likelihood function with parameters θ, and p(z) is the prior distribution. Except for a few special cases, maximum likelihood learning in such models is intractable because of the difficulty of the integrals involved. Variational inference <ref type="bibr" target="#b9">(Jaakkola &amp; Jordan, 2000)</ref> provides a tractable alternative by introducing a variational posterior distribution q ϕ (z|x) and maximizing a lower bound on the marginal log-likelihood called the ELBO:</p><formula xml:id="formula_0">L(x, θ, ϕ) = E q ϕ (z|x) [log p θ (x|z)] -D KL (q ϕ (z|x) ∥ p(z)) ≤ log p θ (x).</formula><p>(1</p><formula xml:id="formula_1">)</formula><p>Training models with modern SVI <ref type="bibr" target="#b13">(Kingma &amp; Welling, 2014;</ref><ref type="bibr" target="#b20">Rezende et al., 2014)</ref> involves gradient-based optimization of this bound w.r.t. both the model parameters θ and the variational parameters ϕ. The first term in (1) encourages the model to assign high likelihood to the data, but its exact evaluation and gradients are typically intractable and so the expectation is often approximated with samples from q ϕ (z|x). The KL divergence term incorporates prior information by penalizing deviations of the variational posterior from the prior p(z). Closed-form expressions of D KL (q ϕ (z|x) ∥ p (z)) allow efficient encoding of prior information; otherwise, sample-based approximations are required. Modifying the ELBO by scaling the KL term with a parameter β KL &gt; 0 is often necessary to balance the trade-off between data likelihood and prior regularization <ref type="bibr" target="#b0">(Alemi et al., 2018)</ref>. We denote the sample-based approximation of this modified ELBO as LβKL .</p><p>Gradient reparameterization: explicit and implicit. A distribution q ϕ (z) is said to be explicitly reparameterizable, or amenable to the 'reparameterization trick', if it can be expressed as a deterministic, differentiable transformation z = g(ϵ, ϕ) of a base distribution ϵ ∼ p(ϵ). This base distribution is typically simple, such as Uniform or standard Normal, enabling fast sample generation by first sampling from the base and then applying g. This enables the use of backpropagation to compute gradients of the form [cf.</p><p>(1)]</p><formula xml:id="formula_2">∇ ϕ E q ϕ (z) [f (z)] = E p(ϵ) [∇ ϕ f (g(ϵ, ϕ))] = E p(ϵ) [∇ z f (z)| z=g(ϵ,ϕ) ∇ ϕ g(ϵ, ϕ)],<label>(2)</label></formula><p>an expectation with form encompassing the ELBO. Explicit reparameterization is compatible with distributions in the location-scale family (e.g., Gaussian, Laplace, Cauchy), distributions with tractable inverse CDFs (e.g., exponential, KS, CB), or those expressible as deterministic transformations of such distributions (e.g., tanh N ). When explicit reparameterization is not available, implicit reparameterization <ref type="bibr" target="#b5">(Figurnov et al., 2018)</ref> is commonly used for distributions with numerically tractable CDFs, such as truncated, mixture, Gamma, Beta, Dirichlet, or von Mises distributions. This method expresses the parameter gradient through the sample ∇ ϕ z as a function only of the CDF gradients, not its inverse. Such CDF gradients are either found analytically (if feasible) or more commonly using numerical methods, e.g., forward mode auto-differentiation on CDF estimates, as in the Gamma and Beta distributions. Without explicit reparameterization, sampling and gradient computations tend to be slower and more complex, and produce higher-variance estimates of (2), reducing learning efficiency and stability <ref type="bibr" target="#b13">(Kingma &amp; Welling, 2014;</ref><ref type="bibr" target="#b10">Jang et al., 2017)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">STABILIZING THE KUMARASWAMY</head><p>Identifying the instability: log (1 -exp (x)). Naive computation of log (1 -exp (x)) for x &lt; 0 leads to significant numerical errors as x approaches 0 (Figure <ref type="figure" target="#fig_1">2</ref>, red). These errors grow so large that they can cause numerical instability, i.e., an irrecoverable error such as -inf. These errors result from catastrophic cancellation, which occurs when subtracting nearly equal numbers -here, 1 -exp(x). As x → 0, exp(x) ≈ 1, so 1 -exp(x) results in the cancellation of leading significant bits, leaving only a few less significant, less accurate bits to represent the result. This causes large relative errors in 1 -exp(x), which are amplified when input to the logarithm as its magnitude grows sharply near zero. If the cancellation is complete, 1 -exp(x) underflows to 0 and the logarithm returns -inf, as seen in Figure <ref type="figure" target="#fig_1">2</ref> (red) when log 2 |x| &lt; -24. When x ≈ 0, log(1 + x) and exp(x) -1 can be accurately computed using Taylor series expansions, implemented as log1p and expm1, respectively (see Appendix A.2). These functions form the basis for two common methods to compute log (1 -exp(x)): log(-expm1(x)) and log1p(-exp(x)). <ref type="bibr" target="#b18">(Mächler, 2012)</ref> showed neither method provides sufficient accuracy across the domain. However, each approach is accurate in complementary regions, leading to  A Stable Kumaraswamy. The direct implementation of the KS's log-pdf and inverse CDF -as found in all core auto-differentiation libraries -produces numerical instabilities. Here, we introduce a novel parameterization in terms of unconstrained logarithmic parameter values, eliminating the need for positivity-enforcing link functions, and whose expressions involve only affine, exponential, and logarithmic transformations. It also makes clear the presence of the unstable terms</p><formula xml:id="formula_3">w b -1 (u) = log(1 -u b -1 ) = log(1 -exp(b -1 log u)) w a (x) = log(1 -x a ) = log(1 -exp(a log x)),</formula><p>allowing the log-pdf, inverse CDF, and their gradients to be expressed as:</p><formula xml:id="formula_4">log f (x) = log a + log b + (a -1) log x + (b -1)w a (x) (4) ∇ log x log f (x) = (a -1) -(b -1) • exp(a log x -w a (x) + log a) (5) ∇ log a log f (x) = 1 + a log x • {1 -(b -1) • exp(a log x -w a (x))} (6) ∇ log b log f (x) = 1 + b • w a (x)<label>(7)</label></formula><formula xml:id="formula_5">F -1 (u) = (1 -u b -1 ) a -1 = exp(a -1 w b -1 (u))<label>(8)</label></formula><formula xml:id="formula_6">∇ log a F -1 (u) = exp(-log a + a -1 w b -1 (u)) • (-w b -1 (u))<label>(9)</label></formula><formula xml:id="formula_7">∇ log b F -1 (u) = exp(-log a -log b + b -1 log u + (a -1 -1)w b -1 (u)) • log u.<label>(10)</label></formula><p>This parameterization's algebraic form allows direct replacement of the dominant unstable terms, substituting w b -1 (u) with log1mexp b -1 log u and w a (x) with log1mexp(a log x). Access to log a and log b avoids errors from unnecessary transitions in-and-out of log-space. We also avoid the error prone expressions produced in backpropogation's direct application of the chain rule, e.g., <ref type="formula" target="#formula_7">10</ref>) are equivalent expressions for ∇ log b F -1 , but their computed values can differ greatly for extreme parameter values. Desirable KS distributions can obtain such problematic extreme parameter values, e.g., the KS distributions in Figure <ref type="figure" target="#fig_3">3</ref> have b ≈ 10 6 . See Appendix A.3 for further discussion on how instability in the unmodified KS can worsen with increasing evidence.</p><formula xml:id="formula_8">1 a • exp 1 a log 1-exp 1 b log u • -1-exp 1 b log u -1 • exp 1 b log u • log u • -1 b 2 • b and (</formula><p>Figure <ref type="figure" target="#fig_3">3</ref> compares the PDF, inverse CDF, and histograms of reparameterized samples for KS distributions which are typical to real-world modeling scenarios. The PyTorch implementation (top row) shows jaggedness in both the PDF and inverse CDF, caused by catastrophic cancellation in the unstable terms w a (x) and w b -1 (u). Additionally, the PyTorch inverse CDF underflows beyond u ≈ 1 -39.3: here, w b -1 (u) = -∞, and F -1 (u) = exp(a -1 • -∞) = 0. This underflow results in a point mass at x = 0 (a point outside of the KS support) with probability ≈ 39.3 in each of the reparameterized sampling distributions, and produces infinite gradients via   </p><formula xml:id="formula_9">∇ log a F -1 = ∞ [cf. (<label>9</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">EXPERIMENTS</head><p>We provide evidence toward the stabilization of the KS in three settings, beginning with the wellestablished Variational Auto-Encoder (VAE) framework on the MNIST and CIFAR-10 datasets. The KS serves both as a variational posterior [Eqns. ( <ref type="formula" target="#formula_5">8</ref>)-( <ref type="formula" target="#formula_7">10</ref>)] and as a likelihood function [Eqns. ( <ref type="formula">4</ref>)-( <ref type="formula" target="#formula_4">7</ref>)]. Models utilizing the stabilized KS consistently converge and perform well, often exceeding or matching alternative distributions. In contrast, models using the unstable KS produce NaN errors and are therefore excluded. Next, we introduce novel deep variational models which highlight the KS's broad utility in addressing large-scale problems. In Section 4.2, the Variational Bandit Encoder (VBE) models unobserved mean rewards in contextual Bernoulli multi-armed bandits, improving exploration-exploitation trade-offs. In Section 4.3, the Variational Edge Encoder (VEE) models the unobserved probabilities of each network link's existence using graph neural networks, improving uncertainty quantification. In both cases, the KS is more effective and easier to use than alternative variational distributions. For instance, tanh N models require log-pdf clipping for stability, while Beta models show significant performance variability based on the chosen positivity-enforcing link function and often fail to converge, e.g., on CIFAR-10 in Section 4.1. Finally, our models are fast: the VBEs in Section 4.2 are 8 -22× faster than the state-of-the-art baseline.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">IMAGE VARIATIONAL AUTO-ENCODERS</head><p>The VAE (Kingma &amp; Welling, 2014) is a generative latent variable model trained using amortized variational inference. Both the variational posterior q ϕ (z|x) and the conditional likelihood p θ (z|x) are parameterized using NNs, known as the encoder e ϕ (x) : R M → R D and decoder d θ (z) : R D → R M , respectively. VAEs typically use the standard Normal distribution as the prior and a factorized Normal as the variational posterior. The use of alternative variational distributions allows incorporating different prior assumptions about the latent factors of the data, such as bounded support or periodicity <ref type="bibr" target="#b5">(Figurnov et al., 2018)</ref>.</p><p>Experimental setup and metrics. Inspired by <ref type="bibr" target="#b17">(Loaiza-Ganem &amp; Cunningham, 2019)</ref>, we train VAEs with fully factorized priors and variational posteriors on MNIST and CIFAR-10 without pixel binarization, using an unmodified ELBO (β KL = 1). We adopt the most effective likelihoods from their work (Beta and CB), identical latent dimension D (MNIST: D = 20, CIFAR-10: D = 50), and the same standard NN architectures, which are detailed in Appendix A.5, along with the training hyperparameters. For each variational posterior factor, we choose the canonical prior: N (0,1) for N , and U (0,1) for KS and Beta. We evaluate the models using test Log Likelihood (LL), approximated by decoding a single sample from the encoded posterior and computing the log conditional likelihood. To assess usefulness of the learned latent representations, we encode test data x n , compute the mean E[q ϕ (z n |x n )], and classify the test labels using a 15-nearest neighbor classifier; the classifier accuracy (%) is denoted K(ϕ). For subjective evaluation, we display the mean decoded likelihood of a single sample from the encoded posterior of random test digits in Table <ref type="table" target="#tab_0">2</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Algorithm 1 Variational Bandit Encoder</head><p>Require: Discussion of results. The results in Table <ref type="table">1</ref> show that across datasets, VAEs with KS-distributed variational posteriors consistently produce useful latent spaces, evidenced by strong K(ϕ), and yield reconstructions with high LLs and visual quality. Notably, such KS VAEs maintain numerical stability while VAEs with Beta-distributed variational posteriors often do not; indeed, <ref type="bibr" target="#b5">(Figurnov et al., 2018)</ref> reported strong performance on binarized MNIST using a softplus link function, but did not present results on CIFAR-10, nor could we find other works that did. We suspect this is due to similar instability issues, with the higher gradient variance of the Beta's implicit reparameterization a likely explanation. In an attempt to overcome this instability in Beta VAEs we report the best metrics across softplus or exp link functions in Table <ref type="table">1</ref>. When neither converges, we report N/A.</p><formula xml:id="formula_10">{x k } K k=1 , {z k } K k=1 , η,</formula><p>When paired with any variational posterior, a KS likelihood yields stronger MNIST reconstructions than Beta likelihoods: compare rows * -Beta to * -KS in Table <ref type="table" target="#tab_0">2</ref>. As in <ref type="bibr" target="#b17">(Loaiza-Ganem &amp; Cunningham, 2019)</ref>, we find CB likelihoods produce the most subjectively performant VAEs on MNIST, unsurprising as CB was introduced specifically for the approximately binary MNIST pixel data.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">CONTEXTUAL BERNOULLI MULTI-ARMED BANDITS</head><p>The contextual Bernoulli multi-armed bandit (MAB) problem involves a decision maker who, at each time step t = 1, . . . , T , selects one arm from a finite set of K options. Each arm has an associated context x k ∈ R d , and pulling an arm yields a binary reward r k ∼ Ber(z k ), where z k ∈ [0, 1] is the unknown mean reward. MABs originate by analogy to casino slot machines, where each machine (arm) has a different payout rate, and the challenge lies in deciding which arms to pull in order to maximize total winnings while learning about their payout rates, a situation called the exploration-exploitation dilemma. MABs have found applications in modern recommendation systems <ref type="bibr" target="#b16">(Li et al., 2010)</ref>, clinical trials design <ref type="bibr" target="#b26">(Villar et al., 2015)</ref>, and mobile health <ref type="bibr" target="#b23">(Tewari &amp; Murphy, 2017)</ref>. Thompson Sampling (TS) is a simple, empirically effective <ref type="bibr" target="#b2">(Chapelle &amp; Li, 2011)</ref>, and scalable <ref type="bibr" target="#b12">(Jun et al., 2017)</ref> arm selection heuristic. It selects the arm corresponding to the highest value drawn from the posterior distributions over the latent z k 's. This approach naturally balances exploration and exploitation: the uncertainty in the posteriors promote exploration, while concentration of probability mass on large mean rewards drive exploitation.</p><p>Variational Bandit Encoder (VBE): VAE ∩ TS. Our novel VBE posits a fully factorized KS variational posterior k q ϕ (z k |x k ), prior p(z) = U K (0,1) , and a Bernoulli reward likelihood p(r|z k ) for each arm. Similar to VAEs, we employ amortized inference using a shared NN encoder e ϕ (x k ), which defines a reparameterizable variational distribution q ϕ (z k |x k ). However, unlike VAEs, VBEs omit the decoder; samples zk ∼ q ϕ (z k |x k ) directly parameterize the reward likelihood. The arm selection at step t follows TS: a = argmax k {z k }. We then draw reward r ∼ Ber(z a ) and record it in the replay buffer D ← D ∪ {(x a , a, r)}. We construct a sample approximation of the modified ELBO over the subset of arms K t ⊂ {1, . . . , K} that have been pulled by time t as</p><formula xml:id="formula_11">LβKL (D, ϕ) = (xa,a,r)∈D log p(r|z a ) + β KL k∈Kt H[q ϕ (z k |x k )],<label>(11)</label></formula><p>see Appendix A.4 for the derivation. The second term promotes exploration by penalizing overconfidence with the exploration effect proportional to β KL . We maximize (11) w.r.t. ϕ via gradient ascent, enabled by the reparameterizable KS. VBE execution is summarized in Algorithm 1.</p><p>VBE advantages. VBEs provide four primary advantages over alternative TS-based Bernoulli MAB approaches, discussed in Section 5.</p><p>• Scalability and Compatibility. VBE training consists of a forward pass through a NN, sampling an explicitly reparameterized distribution, and a backward pass for gradient-based updates. This process is scalable and fully compatible with existing gradient-based infrastructure. • Prior Knowledge Incorporation. When prior knowledge exists on an arm k it can be efficiently encoded as</p><formula xml:id="formula_12">p(z k ) = Beta(a k , b k ), replacing H[q ϕ (z k |x k )] with -D KL (q ϕ (z k |x k ) ∥ p(z k )).</formula><p>• Interpretability and Independence. Encoding x k produces KS distribution parameters, fully encapsulating the model's beliefs about z k . This is independent of other arms and past data. • Simplicity. VBEs lack numerous hyperparameters and complex architectural components.</p><p>Alternative methods lack some or all of these properties because they do not directly model the mean rewards nor differentiate through mean reward samples; instead, they model the parameters ϕ.</p><p>Experimental setup. We construct synthetic data with K = 10 4 arms and T = 2 • 10 3 steps, sample vector w and features {x k } K k=1 from N (0, I 5 ), min-max normalize {w ⊤ x k } K k=1 to produce probabilities, and further raise them to power 5 to add non-linearity; see Appendix A.6 for details. We evaluate VBEs with either a KS (VBE-KS), Beta (VBE-Beta), or tanh N (VBE-tanh N ) all using β KL = |K t | -1 , which makes the second term in (11) a mean. VBE-tanh N 's performance is sensitive to the number of samples used in its entropy estimate: we found degraded performance beyond 10 samples. The learning rate is set to η = 10 -2 . As a baseline, we use LMC-TS, which employs Langevin Monte Carlo (LMC) to sample posterior parameters of a NN, known for state-of-the-art performance across various tasks <ref type="bibr" target="#b29">(Xu et al., 2022)</ref>. All models use an MLP with 3 hidden layers of width 32. LMC-TS hyperparameters (inverse temperature, LMC steps, weight decay) are set or tuned based on the authors' code. We repeat experiments 5 times on an Apple M2 CPU and report the mean and standard deviation across these runs in Figure <ref type="figure">4</ref>.</p><p>Metrics and evaluation. The optimal policy always selects the arm with the highest mean reward r * . Our objective is to minimize regret, defined as the cumulative difference between the expected reward of the chosen action and the optimal action (accessible in the synthetic setting), i.e., T t=1 (r * -r at ). VBE-KS achieves lower regret and higher cumulative reward than all baselines. VBE-Beta performs significantly worse than VBE-KS and VBE-tanh N , highlighting the importance of explicit reparameterization. LMC-TS is performant -worse than VBE-KS and better than VBE-tanh N -but is 8-22× slower than VBEs: VBEs avoid the computational overhead of LMC.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">VARIATIONAL LINK PREDICTION WITH GRAPH NEURAL NETWORKS</head><p>Graph Neural Networks (GNNs) have become a powerful tool for learning from graph-structured data, with applications in critical areas like drug discovery <ref type="bibr" target="#b30">(Zhang et al., 2022)</ref> and finance <ref type="bibr" target="#b27">(Wang et al., 2022)</ref>. A key task is link prediction, where the goal is to infer unobserved edges between nodes. However, real-world deployment of graph learning models is often hindered by a lack of reliable uncertainty estimates and limited capacity to incorporate prior knowledge <ref type="bibr" target="#b28">(Wasserman &amp; Mateos, 2024)</ref>. To address these challenges, we propose a variational approach where the GNN encodes a KS to model the unobserved probabilities of each network link's existence, enabling uncertainty quantification and prior knowledge integration with minimal computational overhead.</p><p>In a typical link prediction setup, the GNN has access to the features X ∈ R N ×d of all N nodes, but only a subset of positive edges in the training D tr and validation D val sets. Edges are labeled as 1 (present) or 0 (absent). The GNN generates edge embeddings through message passing and neighborhood aggregation, outputting probabilities z u,v ∈ (0, 1) that parameterize a Bernoulli likelihood. The seminal work of <ref type="bibr" target="#b14">(Kipf &amp; Welling, 2016)</ref> proposed Variational Graph Auto-encoders (VGAEs), which posits a Gaussian variational posterior over the final node embeddings. When used for link prediction it samples final node embeddings from the variational posterior and decodes them to produce edge probabilities. In contrast, our approach directly models the probability of an edge using the KS. An advantage of directly modeling edge probabilities is interpretability; deep nodal embeddings are often difficult to interpret, and priors are typically selected for computational tractability rather than their ability to incorporate meaningful prior information. However, the probability of an edge (u, v) existing between two nodes is an interpretable quantity that can often be informed by domain expertise. For example, in gene regulatory networks, epidemiological networks, and social networks experts often have prior knowledge about the likelihood of specific interactions, transmissions, or friendships, respectively, which can be directly incorporated into edge prior p(z (u,v) ). We believe the limited exploration of variational modeling for edge probabilities is due to the previous lack of an expressive, stable, explicitly reparameterizable bounded-interval distributions.</p><p>Variational Edge Encoder (VEE). We propose a fully factorized KS variational posterior (u,v)∈Dtr q ϕ (z u,v |X, D tr ) with a uniform prior p(z) = U |Dtr| (0,1) . The GNN encoder e ϕ parameterizes a KS distribution for each possible edge (u, v). The remaining structure is highly similar to VBEs: a single sample zu,v ∼ q ϕ (z u,v |X, D tr ) directly parameterizes the Bernoulli likelihood, and we maximize a sample approximation of the modified ELBO</p><formula xml:id="formula_13">LβKL ((X, D tr ), ϕ) = (u,v)∈Dtr log p(z (u,v) |X, D tr ) + β KL (u,v)∈Dtr H[q ϕ (z (u,v) |X, D tr )]. (12)</formula><p>From their similarity with VBEs, VEEs inherit the same advantages outlined in Section 4.2. Models, metrics, and datasets. All models use a 2-layer GNN with Graph Convolutional Network (GCN) layers and a hidden/output nodal dimension of 32. In Base-GNN, an MLP decodes the final nodal embeddings into link probabilities. In VEE-KS/Beta/tanh N an MLP parameterizes the KS/Beta/tanh N variational distributions; all take β KL = .05|D tr | -1 . We use 10 samples in tanh N 's entropy estimate; more did not produce significant performance differences. We train for 300 epochs, with a learning rate of .01, averaging results over 5 runs with different seeds. The posterior predictive distribution over binary links p(A) = p(A|Z)p(Z)dZ is estimated by using a single sample from each KS/Beta distribution, parameterizing each edge Bernoulli distribution with such samples, followed by sampling binary edges. For Base-GNN we directly sample binary edges from the likelihood. Using 30 posterior predictive samples, we compute the edge-wise posterior predictive mean (pred. mean) and standard deviation (pred. stdv.). We report the Pearson correlation ρ between predictive uncertainty (pred. stdv.) and error (ℓ 1 difference between pred. mean and the true label), as a measure of uncertainty calibration: useful uncertainty estimates should show strong associations between uncertainty and error. Additionally, we compute area under the ROC curve (AUC) using pred. mean as a predictor. Figure <ref type="figure" target="#fig_7">5</ref> shows performance across 3 standard citation networks: Cora, Citeseer, and Pubmed. Discussion of results. On all datasets and all metrics, VEE-KS outperforms or matches the most performant baselines, providing higher predictive accuracy (AUC) and better uncertainty calibration (higher ρ). Similar to Section 4.2, we find Beta distributed variational posteriors perform significantly worse than those using KS or tanh N , further underlining the importance of explicit reparameterization. Moreover, models using explicitly reparameterizable latents are faster: on the largest dataset (Pubmed), the average time (ms) per epoch for VEE-KS, VEE-tanh N , and VEE-Beta was 381 ± 61, 301 ± 26, and 447 ± 86 respectively, on an Apple M2 CPU.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">RELATED WORK</head><p>VBEs in context: TS-based Bernoulli MAB approaches. Existing TS-based approaches for Bernoulli MABs assume a prior over model parameters p(ϕ), which map contexts to rewards through e ϕ . At each round, parameters are sampled from the posterior, φt ∼ p(ϕ|D), and used to compute mean reward posterior samples {e φt (x k )} K k=1 . However, the Bernoulli likelihood often leads to intractable posteriors, making parameter sampling difficult. Common methods use either variational approximations <ref type="bibr" target="#b2">(Chapelle &amp; Li, 2011;</ref><ref type="bibr" target="#b24">Urteaga &amp; Wiggins, 2018;</ref><ref type="bibr" target="#b3">Clavier et al., 2024)</ref>, primarily Laplace, or MCMC approaches like Gibbs sampling <ref type="bibr" target="#b4">(Dumitrascu et al., 2018)</ref> or LMC <ref type="bibr" target="#b29">(Xu et al., 2022)</ref>. These approaches face several limitations. First, incorporating prior knowledge is challenging since the relationship between a parameter's value and its effect on rewards is often unclear, except in the simplest models. Second, scalability is a concern: Laplace approximations become inefficient with large context dimensions or model sizes, while MCMC-based methods are compute and memory intensive, requiring long burn-in periods (typically 10 2 iterations) and large machine memory to store the buffer D. Third, interpreting model beliefs over mean rewards requires drawing numerous posterior samples, adding further computational cost. Finally, these methods often introduce significant complexity through intricate algorithms, architectures, optimization steps, and hyperparameters, particularly MCMC parameters (e.g., burn-in iterations, chain length, LMC inverse temperature/weight decay and their respective schedules). By directly modeling mean rewards with a KS, instead of the parameters ϕ, VBEs offer a simple, scalable, and interpretable approach to Bernoulli MABs.</p><p>Kumaraswamy as a Beta surrogate. A simple approach to overcome the Beta distribution's lack of explicit reparameterization is to use the KS as a surrogate. This surrogate approach is feasible due to their significant similarities when defined by the same two parameters and the availability of a highfidelity closed-form approximation of the KL divergence between Beta and KS distributions. <ref type="bibr" target="#b19">(Nalisnick et al., 2016;</ref><ref type="bibr">Nalisnick &amp; Smyth, 2017)</ref> use KSs as surrogates for Betas in the Dirichlet Process stick-breaking construction to allow for stochastic latent dimensionality in a VAE. However, both require parameter clipping for numerical stability. In their published code <ref type="bibr" target="#b19">(Nalisnick et al., 2016)</ref> constrains KS parameters log a, log b ∈ [-2.3, 2.9], significantly limiting the expressiveness of latent KS distributions. Also, <ref type="bibr">(Nalisnick &amp; Smyth, 2017)</ref> comments under a Computational Issues section that 'If NaNs are encountered...clipping the parameters of the variational Kumaraswamys usually solve the problem.' <ref type="bibr" target="#b22">(Stirn et al., 2019)</ref> improved upon <ref type="bibr" target="#b19">(Nalisnick et al., 2016)</ref> by resolving the order-dependence issue in approximating a Beta with a KS. Similarly, <ref type="bibr" target="#b21">(Singh et al., 2017)</ref> followed a comparable process using an Indian Buffet Process. Both works maintained numerical stability by restricting the uniform base distribution's support from the unit interval to a narrower interval, before passing the samples through the inverse CDF producing a distortion of the reparameterized sampling distribution. This work eliminates the need for such distortions, enabling more accurate Beta approximations and simplifying the use of the KS distribution by ensuring numerical stability without additional interventions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">CONCLUSION, LIMITATIONS, AND FUTURE WORK</head><p>We identified and resolved key numerical instabilities in the KS distribution, a uniquely attractive option in scalable variational models for bounded latent variables. Our work demonstrates that the stabilized KS can tackle a wide range of large-scale machine learning challenges by powering simple deep variational models. We introduce the Variational Bandit Encoder, which enhances explorationexploitation trade-offs in contextual Bernoulli MABs, and the Variational Edge Encoder, which improves uncertainty quantification in link prediction using GNNs. Our empirical results show these models are both performant and fast, achieving their best performance with the KS while avoiding the instability and complexity seen in alternatives like the Beta or tanh N distributions. These models open avenues for addressing other large-scale challenges, including in recommendation systems, reinforcement learning with continuous bounded action spaces, network analysis, and uncertainty quantification in deep learning, such as modeling per-parameter dropout probabilities using a Concrete distribution <ref type="bibr" target="#b6">(Gal et al., 2017)</ref>.</p><p>KS generalizations (Usman &amp; ul Haq, 2020) inherit log(1 -exp(x)) instabilities, which future work can resolve by building on our stabilization technique. A limitation of the current models is their inability to capture multimodal posteriors. Future work could explore KS mixtures or hierarchical latent spaces to bridge this gap. Further, optimizing the β KL parameter with techniques like warm-up schedules could yield further performance gains <ref type="bibr" target="#b0">(Alemi et al., 2018)</ref>. Lastly, a theoretical analysis of the VBE, particularly in proving regret bounds, could extend its applicability to critical areas like clinical trials, where robust decision-making under uncertainty is essential.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>REPRODUCIBILITY STATEMENT</head><p>We have made our anonymized code publicly available as supplementary material accompanying this submission. Algorithmic details including hyperparameter selections are given in the body, and included in config files in the code. Additional details regarding data generation for the MAB experiment are included in Appendix A.6.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A APPENDIX</head><p>A  For more details, see Figure <ref type="figure" target="#fig_0">1</ref> (right) and Section 2. Numerical issues highlight the challenges in stable evaluation of some distribution-related function. The CB requires a Taylor expansion to avoid singularities when its parameter λ approaches 0.5. Similarly, the tanh N distribution requires logpdf clipping and parameter regularization, as appears in various implementations <ref type="bibr" target="#b7">(Haarnoja et al., 2018)</ref>. Complex functions refer to any operation in a distribution-related function that are not affine, logarithmic, or the exponential. The tanh N involves computing log 1 -tanh 2 (x) , which poses stability challenges <ref type="bibr" target="#b1">(Björck et al., 2021)</ref>. The Beta distribution requires the Beta function β and the regularized incomplete Beta function I, both of which rely on numerical approximation. In contrast, the KS distribution in our parameterization avoids complex functions; note a -1 is computed via exp(-log a), avoiding division. Parameterization evaluates whether the distribution can be effectively expressed using unconstrained parameters; all but the Beta have such an ability. Closedform KL functions refer to the availability of closed-form KL divergence expressions with other distributions. All but tanh N have such expressions with exponential family members, whose simple moment expressions facilitate easier prior modeling. Entropy H refers to the availability of a closed-form expression for differential entropy. This is available for all but the tanh N distribution.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 PRECISION ENHANCING FUNCTIONS</head><p>When |x| ≪ 1, both log(1 + x) and exp(x) -1 suffer from severe cancellation: the former between 1 and x, the latter between exp(x) and -1. In both cases, a simple solution for accurate computation in the presence of small |x| is to use a few terms of the Taylor series, as</p><formula xml:id="formula_14">log1p(x) := log(1 + x) = x - x 2 2 + x 3 3 -. . . , for |x| &lt; 1, expm1(x) := exp(x) -1 = x + x 2 2! + x 3 3! + . . . , for |x| &lt; 1,</formula><p>where n! denotes the factorial.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3 COUNTER INTUITIVE STABILITY PROPERTIES OF THE UNSTABLE KS</head><p>When using the unstable KS to model latent variables with SVI, instability can worsen with increasing evidence. Here, SVI will leverage the inverse CDF and its gradient expressions ( <ref type="formula" target="#formula_5">8</ref>)-( <ref type="formula" target="#formula_7">10</ref>), which depend on the term w b -1 (u) = log(1 -exp(b -1 log u)), to approximate the gradient of the ELBO. Consider modeling the latent probability of heads in coin flipping using a KS, where the true probability is 0.5. With a uniform prior and few flip observations, the posterior will be well approximated with a low entropy bell-shaped KS, representable with low magnitude parameters a, b &gt; 1, keeping b -1 away from zero. This avoids catastrophic cancellation in 1 -exp(b -1 log u), as exp(b -1 log u)</p><p>remains far from 1. However, as more flips are observed, the posterior sharpens (attains higher entropy), requiring larger values of b to represent the increasing certainty. This pushes exp(b -1 log u) closer to 1, increasing the risk of catastrophic cancellation and leading to numerical instability. We believe this counter-intuitive behavior likely frustrated modelers, but is no longer an issue in the stabilized KS.</p><p>A.4 VBE MODIFIED ELBO DERIVATION Let X = [x 1 , . . . , x K ] be a matrix where the k-th column corresponds to the context feature x k . Assuming independence between arms and within-arm rewards, the data likelihood can be factorized as p(D|z) = (xa,a,r)∈D p(r|z a ). We adopt a fully factorized variational posterior of the form</p><formula xml:id="formula_15">q ϕ (z|X) = K k=1 q ϕ (z k |x k ).</formula><p>Recall that K t ⊂ {1, . . . , K} represents the subset of arms that have been pulled, and thus for which we have reward data.</p><p>The modified ELBO is derived as follows:</p><formula xml:id="formula_16">L β (D, ϕ) = E q ϕ (z|X) [log p(D|z)] -β KL KL (q ϕ (z|X) ∥ p(z)) = E q ϕ (z|X) [log p(D|z)] + β KL H [q ϕ (z|X)] , p(z) = U K (0,1) = E q ϕ (z|X) [log p(D|z)] + β KL k∈Kt H [q ϕ (z a |x a )] = E q ϕ (z|X)   (xa,a,r)∈D log p(r|z a )   + β KL k∈Kt H [q ϕ (z a |x a )] ≈ (xa,a,r)∈D log p(r|z a ) + β KL k∈Kt H [q ϕ (z a |x a )] , za ∼ q ϕ (z a |x a )</formula><p>where in the final step, we use a single sample approximation of the expectation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.5 VAE ARCHITECTURAL AND TRAINING CHOICES</head><p>The following is almost identical to that used in <ref type="bibr" target="#b17">(Loaiza-Ganem &amp; Cunningham, 2019)</ref>, but provided here for completeness. For both experiments (MNIST and CIFAR-10) we use a learning rate of 0.001, batch size of 500, and optimize with Adam for 200 epochs.</p><p>Enforcing positive variational parameters.</p><p>• Gaussian. When the variational posterior is Normal, the output layer of the encoder uses a softplus nonlinearity for the positive standard deviation.</p><p>• KS. As we parameterize the KS by unconstrained log values, any required exponentiation occurs internally, so we require no nonlinearity on the output of the encoder.</p><p>• Beta. The core software libraries do not implement the Beta distribution's reparameterized sampling with unconstrained log parameter values, so we use an exponential nonlinearity on the output of the encoder to enforce positivity. A softplus nonlinearity was attempted which was found to be less stable likely due to the model seeing very large latent parameter values, which is more stably accessible via an exp.</p><p>Enforcing positive likelihood parameters.</p><p>• CB. When the likelihood is a CB, the output of the decoder has a sigmoid non-linearity to enforce its parameter λ ∈ (0, 1).</p><p>• KS. As we parameterize the KS by unconstrained log values, any required exponentiation occurs internally, so we require no further transformation on the output of the decoder.</p><p>• Beta. The core software libraries do not implement the Beta distribution's log-pdf with unconstrained log parameter values, so we use a softplus nonlinearity on the output of the decoder to enforce positivity. An exponential nonlinearity was attempted which was found to be less stable.</p><p>Data augmentation for (0, 1) likelihood functions. The CB has support [0, 1] and handles data on the support boundaries without issue. When the likelihood function is a Beta or KS, which have support (0, 1), we clamp pixel intensities to [ 1 2×255 , 1 -1 2×255 ] to prevent non-finite gradient values. For all our MNIST experiments we use a latent dimension of D = 20, an encoder with two hidden layers with 500 units each, with leaky-ReLU non-linearities, followed by a dropout layer (with parameter 0.9). The decoder also has two hidden layers with 500 units, leaky-ReLU non-linearities and dropout. For all our CIFAR-10 experiments we use a latent dimension of D = 40, an encoder with four convolutional layers, followed by two fully connected ones. The convolutions have respectively, 3, 32, 32 and 32 features, kernel size 2, 2, 3 and 3, strides 1, 2, 1, 1 and are followed by leaky-ReLU non-linearities. The fully connected hidden layer has 128 units and a leaky-ReLU non linearity. The decoder has an analogous "reversed" architecture.</p><p>A.6 BERNOULLI MULTI-ARMED BANDIT DATA GENERATION In Section 4.2, we generate synthetic data for K = 10 4 arms by first sampling a weight vector w and features {x k } K k=1 from N (0, I 5 ). We then compute {w ⊤ x k } K k=1 and apply min-max normalization to produce probabilities (referred to as "Original probabilities" in Figure <ref type="figure" target="#fig_8">6</ref>).</p><p>To introduce non-linearity, we raise these probabilities to the power 5 (shown as "Power (5) transformed probabilities" in Figure <ref type="figure" target="#fig_8">6</ref>).</p><p>Exponentiating the probabilities not only makes the mapping from features to mean rewards more challenging to learn, but it also significantly reduces the number of arms with high probabilities, forcing the agent to explore more. For instance, when raising the probabilities to the power of 5, the number of arms with large probabilities drops from 167 to just 7.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.7 KUMARASWAMY DIFFERENTIAL ENTROPY</head><p>For a continuous distribution q with interval support (l, h), the differential entropy H(q) is equal to the KL divergence between q and U (l,h) plus a constant proportional to the interval's width h -l:</p><p>D KL q ∥ U (l,h) := -E q log q U (l,h)</p><p>= -E q [log q] + E q log U (l,h) = H(q) + log 1 h -l .</p><p>When the support has h -l = 1, then D KL q ∥ U (0,1) = H(q). Then the differential entropy of a KS with parameters a, b is</p><formula xml:id="formula_17">H(KS) = D KL KS ∥ U (0,1) = 1 -b + (1 -a) ϕ (0) b -1 + 1 + γ -log a -log b,</formula><p>where ϕ (0) is the digamma function and γ ≈ 0.577 is the Euler-Mascheroni constant. The digamma function and its gradient, the trigamma function ϕ (1) (x), can represented as infinite series which converge rapidly and thus can be used effectively in numerical applications. They are included as standard functions in common auto-differentiation frameworks.</p><p>A.8 KUMARASWAMY-BETA KL DIVERGENCE</p><p>The KL divergence between the Kumaraswamy distribution q(v) with parameters a, b and the Beta distribution p(v) with parameters α, β is given by:</p><formula xml:id="formula_18">E q log q(v) p(v) = a -α a -γ -Ψ(b) - 1 b + log ab + log B(α, β) - b -1 b + (β -1)b ∞ m=1 1 m + ab B m a , b</formula><p>where γ is Euler's constant, Ψ(•) is the Digamma function, and B(•) is the Beta function. The infinite sum in the KL divergence arises from the Taylor expansion required to represent E q [log(1 -v k )]; it is generally well approximated by the first few terms.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Comparison of relevant bounded interval-supported distributions. Left: Time for sampling and differentiating through samples. The Beta lacks explicit reparameterization, and has slower sampling and gradients. Right: Expressiveness in terms of attainable prototypical shapes.</figDesc><graphic coords="2,199.08,83.73,304.92,117.20" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: log1mexp(x) maintains accuracy throughout single precision.</figDesc><graphic coords="3,298.08,547.50,205.92,97.31" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>log1mexp(x) := log(-expm1(x)) -log 2 ≤ x &lt; 0 log1p(-exp(x)) x &lt; -log 2,(3)which computes log (1 -exp (x)) accurately throughout single precision, shown in Figure2(blue).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Stabilizing log(1 -exp(x)) terms eliminates numerical instabilities in the KS log-pdf and inverse CDF. We compare the unstable PyTorch KS implementation (top row) and our stable KS (bottom row) for realistic KS distributions (log 2 b = 24, varying a). Catastrophic cancellation in the log(1 -exp(x)) terms in the PyTorch KS causes jagged curves and inverse CDF underflow beyond u ≈ 1 -39.3, resulting in a point mass of ≈ 39.3 at x = 0 in the sampling distribution. Our stable KS removes the instability by using log1mexp.</figDesc><graphic coords="4,108.00,81.86,396.00,120.32" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head></head><label></label><figDesc>Figure3compares the PDF, inverse CDF, and histograms of reparameterized samples for KS distributions which are typical to real-world modeling scenarios. The PyTorch implementation (top row) shows jaggedness in both the PDF and inverse CDF, caused by catastrophic cancellation in the unstable terms w a (x) and w b -1 (u). Additionally, the PyTorch inverse CDF underflows beyond u ≈ 1 -39.3: here, w b -1 (u) = -∞, and F -1 (u) = exp(a -1 • -∞) = 0. This underflow results in a point mass at x = 0 (a point outside of the KS support) with probability ≈ 39.3 in each of the reparameterized sampling distributions, and produces infinite gradients via ∇ log a F -1 = ∞ [cf. (9)]. This infinite gradient triggers a cascade: infinite parameter values after the optimizer step and NaN activations in the next forward pass, which is what users ultimately observe when training fails.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Table 1 :</head><label>1</label><figDesc>VAE on MNIST and CIFAR-10.Prior q ϕ (z|x) p θ (x|z)</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head></head><label></label><figDesc>β KL 1: Variation posterior q ← KS 2: Replay buffer D ← ∅ 3: for t = 1 . . . T do 4: Encode: (a k , b k ) = e ϕ (x k ) 5: Sample: zk ∼ q(z k ; a k , b k ) 6: TS: a = argmax k {z k } 7: Reward: r ∼ Ber(z a ) 8: D ← D ∪ {(x a , a, r)} 9: Construct LβKL as in (11) 10: ϕ ← ϕ + η∇ ϕ LβKL 11: end for Figure 4: Synthetic bandit performance over 5 runs.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: VEE-KS produces informative and calibrated edge posterior predictives.</figDesc><graphic coords="8,230.76,466.67,273.25,93.97" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: High arm reward probabilities are reduced via a power 5 exponentiation, encouraging exploration.</figDesc><graphic coords="14,345.60,259.03,158.40,130.39" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 2 :</head><label>2</label><figDesc>MNIST test digit VAE reconstructions.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 3 :</head><label>3</label><figDesc>.1 BOUNDED INTERVAL-SUPPORTED DISTRIBUTIONS Comparison of bounded interval-supported distribution families.</figDesc><table><row><cell>Property / Distributions</cell><cell>CB</cell><cell>tanh N</cell><cell>Beta</cell><cell>KS</cell></row><row><cell>Expressiveness</cell><cell>low</cell><cell>high</cell><cell>high</cell><cell>high</cell></row><row><cell>Gradient Reparam.</cell><cell>explicit</cell><cell>explicit</cell><cell>implicit</cell><cell>explicit</cell></row><row><cell>Numerical Issues</cell><cell>mild</cell><cell>high</cell><cell>low</cell><cell>low</cell></row><row><cell>Complex Functions</cell><cell>tanh -1</cell><cell>log(1-tanh 2 (x))</cell><cell>β, I</cell><cell>None</cell></row><row><cell>Parameterization</cell><cell>log λ ∈ R</cell><cell>µ, log σ ∈ R</cell><cell>a, b ∈ R +</cell><cell>log a, log b ∈ R</cell></row><row><cell>Analytical Moments</cell><cell>✓</cell><cell>✗</cell><cell>✓</cell><cell>✓</cell></row><row><cell cols="2">Closed-form KL Functions Exp. Family</cell><cell>tanh N</cell><cell>Exp. Family</cell><cell>Beta</cell></row><row><cell>Entropy H</cell><cell>✓</cell><cell>✗</cell><cell>✓</cell><cell>✓</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3</head><label>3</label><figDesc>compares workhorse bounded-interval supported distribution families across important properties for latent variable modeling. Expressiveness refers to the variety of prototypical shapes each distribution can represent. All but the CB distribution exhibit four shapes; CB is limited to two.</figDesc><table /></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Fixing a broken ELBO</title>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Alemi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Poole</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ian</forename><surname>Fischer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joshua</forename><surname>Dillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rif</forename><forename type="middle">A</forename><surname>Saurous</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Murphy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Lowprecision reinforcement learning: running soft actor-critic in half precision</title>
+		<author>
+			<persName><forename type="first">Johan</forename><surname>Björck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiangyu</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>De Sa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carla</forename><forename type="middle">P</forename><surname>Gomes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kilian</forename><surname>Weinberger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">An empirical evaluation of Thompson sampling</title>
+		<author>
+			<persName><forename type="first">Olivier</forename><surname>Chapelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lihong</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">VITS: Variational inference Thomson sampling for contextual bandits</title>
+		<author>
+			<persName><forename type="first">Pierre</forename><surname>Clavier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Huix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alain</forename><surname>Durmus</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">PG-TS: Improved Thompson sampling for logistic contextual bandits</title>
+		<author>
+			<persName><forename type="first">Bianca</forename><surname>Dumitrascu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karen</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Barbara</forename><surname>Engelhardt</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Implicit reparameterization gradients</title>
+		<author>
+			<persName><forename type="first">Mikhail</forename><surname>Figurnov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohamed</forename><surname>Shakir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andriy</forename><surname>Mnih</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Yarin</forename><surname>Gal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiri</forename><surname>Hron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Kendall</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="s">Concrete dropout. NeurIPS</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Soft actor-critic: Off-policy maximum entropy deep reinforcement learning with a stochastic actor</title>
+		<author>
+			<persName><forename type="first">Tuomas</forename><surname>Haarnoja</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aurick</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pieter</forename><surname>Abbeel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Stochastic variational inference</title>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">M</forename><surname>Matthew D Hoffman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chong</forename><surname>Blei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Paisley</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Mach. Learn. Res</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Bayesian parameter estimation via variational methods</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Tommi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">I</forename><surname>Jaakkola</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Jordan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Stat. Comput</title>
+		<imprint>
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Categorical reparametrization with Gumble-Softmax</title>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Jang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shixiang</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Poole</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Kumaraswamy&apos;s distribution: A beta-type distribution with some tractability advantages</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">C</forename><surname>Jones</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Stat. Methodol</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Scalable generalized linear bandits: Online computation and hashing</title>
+		<author>
+			<persName><forename type="first">Kwang-Sung</forename><surname>Jun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aniruddha</forename><surname>Bhargava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Nowak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rebecca</forename><surname>Willett</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Auto-encoding variational Bayes</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Variational graph auto-encoders</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NeurIPS Worksh. on Bayes. Deep Learn</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">A generalized probability density function for double-bounded random processes</title>
+		<author>
+			<persName><forename type="first">Ponnambalam</forename><surname>Kumaraswamy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Hydrol</title>
+		<imprint>
+			<date type="published" when="1980">1980</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">A contextual-bandit approach to personalized news article recommendation</title>
+		<author>
+			<persName><forename type="first">Lihong</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Chu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Langford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><forename type="middle">E</forename><surname>Schapire</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<publisher>WWW</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">The continuous Bernoulli: Fixing a pervasive error in variational autoencoders</title>
+		<author>
+			<persName><forename type="first">Gabriel</forename><surname>Loaiza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">-</forename><surname>Ganem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><forename type="middle">P</forename><surname>Cunningham</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Eric Nalisnick and Padhraic Smyth. Stick-breaking variational autoencoders</title>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Mächler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2012">2012. 2017</date>
+		</imprint>
+	</monogr>
+	<note>Accurately computing log(1 -exp(-|a|)) assessed by the Rmpfr package</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Approximate inference for deep latent Gaussian mixtures</title>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Nalisnick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lars</forename><surname>Hertel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Padhraic</forename><surname>Smyth</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">In NeurIPS Worksh. on Bayes. Deep Learn</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Stochastic backpropagation and approximate inference in deep generative models</title>
+		<author>
+			<persName><forename type="first">Danilo</forename><surname>Jimenez Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shakir</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daan</forename><surname>Wierstra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Structured variational autoencoders for the Beta-Bernoulli process</title>
+		<author>
+			<persName><forename type="first">Rachit</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Ling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Finale</forename><surname>Doshi-Velez</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS Workshop Adv</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">A new distribution on the simplex with autoencoding applications</title>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Stirn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tony</forename><surname>Jebara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Knowles</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">From ads to interventions: Contextual bandits in mobile health</title>
+		<author>
+			<persName><forename type="first">Ambuj</forename><surname>Tewari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Susan</forename><forename type="middle">A</forename><surname>Murphy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Mob. Health: Sens. Analyt. Methods Appl</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Variational inference for the multi-armed contextual bandit</title>
+		<author>
+			<persName><forename type="first">Iñigo</forename><surname>Urteaga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Wiggins</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AISTATS</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">The marshall-olkin extended inverted kumaraswamy distribution: Theory and applications</title>
+		<author>
+			<persName><forename type="first">Rana</forename><surname>Muhammad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Usman</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Muhammad Ahsan Ul</forename><surname>Haq</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. King Saud Univ. -Sci</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Multi-armed bandit models for the optimal design of clinical trials: benefits and challenges</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sofía</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jack</forename><surname>Villar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Bowden</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Wason</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Stat. Sci</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">A review on graph neural network methods in financial applications</title>
+		<author>
+			<persName><forename type="first">Jianian</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanghua</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Song</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Data Sci</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Graph structure learning with interpretable Bayesian neural networks</title>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Wasserman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gonzalo</forename><surname>Mateos</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Trans. Mach. Learn. Res</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">and Animashree Anandkumar. Langevin Monte Carlo for contextual bandits</title>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongkai</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><forename type="middle">V</forename><surname>Mazumdar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kamyar</forename><surname>Azizzadenesheli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Graph neural network approaches for drug-target interactions</title>
+		<author>
+			<persName><forename type="first">Zehong</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lifan</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Feisheng</forename><surname>Zhong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dingyan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiaxin</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sulin</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hualiang</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mingyue</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xutong</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Curr. Opin. Struct. Biol</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

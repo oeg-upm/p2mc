@@ -1,0 +1,783 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">KGEx: Explaining Knowledge Graph Embeddings via Subgraph Sampling and Knowledge Distillation</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Vasileios</forename><surname>Baltatzis</surname></persName>
+							<email>vasileios.baltatzis@kcl.ac.uk</email>
+							<affiliation key="aff0">
+								<orgName type="institution">King&apos;s College</orgName>
+								<address>
+									<settlement>London</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Luca</forename><surname>Costabello</surname></persName>
+							<email>luca.costabello@accenture.com</email>
+							<affiliation key="aff1">
+								<orgName type="laboratory">Accenture Labs</orgName>
+								<address>
+									<settlement>Dublin</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">KGEx: Explaining Knowledge Graph Embeddings via Subgraph Sampling and Knowledge Distillation</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="MD5">3CF5C4811F23C07F0D889E77D4D2A640</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:57+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Despite being the go-to choice for link prediction on knowledge graphs, research on interpretability of knowledge graph embeddings (KGE) has been relatively unexplored. We present KGEx, a novel post-hoc method that explains individual link predictions by drawing inspiration from surrogate models research. Given a target triple to predict, KGEx trains surrogate KGE models that we use to identify important training triples. To gauge the impact of a training triple, we sample random portions of the target triple neighborhood and we train multiple surrogate KGE models on each of them. To ensure faithfulness, each surrogate is trained by distilling knowledge from the original KGE model. We then assess how well surrogates predict the target triple being explained, the intuition being that those leading to faithful predictions have been trained on "impactful" neighborhood samples. Under this assumption, we then harvest triples that appear frequently across impactful neighborhoods. We conduct extensive experiments on two publicly available datasets, to demonstrate that KGEx is capable of providing explanations faithful to the black-box model.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Knowledge graphs are knowledge bases whose facts are labeled, directed edges between entities. Research led to broad-scope graphs such as DBpedia <ref type="bibr" target="#b1">[2]</ref>, WordNet, and YAGO <ref type="bibr" target="#b20">[21]</ref>. Countless domain-specific knowledge graphs have also been published on the web, from bioinformatics to retail <ref type="bibr" target="#b9">[10]</ref>.</p><p>Knowledge graph embeddings (KGE) are a family of graph representation learning methods that learn vector representations of nodes and edges of a knowledge graph. They are widely used in graph completion, knowledge discovery, entity resolution, and link-based clustering <ref type="bibr" target="#b18">[19]</ref>.</p><p>Despite achieving excellent trade-off between predictive power and scalability, these neural architectures suffer from poor human interpretability, to the detriment of user trust, troubleshooting, and compliance.</p><p>Previous work in knowledge graph representation learning aims at designing natively interpretable KGE models or generating post-hoc explanations for existing knowledge graph embedding models. Nevertheless, the field is still in its infancy and recently proposed explanation methods do not scale beyond toy datasets or do not provide thorough empirical evidence of being faithful to the KGE model being explained.</p><p>In this work, we propose KGEx, a post-hoc, local explanation sub-system for KGE models (Figure <ref type="figure" target="#fig_0">1</ref>). KGEx works with any existing KGE model proposed in literature: given a target triple predicted with a KGE model, we return an explanation in the form of a ranked list of relevant triples from the training set. We use a combination of subgraph sampling and knowledge distillation that we refine with Monte Carlo sampling. Our experiments show that KGEx provides faithful explanations that can be used beyond toy knowledge graphs. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>Knowledge Graph Embeddings. Knowledge graph embedding models (KGE) are neural architectures designed to predict missing links between entities. TransE <ref type="bibr" target="#b4">[5]</ref> is the forerunner of distance-based KGE models, and inspired a number of models commonly referred to as TransX. The symmetric bilinear-diagonal model DistMult <ref type="bibr" target="#b24">[25]</ref> paved the way for its asymmetric evolutions in the complex space, ComplEx <ref type="bibr" target="#b23">[24]</ref> and RotatE <ref type="bibr" target="#b21">[22]</ref>. Some models such as RESCAL <ref type="bibr" target="#b17">[18]</ref>, TuckER <ref type="bibr" target="#b2">[3]</ref>, and SimplE <ref type="bibr" target="#b11">[12]</ref> rely on different tensor decomposition techniques. Models such as ConvE <ref type="bibr" target="#b6">[7]</ref> or Con-vKB <ref type="bibr" target="#b16">[17]</ref> leverage convolutional layers. Attention is used by <ref type="bibr" target="#b15">[16]</ref>. The recent NodePiece uses an anchor-based approach to map entities and relations to a fixed-sized, memory-efficient vocabulary <ref type="bibr" target="#b7">[8]</ref>. Recent surveys provide a good coverage of the landscape <ref type="bibr" target="#b3">[4]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Explanations for KGEs.</head><p>Recent studies address the problem of making KGE architectures more interpretable. MINERVA <ref type="bibr" target="#b5">[6]</ref>, NeuralLP <ref type="bibr" target="#b25">[26]</ref>, CTPs <ref type="bibr" target="#b13">[14]</ref> integrate rule-based systems to deliver natively interpretable link prediction methods. Although promising, these works do not scale beyond toy datasets. Other works consist instead of post-hoc approaches (they operate on black-box, pretrained KGE models) and are local methods, i.e. they explain the prediction of a single instance (i.e. a single missing link between two entities). Gradient Rollback <ref type="bibr" target="#b12">[13]</ref> returns a ranked list of influential triples for a target prediction. Such list is computed by storing gradient updates during training, to the detriment of memory footprint and training time overhead. OXKBC creates post-hoc explanations by leveraging entity and path similarities that are selected as template by an end-to-end method <ref type="bibr" target="#b14">[15]</ref>. Earlier work identifies training triples that, when removed, decrease the predicted probability score. ExplainE is grounded on counterfactual explanations and operates on toy knowledge graphs and low-dimensional embeddings <ref type="bibr" target="#b10">[11]</ref>. <ref type="bibr" target="#b26">[27]</ref> instead randomly perturbs the neighborhood of the target triple, but its design rationale is geared towards adversarial attacks rather than explainability.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Preliminaries Knowledge</head><formula xml:id="formula_0">Graph. A knowledge graph G = {(s, p, o)} ⊆ E × R × E is a set of triples t = (s, p, o)</formula><p>each including a subject s ∈ E, a predicate p ∈ R, and an object o ∈ E. E and R are the sets of all entities and relation types of G.</p><p>Knowledge Graph Embedding Models. KGE encode both entities E and relations R into lowdimensional, continuous vectors ∈ R k (i.e, the embeddings). Embeddings are learned by training a neural architecture over a training knowledge graph G: an input layer feeds training triples, and a scoring layer f (t) assigns plausibility scores to each triple. f (t) is designed to assign high scores to positive triples and low scores to negative corruptions. Corruptions are synthetic negative triples generated by a corruption generation layer: we define a corruption of t as t -= (s, p, o ′ ) or t -= (s ′ , p, o) where s ′ , o ′ are respectively subject or object corruptions, i.e. other entities randomly selected from E <ref type="bibr" target="#b4">[5]</ref>. Finally, a loss layer L KGE optimizes the embeddings by learning optimal embeddings, such that at inference time the scoring function f (t) assigns high scores to triples likely to be correct and low scores to triples unlikely to be true. Link Prediction. The task of predicting unseen triples in knowledge graphs is formalized in literature as a learning to rank problem, where the objective is learning a scoring function f (t = (s, p, o)) : E × R × E → R that given an input triple t = (s, p, o) assigns a score f (t) ∈ R proportional to the likelihood that the fact t is true. Such predictions are ranked against predictions from synthetic corruptions, to gauge how well the model tells positives from negatives.</p><p>Knowledge Distillation (KD). This method has been introduced to alleviate computational costs and allow knowledge to be transferred from large, complex models (teacher) to smaller, compact ones (student) <ref type="bibr" target="#b8">[9]</ref>. Let X be the input data distribution, with x i ∼ X distinct samples drawn from that distribution. For brevity, we denote teacher and student representations as g T,i = g T (x i ) and g S,i = g S (x i ), respectively. Conventional KD can take up the the form of Eq. 1:</p><formula xml:id="formula_1">L KD = xi∼X l(g T,i , g S,i ),<label>(1)</label></formula><p>where l is a loss function such as the Kullback-Leibler divergence, which tries to match the representations of teacher and student for an individual sample x i .</p><p>Relational KD's (RKD) <ref type="bibr" target="#b19">[20]</ref> purpose is to transfer the relationship between individual samples from the teacher to the student, as described in Eq. 2:</p><formula xml:id="formula_2">L RKD = (xi,...,xn)∼X l δ (ϕ(g T,i , ..., g T,n ), ϕ(g S,i , ..., g S,n )),<label>(2)</label></formula><p>where ϕ is a relational potential function and l δ is the Huber loss, which is defined in Eq. 3:</p><formula xml:id="formula_3">l δ (a, b) = 1 2 (a -b) 2 for | a -b |≤ 1, | a -b | -1 2 , otherwise.<label>(3)</label></formula><p>A particular case of relational potential function is the angle-wise relational potential ϕ A , which can be applied on a triple of samples and is defined as in Eq. 4:</p><formula xml:id="formula_4">ϕ A (g T,i , g T,j , g T,k ) = ⟨d ij , d jk ⟩,<label>(4)</label></formula><p>where</p><formula xml:id="formula_5">d ij = g T ,i -g T ,j ∥g T ,i -g T ,j ∥2 , d jk = g T ,j -g T ,k</formula><p>∥g T ,j -g T ,k ∥2 and ⟨•,•⟩ is the dot product.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Methods</head><p>Given a pre-trained black-box KGE model and the prediction for an unseen target triple, we generate an explanation for such prediction in the form of a list of training triples ranked by their 'influence' on the prediction. Such explanation is generated by KGEx, our proposed explanation subsystem, which consists of three components. The first step samples a subgraph H from the original knowledge graph G in order to limit the search space for possible explanations (section 4.1). To increase the faithfulness of the surrogate model, in the second step we utilize KD to train a new KGE model on the subgraph, while the black-box KGE model we are explaining plays the role of the teacher (section 4.2). Finally, we repeat the second step through a Monte Carlo (MC) process. This is done to rank the triples in the subgraph according to their contribution to the prediction (section 4.3).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Subgraph sampling</head><p>Our motivation stems from the explainable AI subfield of surrogate models <ref type="bibr" target="#b0">[1]</ref>. Concretely, the idea behind surrogate models is to convert a "black-box" model g T into a more interpretable "white-model" g S . The main challenge when trying to design a surrogate model for a KGE model is that KGEs are transductive models and therefore have no inference capabilities, i.e. given a triple t that contains an -unseen during training -entity, there is no function g T , so that we can infer an output y = g T (t).</p><p>Given this limitation we cannot replace g T with an interpretable g S , directly. However, we can find a subgraph that will allow us to train such a surrogate model.</p><p>We formulate this task as finding the smallest subgraph H ⊂ G, which if used to train a KGE model g S will give a latent space representation to the target triple that is as close as possible to the one assigned by the black-box KGE model g T , which was trained on the whole knowledge graph G.</p><p>While searching for H, we are facing a trade-off that has to do with the subgraph size: a larger size promotes fidelity (i.e. faithfulness to the original model), while a smaller size reduces cognitive load and therefore favors interpretability.</p><p>The search for the subgraph H of particular target triple t * = (s * , p * , o * ) can be broken down to two parts. The first part involves retaining the 1-hop neighborhood N G (s * , o * ) of the subject s * and the object o * of t * . Using the case depicted in Fig. <ref type="figure" target="#fig_0">1</ref>, N G (Guy Ritchie, Film Director) would include all triples involving either Guy Ritchie or Film Director. These are the triples that are in the vicinity of the entities of the target triple and therefore will likely play an important role in the representation that the KGE will learn for these entities. As such, the fact that (Guy Ritchie, director, Sherlock Holmes) is important in explaining (Guy Ritchie, profession, Film Director). If we were to retain only this 1-hop neighborhood, we would not be able to incorporate information on any long-range (in terms of hops in the graph) information that might be pivotal for the latent representation of the target triple. Additionally, the 1-hop neighborhood of the subject and the object does not take explicitly into account the predicate p * of t * , which could lead to not learning a meaningful representation for p * . In the running example, the fact (Madonna, profession, Film Producer) might seem irrelevant at first sight and would not be part of N G (Guy Ritchie, Film Director). However, combined with the fact that (Guy Ritchie, married, Madonna) could again lead to the target triple being predicted as positive. In the second part, to alleviate the issues above, we propose two alternatives:</p><p>• Random Walk (RW) Sampling Apart from the 1-hop neighborhood, we also add a naive random walk of predefined size measured in numbers of steps, which starts from the target triple (see Algorithm 2 in Appendix A).</p><p>• Predicate Neighborhood (PN) Sampling To ensure that the predicate p * of t * is part of the subgraph we randomly sample from G a predefined number n of triples t * = (ŝ, p * , ô), which have the same predicate p * , and include these along with their own 1-hop neighborhoods N G (ŝ, ô) in the subgraph (Algorithm 1). In our example, that would entail sampling triples that involved the predicate profession.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Knowledge Distillation</head><p>After sampling the subgraph, we train a KGE model g S on that. We need to ensure that this model is a faithful surrogate to the black-box model whose predictions we are trying to explain, through some sort of constraint. For this reason, we propose the use of KD as a way to allow the original model to drive the learning process of the surrogate model. Thus, in KD terms, the black-box model plays the role of the teacher, while the surrogate model that of the student, with functions g T and g S , respectively. The relational aspect of RKD makes it a natural fit for KGEs. Nevertheless, it is important to note that RKD is applied on individual samples. In mini-batch training, for instance, it will be applied on every possible combination of the samples that constitute the mini-batch. In KGEs, </p><formula xml:id="formula_6">H ← ∅ 4: N G (s * ) = {(s, p, o) ∈ G|s = s * ∨ o = s * } 5: N G (o * ) = {(s, p, o) ∈ G|s = o * ∨ o = o * } 6: N G (s * , o * ) = N G (s * ) ∪ N G (o * ) ▷ 1-hop neighborhood of s * , o * 7: H = H ∪ N G (s * , o * ) 8: P G (p * ) = {(s, p, o) ∈ G|p = p * } ▷ Triples involving p * 9: for i ← 0 to n -1 do 10: Sample a triple (ŝ, p * , ô) ∼ P G (p * ) 11:</formula><p>Get the 1-hop neighborhood N G (ŝ, ô)</p><p>12:</p><formula xml:id="formula_7">H = H ∪ N G (ŝ, ô)</formula><p>however, the relational aspect between the embeddings is inherent. Given that the training samples are in the form of triples (s, p, o) ∈ G, the KGE loss is already affecting their embeddings (s, p, o) in a relational manner. To accommodate the training of the KGE we adapt the RKD loss, so that it is applied only among the entities and the relation of a particular triple at a time, instead of randomly selected samples. We term this adaptation L RKD-KGE and it takes the following form (Eq. 5):</p><formula xml:id="formula_8">L RKD-KGE = (s,p,o)∈G l δ (ϕ A (s T , p T , o T ), ϕ A (s S , p S , o S )) + l δ (ϕ A (p T , o T , s T ), ϕ A (p S , o S , s S )) + l δ (ϕ A (o T , s T , p T ), ϕ A (o S , s S , p S ))<label>(5)</label></formula><p>The overall loss of the architecture can then be defined as in Eq. 6, with the RKD-KGE part acting as a regularization on the exact embeddings that the KGE part is affecting:</p><formula xml:id="formula_9">L = L KGE + λL RKD-KGE<label>(6)</label></formula><p>It is important to remind here that the teacher model is pre-trained and its weights are not updated. Instead the teacher representations are only utilized to aid the training of the student. An overview of the student's training procedure can be found in Fig. <ref type="figure" target="#fig_1">2</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Monte Carlo process</head><p>The explanation produced by KGEx is a list of the triples included in the subgraph, ranked by their contribution to the prediction of the target triple. To generate this list, for each target triple that we want to explain and given a pre-trained KGE model (teacher), we train multiple KGE models (students) with the loss defined in Eq. 6. Each of the students is trained on a subset H mc ⊂ H and assigns a rank to the target triple. The contribution of each triple t = (s, p, o) ∼ H is analogous to the average rank that was assigned to the target triple on the runs that t was part of H mc .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Experiments</head><p>We assess the faithfulness of the explanations returned by KGEx. Experiments show that KGEx surrogates are faithful to the original black-box models being explained.</p><p>Datasets. We experiment with the two standard link prediction benchmark datasets, WN18RR <ref type="bibr" target="#b6">[7]</ref> (a subset of Wordnet) and FB15K-237 <ref type="bibr" target="#b22">[23]</ref> (a subset of Freebase). We operate with reduced test sets that include 100 triples only. This is to guarantee a reasonable execution time of our experiments, most of which require to retrain a model multiple times as part of the Monte Carlo step, for each triple that we want to explain.  <ref type="table" target="#tab_1">1</ref> shows the statistics of all the datasets used.</p><p>Evaluation protocol. We measure the faithfulness of explanations generated by KGEx in terms of predictive power discrepancy between black box predictions and predictions generated with KGEx surrogates. We adopt the standard evaluation protocol described by <ref type="bibr" target="#b4">[5]</ref>. We predict whether each triple t = (s, p, o) ∈ T is true, where T is either T 1 or T rand . We cast the problem as a learning-torank task: for each t = (s, p, o) ∈ T , we generate synthetic negatives t -∈ N t by corrupting one side of the triple at a time (i.e. either the subject or the object). In the standard evaluation protocol, synthetic negatives N t are generated from all entities in E. In our experiments, to guarantee a fair comparison between the black-box and the surrogate model, we limit to synthetic negatives created from entities included in the corresponding sampled subgraph H. We predict a score for each t and all its negatives t -∈ N t . We then rank the only positive t against all the negatives N t . We report mean rank (MR), mean reciprocal rank (MRR), and Hits at n (where n = 1, 10) by filtering out spurious ground truth positives from the list of generated corruptions (i.e. "filtered" metrics).</p><p>Implementation Details and Baselines. The KGEx explanation subsystem and the black-box KGE models are implemented using TensorFlow 2.5.2 and Python 3. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Faithfulness: KGE Architectures</head><p>The first experiment tests how faithful the KGEx surrogates are to the pre-trained black-box models in terms of predictive performance. We conduct this experiment by leveraging both the T 1 test set (which is produced from the ranks of each black-box that we are explaining) and the T rand test set.</p><p>The results for T 1 are shown on Table <ref type="table" target="#tab_2">2</ref>. Naturally, all black-box models have perfect metrics, by definition. By inspecting the performance of the surrogate models, we can see that they retain a respectable level in MRR of around 0.5 (depending on the black-box) for FB15K-237. It is quite interesting to note that the TransE surrogate is the one which manages to achieve the minimum drop in performance from its black-box, across all reported metrics. Turning to WN18RR, we can see even stronger results from the surrogates, and especially from DistMult and ComplEx. DistMult in particular replicates its black-box's almost perfect performance.</p><p>The same experiment is conducted on T rand test set and the results are reported on Table <ref type="table" target="#tab_3">3</ref>. TransE again gets the best results for FB15K-237 with 53% drop in MRR from its black-box, but given the added difficulty of the task, DistMult and ComplEx still manage to get a comparable Hits@10. For WN18RR, similar to T 1 , DistMult and ComplEx retain quite high scores across all the metrics. While TransE is a bit lower compared to the other architectures, we can see that compared to its own black-box, it actually manages to stay on a very competitive level in terms of MRR and Hits@10.</p><p>We have to mention here that the MRR of the TransE black-box in this case is 35-40% lower than DistMult or ComplEx, which is confirmed by similar numbers reported in recent literature. The reason for that is most likely related to the small amount of relations in WN18RR, which might not be properly captured by TransE's architecture. As a result, this affects the TransE surrogate both in T 1 and T rand and therefore is not an issue of the KGEx component but rather the black-box's.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Impact of Subgraph Sampling</head><p>We evaluate predicate neighborhood (PN) and random walk (RW) sampling. Both methods contain the 1-hop neighborhood of the subject and the object of the target triple. For PN sampling, we conduct experiments with 3, 5 and 10 predicate neighbors for both datasets. For RW sampling, we use 10, 50 and 100 steps for FB15K-237 and 100, 200 and 500 steps for WN18RR. Table <ref type="table" target="#tab_4">4</ref> shows complete results.</p><p>Across both datasets PN sampling yields much better results than RW sampling. An interesting finding, is that regardless of method increasing the subgraph size either with more neighbors for PN sampling or with more steps in RW sampling, performance is actually decreasing. This shows that we do not need a very large subgraph to calculate effective embeddings for the target triple, and that including facts likely to be not relevant in the subgraph hurts performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Knowledge Distillation Effect</head><p>We assess the effect of knowledge distillation on the KGEx pipeline. As defined in Eq. 6, the KD component acts as regularization in the training process of the student. Its contribution is regulated by the KD coefficient λ and, as we see in Fig. <ref type="figure">3</ref>, performance across models remains fairly stable across different λ. We chose λ = 3 across experiments, as it consistently gives marginally better results across all models.</p><p>Finally, we look at the enhancement in performance that KD offers in Table <ref type="table" target="#tab_5">5</ref>. It is evident that when KD is used, it improves results across all backbone models, compared to standalone students (i.e. models trained on the subgraph without KD). In detail, ComplEx and DistMult outperform their standalone counterparts across all metrics for both datasets with increase in MRR in the 6-13 % region. The outlier in our observations comes from TransE on WN18RR, which is the only case where the standalone model outperforms the KD-based one (MRR=0.38 against MRR=0.24 on T 1 ). This is not a limitation of KGEx though, but rather something that highlights it is indeed working as intended.</p><p>Given the characteristics of WN18RR (small number of relations), it looks like a smaller subgraph   </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Overview of the proposed framework. Given a pre-trained KGE model and a target triple, KGEx outputs an explanation for the prediction in the format of a list of ranked triples.</figDesc><graphic coords="2,214.94,72.00,182.13,196.50" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: A KGE model architecture incorporating the adapted Relational Knowledge Distillation (RKD-KGE).</figDesc><graphic coords="4,127.80,72.00,356.36,101.99" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>8 1 .</head><label>1</label><figDesc>KGE hyperparameter ranges and best combinations are reported in Appendix B. Regarding the KGEx specific hyperparameters, we use Predicate Neighborhood (PN) sampling with 5 neighbors for FB15K-237 and 3 neighbors for WN18RR (see section 5.2), KD coefficient λ = 3 (see section 5.3). Student models have embedding dimensionality k = 50, synthetic negatives ratio η = 2 and are trained using the Adam optimizer and a multiclass-NLL baseline loss with learning rate=0.1 for 200 epochs. Depending on the size of the subgraph, an explanation might require from 50 to 200 MC runs. All experiments were run under Ubuntu 16.04 on an Intel Xeon E5-2630, 32 GB, equipped with a Titan XP 12GB.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>KGEx: 2 2 :</head><label>22</label><figDesc>Explaining Knowledge Graph Embeddings via Subgraph Sampling and Knowledge Distillation: Supplementary material A Subgraph sampling with random walk Algorithm Subgraph sampling w/ Random Walk 1: Input: target triple (s * , p * , o * ), number of random walk steps n Output: Subgraph H 3:H ← ∅ 4: N G (s * ) = {(s, p, o) ∈ G|s = s * ∨ o = s * } 5: N G (o * ) = {(s, p, o) ∈ G|s = o * ∨ o = o * } 6: N G (s * , o * ) = N G (s * ) ∪ N G (o * ) ▷ 1-hop neighborhood of s * , o * 7: H = H ∪ N G (s * , o * ) 8: (s o , p o , o o ) = (s * , p * , o * )▷ Initialize random walk origin 9: for i ← 0 to n -1 do 10: Sample a triple (ŝ, p, ô) ∼ N G (s o , o o ) 11: H = H ∪ {(ŝ, p, ô)}) 12: (s o , p o , o o ) = (ŝ, p, ô) ▷ Update origin B Hyperparameter search We experiment with three popular KGE architectures: TransE, DistMult, ComplEx. For each of them we replicated SOTA results by carrying out extensive grid search, over the following ranges of hyperparameter values: embedding dimensionality k = [200 -500], with a step of 50; baseline losses={negative log-likelihood, multiclass-NLL, self-adversarial}; synthetic negatives ratio η = {20, 30, 40, 50}; learning rate= {1e-4, 5e-5, 1e-5}; epochs= [500 -2000], step of 500; L2 regularizer, with weight γ = {1e-3, 1e-4, 1e-5}. The best loss for all models was the multiclass-NLL and the best regularization weight γ = 1e-4. The best combinations for the rest of the hyperparameters are shown on Table 7</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>Algorithm 1 Subgraph sampling w/ Predicate Neighborhood</figDesc><table /><note><p>1: Input: target triple (s * , p * , o * ), number of predicate neighbors n 2: Output: Subgraph H 3:</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>Specifications of the datasets used in experimentsin some experiments we use another test set, T rand , which includes 100 randomly-selected triples, regardless of the assigned rank by the black-box KGE model. Table</figDesc><table><row><cell></cell><cell cols="2">FB15K-237 WN18RR</cell></row><row><cell>Training</cell><cell>272,115</cell><cell>86,835</cell></row><row><cell>Validation</cell><cell>17,535</cell><cell>3,034</cell></row><row><cell>T1: Test -Rank 1</cell><cell>100</cell><cell>100</cell></row><row><cell>T rand : Test -Random Rank</cell><cell>100</cell><cell>100</cell></row><row><cell>Entities</cell><cell>14,541</cell><cell>40,943</cell></row><row><cell>Relations</cell><cell>237</cell><cell>11</cell></row></table><note><p>We work with two separate test sets: first, to control for the black-box model predictive power, we define T 1 , that includes 100 test triples that have been ranked at the first place by all the black-box models used in our experiments (see 'Evaluation Protocol' below). Additionally,</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Faithfulness on T 1 (triples that were ranked 1 by the black-box): comparison between KGE architectures. Worst possible rank is 2712 for FB15K-237 and 370 for WN18RR. Filtered metrics. Best results in bold.</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="4">FB15K-237 -Rank 1 (T1)</cell><cell cols="2">WN18RR -Rank 1 (T1)</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">Hits@</cell><cell></cell><cell>Hits@</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell>MR</cell><cell>MRR</cell><cell>1</cell><cell>10</cell><cell>MR</cell><cell>MRR</cell><cell>1</cell><cell>10</cell></row><row><cell cols="2">TransE</cell><cell></cell><cell></cell><cell>1</cell><cell>1.0</cell><cell>1.0</cell><cell>1.0</cell><cell>1</cell><cell>1.0</cell><cell>1.0</cell><cell>1.0</cell></row><row><cell cols="2">DistMult</cell><cell></cell><cell></cell><cell>1</cell><cell>1.0</cell><cell>1.0</cell><cell>1.0</cell><cell>1</cell><cell>1.0</cell><cell>1.0</cell><cell>1.0</cell></row><row><cell cols="2">ComplEx</cell><cell></cell><cell></cell><cell>1</cell><cell>1.0</cell><cell>1.0</cell><cell>1.0</cell><cell>1</cell><cell>1.0</cell><cell>1.0</cell><cell>1.0</cell></row><row><cell></cell><cell></cell><cell cols="2">TransE</cell><cell>59</cell><cell>.55</cell><cell>.44</cell><cell>.75</cell><cell>41</cell><cell>.24</cell><cell>.12</cell><cell>.52</cell></row><row><cell cols="2">KGEx</cell><cell cols="3">DistMult 72</cell><cell>.54</cell><cell>.46</cell><cell>.69</cell><cell>5</cell><cell>.99</cell><cell>.98</cell><cell>.98</cell></row><row><cell></cell><cell></cell><cell cols="3">ComplEx 130</cell><cell>.50</cell><cell>.42</cell><cell>.65</cell><cell>8</cell><cell>.87</cell><cell>.84</cell><cell>.92</cell></row><row><cell></cell><cell></cell><cell></cell><cell cols="5">FB15K-237 -Random Rank (T rand )</cell><cell cols="2">WN18RR -Random Rank (T rand )</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>Hits@</cell><cell></cell><cell></cell><cell>Hits@</cell></row><row><cell></cell><cell></cell><cell></cell><cell>MR</cell><cell>MRR</cell><cell>1</cell><cell cols="2">10</cell><cell>MR</cell><cell>MRR</cell><cell>1</cell><cell>10</cell></row><row><cell>TransE</cell><cell></cell><cell></cell><cell>34</cell><cell>.36</cell><cell>.24</cell><cell cols="2">.61</cell><cell>6</cell><cell>.36</cell><cell>.10</cell><cell>.85</cell></row><row><cell>DistMult</cell><cell></cell><cell></cell><cell>36</cell><cell>.37</cell><cell>.24</cell><cell cols="2">.64</cell><cell>21</cell><cell>.55</cell><cell>.47</cell><cell>.70</cell></row><row><cell>ComplEx</cell><cell></cell><cell></cell><cell>27</cell><cell>.41</cell><cell>.30</cell><cell cols="2">.62</cell><cell>24</cell><cell>.61</cell><cell>.49</cell><cell>.78</cell></row><row><cell></cell><cell cols="2">TransE</cell><cell>118</cell><cell>.17</cell><cell>.10</cell><cell cols="2">.27</cell><cell>39</cell><cell>.19</cell><cell>.00</cell><cell>.55</cell></row><row><cell>KGEx</cell><cell cols="3">DistMult 284</cell><cell>.13</cell><cell>.06</cell><cell cols="2">.25</cell><cell>20</cell><cell>.43</cell><cell>.38</cell><cell>.57</cell></row><row><cell></cell><cell cols="3">ComplEx 282</cell><cell>.12</cell><cell>.05</cell><cell cols="2">.26</cell><cell>36</cell><cell>.39</cell><cell>.33</cell><cell>.47</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 :</head><label>3</label><figDesc>Faithfulness on T rand (randomly selected triples regardless of the black-box's assigned rank): comparison between KGE architectures. Worst possible rank is 2712 for FB15K-237 and 370 for WN18RR. Filtered metrics. Best results in bold.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4 :</head><label>4</label><figDesc>Impact of Knowledge Distillation loss coefficient λ on model performance for TransE and ComplEx on FB15K-237. Subgraph Sampling approaches. KGE architecture used is ComplEx. Filtered metrics. Best results in bold.</figDesc><table><row><cell></cell><cell>0.8</cell><cell>TransE</cell><cell>DistMult</cell></row><row><cell>MRR</cell><cell>0.6</cell><cell></cell></row><row><cell></cell><cell>0.4</cell><cell></cell></row><row><cell></cell><cell></cell><cell cols="2">2.00 2.25 2.50 2.75 3.00 3.25 3.50 3.75 4.00 λ</cell></row></table><note><p><p>ComplEx</p>Figure 3:</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 5 :</head><label>5</label><figDesc>Impact of Knowledge Distillation on KGEx: comparison between KGE architectures. Filtered metrics. Best results in bold.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 7 :</head><label>7</label><figDesc>Best hyperparameter combinations for baseline black-box models.</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_0"><p>Preprint. Preliminary work.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_1"><p>We will release code and experiments upon acceptance.</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>The subgraph sampling approach is random walk with 10 steps. The number of Monte Carlo runs is 100 and in each run the subgraph of each target triple is partitioned in 10 subsets.</p><p>actually favors KGEs, as the standalone model, even though of smaller capacity, outperforms the model trained on the full KG. However, the KD student remains bounded by the knowledge that was distilled by its teacher and therefore remains faithful to the teacher, which is what is desirable. On the other hand, the standalone model leverages to a great extent the favorable topology of the subgraph, but because there is no connection to the teacher through the loss function, it fails completely to capture any of the teacher's representation abilities, which is what we would expect.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">Example Explanations</head><p>We also provide some example explanations in Table <ref type="table">6</ref>. These were generated by KGEx for target triples from FB15K-237. Something that can be observed is KGEx's ability to include triples in the explanation that are beyond the 1-hop neighborhood of the subject and the object of the target triple. Such an example is the explanation triple (Julianne Moore, film, Far from heaven), which explains the target triple (Walk of fame, inductee, Meryl Streep) because Meryl Streep and Julianne Moore have collaborated in movies. When explaining the target triple (Priyanka Chopra, ethnicity, Punjabis), we see that the explanation contains relevant information and not facts about the subject's professional life as in the previous example. Finally, in other cases, when the context can be really specific, such as the symptoms example, we see that all the explanation triples are sourced based on the predicate. Even in that case though, although jaundice can be a symptom of various diseases, the ones chosen in the explanation (i.e. pancreatic cancer and malaria) are both correlated with hepatitis.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>KGEx generates post-hoc, local explanations in the form of a ranked list of triples. We show that the interplay of graph sampling and knowledge distillation reduces the explanation search space while guaranteeing faithfulness to the black-box KGE model being explained. Deploying a Monte Carlo process to rank the explanation triples based on their influence on the prediction prioritizes important and relevant facts.</p><p>Moving forward, we will leverage the modular nature of the framework and propose replacement modules, such as a search-based approach instead of the MC process, to reduce computational burden. Future work will also focus on user studies to gauge the perceived quality of KGEx explanations, by measuring how much they assist human experts on the receiving side of KGE predictions.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Demystifying black-box models with symbolic metamodels</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alaa</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mihaela</forename><surname>Van Der Schaar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NeurIPS</title>
+		<imprint>
+			<biblScope unit="issue">3</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Dbpedia: A nucleus for a web of open data</title>
+		<author>
+			<persName><forename type="first">Sören</forename><surname>Auer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christian</forename><surname>Bizer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Georgi</forename><surname>Kobilarov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jens</forename><surname>Lehmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Cyganiak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zachary</forename><surname>Ives</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The semantic web</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="722" to="735" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<author>
+			<persName><forename type="first">Ivana</forename><surname>Balažević</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carl</forename><surname>Allen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothy</forename><forename type="middle">M</forename><surname>Hospedales</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Tucker</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1901.09590</idno>
+		<title level="m">Tensor factorization for knowledge graph completion</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<author>
+			<persName><forename type="first">Federico</forename><surname>Bianchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gaetano</forename><surname>Rossiello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Costabello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matteo</forename><surname>Palmonari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Minervini</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2004.14843</idno>
+		<title level="m">Knowledge Graph Embeddings and Explainable AI</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multi-relational data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page">6</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Go for a walk and arrive at the answer: Reasoning over paths in knowledge bases using reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Rajarshi</forename><surname>Das</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shehzaad</forename><surname>Dhuliawala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manzil</forename><surname>Zaheer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Vilnis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ishan</forename><surname>Durugkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Akshay</forename><surname>Krishnamurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Smola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Mccallum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">In ICLR</title>
+		<imprint>
+			<biblScope unit="issue">2</biblScope>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pontus</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page">5</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Nodepiece: Compositional and parameter-efficient representations of large knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Mikhail</forename><surname>Galkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiapeng</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Etienne</forename><surname>Denis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2106.12144</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">Distilling the knowledge in a neural network</title>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeff</forename><surname>Dean</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Aidan</forename><surname>Hogan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eva</forename><surname>Blomqvist</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Cochez</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Computing Surveys (CSUR)</title>
+		<imprint>
+			<biblScope unit="page" from="2021" to="2021" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">ExplainE: An approach for explaining network embedding-based link predictions</title>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jefrey</forename><surname>Lijffijt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tijl</forename><surname>De</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bie</forename></persName>
+		</author>
+		<idno type="arXiv">arXiv:1904.12694</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Simple embedding for link prediction in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Seyed</forename><surname>Mehran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kazemi</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Poole</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Procs. of NeurIPS</title>
+		<meeting>s. of NeurIPS</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Explaining neural matrix factorization with gradient rollback</title>
+		<author>
+			<persName><forename type="first">Carolin</forename><surname>Lawrence</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timo</forename><surname>Sztyler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mathias</forename><surname>Niepert</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Procs of AAAI</title>
+		<meeting>s of AAAI</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Learning reasoning strategies in end-to-end differentiable proving</title>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pontus</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edward</forename><surname>Grefenstette</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Rocktäschel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Oxkbc: Outcome explanation for factorization based knowledge base completion</title>
+		<author>
+			<persName><forename type="first">Yatin</forename><surname>Nandwani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ankesh</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aman</forename><surname>Agrawal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mayank</forename><surname>Singh Chauhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Parag</forename><surname>Singla</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AKBC</title>
+		<imprint>
+			<biblScope unit="issue">2</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Learning attention-based embeddings for relation prediction in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Deepak</forename><surname>Nathani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jatin</forename><surname>Chauhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charu</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manohar</forename><surname>Kaul</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1906.01195</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">A novel embedding model for knowledge base completion based on convolutional neural network</title>
+		<author>
+			<persName><forename type="first">Tu</forename><surname>Dai Quoc Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dat</forename><surname>Dinh Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dinh</forename><surname>Quoc Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Phung</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NAACL</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="327" to="333" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">A three-way model for collective learning on multi-relational data</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hans-Peter</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kriegel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">A review of relational machine learning for knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evgeniy</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gabrilovich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Procs of the IEEE</title>
+		<imprint>
+			<biblScope unit="volume">104</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="11" to="33" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<author>
+			<persName><forename type="first">Wonpyo</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongju</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yan</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minsu</forename><surname>Cho</surname></persName>
+		</author>
+		<title level="m">Relational knowledge distillation. CVPR</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="3962" to="3971" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Yago: a core of semantic knowledge</title>
+		<author>
+			<persName><forename type="first">Gjergji</forename><surname>Fabian M Suchanek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gerhard</forename><surname>Kasneci</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Weikum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Procs of WWW</title>
+		<meeting>s of WWW</meeting>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Zhiqing</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhi-Hong</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian-Yun</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">In ICLR</title>
+		<imprint>
+			<biblScope unit="issue">2</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Representing text for joint embedding of text and knowledge bases</title>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Pantel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hoifung</forename><surname>Poon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pallavi</forename><surname>Choudhury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Gamon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Procs of EMNLP</title>
+		<meeting>s of EMNLP</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Complex embeddings for simple link prediction</title>
+		<author>
+			<persName><forename type="first">Théo</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Éric</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2071" to="2080" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">Bishan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Wen-Tau Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Deng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ICLR</title>
+		<imprint>
+			<biblScope unit="issue">2</biblScope>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Differentiable learning of logical rules for knowledge base reasoning</title>
+		<author>
+			<persName><forename type="first">Fan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhilin</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">W</forename><surname>Cohen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Interaction embeddings for prediction and explanation in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Wen</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bibek</forename><surname>Paudel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abraham</forename><surname>Bernstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huajun</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Procs of the ICWSDM</title>
+		<meeting>s of the ICWSDM</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

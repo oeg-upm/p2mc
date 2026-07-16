@@ -1,0 +1,1374 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">End to end learning and optimization on graphs</title>
+				<funder ref="#_tuGMwwj #_Z77YaHm">
+					<orgName type="full">National Science Foundation</orgName>
+					<orgName type="abbreviated">NSF</orgName>
+				</funder>
+				<funder ref="#_jGt4kHm">
+					<orgName type="full">U.S. Department of Homeland Security</orgName>
+				</funder>
+				<funder ref="#_Xgj3n7D">
+					<orgName type="full">Army Research Office</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Bryan</forename><surname>Wilder</surname></persName>
+							<email>bwilder@g.harvard.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Harvard University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Eric</forename><surname>Ewing</surname></persName>
+							<email>ericewin@usc.edu</email>
+							<affiliation key="aff1">
+								<orgName type="institution">University of Southern California</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Bistra</forename><surname>Dilkina</surname></persName>
+							<email>dilkina@usc.edu</email>
+							<affiliation key="aff2">
+								<orgName type="institution">University of Southern California</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Milind</forename><surname>Tambe</surname></persName>
+							<email>milind_tambe@harvard.edu</email>
+							<affiliation key="aff3">
+								<orgName type="institution">Harvard University</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">End to end learning and optimization on graphs</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="MD5">C7B97BE70A0E94FBB783C4EAA298C524</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T09:21+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Real-world applications often combine learning and optimization problems on graphs. For instance, our objective may be to cluster the graph in order to detect meaningful communities (or solve other common graph optimization problems such as facility location, maxcut, and so on). However, graphs or related attributes are often only partially observed, introducing learning problems such as link prediction which must be solved prior to optimization. Standard approaches treat learning and optimization entirely separately, while recent machine learning work aims to predict the optimal solution directly from the inputs. Here, we propose an alternative decision-focused learning approach that integrates a differentiable proxy for common graph optimization problems as a layer in learned systems. The main idea is to learn a representation that maps the original optimization problem onto a simpler proxy problem that can be efficiently differentiated through. Experimental results show that our CLUSTERNET system outperforms both pure end-to-end approaches (that directly predict the optimal solution) and standard approaches that entirely separate learning and optimization. Code for our system is available at https://github.com/bwilder0/clusternet.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>While deep learning has proven enormously successful at a range of tasks, an expanding area of interest concerns systems that can flexibly combine learning with optimization. Examples include recent attempts to solve combinatorial optimization problems using neural architectures <ref type="bibr" target="#b43">[45,</ref><ref type="bibr" target="#b26">28,</ref><ref type="bibr" target="#b7">8,</ref><ref type="bibr" target="#b28">30]</ref>, as well as work which incorporates explicit optimization algorithms into larger differentiable systems <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b16">18,</ref><ref type="bibr" target="#b45">47]</ref>. The ability to combine learning and optimization promises improved performance for real-world problems which require decisions to be made on the basis of machine learning predictions by enabling end-to-end training which focuses the learned model on the decision problem at hand. We focus on graph optimization problems, an expansive subclass of combinatorial optimization. While graph optimization is ubiquitous across domains, complete applications must also solve machine learning challenges. For instance, the input graph is usually incomplete; some edges may be unobserved or nodes may have attributes that are only partially known. Recent work has introduced sophisticated methods for tasks such as link prediction and semi-supervised classification <ref type="bibr" target="#b36">[38,</ref><ref type="bibr" target="#b27">29,</ref><ref type="bibr" target="#b37">39,</ref><ref type="bibr" target="#b23">25,</ref><ref type="bibr" target="#b51">53]</ref>, but these methods are developed in isolation of downstream optimization tasks. Most current solutions use a two-stage approach which first trains a model using a standard loss and then plugs the model's predictions into an optimization algorithm ( <ref type="bibr" target="#b48">[50,</ref><ref type="bibr" target="#b9">10,</ref><ref type="bibr" target="#b4">5,</ref><ref type="bibr" target="#b8">9,</ref><ref type="bibr" target="#b40">42]</ref>). However, predictions which minimize a standard loss function (e.g., cross-entropy) may be suboptimal for specific optimization tasks, especially in difficult settings where even the best model is imperfect.</p><p>33rd Conference on Neural Information Processing Systems (NeurIPS 2019), Vancouver, Canada.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>arXiv:1905.13732v3 [cs.LG] 8 Jan 2020</head><p>A preferable approach is to incorporate the downstream optimization problem into the training of the machine learning model. A great deal of recent work takes a pure end-to-end approach where a neural network is trained to predict a solution to the optimization problem using supervised or reinforcement learning <ref type="bibr" target="#b43">[45,</ref><ref type="bibr" target="#b26">28,</ref><ref type="bibr" target="#b7">8,</ref><ref type="bibr" target="#b28">30]</ref>. However, this often requires a large amount of data and results in suboptimal performance because the network needs to discover algorithmic structure entirely from scratch. Between the extremes of an entirely two stage approach and pure end-to-end architectures, decision-focused learning <ref type="bibr" target="#b16">[18,</ref><ref type="bibr" target="#b45">47]</ref> embeds a solver for the optimization problem as a differentiable layer within a learned system. This allows the model to train using the downstream performance that it induces as the loss, while leveraging prior algorithmic knowledge for optimization. The downside is that this approach requires manual effort to develop a differentiable solver for each particular problem and often results in cumbersome systems that must, e.g, call a quadratic programming solver every forward pass.</p><p>We propose a new approach that gets the best of both worlds: incorporate a solver for a simpler optimization problem as a differentiable layer, and then learn a representation that maps the (harder) problem of interest onto an instance of the simpler problem. Compared to earlier approaches to decision-focused learning, this places more emphasis on the representation learning component of the system and simplifies the optimization component. However, compared to pure end-to-end approaches, we only need to learn the reduction to the simpler problem instead of the entire algorithm.</p><p>In this work, we instantiate the simpler problem as a differentiable version of k-means clustering. Clustering is motivated by the observation that graph neural networks embed nodes into a continuous space, allowing us to approximate optimization over the discrete graph with optimization in continuous embedding space. We then interpret the cluster assignments as a solution to the discrete problem. We instantiate this approach for two classes of optimization problems: those that require partitioning the graph (e.g., community detection or maxcut), and those that require selecting a subset of K nodes (facility location, influence maximization, immunization, etc). We don't claim that clustering is the right algorithmic structure for all tasks, but it is sufficient for many problems as shown in this paper.</p><p>In short, we make three contributions. First, we introduce a general framework for integrating graph learning and optimization, with a simpler optimization problem in continuous space as a proxy for the more complex discrete problem. Second, we show how to differentiate through the clustering layer, allowing it to be used in deep learning systems. Third, we show experimental improvements over both two-stage baselines as well as alternate end-to-end approaches on a range of example domains.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related work</head><p>We build on a recent work on decision-focused learning <ref type="bibr" target="#b16">[18,</ref><ref type="bibr" target="#b45">47,</ref><ref type="bibr" target="#b13">15]</ref>, which includes a solver for an optimization problem into training in order to improve performance on a downstream decision problem. A related line of work develops and analyzes effective surrogate loss functions for predictthen-optimize problems <ref type="bibr" target="#b17">[19,</ref><ref type="bibr" target="#b5">6]</ref>. Some work in structured prediction also integrates differentiable solvers for discrete problems (e.g., image segmentation <ref type="bibr" target="#b14">[16]</ref> or time series alignment <ref type="bibr" target="#b32">[34]</ref>). Our work differs in two ways. First, we tackle more difficult optimization problems. Previous work mostly focuses on convex problems <ref type="bibr" target="#b16">[18]</ref> or discrete problems with near-lossless convex relations <ref type="bibr" target="#b45">[47,</ref><ref type="bibr" target="#b14">16]</ref>. We focus on highly combinatorial problems where the methods of choice are hand-designed discrete algorithms. Second, in response to this difficulty, we differ methodologically in that we do not attempt to include a solver for the exact optimization problem at hand (or a close relaxation of it). Instead, we include a more generic algorithmic skeleton that is automatically finetuned to the optimization problem at hand.</p><p>There is also recent interest in training neural networks to solve combinatorial optimization problems <ref type="bibr" target="#b43">[45,</ref><ref type="bibr" target="#b26">28,</ref><ref type="bibr" target="#b7">8,</ref><ref type="bibr" target="#b28">30]</ref>. While we focus mostly on combining graph learning with optimization, our model can also be trained just to solve an optimization problem given complete information about the input. The main methodological difference is that we include more structure via a differentiable k-means layer instead of using more generic tools (e.g., feed-forward or attention layers). Another difference is that prior work mostly trains via reinforcement learning. By contrast, we use a differentiable approximation to the objective which removes the need for a policy gradient estimator. This is a benefit of our architecture, in which the final decision is fully differentiable in terms of the model parameters instead of requiring non-differentiable selection steps (as in <ref type="bibr" target="#b26">[28,</ref><ref type="bibr" target="#b7">8,</ref><ref type="bibr" target="#b28">30]</ref>). We give our end-to-end baseline ("GCN-e2e") the same advantage by training it with the same differentiable decision loss as our own model instead of forcing it to use noisier policy gradient estimates.</p><p>Finally, some work uses deep architectures as a part of a clustering algorithm <ref type="bibr" target="#b41">[43,</ref><ref type="bibr" target="#b29">31,</ref><ref type="bibr" target="#b22">24,</ref><ref type="bibr" target="#b39">41,</ref><ref type="bibr" target="#b33">35]</ref>, or includes a clustering step as a component of a deep network <ref type="bibr" target="#b19">[21,</ref><ref type="bibr" target="#b20">22,</ref><ref type="bibr" target="#b50">52]</ref>. While some techniques are similar, the overall task we address and framework we propose are entirely distinct. Our aim is not to cluster a Euclidean dataset (as in <ref type="bibr" target="#b41">[43,</ref><ref type="bibr" target="#b29">31,</ref><ref type="bibr" target="#b22">24,</ref><ref type="bibr" target="#b39">41]</ref>), or to solve perceptual grouping problems (as in <ref type="bibr" target="#b19">[21,</ref><ref type="bibr" target="#b20">22]</ref>). Rather, we propose an approach for graph optimization problems. Perhaps the closest of this work is Neural EM <ref type="bibr" target="#b20">[22]</ref>, which uses an unrolled EM algorithm to learn representations of visual objects. Rather than using EM to infer representations for objects, we use k-means in graph embedding space to solve an optimization problem. There is also some work which uses deep networks for graph clustering <ref type="bibr" target="#b47">[49,</ref><ref type="bibr" target="#b49">51]</ref>. However, none of this work includes an explicit clustering algorithm in the network, and none consider our goal of integrating graph learning and optimization.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Setting</head><p>We consider settings that combine learning and optimization. The input is a graph G = (V, E), which is in some way partially observed. We will formalize our problem in terms of link prediction as an example, but our framework applies to other common graph learning problems (e.g., semi-supervised classification). In link prediction, the graph is not entirely known; instead, we observe only training edges E train ⊂ E. Let A denote the adjacency matrix of the graph and A train denote the adjacency matrix with only the training edges. The learning task is to predict A from A train . In domains we consider, the motivation for performing link prediction, is to solve a decision problem for which the objective depends on the full graph. Specifically, we have a decision variable x, objective function f (x, A), and a feasible set X . We aim to solve the optimization problem</p><formula xml:id="formula_0">max x∈X f (x, A).<label>(1)</label></formula><p>However, A is unobserved. We can also consider an inductive setting in which we observe graphs A 1 , ..., A m as training examples and then seek to predict edges for a partially observed graph from the same distribution. The most common approach to either setting is to train a model to reconstruct A from A train using a standard loss function (e.g., cross-entropy), producing an estimate Â. The two-stage approach plugs Â into an optimization algorithm for Problem 1, maximizing f (x, Â).</p><p>We propose end-to-end models which map from A train directly to a feasible decision x. The model will be trained to maximize f (x, A train ), i.e., the quality of its decision evaluated on the training data (instead of a loss ( Â, A train ) that measures purely predictive accuracy). One approach is to "learn away" the problem by training a standard model (e.g., a GCN) to map directly from A train to x. However, this forces the model to entirely rediscover algorithmic concepts, while two-stage methods are able to exploit highly sophisticated optimization methods. We propose an alternative that embeds algorithmic structure into the learned model, getting the best of both worlds.</p><p>4 Approach: CLUSTERNET Our proposed CLUSTERNET system (Figure <ref type="figure">1</ref>) merges two differentiable components into a system that is trained end-to-end. First, a graph embedding layer which uses A train and any node features to embed the nodes of the graph into R p . In our experiments, we use GCNs <ref type="bibr" target="#b27">[29]</ref>. Second, a layer that performs differentiable optimization. This layer takes the continuous-space embeddings as input and uses them to produce a solution x to the graph optimization problem. Specifically, we propose to use a layer that implements a differentiable version of K-means clustering. This layer produces a soft assignment of the nodes to clusters, along with the cluster centers in embedding space.</p><p>The intuition is that cluster assignments can be interpreted as the solution to many common graph optimization problems. For instance, in community detection we can interpret the cluster assignments as assigning the nodes to communities. Or, in maxcut, we can use two clusters to assign nodes to either side of the cut. Another example is maximum coverage and related problems, where we attempt to select a set of K nodes which cover (are neighbors to) as many other nodes as possible. This problem can be approximated by clustering the nodes into K components and choosing nodes whose embedding is close to the center of each cluster. We do not claim that any of these problems is exactly reducible to K-means. Rather, the idea is that including K-means as a layer in the network provides a useful inductive bias. This algorithmic structure can be fine-tuned to specific problems by training the first component, which produces the embeddings, so that the learned representations induce clusterings with high objective value for the underlying downstream optimization task. We now explain the optimization layer of our system in greater detail. We start by detailing the forward and the backward pass for the clustering procedure, and then explain how the cluster assignments can be interpreted as solutions to the graph optimization problem.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Forward pass</head><p>Let x j denote the embedding of node j and µ k denote the center of cluster k. r jk denotes the degree to which node j is assigned to cluster k. In traditional K-means, this is a binary quantity, but we will relax it to a fractional value such that k r jk = 1 for all j. Specifically, we take</p><formula xml:id="formula_1">r jk = exp(-β||xj -µ k ||) exp(-β||xj -µ ||)</formula><p>, which is a soft-min assignment of each point to the cluster centers based on distance. While our architecture can be used with any norm || • ||, we use the negative cosine similarity due to its strong empirical performance. β is an inverse-temperature hyperparameter; taking β → ∞ recovers the standard k-means assignment. We can optimize the cluster centers via an iterative process analogous to the typical k-means updates by alternately setting</p><formula xml:id="formula_2">µ k = j r jk x j j r jk ∀k = 1...K r jk = exp(-β||x j -µ k ||) exp(-β||x j -µ ||) ∀k = 1...K, j = 1...n.<label>(2)</label></formula><p>These iterates converge to a fixed point where µ remains the same between successive updates <ref type="bibr" target="#b31">[33]</ref>.</p><p>The output of the forward pass is the final pair (µ, r).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Backward pass</head><p>We will use the implicit function theorem to analytically differentiate through the fixed point that the forward pass k-means iterates converge to, obtaining expressions for ∂µ ∂x and ∂r ∂x . Previous work <ref type="bibr" target="#b16">[18,</ref><ref type="bibr" target="#b45">47]</ref> has used the implicit function theorem to differentiate through the KKT conditions of optimization problems; here we take a more direct approach that characterizes the update process itself. Doing so allows us to backpropagate gradients from the decision loss to the component that produced the embeddings x. Define a function f : R Kp → R as</p><formula xml:id="formula_3">f i, (µ, x) = µ i - j r jk x j j r jk<label>(3)</label></formula><p>Now, (µ, x) are a fixed point of the iterates if f (µ, x) = 0. Applying the implicit function theorem</p><formula xml:id="formula_4">yields that ∂µ ∂x = -∂f (µ,x) ∂µ -1 ∂f (µ,x)</formula><p>∂x , from which ∂r ∂x can be easily obtained via the chain rule.</p><p>Exact backward pass: We now examine the process of calculating ∂µ ∂x . Both ∂f (µ,x) ∂x and ∂f (µ,x) ∂µ can be easily calculated in closed form (see appendix). Computing the former requires time O(nKp 2 ).</p><p>Computing the latter requires O(npK 2 ) time, after which it must be inverted (or else iterative methods must be used to compute the product with its inverse). This requires time O(K 3 p 3 ) since it is a matrix of size (Kp) × (Kp). While the exact backward pass may be feasible for some problems, it quickly becomes burdensome for large instances. We now propose a fast approximation.</p><p>Approximate backward pass: We start from the observation that ∂f ∂µ will often be dominated by its diagonal terms (the identity matrix). The off-diagonal entries capture the extent to which updates to one entry of µ indirectly impact other entries via changes to the cluster assignments r. However, when the cluster assignments are relatively firm, r will not be highly sensitive to small changes to the cluster centers. We find to be typical empirically, especially since the optimal choice of the parameter β (which controls the hardness of the cluster assignments) is typically fairly high. Under these conditions, we can approximate ∂f ∂µ by its diagonal, ∂f ∂µ ≈ I. This in turn gives ∂µ ∂x ≈ -∂f ∂x . We can formally justify this approximation when the clusters are relatively balanced and wellseparated. More precisely, define c(j) = arg max i r ji to be the closest cluster to point j. Proposition 1 (proved in the appendix) shows that the quality of the diagonal approximation improves exponentially quickly in the product of two terms: β, the hardness of the cluster assignments, and δ, which measures how well separated the clusters are. α (defined below) measures the balance of the cluster sizes. We assume for convenience that the input is scaled so ||x j || 1 ≤ 1 ∀j. Proposition 1. Suppose that for all points j, ||x j -µ i || -||x j -µ c(j) || ≥ δ for all i = c(j) and that for all clusters i, n j=1 r ji ≥ αn. Moreover, suppose that βδ &gt; log 2βK 2 α . Then, ∂f ∂µ -</p><formula xml:id="formula_5">I 1 ≤ exp(-δβ) K 2 β 1 2 α-K 2 β exp(-δβ) where || • || 1 is the operator 1-norm.</formula><p>We now show that the approximate gradient obtained by taking ∂f ∂µ = I can be calculated by unrolling a single iteration of the forward-pass updates from Equation 2 at convergence. Examining Equation <ref type="formula" target="#formula_3">3</ref>, we see that the first term (µ i ) is constant with respect to x, since here µ is a fixed value. Hence,</p><formula xml:id="formula_6">- ∂f k ∂x = ∂ ∂x j r jk x j</formula><p>j r jk which is just the update equation for µ k . Since the forward-pass updates are written entirely in terms of differentiable functions, we can automatically compute the approximate backward pass with respect to x (i.e., compute products with our approximations to ∂µ ∂x and ∂r ∂x ) by applying standard autodifferentiation tools to the final update of the forward pass. Compared to computing the exact analytical gradients, this avoids the need to explicitly reason about or invert ∂f ∂µ . The final iteration (the one which is differentiated through) requires time O(npK), linear in the size of the data.</p><p>Compared to differentiating by unrolling the entire sequence of updates in the computational graph (as has been suggested for other problems <ref type="bibr" target="#b15">[17,</ref><ref type="bibr" target="#b3">4,</ref><ref type="bibr" target="#b52">54]</ref>), our approach has two key advantages. First, it avoids storing the entire history of updates and backpropagating through all of them. The runtime for our approximation is independent of the number of updates needed to reach convergence. Second, we can in fact use entirely non-differentiable operations to arrive at the fixed point, e.g., heuristics for the K-means problem, stochastic methods which only examine subsets of the data, etc. This allows the forward pass to scale to larger datasets since we can use the best algorithmic tools available, not just those that can be explicitly encoded in the autodifferentiation tool's computational graph.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Obtaining solutions to the optimization problem</head><p>Having obtained the cluster assignments r, along with the centers µ, in a differentiable manner, we need a way to (1) differentiably interpret the clustering as a soft solution to the optimization problem, (2) differentiate a relaxation of the objective value of the graph optimization problem in terms of that solution, and then (3) round to a discrete solution at test time. We give a generic means of accomplishing these three steps for two broad classes of problems: those that involve partitioning the graph into K disjoint components, and those that that involve selecting a subset of K nodes.</p><p>Partitioning: <ref type="bibr" target="#b0">(1)</ref> We can naturally interpret the cluster assignments r as a soft partitioning of the graph. (2) One generic continuous objective function (defined on soft partitions) follows from the random process of assigning each node j to a partition with probabilities given by r j , repeating this process independently across all nodes. This gives the expected training decision loss </p><formula xml:id="formula_7">= E r hard ∼r [f (r hard , A train )],</formula><p>where r hard ∼ r denotes this random assignment. is now differentiable in terms of r, and can be computed in closed form via standard autodifferentiation tools for many problems of interest (see <ref type="bibr">Section 5)</ref>. We remark that when the expectation is not available in closed form, our approach could still be applied by repeatedly sampling r hard ∼ r and using a policy gradient estimator to compute the gradient of the resulting objective. (3) At test time, we simply apply a hard maximum to r to obtain each node's assignment.</p><p>Subset selection: (1) Here, it is less obvious how to obtain a subset of K nodes from the cluster assignments. Our continuous solution will be a vector x, 0 ≤ x ≤ 1, where ||x|| 1 = K. Intuitively, x j is the probability of including x j in the solution. Our approach obtains x j by placing greater probability mass on nodes that are near the cluster centers. Specifically, each center µ i is endowed with one unit of probability mass, which it allocates to the points x as a ij = softmin(η||x -µ i ||) j . The total probability allocated to node j is b j = K i=1 a ij . Since we may have b j &gt; 1, we pass b through a sigmoid function to cap the entries at 1; specifically, we take x = 2 * σ(γb) -0.5 where γ is a tunable parameter. If the resulting x exceeds the budget constraint (||x|| 1 &gt; K), we instead output Kx ||x||1 to ensure a feasible solution.</p><p>(2) We interpret this solution in terms of the objective similarly as above. Specifically, we consider the result of drawing a discrete solution x hard ∼ x where every node j is included (i.e., set to 1) independently with probability x j from the end of step (1). The training objective is then E x hard ∼x [f (x hard , A train )]. For many problems, this can again be computed and differentiated through in closed form (see Section 5).</p><p>(3) At test time, we need a feasible discrete vector x; note that independently rounding the individual entries may produce a vector with more than K ones. Here, we apply a fairly generic approach based on pipage rounding <ref type="bibr" target="#b0">[1]</ref>, a randomized rounding scheme which has been applied to many problems (particularly those with submodular objectives). Pipage rounding can be implemented to produce a random feasible solution in time O(n) <ref type="bibr" target="#b24">[26]</ref>; in practice we round several times and take the solution with the best decision loss on the observed edges. While pipage rounding has theoretical guarantees only for specific classes of functions, we find it to work well even in other domains (e.g., facility location). However, more domain-specific rounding methods can be applied if available.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Experimental results</head><p>We now show experiments on domains that combine link prediction with optimization.</p><p>Learning problem: In link prediction, we observe a partial graph and aim to infer which unobserved edges are present. In each of the experiments, we hold out 60% of the edges in the graph, with 40% observed during training. We used a graph dataset which is not included in our results to set our method's hyperparameters, which were kept constant across datasets (see appendix for details). The learning task is to use the training edges to predict whether the remaining edges are present, after which we will solve an optimization problem on the predicted graph. The objective is to find a solution with high objective value measured on the entire graph, not just the training edges.</p><p>Optimization problems: We consider two optimization tasks, one from each of the broad classes introduced above. First, community detection aims to partition the nodes of the graph into K distinct subgroups which are dense internally, but with few edges across groups. Formally, the objective is to find a partition maximizing the modularity <ref type="bibr" target="#b35">[37]</ref>, defined as</p><formula xml:id="formula_8">Q(r) = 1 2m u,v∈V K k=1 A uv - d u d v 2m r uk r vk .</formula><p>Here, d v is the degree of node v, and r vk is 1 if node v is assigned to community k and zero otherwise. This measures the number of edges within communities compared to the expected number if edges were placed randomly. Our clustering module has one cluster for each of the K communities. Defining B to be the modularity matrix with entries B uv = A uv -dudv 2m , our training objective (the expected value of a partition sampled according to r) is 1 2m Tr r B train r . Second, minmax facility location, where the problem is to select a subset of K nodes from the graph, minimizing the maximum distance from any node to a facility (selected node). Letting d(v, S) be the shortest path length from a vertex v to a set of vertices S, the objective is f (S) = min |S|≤k max v∈V d(v, S). To obtain the training loss, we take two steps. First, we replace d(v, S) by E S∼x [d(v, S)], where S ∼ x denotes drawing a set from the product distribution with marginals x. This can easily be calculated in closed form <ref type="bibr" target="#b24">[26]</ref>. Second, we replace the min with a softmin.</p><p>Baseline learning methods: We instantiate CLUSTERNET using a 2-layer GCN for node embeddings, followed by a clustering layer. We compare to three families of baselines. First, GCN-2stage, the two-stage approach which first trains a model for link prediction, and then inputs the predicted graph into an optimization algorithm. For link prediction, we use the GCN-based system of <ref type="bibr" target="#b37">[39]</ref> (we also adopt their training procedure, including negative sampling and edge dropout). For the optimization algorithms, we use standard approaches for each domain, outlined below. Second, "train", which runs each optimization algorithm only on the observed training subgraph (without attempting any link prediction). Third, GCN-e2e, an end-to-end approach which does not include explicit algorithm structure. We train a GCN-based network to directly predict the final decision variable (r or x) using the same training objectives as our own model. Empirically, we observed best performance with a 2-layer GCN. This baseline allows us to isolate the benefits of including algorithmic structure.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Baseline optimization approaches:</head><p>In each domain, we compare to expert-designed optimization algorithms found in the literature. In community detection, we compare to "CNM" <ref type="bibr" target="#b10">[11]</ref>, an agglomerative approach, "Newman", an approach that recursively partitions the graph <ref type="bibr" target="#b34">[36]</ref>, and "SC", which performs spectral clustering <ref type="bibr" target="#b44">[46]</ref> on the modularity matrix. In facility location, we compare to "greedy", the common heuristic of iteratively selecting the point with greatest marginal improvement in objective value, and "gonzalez" <ref type="bibr" target="#b18">[20]</ref>, an algorithm which iteratively selects the node furthest from the current set. "gonzalez" attains the optimal 2-approximation for this problem (note that the minmax facility location objective is non-submodular, ruling out the usual (1 -1/e)-approximation).</p><p>Datasets: We use several standard graph datasets: cora <ref type="bibr" target="#b38">[40]</ref> (a citation network with 2,708 nodes), citeseer <ref type="bibr" target="#b38">[40]</ref> (a citation network with 3,327 nodes), protein <ref type="bibr" target="#b12">[14]</ref> (a protein interaction network with 3,133 nodes), adol <ref type="bibr">[12]</ref> (an adolescent social network with 2,539 vertices), and fb <ref type="bibr" target="#b11">[13,</ref><ref type="bibr" target="#b30">32]</ref> (an online social network with 2,888 nodes). For facility location, we use the largest connected component of the graph (since otherwise distances may be infinite). Cora and citeseer have node features (based on a bag-of-words representation of the document), which were given to all GCN-based methods. For the other datasets, we generated unsupervised node2vec features <ref type="bibr" target="#b21">[23]</ref> using the training edges.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Results on single graphs</head><p>We start out with results for the combined link prediction and optimization problem. Table <ref type="table" target="#tab_3">1</ref> shows the objective value obtained by each approach on the full graph for community detection, with Table <ref type="table" target="#tab_4">2</ref> showing facility location. We focus first on the "Learning + Optimization" column which shows the combined link prediction/optimization task. We use K = 5 clusters; K = 10 is very similar and may be found in the appendix. CLUSTERNET outperforms the baselines in nearly all cases, often substantially. GCN-e2e learns to produce nontrivial solutions, often rivaling the other baseline methods. However, the explicit structure used by our approach CLUSTERNET results in much higher performance.</p><p>Interestingly, the two stage approach sometimes performs worse than the train-only baseline which optimizes just based on the training edges (without attempting to learn). This indicates that approaches which attempt to accurately reconstruct the graph can sometimes miss qualities which are important for optimization, and in the worst case may simply add noise that overwhelms the signal in the training edges. In order to confirm that the two-stage method learned to make meaningful predictions, in the appendix we give AUC values for each dataset. The average AUC value is 0.7584, indicating that the two-stage model does learn to make nontrivial predictions. However, the small amount of training data (only 40% of edges are observed) prevents it from perfectly reconstructing the true graph. This drives home the point that decision-focused learning methods such as CLUSTERNET can offer substantial benefits when highly accurate predictions are out of reach even for sophisticated learning methods.</p><p>We next examine an optimization-only task where the entire graph is available as input (the "Optimization" column of Tables <ref type="table" target="#tab_3">1</ref> and<ref type="table" target="#tab_4">Table 2</ref>). This tests CLUSTERNET's ability to learn to solve combinatorial optimization problems compared to expert-designed algorithms, even when there is no partial information or learning problem in play. We find that CLUSTERNET is highly competitive, meeting and frequently exceeding the baselines. It is particularly effective for community detection, where we observe large (&gt; 3x) improvements compared to the best baseline on some datasets. At facility location, our method always at least ties the baselines, and frequently improves on them. These experiments provide evidence that our approach, which is automatically specialized during training to optimize on a given graph, can rival and exceed hand-designed algorithms from the literature. The alternate learning approach, GCN-e2e, which is an end-to-end approach that tries to learn to predicts optimization solutions directly from the node features, at best ties the baselines and typically underperforms. This underscores the benefit of including algorithmic structure as a part of the end-to-end architecture.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Generalizing across graphs</head><p>Next, we investigate whether our method can learn generalizable strategies for optimization: can we train the model on one set of graphs drawn from some distribution and then apply it to unseen graphs? We consider two graph distributions. First, a synthetic generator introduced by <ref type="bibr" target="#b46">[48]</ref>, which is based on the spatial preferential attachment model <ref type="bibr" target="#b6">[7]</ref> (details in the appendix). We use 20 training graphs, 10 validation, and 30 test. Second, a dataset obtained by splitting the pubmed graph into 20 components using metis <ref type="bibr" target="#b25">[27]</ref>. We fix 10 training graphs, 2 validation, and 8 test. At test time, only 40% of the edges in each graph are revealed, matching the "Learning + optimization" setup above.</p><p>Table <ref type="table" target="#tab_5">3</ref> shows the results. To start out, we do not conduct any fine-tuning to the test graphs, evaluating entirely the generalizability of the learned representations. CLUSTERNET outperforms all baseline methods on all tasks, except for facility location on pubmed where it places second. We conclude that the learned model successfully generalizes to completely unseen graphs. We next investigate (in the "finetune" section of Interestingly, only fine-tuning (not using the training graphs at all) yields similar performance (the row "ClstrNet-ft-only"). While our earlier results show that CLUSTERNET can learn generalizable strategies, doing so may not be necessary when there is the opportunity to fine-tune. This allows a trade-off between quality and runtime: without fine-tuning, applying our method at test time requires just a single forward pass, which is extremely efficient. If additional computational cost at test time is acceptable, fine-tuning can be used to improve performance. Complete runtimes for all methods are shown in the appendix. CLUSTERNET's forward pass (i.e., no fine-tuning) is extremely efficient, requiring at most 0.23 seconds on the largest network, and is always faster than the baselines (on identical hardware). Fine-tuning requires longer, on par with the slowest baseline.</p><p>We lastly investigate the reason why pretraining provides little to no improvement over only finetuning. Essentially, we find that CLUSTERNET is extremely sample-efficient: using only a single training graph results in nearly as good performance as the full training set (and still better than all of the baselines), as seen in the "ClstrNet-1train" row of Table <ref type="table" target="#tab_5">3</ref>. That is, CLUSTERNET is capable of learning optimization strategies that generalize with strong performance to completely unseen graphs after observing only a single training example. This underscores the benefits of including algorithmic structure as a part of the architecture, which guides the model towards learning meaningful strategies.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>When machine learning is used to inform decision-making, it is often necessary to incorporate the downstream optimization problem into training. Here, we proposed a new approach to this decision-focused learning problem: include a differentiable solver for a simple proxy to the true, difficult optimization problem and learn a representation that maps the difficult problem to the simpler one. This representation is trained in an entirely automatic way, using the solution quality for the true downstream problem as the loss function. We find that this "middle path" for including algorithmic structure in learning improves over both two-stage approaches, which separate learning and optimization entirely, and purely end-to-end approaches, which use learning to directly predict the optimal solution. Here, we instantiated this framework for a class of graph optimization problems. We hope that future work will explore such ideas for other families of problems, paving the way for flexible and efficient optimization-based structure in deep learning.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Proofs A.1 Exact expression for gradients</head><p>Define R i = n j=1 r ji and C i = n j=1 r ji x j . We will work with C i ∈ R p×1 as a column vector. For a fixed i, j, we have</p><formula xml:id="formula_9">∂f i,• ∂x j = - R i x j ∂rji ∂xj -C i ∂rji ∂xj R 2 i - r ji R i I</formula><p>where I denotes the p-dimensional identity matrix. Similarly, fixing i, k gives </p><formula xml:id="formula_10">∂f i,• ∂µ k = δ ik I - R i n j=1 x j ∂rji ∂µ k -C i n j=1 ∂rji ∂µ k R 2 i A.2</formula><formula xml:id="formula_11">A (i,m),(k, ) = - R i n j=1 x m j ∂rji ∂µ k -C m i n j=1 ∂rji ∂µ k R 2 i</formula><p>The key term here is ≤ β, since we defined s in terms of cosine similarity and have assumed that the input is normalized. Putting this together, we have</p><formula xml:id="formula_12">A (i,m),(k, ) ≤ n j=1 x m j β R i + C m i n β R 2 i ≤ β n j=1 x m j αn + µ m i n β R i ≤ β n j=1 x m j αn + µ m i β α</formula><p>and so</p><formula xml:id="formula_13">||A|| 1 = max (k, ) (i,m) A (i,m),(k, ) ≤ max (k, ) (i,m) β n j=1 x m j αn + µ m i β α ≤ max (k, ) i βn αn + β α (since ||x j || 1 , ||µ i || 1 ≤ 1) ≤ 2K β α = 2K 2 β exp(-βδ) α .</formula><p>Since by assumption βδ &gt; log 2βK 2 α , we know that ||A|| 1 &lt; 1 and applying Lemma 2 competes the proof.</p><p>Lemma 1. Consider a point j and let i = arg max k r jk . Then, r ji ≥ 1 1+K exp(-βδ) , and correspondingly, k =i r jk ≤ K exp(-βδ) K exp(-βδ)+1 ≤ K exp(-βδ).</p><p>Proof. Equation 4 of <ref type="bibr" target="#b42">[44]</ref> gives that</p><formula xml:id="formula_14">r ij ≥ k =i 1 1 + exp(-(s i -s k ))</formula><p>.</p><p>Since by assumption we have -||x j -µ i || ≥ δ||x j -µ k ||, we obtain</p><formula xml:id="formula_15">r ij ≥ k =i 1 1 + exp(-δβ) ≥ 1 1 + K exp(-δβ) (using that exp(-δβ) ≤ 1).</formula><p>which proves the lemma.</p><p>Lemma 2. Suppose that for a matrix A, ||A -I|| ≤ δ for some δ &lt; 1 and an operator norm</p><formula xml:id="formula_16">|| • ||. Then, ||A -1 -I|| ≤ δ 1-δ .</formula><p>Proof. Let B = I -A. We have</p><formula xml:id="formula_17">A -1 = (I -B) -1 = ∞ i=0 B i (using the Neumann series representation) = I + ∞ i=1 B i</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.3 Code</head><p>See https://github.com/bwilder0/clusternet for code and data used to run the experiments.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.4 Hardware</head><p>All methods were run on a machine with 14 i9 3.1 GHz cores and 128 GB of RAM. For fair runtime comparisons with the baselines, all methods were run on CPU.</p><p>C Results for K = 10 </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D Timing Results</head><p>We run experiments on Intel i9 7940X @ 3.1 GHz with 128 GB of RAM. We report runtime in seconds. For algorithms with learned models, we report both the training time and the time to complete a single forward pass.   </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Backward pass: update node embeddings to improve objective Forward pass: embed and cluster nodes, evaluate objective</head><label></label><figDesc></figDesc><table><row><cell></cell><cell></cell><cell></cell><cell>𝑘-means layer</cell><cell></cell><cell></cell><cell></cell></row><row><cell>𝐴 𝑡𝑟𝑎𝑖𝑛</cell><cell>Node embeddings 𝑦</cell><cell>Compute k-means fixed point</cell><cell>Run one update (Eq. 2)</cell><cell>Fractional solution 𝑥</cell><cell>E 𝑥∼ 𝑥 𝑓(𝑥, 𝐴 𝑡𝑟𝑎𝑖𝑛 )</cell><cell>Round hard max or 𝑥 with swap</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>rounding</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Round at test time Decision training loss Backward pass: update model parameters to improve accuracy Forward pass: embed nodes, predict edges, evaluate accuracy</head><label></label><figDesc></figDesc><table><row><cell>𝐴 𝑡𝑟𝑎𝑖𝑛</cell><cell>Node embeddings 𝑦</cell><cell>Predicted edges probabilities መ 𝐴</cell><cell>ℓ( መ 𝐴, 𝐴 𝑡𝑟𝑎𝑖𝑛 )</cell><cell>Run optimization algorithm on መ 𝐴</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Optimize at test time ClusterNet Two-stage</head><label></label><figDesc></figDesc><table><row><cell>Figure 1: Top: CLUSTERNET, our proposed system. Bottom: a typical two-stage approach.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 1 :</head><label>1</label><figDesc>Performance on the community detection task</figDesc><table><row><cell></cell><cell>Learning + optimization</cell><cell></cell><cell></cell><cell></cell><cell cols="2">Optimization</cell></row><row><cell></cell><cell>cora cite. prot. adol</cell><cell>fb</cell><cell cols="5">cora cite. prot. adol fb</cell></row><row><cell>ClusterNet</cell><cell cols="2">0.54 0.55 0.29 0.49 0.30</cell><cell cols="5">0.72 0.73 0.52 0.58 0.76</cell></row><row><cell>GCN-e2e</cell><cell cols="2">0.16 0.02 0.13 0.12 0.13</cell><cell cols="5">0.19 0.03 0.16 0.20 0.23</cell></row><row><cell>Train-CNM</cell><cell cols="2">0.20 0.42 0.09 0.01 0.14</cell><cell cols="5">0.08 0.34 0.05 0.57 0.77</cell></row><row><cell>Train-Newman</cell><cell cols="2">0.09 0.15 0.15 0.15 0.08</cell><cell cols="5">0.20 0.23 0.29 0.30 0.55</cell></row><row><cell>Train-SC</cell><cell cols="2">0.03 0.02 0.03 0.23 0.19</cell><cell cols="5">0.09 0.05 0.06 0.49 0.61</cell></row><row><cell>GCN-2stage-CNM</cell><cell cols="2">0.17 0.21 0.18 0.28 0.13</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell cols="3">GCN-2stage-Newman 0.00 0.00 0.00 0.14 0.02</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell>GCN-2stage-SC</cell><cell cols="2">0.14 0.16 0.04 0.31 0.25</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 2 :</head><label>2</label><figDesc>Performance on the facility location task.</figDesc><table><row><cell></cell><cell></cell><cell cols="3">Learning + optimization</cell><cell></cell><cell></cell><cell cols="2">Optimization</cell><cell></cell><cell></cell></row><row><cell></cell><cell cols="5">cora cite. prot. adol fb</cell><cell cols="5">cora cite. prot. adol fb</cell></row><row><cell>ClusterNet</cell><cell>10</cell><cell>14</cell><cell>6</cell><cell>6</cell><cell>4</cell><cell>9</cell><cell>14</cell><cell>6</cell><cell>5</cell><cell>3</cell></row><row><cell>GCN-e2e</cell><cell>12</cell><cell>15</cell><cell>8</cell><cell>6</cell><cell>5</cell><cell>11</cell><cell>14</cell><cell>7</cell><cell>6</cell><cell>5</cell></row><row><cell>Train-greedy</cell><cell>14</cell><cell>16</cell><cell>8</cell><cell>8</cell><cell>6</cell><cell>9</cell><cell>14</cell><cell>7</cell><cell>6</cell><cell>5</cell></row><row><cell>Train-gonzalez</cell><cell>12</cell><cell>17</cell><cell>8</cell><cell>6</cell><cell>6</cell><cell>10</cell><cell>15</cell><cell>7</cell><cell>7</cell><cell>3</cell></row><row><cell>GCN-2Stage-greedy</cell><cell>14</cell><cell>17</cell><cell>8</cell><cell>7</cell><cell>6</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell>GCN-2Stage-gonzalez</cell><cell>13</cell><cell>17</cell><cell>8</cell><cell>6</cell><cell>6</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 3 :</head><label>3</label><figDesc>Inductive results. "%" is the fraction of test instances for which a method attains top performance (including ties). "Finetune" methods are excluded from this in the "No finetune" section.</figDesc><table><row><cell></cell><cell></cell><cell cols="2">Community detection</cell><cell></cell><cell></cell><cell cols="2">Facility location</cell><cell></cell><cell></cell></row><row><cell></cell><cell cols="2">synthetic</cell><cell cols="2">pubmed</cell><cell></cell><cell cols="2">synthetic</cell><cell>pubmed</cell><cell></cell></row><row><cell>No finetune</cell><cell>Avg.</cell><cell>%</cell><cell>Avg.</cell><cell>%</cell><cell>No finetune</cell><cell>Avg.</cell><cell>%</cell><cell>Avg.</cell><cell>%</cell></row><row><cell>ClusterNet</cell><cell cols="2">0.57 26/30</cell><cell cols="2">0.30 7/8</cell><cell>ClusterNet</cell><cell>7.90</cell><cell>25/30</cell><cell>7.88</cell><cell>3/8</cell></row><row><cell>GCN-e2e</cell><cell>0.26</cell><cell>0/30</cell><cell cols="2">0.01 0/8</cell><cell>GCN-e2e</cell><cell>8.63</cell><cell>11/30</cell><cell>8.62</cell><cell>1/8</cell></row><row><cell>Train-CNM</cell><cell>0.14</cell><cell>0/30</cell><cell cols="2">0.16 1/8</cell><cell>Train-greedy</cell><cell cols="2">14.00 0/30</cell><cell>9.50</cell><cell>1/8</cell></row><row><cell>Train-Newman</cell><cell>0.24</cell><cell>0/30</cell><cell cols="2">0.17 0/8</cell><cell>Train-gonzalez</cell><cell cols="2">10.30 2/30</cell><cell>9.38</cell><cell>1/8</cell></row><row><cell>Train-SC</cell><cell>0.16</cell><cell>0/30</cell><cell cols="2">0.04 0/8</cell><cell>2Stage-greedy</cell><cell>9.60</cell><cell>3/30</cell><cell cols="2">10.00 0/8</cell></row><row><cell>2Stage-CNM</cell><cell>0.51</cell><cell>0/30</cell><cell cols="2">0.24 0/8</cell><cell>2Stage-gonz.</cell><cell cols="2">10.00 2/30</cell><cell>6.88</cell><cell>5/8</cell></row><row><cell cols="2">2Stage-Newman 0.01</cell><cell>0/30</cell><cell cols="2">0.01 0/8</cell><cell>ClstrNet-1train</cell><cell>7.93</cell><cell>12/30</cell><cell>7.88</cell><cell>2/8</cell></row><row><cell>2Stage-SC</cell><cell>0.52</cell><cell>4/30</cell><cell cols="2">0.15 0/8</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>ClstrNet-1train</cell><cell>0.55</cell><cell>0/30</cell><cell cols="2">0.25 0/8</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Finetune</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>Finetune</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>ClstrNet-ft</cell><cell cols="2">0.60 20/30</cell><cell cols="2">0.40 2/8</cell><cell>ClstrNet-ft</cell><cell>8.08</cell><cell>12/30</cell><cell>8.01</cell><cell>3/8</cell></row><row><cell>ClstrNet-ft-only</cell><cell cols="2">0.60 10/30</cell><cell cols="2">0.42 6/8</cell><cell cols="2">ClstrNet-ft-only 7.84</cell><cell>16/30</cell><cell>7.76</cell><cell>4/8</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 3 )</head><label>3</label><figDesc>whether CLUSTERNET's performance can be further improved by fine-tuning to the 40% of observed edges for each test graph (treating each test graph as an instance of the link prediction problem from Section 5.1, but initializing with the parameters of the model learned over the training graphs). We see that CLUSTERNET's performance typically improves, indicating that fine-tuning can allow us to extract additional gains if extra training time is available.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head></head><label></label><figDesc>Guarantee for approximate gradients Proposition 2. Suppose that for all points j, ||x j -µ i || -||x j -µ c(j) || ≥ δ for all i = c(j) and that for all clusters i, Moreover, suppose that βδ &gt; log 2βK 2 α . Then, ∂f ∂µ -I We focus on the off-diagonal component of ∂fim ∂µ k , given by</figDesc><table><row><cell></cell><cell>≤</cell></row><row><cell></cell><cell>1</cell></row><row><cell>exp(-δβ)</cell><cell>K 2 β</cell></row></table><note><p><p>n j=1 r ji ≥ αn.</p>1 2 α-K 2 β exp(-δβ) where || • || 1 is the operator 1-norm.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 4 :</head><label>4</label><figDesc>Results for community detection. "-" for GCN-2Stage-Newman in the Learning + optimization section denotes that the method could not be run due to numerical issues.</figDesc><table><row><cell></cell><cell>Learning + optimization</cell><cell></cell><cell></cell><cell></cell><cell cols="2">Optimization</cell></row><row><cell></cell><cell>cora cite. prot. adol</cell><cell>fb</cell><cell cols="5">cora cite. prot. adol fb</cell></row><row><cell>ClusterNet</cell><cell cols="2">0.56 0.53 0.28 0.47 0.28</cell><cell cols="5">0.71 0.76 0.52 0.55 0.80</cell></row><row><cell>GCN-e2e</cell><cell cols="2">0.01 0.01 0.06 0.08 0.00</cell><cell cols="5">0.07 0.08 0.14 0.15 0.15</cell></row><row><cell>Train-CNM</cell><cell cols="2">0.20 0.44 0.09 0.01 0.17</cell><cell cols="5">0.08 0.34 0.05 0.60 0.80</cell></row><row><cell>Train-Newman</cell><cell cols="2">0.08 0.15 0.15 0.14 0.07</cell><cell cols="5">0.20 0.22 0.29 0.30 0.47</cell></row><row><cell>Train-SC</cell><cell cols="2">0.06 0.04 0.05 0.22 0.21</cell><cell cols="5">0.15 0.08 0.07 0.46 0.79</cell></row><row><cell>GCN-2stage-CNM</cell><cell cols="2">0.20 0.23 0.18 0.32 0.08</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell cols="2">GCN-2stage-Newman 0.01 0.00 0.00 -</cell><cell>0.00</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell>GCN-2stage-SC</cell><cell cols="2">0.13 0.18 0.10 0.29 0.18</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 5 :</head><label>5</label><figDesc>Results for facility location</figDesc><table><row><cell></cell><cell></cell><cell cols="3">Learning + optimization</cell><cell></cell><cell></cell><cell cols="2">Optimization</cell><cell></cell><cell></cell></row><row><cell></cell><cell cols="5">cora cite. prot. adol fb</cell><cell cols="5">cora cite. prot. adol fb</cell></row><row><cell>ClusterNet</cell><cell>9</cell><cell>14</cell><cell>7</cell><cell>5</cell><cell>2</cell><cell>8</cell><cell>13</cell><cell>6</cell><cell>5</cell><cell>2</cell></row><row><cell>GCN-e2e</cell><cell>12</cell><cell>15</cell><cell>8</cell><cell>6</cell><cell>4</cell><cell>10</cell><cell>14</cell><cell>7</cell><cell>5</cell><cell>4</cell></row><row><cell>Train-greedy</cell><cell>14</cell><cell>16</cell><cell>8</cell><cell>8</cell><cell>6</cell><cell>9</cell><cell>14</cell><cell>7</cell><cell>6</cell><cell>5</cell></row><row><cell>Train-gonzalez</cell><cell>11</cell><cell>15</cell><cell>8</cell><cell>7</cell><cell>6</cell><cell>9</cell><cell>13</cell><cell>7</cell><cell>6</cell><cell>2</cell></row><row><cell>GCN-2Stage-greedy</cell><cell>14</cell><cell>16</cell><cell>8</cell><cell>7</cell><cell>6</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell>GCN-2Stage-gonzalez</cell><cell>12</cell><cell>16</cell><cell>8</cell><cell>6</cell><cell>5</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_11"><head>Table 6 :</head><label>6</label><figDesc>Timing results for the community detection task (s)</figDesc><table><row><cell></cell><cell>cora</cell><cell>cite.</cell><cell>prot.</cell><cell>adol</cell><cell>fb</cell></row><row><cell>ClusterNet -Training Time</cell><cell cols="3">59.48 149.73 129.63</cell><cell>56.68</cell><cell>54.33</cell></row><row><cell>ClusterNet -Forward Pass</cell><cell>0.04</cell><cell>0.12</cell><cell>0.11</cell><cell>0.04</cell><cell>0.05</cell></row><row><cell>GCN-e2e -Training Time</cell><cell>36.83</cell><cell>54.99</cell><cell>34.60</cell><cell>29.04</cell><cell>28.17</cell></row><row><cell>GCN-e2e -Forward Pass</cell><cell>0.002</cell><cell>0.005</cell><cell>0.002</cell><cell>0.003</cell><cell>0.001</cell></row><row><cell>Train-CNM</cell><cell>1.31</cell><cell>1.28</cell><cell>1.02</cell><cell>1.03</cell><cell>2.94</cell></row><row><cell>Train-Newman</cell><cell>9.99</cell><cell>15.89</cell><cell>15.19</cell><cell>11.45</cell><cell>7.25</cell></row><row><cell>Train-SC</cell><cell>0.41</cell><cell>0.62</cell><cell>0.55</cell><cell>0.38</cell><cell>0.48</cell></row><row><cell>GCN-2Stage -Training Time</cell><cell>68.79</cell><cell>72.20</cell><cell cols="2">75.69 103.56</cell><cell>57.62</cell></row><row><cell>GCN-2Stage-CNM</cell><cell cols="5">119.34 178.39 159.64 101.64 142.02</cell></row><row><cell>GCN-2Stage-New.</cell><cell>37.96</cell><cell>58.26</cell><cell>51.70</cell><cell>33.14</cell><cell>43.88</cell></row><row><cell>GCN-2Stage-SC</cell><cell>0.40</cell><cell>0.61</cell><cell>0.50</cell><cell>0.33</cell><cell>0.36</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_12"><head>Table 7 :</head><label>7</label><figDesc>Timing results for the kcenter task (s)</figDesc><table><row><cell></cell><cell>cora</cell><cell>cite.</cell><cell>prot.</cell><cell>adol</cell><cell>fb</cell></row><row><cell>ClusterNet -Training Time</cell><cell cols="4">264.14 555.84 488.37 244.74</cell><cell>246.57</cell></row><row><cell>ClusterNet -Forward Pass</cell><cell>0.10</cell><cell>0.23</cell><cell>0.20</cell><cell>0.09</cell><cell>0.11</cell></row><row><cell>GCN-e2e -Training Time</cell><cell cols="4">237.68 511.23 446.76 229.49</cell><cell>221.28</cell></row><row><cell>GCN-e2e -Forward Pass</cell><cell>0.003</cell><cell>0.006</cell><cell>.005</cell><cell>0.004</cell><cell>.003</cell></row><row><cell>Train-Greedy</cell><cell>1029.18</cell><cell>2387</cell><cell cols="2">1966 619.06</cell><cell>1244.09</cell></row><row><cell>Train-Gonzalez</cell><cell>0.082</cell><cell>0.14</cell><cell>0.12</cell><cell>0.07</cell><cell>.066</cell></row><row><cell>GCN-2Stage -Training Time</cell><cell>73.82</cell><cell cols="2">70.21 103.98</cell><cell>75.48</cell><cell>104.66</cell></row><row><cell>GCN-2Stage-Greedy</cell><cell>1189.15</cell><cell>2367</cell><cell cols="3">2017 621.59 1237.871</cell></row><row><cell>GCN-2Stage-Gonzalez</cell><cell>0.18</cell><cell>0.28</cell><cell>0.25</cell><cell>0.13</cell><cell>0.13</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_13"><head>Table 8 :</head><label>8</label><figDesc>Timing results in the inductive setting for community detection task (s)</figDesc><table><row><cell></cell><cell cols="2">synthetic pubmed</cell></row><row><cell>ClusterNet -Training time</cell><cell>6.57</cell><cell>13.74</cell></row><row><cell>ClusterNet -Forward Pass</cell><cell>0.003</cell><cell>0.008</cell></row><row><cell>GCN-e2e -Training time</cell><cell>11.40</cell><cell>15.86</cell></row><row><cell>GCN-e2e -Forward Pass</cell><cell>0.04</cell><cell>0.03</cell></row><row><cell>Train-CNM</cell><cell>0.08</cell><cell>0.17</cell></row><row><cell>Train-Newman</cell><cell>0.65</cell><cell>1.83</cell></row><row><cell>Train-SC</cell><cell>0.03</cell><cell>0.04</cell></row><row><cell>2Stage -Train</cell><cell>10.98</cell><cell>15.86</cell></row><row><cell>2Stage-CNM</cell><cell>3.23</cell><cell>13.73</cell></row><row><cell>2Stage-New.</cell><cell>1.12</cell><cell>4.29</cell></row><row><cell>2Stage-SC</cell><cell>0.04</cell><cell>0.10</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_14"><head>Table 9 :</head><label>9</label><figDesc>Timing results in the inductive setting for the kcenter task (s)</figDesc><table><row><cell></cell><cell cols="2">synthetic pubmed</cell></row><row><cell>ClusterNet -Training Time</cell><cell>14.36</cell><cell>43.06</cell></row><row><cell>ClusterNet -Forward Pass</cell><cell>0.005</cell><cell>0.02</cell></row><row><cell>GCN-e2e -Training Time</cell><cell>9.49</cell><cell>33.73</cell></row><row><cell>GCN-e2e -Forward Pass</cell><cell>0.01</cell><cell>0.02</cell></row><row><cell>Train-Gonzalez</cell><cell>0.07</cell><cell>0.49</cell></row><row><cell>Train-Greedy</cell><cell>4.99</cell><cell>32.7</cell></row><row><cell>2Stage -Train</cell><cell>11.00</cell><cell>15.78</cell></row><row><cell>2Stage-Gonzalez</cell><cell>0.07</cell><cell>0.07</cell></row><row><cell>2Stage-Greedy</cell><cell>5.31</cell><cell>16.16</cell></row></table></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgements</head><p>This work was supported by the <rs type="funder">Army Research Office</rs> (<rs type="grantNumber">MURI W911NF1810208</rs>). Wilder is supported by a <rs type="funder">NSF</rs> <rs type="grantName">Graduate Research Fellowship</rs>. Dilkina is supported partially by <rs type="funder">NSF</rs> award # <rs type="grantNumber">1914522</rs> and by <rs type="funder">U.S. Department of Homeland Security</rs> under Grant Award No. <rs type="grantNumber">2015-ST-061-CIRC01</rs>. The views and conclusions contained in this document are those of the authors and should not be interpreted as necessarily representing the official policies, either expressed or implied, of the <rs type="institution">U.S Department of Homeland Security</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_Xgj3n7D">
+					<idno type="grant-number">MURI W911NF1810208</idno>
+				</org>
+				<org type="funding" xml:id="_tuGMwwj">
+					<orgName type="grant-name">Graduate Research Fellowship</orgName>
+				</org>
+				<org type="funding" xml:id="_Z77YaHm">
+					<idno type="grant-number">1914522</idno>
+				</org>
+				<org type="funding" xml:id="_jGt4kHm">
+					<idno type="grant-number">2015-ST-061-CIRC01</idno>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>and so</p><p>||B|| i ∞ (since operator norms are submultiplicative) = δ 1 -δ (geometric series).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Experimental setup details B.1 Hyperparameters</head><p>All methods were trained with the Adam optimizer. For the single-graph experiments, we tested the following settings on the pubmed graph (which was not used in our single-graph experiments): </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.2 Synthetic graph generation</head><p>Each node has a set of attributes y i (in this case, demographic features simulated from real population data); node i forms a connection to node j with probability proportional to e -1 ρ ||yi-yj || d(j) where d(j) is the degree of node j. This models both the homophily and heavy-tailed degree distribution seen in real world networks. We took ρ = 0.025 to obtain a high degree of homophily, so that there is meaningful community structure. In order to make the problem more difficult, our method does not observe the features y; instead, we generate unsupervised features from the graph structure alone using role2vec <ref type="bibr" target="#b1">[2]</ref> (which generates inductive representations based on motif counts that are meaningful across graphs). Each graph has 500 nodes.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Pipage rounding: A new method of constructing algorithms with proven performance guarantee</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Alexander</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maxim</forename><forename type="middle">I</forename><surname>Ageev</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sviridenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Combinatorial Optimization</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="307" to="328" />
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<author>
+			<persName><forename type="first">Ryan</forename><surname>Nesreen K Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Theodore</forename><forename type="middle">L</forename><surname>Boaz Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rong</forename><surname>Willke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiangnan</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hoda</forename><surname>Kong</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Eldardiry</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1802.02896</idno>
+		<title level="m">Learning role-based graph embeddings</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Optnet: Differentiable optimization as a layer in neural networks</title>
+		<author>
+			<persName><forename type="first">Brandon</forename><surname>Amos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">Zico</forename><surname>Kolter</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Learning to learn by gradient descent by gradient descent</title>
+		<author>
+			<persName><forename type="first">Marcin</forename><surname>Andrychowicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Misha</forename><surname>Denil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergio</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthew</forename><forename type="middle">W</forename><surname>Hoffman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Pfau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Schaul</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brendan</forename><surname>Shillingford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nando</forename><forename type="middle">De</forename><surname>Freitas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="3981" to="3989" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Community detection with edge augmentation in criminal networks</title>
+		<author>
+			<persName><forename type="first">Ashwin</forename><surname>Bahulkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Boleslaw</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Szymanski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">C</forename><surname>Orkun Baycik</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sharkey</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2018 IEEE/ACM International Conference on Advances in Social Networks Analysis and Mining (ASONAM)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<author>
+			<persName><forename type="first">Othman</forename><forename type="middle">El</forename><surname>Balghiti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><forename type="middle">N</forename><surname>Elmachtoub</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Grigas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ambuj</forename><surname>Tewari</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1905.11488</idno>
+		<title level="m">Generalization bounds in the predict-then-optimize framework</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Spatial networks</title>
+		<author>
+			<persName><forename type="first">Marc</forename><surname>Barthélemy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Physics Reports</title>
+		<imprint>
+			<biblScope unit="volume">499</biblScope>
+			<biblScope unit="issue">1-3</biblScope>
+			<biblScope unit="page" from="1" to="101" />
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<author>
+			<persName><forename type="first">Irwan</forename><surname>Bello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hieu</forename><surname>Pham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Quoc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohammad</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samy</forename><surname>Norouzi</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bengio</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1611.09940</idno>
+		<title level="m">Neural combinatorial optimization with reinforcement learning</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Link prediction in criminal networks: A tool for criminal intelligence analysis</title>
+		<author>
+			<persName><forename type="first">Giulia</forename><surname>Berlusconi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francesco</forename><surname>Calderoni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicola</forename><surname>Parolini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Verani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carlo</forename><surname>Piccardi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PloS one</title>
+		<imprint>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page">154244</biblScope>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Link-prediction enhanced consensus clustering for complex networks</title>
+		<author>
+			<persName><forename type="first">Matthew</forename><surname>Burgess</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eytan</forename><surname>Adar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Cafarella</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PloS one</title>
+		<imprint>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page">153384</biblScope>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Finding community structure in very large networks</title>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Clauset</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cristopher</forename><surname>Mark Ej Newman</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Moore</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Physical review E</title>
+		<imprint>
+			<biblScope unit="volume">70</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page">66111</biblScope>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<ptr target="http://konect.uni-koblenz.de/networks/ego-facebook" />
+		<title level="m">Facebook (nips)</title>
+		<imprint>
+			<publisher>Koblenz Network Collection</publisher>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title/>
+		<author>
+			<orgName type="collaboration">Koblenz Network Collection. Human protein</orgName>
+		</author>
+		<ptr target="http://konect.uni-koblenz.de/networks/maayan-vidal" />
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Kotagiri Ramamohanarao, and Tias Guns. Prediction + optimisation for the knapsack problem</title>
+		<author>
+			<persName><forename type="first">Emir</forename><surname>Demirovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Stuckey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Bailey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Leckie</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CPAIOR</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Differentiable learning of submodular models</title>
+		<author>
+			<persName><forename type="first">Josip</forename><surname>Djolonga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Krause</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Generic methods for optimization-based modeling</title>
+		<author>
+			<persName><forename type="first">Justin</forename><surname>Domke</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="318" to="326" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Task-based end-to-end model learning in stochastic optimization</title>
+		<author>
+			<persName><forename type="first">Priya</forename><surname>Donti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brandon</forename><surname>Amos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J Zico</forename><surname>Kolter</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="5484" to="5494" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Smart&quot; predict, then optimize</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Adam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Elmachtoub</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Grigas</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1710.08005</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Clustering to minimize the maximum intercluster distance</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Teofilo</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gonzalez</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Theoretical Computer Science</title>
+		<imprint>
+			<biblScope unit="volume">38</biblScope>
+			<biblScope unit="page" from="293" to="306" />
+			<date type="published" when="1985">1985</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Tagger: Deep unsupervised perceptual grouping</title>
+		<author>
+			<persName><forename type="first">Klaus</forename><surname>Greff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antti</forename><surname>Rasmus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mathias</forename><surname>Berglund</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tele</forename><surname>Hao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harri</forename><surname>Valpola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jürgen</forename><surname>Schmidhuber</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Neural expectation maximization</title>
+		<author>
+			<persName><forename type="first">Klaus</forename><surname>Greff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sjoerd</forename><surname>Van Steenkiste</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jürgen</forename><surname>Schmidhuber</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">node2vec: Scalable feature learning for networks</title>
+		<author>
+			<persName><forename type="first">Aditya</forename><surname>Grover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the 22nd ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="855" to="864" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Improved deep embedded clustering with local structure preservation</title>
+		<author>
+			<persName><forename type="first">Xifeng</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Long</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinwang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianping</forename><surname>Yin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IJCAI</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Inductive representation learning on large graphs</title>
+		<author>
+			<persName><forename type="first">Will</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhitao</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Stochastic submodular maximization: The case of coverage functions</title>
+		<author>
+			<persName><forename type="first">Mohammad</forename><surname>Karimi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mario</forename><surname>Lucic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hamed</forename><surname>Hassani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Krause</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">A fast and high quality multilevel scheme for partitioning irregular graphs</title>
+		<author>
+			<persName><forename type="first">George</forename><surname>Karypis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vipin</forename><surname>Kumar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">SIAM Journal on scientific Computing</title>
+		<imprint>
+			<biblScope unit="volume">20</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="359" to="392" />
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Learning combinatorial optimization algorithms over graphs</title>
+		<author>
+			<persName><forename type="first">Elias</forename><surname>Khalil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanjun</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuyu</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bistra</forename><surname>Dilkina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Le</forename><surname>Song</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Attention, learn to solve routing problems! In ICLR</title>
+		<author>
+			<persName><forename type="first">Wouter</forename><surname>Kool</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Herke</forename><surname>Van Hoof</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Deep spectral clustering learning</title>
+		<author>
+			<persName><forename type="first">Raquel</forename><surname>Marc T Law</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><forename type="middle">S</forename><surname>Urtasun</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zemel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Learning to discover social circles in ego networks</title>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julian</forename><forename type="middle">J</forename><surname>Mcauley</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="539" to="547" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<title level="m" type="main">Information theory, inference and learning algorithms</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">C</forename><surname>David</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mackay</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+			<publisher>Cambridge university press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Differentiable dynamic programming for structured prediction and attention</title>
+		<author>
+			<persName><forename type="first">Arthur</forename><surname>Mensch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mathieu</forename><surname>Blondel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<author>
+			<persName><forename type="first">Azade</forename><surname>Nazi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Will</forename><surname>Hang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anna</forename><surname>Goldie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sujith</forename><surname>Ravi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Azalia</forename><surname>Mirhoseini</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gap</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1903.00614</idno>
+		<title level="m">Generalizable approximate graph partitioning framework</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Finding community structure in networks using the eigenvectors of matrices</title>
+		<author>
+			<persName><surname>Mark Ej Newman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Physical review E</title>
+		<imprint>
+			<biblScope unit="volume">74</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page">36104</biblScope>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Modularity and community structure in networks</title>
+		<author>
+			<persName><surname>Mark Ej Newman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the National Academy of Sciences</title>
+		<imprint>
+			<biblScope unit="volume">103</biblScope>
+			<biblScope unit="issue">23</biblScope>
+			<biblScope unit="page" from="8577" to="8582" />
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Deepwalk: Online learning of social representations</title>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rami</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Skiena</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="701" to="710" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Modeling relational data with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Bloem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Van Den</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Titov</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">European Semantic Web Conference</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Collective classification in network data</title>
+		<author>
+			<persName><forename type="first">Prithviraj</forename><surname>Sen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Galileo</forename><surname>Namata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mustafa</forename><surname>Bilgic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lise</forename><surname>Getoor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brian</forename><surname>Galligher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tina</forename><surname>Eliassi-Rad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AI magazine</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="93" to="93" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Spectralnet: Spectral clustering using deep neural networks</title>
+		<author>
+			<persName><forename type="first">Uri</forename><surname>Shaham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kelly</forename><surname>Stanton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Henry</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Boaz</forename><surname>Nadler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronen</forename><surname>Basri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuval</forename><surname>Kluger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">In ICLR</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Efficient network disintegration under incomplete information: the comic effect of link prediction</title>
+		<author>
+			<persName><forename type="first">Suo-Yi</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Linyuan</forename><surname>Lü</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng-Jun</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Lu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Scientific reports</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="page">22916</biblScope>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Learning deep representations for graph clustering</title>
+		<author>
+			<persName><forename type="first">Bin</forename><surname>Fei Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qing</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Enhong</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tie-Yan</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Twenty-Eighth AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">One-vs-each approximation to softmax for scalable estimation of probabilities</title>
+		<author>
+			<persName><forename type="first">Michalis</forename><surname>Titsias</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Meire Fortunato, and Navdeep Jaitly. Pointer networks</title>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">A tutorial on spectral clustering</title>
+		<author>
+			<persName><forename type="first">Ulrike</forename><surname>Von</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luxburg</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Statistics and computing</title>
+		<imprint>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="395" to="416" />
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Melding the data-decisions pipeline: Decisionfocused learning for combinatorial optimization</title>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Wilder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bistra</forename><surname>Dilkina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Milind</forename><surname>Tambe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Optimizing network structure for preventative health</title>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Wilder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Han</forename><surname>Ching Ou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kayla</forename><surname>De La Haye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Milind</forename><surname>Tambe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AAMAS</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Unsupervised deep embedding for clustering analysis</title>
+		<author>
+			<persName><forename type="first">Junyuan</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ross</forename><surname>Girshick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ali</forename><surname>Farhadi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="478" to="487" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Detecting community structure in networks using edge prediction methods</title>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steve</forename><surname>Gregory</surname></persName>
+		</author>
+		<idno>09):P09008</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Statistical Mechanics: Theory and Experiment</title>
+		<imprint>
+			<date type="published" when="2012">2012. 2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Modularity based community detection with deep learning</title>
+		<author>
+			<persName><forename type="first">Liang</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaochun</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongxiao</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chuan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weixiong</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IJCAI</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">16</biblScope>
+			<biblScope unit="page" from="2252" to="2258" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Hierarchical graph representation learning with differentiable pooling</title>
+		<author>
+			<persName><forename type="first">Zhitao</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiaxuan</forename><surname>You</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Morris</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Will</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="4800" to="4810" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Link prediction based on graph neural networks</title>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixin</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Conditional random fields as recurrent neural networks</title>
+		<author>
+			<persName><forename type="first">Shuai</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sadeep</forename><surname>Jayasumana</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernardino</forename><surname>Romera-Paredes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vibhav</forename><surname>Vineet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhizhong</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dalong</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chang</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philip Hs</forename><surname>Torr</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE international conference on computer vision</title>
+		<meeting>the IEEE international conference on computer vision</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="1529" to="1537" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

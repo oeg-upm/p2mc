@@ -1,0 +1,1177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Efficient Neural Common Neighbor for Temporal Graph Link Prediction</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-06-12">12 Jun 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Xiaohui</forename><surname>Zhang</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Institute for Artificial Intelligence</orgName>
+								<orgName type="institution">Peking University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Yanbo</forename><surname>Wang</surname></persName>
+							<email>wangyanbo@stu.pku.edu.cn</email>
+							<affiliation key="aff0">
+								<orgName type="department">Institute for Artificial Intelligence</orgName>
+								<orgName type="institution">Peking University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Xiyuan</forename><surname>Wang</surname></persName>
+							<email>wangxiyuan@pku.edu.cn</email>
+							<affiliation key="aff0">
+								<orgName type="department">Institute for Artificial Intelligence</orgName>
+								<orgName type="institution">Peking University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Institute for Artificial Intelligence</orgName>
+								<orgName type="institution">Peking University</orgName>
+							</affiliation>
+							<affiliation key="aff0">
+								<orgName type="department">Institute for Artificial Intelligence</orgName>
+								<orgName type="institution">Peking University</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Efficient Neural Common Neighbor for Temporal Graph Link Prediction</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-06-12">12 Jun 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">233F0E3A9823E0C95F351F3673BE640F</idno>
+					<idno type="arXiv">arXiv:2406.07926v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:12+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Temporal graphs are ubiquitous in real-world scenarios, such as social network, trade and transportation. Predicting dynamic links between nodes in a temporal graph is of vital importance. Traditional methods usually leverage the temporal neighborhood of interaction history to generate node embeddings first and then aggregate the source and target node embeddings to predict the link. However, such methods focus on learning individual node representations, but overlook the pairwise representation learning nature of link prediction and fail to capture the important pairwise features of links such as common neighbors (CN). Motivated by the success of Neural Common Neighbor (NCN) for static graph link prediction, we propose TNCN, a temporal version of NCN for link prediction in temporal graphs. TNCN dynamically updates a temporal neighbor dictionary for each node, and utilizes multi-hop common neighbors between the source and target node to learn a more effective pairwise representation. We validate our model on five largescale real-world datasets from the Temporal Graph Benchmark (TGB), and find that it achieves new state-of-the-art performance on three of them. Additionally, TNCN demonstrates excellent scalability on large datasets, outperforming popular GNN baselines by up to 6.4 times in speed. Our code is available at https: //github.com/GraphPKU/TNCN.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Temporal graphs are increasingly utilized in contemporary real-world applications. Complex systems such as social networks <ref type="bibr" target="#b30">[Yang et al., 2017</ref><ref type="bibr" target="#b14">, Min et al., 2021</ref><ref type="bibr" target="#b16">, Nguyen et al., 2017]</ref>, trade and transaction networks <ref type="bibr">[Zhang et al., 2018</ref><ref type="bibr" target="#b29">, Yan et al., 2021]</ref>, and recommendation systems <ref type="bibr" target="#b27">[Wu et al., 2022</ref><ref type="bibr" target="#b31">, Yin et al., 2019]</ref> are prime examples. These systems evolve dynamically over time, exhibiting different characteristics at various temporal moments. Recently, there has been a marked increase in the representation learning tasks on temporal graphs in the graph research community. At the same time, a prominent graph learning tool, Graph Neural Network (GNN) <ref type="bibr" target="#b20">[Scarselli et al., 2008]</ref>, has been developed to model node, link, and graph tasks. GNNs generally learn node embeddings by iteratively aggregating embeddings from neighboring nodes. They have demonstrated exceptional performance in graph representation learning, achieving state-of-the-art results across numerous tasks.</p><p>There remains a significant gap between static graphs and the increasingly prevalent temporal graphs. Temporal graphs incorporate discrete or continuous timestamps attached to edges, providing a more precise depiction of the graph evolution process. Meanwhile, many methodologies for static graphs are not applicable due to the additional constraints imposed by timestamps on causality. One can only utilize nodes and edges that precede a given time, implicitly resulting in numerous graph instances  Such methods cannot distinguish node u and v because they possess the same temporal computation tree in figure (b), thus generating the same node representation. However, when we try to learn their pair-wise representation, i.e. (u, w) and (v, w), we can observe that v has a temporal common neighbor b with node w while u doesn't, as shown in figure (c). Thus with the same computation graph, we only need to utilize the extra node b's embedding to distinguish (u, w) and <ref type="bibr">(v, w)</ref>.</p><p>to analyze. Building on the success of time sequence modeling, <ref type="bibr" target="#b8">Kumar et al. [2019]</ref>, <ref type="bibr" target="#b21">Trivedi et al. [2019]</ref>, <ref type="bibr" target="#b19">Rossi et al. [2020]</ref> propose memory-based temporal graph networks aimed at learning both short-and long-term dependencies. These methods, particularly Temporal Graph Networks (TGN), have achieved notable success in temporal node classification. Additionally, Transformer-based models, such as those proposed by <ref type="bibr">Wang et al. [2021a]</ref>, <ref type="bibr" target="#b28">Xu et al. [2020]</ref>, employ the multi-head attention mechanism to capture both cross and internal relationships within a temporal graph.</p><p>However, these models may exhibit inherent flaws when addressing link prediction tasks in graphs. Such tasks require the model to predict the existence of a target link given specific prerequisite information. The aforementioned approaches primarily focus on node-wise representation learning, using the node embeddings of source and destination nodes to predict the existence of a target link. While straightforward, this method often fails to precisely capture the relationship between two nodes and other more complex graph structure features. For example, in Figure <ref type="figure" target="#fig_1">1</ref>, the node-wise method might struggle to predict whether node w prefers to interact with node u or v. Generally speaking, these models are constrained by their focus on node-level representation, limiting their ability to capture broader contexts and higher-order patterns.</p><p>Considering these shortcomings, <ref type="bibr" target="#b34">Zhang and Chen [2018]</ref> highlight the importance of pair-wise representation and propose labeling trick to mark the source and destination nodes when learning their pair-wise representation by GNN. Labeling trick <ref type="bibr" target="#b35">[Zhang et al., 2021]</ref> is shown to greatly enhance GNN performance on static graph link prediction. Building on this, <ref type="bibr">Wang et al. [2021c]</ref>, <ref type="bibr" target="#b12">Luo and Li [2022]</ref>, <ref type="bibr" target="#b32">Yu et al. [2023]</ref> develop models that leverage information from temporal surrounding nodes, successfully extending the pair-wise learning approach to dynamic graphs. They extract features using decreasing-timestamp random walks or joint neighborhood structures to generate multi-level embeddings for the center nodes, facilitating node classification and link prediction with pair-wise representations. However, these graph-based models often incur significant computational and memory costs due to extracting temporal neighborhoods and applying message passing on them for each node/link to predict, hindering their application in real-world, large-scale scenarios.</p><p>In general, graph-based representation learning methods can significantly enhance model capabilities, yet their high computational cost limits widespread application. For example, the Temporal Graph Benchmark (TGB) <ref type="bibr" target="#b6">[Huang et al., 2023]</ref> contains many high-quality real-world temporal graphs. However, most graph-based models choose to only evaluate on a subset of small graphs due to their unaffordable cost of training and evaluation on large-scale datasets. On the contrary, memory-based models <ref type="bibr" target="#b19">[Rossi et al., 2020]</ref> update node representations sequentially following the event stream, thus is significantly faster than graph-based methods yet might lose important graph information. Motivated by these observations, we propose an expressive but efficient model, Temporal Neural Common Neighbor (TNCN), to combine the merits of both. By integrating a memory-based backbone with Neural Common Neighbor <ref type="bibr" target="#b25">[Wang et al., 2023]</ref>, TNCN learns expressive pairwise representations while maintaining high efficiency akin to memory-based models. Consequently, TNCN is suitable for large-scale temporal graph link prediction.</p><p>We conducted experiments on five large-scale real-world temporal graph datasets from TGB. TNCN achieved new state-of-the-art results on three datasets and overall ranked first compared to 10 competitive baselines, demonstrating its effectiveness. To examine its scalability, we selected datasets with temporal edges ranging from O(10 5 ) to O(10 7 ) and node numbers ranging from thousands to millions. We found that TNCN achieved 1.9x∼4.7x speedup in training and 2.1x∼6.4x speedup in inference compared to graph-based models, while maintaining a similar scale of time consumption as memory-based models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Memory-based Temporal Graph Representation Learning</head><p>Temporal graph learning has garnered significant attention in recent years. A classic approach in this domain involves learning node memory using continuous events with non-decreasing timestamps. <ref type="bibr" target="#b8">Kumar et al. [2019]</ref> propose a coupled recurrent neural network model named JODIE that learns the embedding trajectories of users and items. Another contemporary work DyRep <ref type="bibr" target="#b21">[Trivedi et al., 2019]</ref> aims to efficiently produce low-dimensional node embeddings to capture the communication and association in dynamic graphs. <ref type="bibr" target="#b19">Rossi et al. [2020]</ref> introduces a memory-based temporal neural network known as TGN, which incorporates a memory module to store temporal node representations updated with messages generated from the given event stream. Apan <ref type="bibr">[Wang et al., 2021b]</ref> advances the methodology by integrating asynchronous propagation techniques, markedly increasing the efficiency of handling large-scale graph queries. EDGE <ref type="bibr" target="#b2">[Chen et al., 2021]</ref> emerges as a computational framework focusing on increasing the parallelizability by dividing some intermediate nodes in long streams each into two independent nodes while adding back their dependency by training loss. <ref type="bibr" target="#b3">Chen et al. [2023]</ref> extend the update method for the node memory module, introducing an additional hidden state to record previous changes in neighbors. Complementing these efforts, additional contributions such as Edgebank <ref type="bibr" target="#b18">[Poursafaei et al., 2022]</ref> and <ref type="bibr">DistTGL [Zhou et al., 2023]</ref> have been directed towards formalizing and accelerating memory-based temporal graph learning methods.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Graph-based Temporal Graph Representation Learning</head><p>Subsequent works have incorporated the temporal neighborhood structure into temporal graph learning. CAWN <ref type="bibr">[Wang et al., 2021c]</ref> employs random anonymous walks to model the neighborhood structure. TCL <ref type="bibr">[Wang et al., 2021a</ref>] samples a temporal dependency interaction graph that contains a sequence of temporally cascaded chronological interactions. TGAT <ref type="bibr" target="#b28">[Xu et al., 2020]</ref> considers the temporal neighborhood and feeds the features into a temporal graph attention layer utilizing a masked self-attention mechanism. NAT <ref type="bibr" target="#b12">[Luo and Li, 2022</ref>] constructs a multi-hop neighboring node dictionary to extract joint neighborhood features and uses a recurrent neural network (RNN) to recursively update the central node's embedding. This information is then processed by a neural network-based encoder to predict the target link. DyGFormer <ref type="bibr" target="#b32">[Yu et al., 2023]</ref>, instead, leverages one-hop neighbor embeddings and the co-occurrence of neighbors to generate features, which are well-patched and subsequently fed into a Transformer <ref type="bibr" target="#b22">[Vaswani et al., 2017]</ref> decoder to obtain the final prediction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3">Link Prediction Methods</head><p>Link prediction is a fundamental task in graph analysis, aiming to determine the likelihood of a connection between two nodes. Early investigations posited that nodes with greater similarity tend to be connected, which led to a series of heuristic algorithms such as Common Neighbors, Katz Index, and PageRank <ref type="bibr" target="#b15">[Newman, 2001</ref><ref type="bibr" target="#b7">, Katz, 1953</ref><ref type="bibr" target="#b17">, Page et al., 1999]</ref>. With the advent of GNNs, numerous methods have attempted to utilize vanilla GNNs for enhancing link prediction, revealing sub-optimal performance due to the inability to capture important pair-wise patterns such as common neighbors <ref type="bibr" target="#b34">[Zhang and Chen, 2018</ref><ref type="bibr">, Zhang et al., 2021</ref><ref type="bibr" target="#b10">, Liang et al., 2022]</ref>. Subsequent research has focused on infusing various forms of inductive biases to retrieve intricate pair-wise relationships. For instance, SEAL <ref type="bibr" target="#b34">[Zhang and Chen, 2018]</ref>, Neo-GNN <ref type="bibr" target="#b33">[Yun et al., 2021]</ref>, and NCN <ref type="bibr" target="#b25">[Wang et al., 2023]</ref> have integrated neighbor-overlapping information into their design. BUDDY <ref type="bibr" target="#b1">[Chamberlain et al., 2022]</ref> and <ref type="bibr">NBFNet [Zhu et al., 2021]</ref> have concentrated on extracting higher-order structural information. Additionally, <ref type="bibr" target="#b13">Mao et al. [2023]</ref>, <ref type="bibr" target="#b9">Li et al. [2024]</ref> have contributed to a more unified framework encompassing different heuristics. </p><formula xml:id="formula_0">= {(G 1 , t 1 ), (G 2 , t 2 ), • • • , (G N , t N )},</formula><p>it can always be transformed into its corresponding form in CTDG. So here we mainly focus on continuous time temporal graph. We usually represent a CTDG as a sequence of interaction events:</p><formula xml:id="formula_1">G = {(u 1 , v 1 , t 1 ), (u 2 , v 2 , t 2 ), • • • , (u n , v n , t n )}</formula><p>, where u, v stand for source and destination nodes and {t i } are chronologically non-decreasing. We use V to denote the entire node set, and E the entire edge set. Note that each node or edge can be attributed, that is, there may be node feature x u for u or edge feature e t u,v attached to the event (u, v, t). Definition 3.2. (Problem Formulation) Given the events before time t * , i.e. {(u, v, t) | ∀ t &lt; t * }, a link prediction task is to predict whether two specified node u * and v * are connected at time t * . Definition 3.3. (Temporal Neighborhood) Given the center node u, the k-hop temporal neighbor set</p><formula xml:id="formula_2">(k ≥ 0) before time t is defined as N t k (u) = {v | SPD t (u, v) = k}</formula><p>, where SPD t (u, v) refers to the shortest path distance using edges before time t. Then the k-hop common neighbors between node u and v are defined as CN</p><formula xml:id="formula_3">t k (u, v) = ∪ 2(k-1)&lt;k1+k2≤2k,k1,k2≤k (N t k1 (u) ∩ N t k2 (v)), i.</formula><p>e., all nodes on at least one 2k-distance path between u, v. Note that for k = 0, we define the 0-hop common neighbor of u and v as CN t 0 (u, v) = {u, v} if there exists at least one edge between u and v before time t, and ∅ otherwise. Finally, the K-hop temporal neighborhood is defined as</p><formula xml:id="formula_4">K ∪ k=0 N t k (u).</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Methodology</head><p>In this section, we introduce our Temporal Neural Common Neighbor (TNCN) model. TNCN comprises several key modules: the Memory Module, the Temporal CN Extractor, and the NCN-based Prediction Head. Special attention is given to the Temporal CN Extractor, designed to efficiently extract temporal neighboring structures and obtain multi-hop common neighbor information. The pipeline of TNCN is illustrated in Figure <ref type="figure" target="#fig_2">2</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Memory Module</head><p>The memory module stores node memory representations up to time t. When a new event occurs, the memory of the source and destination nodes is updated with the message produced by the event. The computation can generally be represented by the following formulas:</p><formula xml:id="formula_5">msg t src (u, v) = msgfunc src (e t u,v ), msg t dst (u, v) = msgfunc dst (e t u,v ). mem t u = upd src (mem t- u , msg t src (u, v)), mem t v = upd dst (mem t- v , msg t dst (u, v)),<label>(1)</label></formula><p>where mem t- u stands for the embedding of node u before time t. Here, msgfunc is a learnable function, such as a linear projection or a simple identity function. Note that for different edge directions, i.e., from source to destination and vice versa, the msgfunc and updfunc can be learned separately. The memory module aids the model in managing both long-term and short-term dependencies, thereby reducing the likelihood of forgetting. During training and inference, node memory evolves dynamically as events occur. Updates to this module reflect the dynamic nature of the temporal graph.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Temporal CN Extractor</head><p>Our Temporal CN Extractor can efficiently perform multi-hop common neighbor extraction and aggregate their neural embeddings.</p><p>Extended Common Neighbor. The definition of multi-hop common neighbors (CN) is given in Definition 3.3, extending the traditional 1-hop CN (i.e., nodes on 2-paths between u and v) to k-hop CN (nodes on 2k-paths between u and v). Additionally, we define zero-hop CN to be u and v themselves, i.e., if there is at least one previous event between node u and node v, then u and v are considered each other's 0-hop common neighbors. The 0-hop CN not only records the historical interactions between two nodes, but also reveals the frequency of their interactions.</p><p>Efficient CN Extractor. The CN Extractor is a crucial component of the TNCN model, contributing significantly to its high performance. It can efficiently gather pertinent information about a given center node and extract multi-hop common neighbors for a source-destination pair.</p><p>For each relevant node u, the extractor stores its historical interactions with other nodes as both source and destination. After a batch of events is processed by the model, the storage is updated with the latest interactions. This allows us to maintain a record of all historical interactions up to a certain timestamp, effectively constructing a dynamic lookup dictionary for fast retrieval during subsequent inference. To conserve memory, we can opt to save only the most recent events and relevant nodes.</p><p>During the inference stage, TNCN extracts temporal neighborhood information, i.e., historical interactions related to the query node batch. This information is organized as a Sparse Tensor, on which we perform self-multiplication to generate high-order adjacency connectivity. We use sparse tensor operations to obtain multi-hop common neighbors (CNs) and their embeddings, separating CNs from different hops. To extract the 0-hop common neighbors mentioned above in a unified way, we introduce an additional self-loop for each related node. This operation allows us to use the same tensor multiplications to obtain 0-hop CNs.</p><p>The utilization of Multi-hop Common Neighbors significantly boosts TNCN's performance, resulting in higher scores in temporal link prediction tasks. Furthermore, by employing sparse tensors, our model achieves substantial reductions in both storage requirements and computational complexity, thereby decreasing time consumption and enhancing efficiency.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">NCN-based Prediction Head</head><p>For source and destination nodes, we perform an element-wise product:</p><formula xml:id="formula_6">X t u,v = emb t u ⊗ emb t v .<label>(2)</label></formula><p>For multi-hop CN nodes, we aggregate their embeddings in each hop with sum pooling:</p><formula xml:id="formula_7">N CN k (u, v) = ⊕ w∈CN t k (u,v) emb t w .<label>(3)</label></formula><p>These embeddings are then concatenated as the final pair-wise representation:</p><formula xml:id="formula_8">repr(u, v) = [X t u,v || ( K || k=0 )N CN k (u, v)].<label>(4)</label></formula><p>In the above, ⊗, ⊕, and || stand for element-wise product, element-wise summation, and concatenation of vectors, respectively. The pair-wise representation repr(u, v) for nodes u and v is fed to a projection head to output the final link prediction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Efficiency and Effectiveness of TNCN</head><p>In this section, we explore the two principal benefits of TNCN: efficiency and effectiveness. These advantages are demonstrated through an analysis of two core components within the framework for temporal graph link prediction: graph representation learning and link prediction methods. We categorize graph representation learning modules into two types: memory-based and k-hop-subgraphbased, according to the temporal scope of evolved events. Memory-based modules exhibit superior time complexity while maintaining good expressiveness in some situations, striking a balance between efficiency and performance. Furthermore, we highlight the deficiencies of existing link prediction methods on temporal graph learning and introduce the extended common neighbor approach. This method serves as a complementary addition for learning pair-wise representations while eliminating the necessity for message passing on entire graphs. Both our graph representation learning and link prediction techniques are designed with a unified optimization objective: to avoid message passing on entire subgraphs in favor of non-repetitive operations, culminating in a cohesive solution that is both efficient and effective.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Graph Representation Learning</head><p>Graph representation learning aims to develop an embedding function, denoted as Emb, which learns an embedding for each node encoding its structural and feature information within the graph. Specifically, given a new event represented as (u, v, t), the function Emb leverages prior events to generate meaningful embeddings. Approaches in this domain diverge in their handling of temporal dynamics; some opt to maintain a dynamic embedding for each node that is incrementally updated with each new event, while others choose to recalculate node embeddings by considering the entire historical context of events, thereby providing a more comprehensive reflection of past interactions.</p><p>We classify these methodologies into two distinct types based on their operational mechanisms. Definition 5.1. Memory-based approach. Given a new event (u, v, t), if Emb conforms to the following form, the method is referred to as a memory-based approach.</p><formula xml:id="formula_9">Emb(u, t) = f emb (M em(u, t ′ )), M em(u, t) = f mem (M em(u, t ′ ), M em(v, t ′ ), e t u,v , t -t ′ ), Emb(v, t) = f emb (M em(v, t ′ )), M em(v, t) = f mem (M em(v, t ′ ), M em(u, t ′ ), e t v,u , t -t ′ ),<label>(5)</label></formula><p>where f emb and f mem are two learnable functions. Definition 5.2. k-hop-subgraph-based approach. Given a new event (u, v, t), if Emb conforms to the following form, the method is defined as a subgraph-based approach.</p><formula xml:id="formula_10">Emb(u, t) = f emb (G k u,&lt;t ), Emb(v, t) = f emb (G k v,&lt;t ),<label>(6)</label></formula><p>where</p><formula xml:id="formula_11">G k u,&lt;t is a subgraph induced from G by node u's k-hop temporal neighborhood K ∪ k=0 N t k (u)</formula><p>, containing only the edges (events) with time t ′ &lt; t, and f emb is a learnable function.</p><p>Effectiveness. The analysis begins by assessing the effectiveness of the two paradigms. To do so, we first introduce the concept of k-hop event <ref type="bibr" target="#b11">[LOV´ASZ et al., 1993]</ref>. Definition 5.3. (k-hop event &amp; monotone k-hop event) A k-hop event is a sequence of consecutive edges {(u i , u i+1 , t ui,ui+1 ) | i ∈ {0, . . . , k -1}, k ≥ 1} connecting the initial node u 0 to the final node u k . For example, {(u, x, t ′ ), (x, v, t)} is a 2-hop event. In the case where k = 1, the k-hop event reduces to a single interaction (u, v, t). A monotone k-hop event is a k-hop event in which the sequence of timestamps {t ui,ui+1 | i ∈ {0, . . . , k -1}, k ≥ 1} is strictly monotonically increasing.</p><p>Then, we analyze the expressiveness of the two approaches in terms of encoding k-hop event. Theorem 5.4. (Ability to encode k-hop events). Given a k-hop event {(u i , u i+1 , t ui,ui+1 ) | i ∈ {0, . . . , k -1}, k ≥ 1}, if the node embedding of u 0 at time t u0,u1 can be reversely recovered from the encoding Enc({(u i , u i+1 , t ui,ui+1 ) | i ∈ {0, . . . , k -1}, k ≥ 1}), then we say the encoding function Enc is capable of encoding the k-hop event. The following results outline the encoding capabilities of different learning paradigms:</p><p>• Memory-based approaches can encode any k-hop events with k = 1.</p><p>• Memory-based approaches can encode any monotone k-hop events with arbitrary k.</p><p>• k-hop-subgraph-based approaches can encode any k ′ -hop events with k ′ ≤ k.</p><p>From Theorem 5.4, we can conclude that 1) memory-based approaches have superior expressiveness in encoding k-hop events compared to 1-hop-subgraph-based approaches, 2) memory-based approaches have superior expressiveness in encoding monotone k-hop events than k ′ -hop-subgraphbased approaches when k ′ &lt; k, and 3) k-hop-subgraph-based approaches are not less expressive than memory-based approaches when k is large enough.</p><p>While the memory-based approach does not consistently rival the expressiveness of the k-hopsubgraph paradigm, it possesses advantages in monotone events and long-history scenarios (where k-hop subgraphs would be unaffordable to extract).</p><p>Efficiency. We then turn our attention to the efficiency of the two approaches. A pivotal factor is the frequency with which individual events are incorporated into computations. In memory-based approaches, each event is utilized a single time for learning, immediately following its associated prediction. Conversely, in the k-hop-subgraph-based method, an event may be employed multiple times, as it is revisited in different nodes' temporal neighborhood and repeated been processed within each subgraph's encoding (such as message passing) process. This discrepancy leads to divergent cumulative frequencies of event utilization throughout the learning process and results in the huge efficiency advantage of memory-based methods. We formalize this observation in the following: Theorem 5.5. (Learning method time complexity). Denote the time complexity of a learning method as a function of the total number of events processed during training. For a given graph G with the number of nodes designated as |N | and the number of edges as |E|, the following assertions hold:</p><p>• For memory-based approaches, the time complexity is Θ (|E|).</p><p>• For k-hop-subgraph-based approaches with k = 1, the lower-bound time complexity is • For k-hop-subgraph-based approaches with k = 2, the upper-bound time complexity is</p><formula xml:id="formula_12">Ω |E| 2 |N | ,</formula><formula xml:id="formula_13">O |E| 2 |N | + |E||N | 3 2</formula><p>.</p><p>Following Theorem 5.5, it becomes evident that the computational overhead incurred by a memorybased method is significantly lower than that of a k-hop-subgraph-based method, particularly as the value of k increases. These results highlight the advantages of memory-based methods in mitigating the computational efficiency challenges associated with large-scale temporal graphs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Link Prediction Technique</head><p>With the node embeddings obtained from the graph representation learning step, link prediction techniques involve aggregating the node embeddings in some way into link representations for link prediction. Most previous methods simply concatenate the source and destination node embeddings as the link representation Emb(u, t) || Emb(v, t), losing a great amount of pairwise features (as illustrated in Figure <ref type="figure" target="#fig_1">1</ref>). In order to use labeling trick, an alternative approach involves extracting a separate subgraph for each link to predict, which leads to good results but also significantly increases the complexity. TNCN, on the contrary, utilizes neural common neighbors as a decoupled and flexible solution. This approach can be seamlessly integrated into existing memory-based methods with minimal computational overhead, while retaining important structural information for link prediction.</p><p>Effectiveness. In the following, we first demonstrate the effectiveness of TNCN by showing that it can capture three important pairwise features commonly used as effective link prediction heuristics, namely Common Neighbors (CN), Resource Allocation (RA), and Adamic-Adar (AA) <ref type="bibr" target="#b15">[Newman, 2001</ref><ref type="bibr" target="#b0">, Adamic and Adar, 2003</ref><ref type="bibr">, Zhou et al., 2009]</ref>, borrowing from NCN <ref type="bibr" target="#b25">[Wang et al., 2023]</ref>.</p><p>Theorem 5.6. TNCN is strictly more expressive than CN, RA, and AA.</p><p>Essentially, TNCN uses node memory to substitute the constant or degree-based values in the three features, and the memory update scheme is sufficient to learn such values. In comparison, an approach that merely concatenates node-wise representations proves inadequate in capturing these heuristics.</p><p>Efficiency. We then address the efficiency of TNCN. The computation of TNCN can be divided into two primary components: the generation of neighbor nodes' embeddings and the execution of common neighbor lookups. Concerning the former, the memory-based approach intrinsically tracks all node embeddings, thus obviating the need for re-computation. As for the latter, we implement a fast common neighbor search algorithm by leveraging a sparse matrix structure that supports batch operations. Collectively, these factors contribute to the minimal additional overhead of TNCN compared to memory-based methods.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Experiments</head><p>This section assesses TNCN's effectiveness and efficiency by answering the following questions:</p><p>Q1: What is the performance of TNCN compared with state-of-the-art baselines? Q2: What is the computational efficiency of TNCN in terms of time consumption? Q3: Do the extended common neighbors bring benefits to original common neighbors?</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1">Experimental Settings</head><p>Datasets We evaluate our model on five large-scale real-world datasets for temporal link prediction from the Temporal Graph Benchmark <ref type="bibr" target="#b6">[Huang et al., 2023]</ref>. These datasets span several distinct fields: co-editing network on Wikipedia, Amazon product review network, cryptocurrency transactions, directed reply network of Reddit, and crowdsourced international flight network. They vary in scales and time spans. Additional details about the datasets are provided in Appendix A. We set the evaluation metric as Mean Reciprocal Rank (MRR) consistent with the TGB official leaderboard.</p><p>Baselines We systematically evaluate our proposed model against a diverse set of baselines known for their strong capacity to represent temporal graph dynamics. These include: a heuristic algorithm Edgebank <ref type="bibr" target="#b32">[Yu et al., 2023]</ref>, memory-based models DyRep <ref type="bibr" target="#b21">[Trivedi et al., 2019]</ref> and TGN <ref type="bibr" target="#b19">[Rossi et al., 2020]</ref> that obviate the need for frequent temporal subgraph sampling, and GraphMixer <ref type="bibr" target="#b4">[Cong et al., 2023]</ref> which primarily employs an MLP-mixer. Additionally, we include various graph-based models such as CAWN <ref type="bibr">[Wang et al., 2021c]</ref>, NAT <ref type="bibr" target="#b12">[Luo and Li, 2022]</ref>, DyGFormer <ref type="bibr" target="#b32">[Yu et al., 2023]</ref>, TGAT <ref type="bibr" target="#b28">[Xu et al., 2020]</ref>, and TCL <ref type="bibr">[Wang et al., 2021a]</ref>, which learn from neighborhood structure information. To reconcile the trade-off between model efficacy and computational overhead, we evaluate two TNCN variants: the "TNCN-standard" (TNCN(S)), which incorporates up to 1-hop common neighbor information, and the more complex "TNCN-large" (TNCN(L)), which uses up to 2-hop common neighbors.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2">Experimental Results</head><p>Reply to Q1: TNCN possesses remarkable performance. We conducted comprehensive evaluations of prevailing methods on the TGB. The main results are summarized in Table <ref type="table" target="#tab_0">1</ref>. It is evident from the table that TNCN attains new SOTA performance on three out of five datasets. Additionally, TNCN demonstrates competitive results on the remaining two datasets. TNCN almost consistently surpasses memory-based models such as TGN and DyRep, which can be attributed to its utilization of supplementary structural information. Even in comparison to powerful graph-based models, including NAT and DyGFormer, TNCN still matches or exceeds their performance, underscoring the effectiveness of its integration of node memory and pair-wise features. The only dataset where TNCN exhibits relatively poorer performance is the Review dataset. This can be ascribed to the dataset's predominant reliance on feature embedding and its high "surprise" metric, wherein prior events have a diminished correlation with subsequent events, potentially reducing the impact of CNs.</p><p>Reply to Q2: TNCN shows great scalability on large datasets. To evaluate computational efficiency, we collected the time consumption when applying all baselines to the Wiki and Review   <ref type="figure" target="#fig_4">3</ref>. Compared with memory-based methods, TNCN exhibits a comparable order of magnitude in terms of time consumption. However, when benchmarked against graph-based models, TNCN demonstrates a substantial acceleration, achieving approximately 1.9 to 4.7 times speedup during the training phase and a 2.1 to 6.4 times increase in inference speed. Notably, the scalability concerns become even more evident as the size of the dataset expands; several graph-based models cannot complete the validation and testing processes within a reasonable time budget. The primary factors contributing to TNCN's efficiency are the synergistic, time-efficient design of its two core components and the implementation of the Efficient CN Extractor that facilitates batch operations through parallel processing.</p><p>Reply to Q3: Extended CN brings improvements. To elucidate the benefits of extended CN, we conducted an ablation study on the hop range of common neighbors. The results are shown in Table <ref type="table" target="#tab_1">2</ref>. The conventional NCN methodology considers only 1-hop CN. However, this approach may not be universally applicable across all temporal network topologies. For instance, bipartite graphs lack such 1-hop CN in their structure, necessitating the consideration of 2-hop CN. Additionally, memory-based methodologies may omit a notable aspect: they generally find it difficult to quantify the frequency of interactions between a given pair of nodes, which brings the need for 0-hop CN. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Conclusion and Limitation</head><p>We TNCN for temporal graph link prediction, which employs a temporal common neighbor extractor combined with a memory-based node representation learning module. TNCN has achieved new state-of-the-art results on several real-world datasets while maintaining excellent scalability to handle large-scale temporal graphs.</p><p>However, based on our observation of TNCN's performance on the TGBL-Review dataset, there are some limitations in our model. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Datasets</head><p>Table <ref type="table" target="#tab_3">3</ref> shows some detailed datasets statistics of TGB and 4 shows several temporal graph datasets commonly used by previous work. Through the two tables we can observe that TGB official datasets possess temporal graphs with larger scale to 10 million, 10 times surpassing the largest previous datasets such as LastFM, Flight, Contact. With the aim to examine our TNCN model's efficiency, we choose the increasingly accepted datasets TGB. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B TNCN Model Configuration</head><p>Network Choice In our experiment, the changeable neural networks are chosen as follows:</p><p>In Memory Module, we choose Identity as msgfunc and GRU as upd. In inference stage we process node memory with Graph Attention Embedding to get the temporal representation. As for Prediction Head, we finally choose Linear as the repr function.</p><p>Hyper-parameter Several detailed hyper-parameters for TNCN are shown in table <ref type="table" target="#tab_5">5</ref>, which can help researchers to reproduce the experiment performance as reported in this paper. Additionally, we set mem_dim, emb_dim, time_dim 100, 100, 100 respectively. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Proofs</head><p>In this section, we give proofs on theorems 5.4, 5.5 and 5.6.</p><p>We commence with a restatement of Theorem 5.4 for clarity:</p><p>Theorem C.1. (Ability of encoding k-hop event). Given a k-hop event {(u i , u i+1 , t ui,ui+1 ) | i ∈ {0, . . . , k -1}, k ≥ 1}. If the node embedding of u 0 at time t u0,u1 , can be formally derived by the encoding function Enc({(u i , u i+1 , t ui,ui+1 ) | i ∈ {0, . . . , k -1}, k ≥ 1}), then the learning method is considered capable of encoding the k-hop event. The following outline the encoding capabilities of different learning schemes:</p><p>• Memory-based approach can encode any k-hop events with k = 1.</p><p>• Memory-based approach can encode any monotone k-hop events with arbitrary k.</p><p>• k-hop-subgraph-based approach can encode any k ′ -hop events with k ′ ≤ k</p><p>Proof. In the following analysis, we establish the encoding efficacy of the memory-based approach. Consider a k-hop event with the simplifying assumption that k = 1, which reduces the event to the tuple (u 0 , u 1 , t u0,u1 ). By adhering to the predefined schematics of the memorybased methodology, the memory state M em(u 0 , t u0,u1 ) is updated via the function f mem such that M em(u 0 , t u0,u1 ) = f mem (M em(u 0 , t ′ ), e tu 0 ,u 1 u0,u1 , t u0,u1 -t ′ ). Let us denote the encoding function as Enc = f mem (M em(u 0 , t ′ ), . . .). It is our intention to demonstrate that this memory-based framework is capable of encoding any k-hop event for k = 1.</p><p>We consider the encoding of an arbitrary monotonically increasing k-hop temporal event sequence within a memory-based approach. The induction principle is applied to demonstrate the capability of this approach. For the base case, k = 1, the encoding has been shown to be feasible. Now, assume the proposition holds for a k ′ -hop event; that is, any k ′ -hop temporal sequence of monotonically increasing events can be encoded using a memory-based approach. This assumption implies that there exists an embedding function such that Emb(u 0 , t u0,u1 ) = Enc((u i , u i+1 , t ui,ui+1 ) | i ∈ 0, . . . , k ′ -1),</p><p>for all event sequences with k ′ hops, where k ′ ≥ 1. Given an arbitrary k ′ + 1-hop event, which can be partitioned into an initial event (u 0 , u 1 , t u0,u1 ) and a subsequent k ′ -hop sequence. The existence of an encoding function for the k ′ -hop sequence assures that Emb(u 0 , t u0,u1 ) = f emb (M em(u 0 , t u1,u2 ))</p><p>= f emb (f mem (M em(u 0 , t u1,u2 ), M em(u 1 , t u1,u2 ), e tu 0 ,u 1 u0,u1 , t u0,u1 -t u1,u2 ), M em(u 1 , t u1,u2 ) = f -1 emb (Emb(u 1 , t u1,u2 )) = f -1 emb (Enc({(u i , u i+1 , t ui,ui+1 ) | i ∈ {1, . . . , k ′ }, k ′ ≥ 1})</p><formula xml:id="formula_15">(8)</formula><p>Subsequently, it is demonstrated that Emb(u 0 , t u0,u1 ) provides an encoding for both the initial event and the k ′ -hop sequence, thereby affirming its efficacy in encoding the entire k ′ + 1-hop event. This concludes the inductive step and substantiates the inductive argument.</p><p>We consider a k-hop-subgraph-based approach for our analysis. It is evident that a k-hop subgraph encompasses any k ′ -hop events, where k ′ ≤ k. Furthermore, the aggregation methodology assimilates all nodes contained within the subgraph. Collectively, these observations substantiate the theorem in question.</p><p>We commence with a restatement of Theorem 5.5 for clarity: Theorem C.2. (Learning method time complexity). Denote the time complexity of a learning method as a function of the total number of events processed during training. For a given graph G with the number of nodes designated as |N | and the number of edges as |E|, the following assertions hold:</p><p>• For the memory-based approach, the time complexity is Θ (|E|).</p><p>• For k-hop-subgraph-based with k = 1, the lower-bound time complexity is Ω </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Figure (a) shows a failure case of link prediction based on node-wise representation learning. Such methods cannot distinguish node u and v because they possess the same temporal computation tree in figure (b), thus generating the same node representation. However, when we try to learn their pair-wise representation, i.e. (u, w) and (v, w), we can observe that v has a temporal common neighbor b with node w while u doesn't, as shown in figure (c). Thus with the same computation graph, we only need to utilize the extra node b's embedding to distinguish (u, w) and (v, w).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 2 :</head><label>2</label><figDesc>Figure2: Pipeline of TNCN. TNCN operates through a sequential update and prediction framework that processes successive batches of messages. During the update phase, TNCN updates the neighbor dictionary and the node memory representations. In the prediction phase, the model retrieves neighbors to identify common neighbors, thereafter leveraging the representations of the target nodes and their common neighbors for prediction.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head></head><label></label><figDesc>and the upper-bound time complexity is O |E| 2 |N | + |E||N | .</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Time Consumption of Memory and Graph-based Method on Wiki and Review Datasets</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head></head><label></label><figDesc>|E| 2 |N | , and the upper-bound time complexity is O |E| 2 |N | + |E||N | • For k-hop-subgraph-based with k = 2, the upper-bound time complexity is O ( |E| 2 |N | + |E||N |)</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Test Performance of different models under MRR metric. The top three are emphasized by red, blue and black fonts. 'NA' denotes scenarios where a specific method was either not applied to the dataset or was unable to complete the validation and testing phases within a reasonable timeframe.</figDesc><table><row><cell></cell><cell></cell><cell>Model</cell><cell cols="4">Wiki Review Coin Comment Flight</cell></row><row><cell></cell><cell></cell><cell>TGN</cell><cell>0.528</cell><cell>0.387</cell><cell>0.737</cell><cell>0.622</cell><cell>0.705</cell></row><row><cell></cell><cell></cell><cell>DyGformer</cell><cell>0.798</cell><cell>0.224</cell><cell>0.752</cell><cell>0.670</cell><cell>NA</cell></row><row><cell></cell><cell></cell><cell>NAT</cell><cell>0.749</cell><cell>0.341</cell><cell>NA</cell><cell>NA</cell><cell>NA</cell></row><row><cell></cell><cell></cell><cell>CAWN</cell><cell>0.711</cell><cell>0.193</cell><cell>NA</cell><cell>NA</cell><cell>NA</cell></row><row><cell></cell><cell></cell><cell>Graphmixer</cell><cell>0.118</cell><cell>0.521</cell><cell>NA</cell><cell>NA</cell><cell>NA</cell></row><row><cell></cell><cell></cell><cell>TGAT</cell><cell>0.141</cell><cell>0.355</cell><cell>NA</cell><cell>NA</cell><cell>NA</cell></row><row><cell></cell><cell></cell><cell>TCL</cell><cell>0.207</cell><cell>0.193</cell><cell>NA</cell><cell>NA</cell><cell>NA</cell></row><row><cell></cell><cell></cell><cell>DyRep</cell><cell>0.050</cell><cell>0.220</cell><cell>0.452</cell><cell>0.289</cell><cell>0.556</cell></row><row><cell></cell><cell></cell><cell>Edgebank(tw)</cell><cell>0.571</cell><cell>0.025</cell><cell>0.580</cell><cell>0.149</cell><cell>0.387</cell></row><row><cell></cell><cell></cell><cell>Edgebank(un)</cell><cell>0.495</cell><cell>0.023</cell><cell>0.359</cell><cell>0.129</cell><cell>0.167</cell></row><row><cell></cell><cell></cell><cell cols="2">TNCN-standard 0.720</cell><cell>0.298</cell><cell>0.739</cell><cell>0.692</cell><cell>0.803</cell></row><row><cell></cell><cell></cell><cell>TNCN-large</cell><cell>0.717</cell><cell>0.317</cell><cell>0.764</cell><cell>0.662</cell><cell>NA</cell></row><row><cell></cell><cell>10 4</cell><cell>Train Validation Test</cell><cell></cell><cell></cell><cell></cell></row><row><cell>Time(s)</cell><cell>10 3</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>10 2</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell cols="3">TGN TNCN(S) TNCN(L) Dyrep TCL GraphMixer TGAT DyGFormer CAWN</cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Test performance of TGN and TNCN with different ranges of common neighborsTo address these limitations, we have expanded the original 1-hop CN to 0∼k-hop CN. Table2presents the model's performance under different hops of CN. The results indicate that TNCN utilizing 0∼1-hop CN markedly surpasses the 1-hop CN on various datasets. This enhancement underscores the significance of the introduced 0-hop CN to our architecture. Nevertheless, the inclusion of 2-hop CN yields mixed results across datasets.</figDesc><table><row><cell>Model</cell><cell cols="4">Wiki Review Coin Comment</cell></row><row><cell>TGN</cell><cell>0.528</cell><cell>0.387</cell><cell>0.737</cell><cell>0.622</cell></row><row><cell>TNCN-1-hop-CN</cell><cell>0.621</cell><cell>0.374</cell><cell>0.737</cell><cell>0.641</cell></row><row><cell cols="2">TNCN-0∼1-hop-CN 0.720</cell><cell>0.298</cell><cell>0.739</cell><cell>0.692</cell></row><row><cell cols="2">TNCN-0∼2-hop-CN 0.717</cell><cell>0.317</cell><cell>0.764</cell><cell>0.662</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head></head><label></label><figDesc>Specifically, datasets with high surprise values, such as the Review dataset, tend to make it more challenging for TNCN to accurately predict the probability of future connections. This indicates that while TNCN performs well overall, it may struggle with datasets that exhibit high variability or unexpected patterns. Further research is needed to address these challenges and improve the model's robustness in such scenarios. H. Zhou, D. Zheng, X. Song, G. Karypis, and V. Prasanna. Disttgl: Distributed memory-based temporal graph neural network training. In Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis, pages 1-12, 2023. T. Zhou, L. Lü, and Y.-C. Zhang. Predicting missing links via local information. The European Physical Journal B, 71:623-630, 2009.</figDesc><table><row><cell>Z. Zhu, Z. Zhang, L.-P. Xhonneux, and J. Tang. Neural bellman-ford networks: A general graph</cell></row><row><cell>neural network framework for link prediction. Advances in Neural Information Processing Systems,</cell></row><row><cell>34:29476-29490, 2021.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3</head><label>3</label><figDesc></figDesc><table><row><cell></cell><cell></cell><cell></cell><cell cols="2">: TGB Dataset Statistics</cell><cell></cell><cell></cell></row><row><cell>Dataset</cell><cell>Domain</cell><cell>Nodes</cell><cell>Edges</cell><cell>Steps</cell><cell>Surprise</cell><cell>Edge Properties</cell></row><row><cell>tgbl-wiki</cell><cell>interact</cell><cell>9,227</cell><cell>157,474</cell><cell>152,757</cell><cell>0.108</cell><cell>W: ×, Di: ✓, A: ✓</cell></row><row><cell>tgbl-review</cell><cell>rating</cell><cell cols="2">352,637 4,873,540</cell><cell>6,865</cell><cell>0.987</cell><cell>W: ✓, Di: ✓, A: ×</cell></row><row><cell>tgbl-coin</cell><cell cols="4">transact 638,486 22,809,486 1,295,720</cell><cell>0.120</cell><cell>W: ✓, Di: ✓, A: ×</cell></row><row><cell>tgbl-comment</cell><cell>social</cell><cell cols="3">994,790 44,314,507 30,998,030</cell><cell>0.823</cell><cell>W: ✓, Di: ✓, A: ✓</cell></row><row><cell>tgbl-flight</cell><cell>traffic</cell><cell>18143</cell><cell>67,169,570</cell><cell>1,385</cell><cell>0.024</cell><cell>W: ×, Di: ✓, A: ✓</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4 :</head><label>4</label><figDesc>Previous Dataset Statistics</figDesc><table><row><cell>Datasets</cell><cell>Domains</cell><cell>Nodes</cell><cell>Links</cell><cell cols="2">NL Feat Bipartite</cell><cell>Duration</cell><cell cols="2">Unique Steps Time Granularity</cell></row><row><cell>Wikipedia</cell><cell>Social</cell><cell>9,227</cell><cell>157,474</cell><cell>-&amp; 172</cell><cell>✓</cell><cell>1 month</cell><cell>152,757</cell><cell>Unix timestamps</cell></row><row><cell>Reddit</cell><cell>Social</cell><cell>10,984</cell><cell>672,447</cell><cell>-&amp; 172</cell><cell>✓</cell><cell>1 month</cell><cell>669,065</cell><cell>Unix timestamps</cell></row><row><cell>MOOC</cell><cell>Interaction</cell><cell>7,144</cell><cell>411,749</cell><cell>-&amp; 4</cell><cell>✓</cell><cell>17 months</cell><cell>345,600</cell><cell>Unix timestamps</cell></row><row><cell>LastFM</cell><cell>Interaction</cell><cell cols="2">1,980 1,293,103</cell><cell>-&amp; -</cell><cell>✓</cell><cell>1 month</cell><cell>1,283,614</cell><cell>Unix timestamps</cell></row><row><cell>Enron</cell><cell>Social</cell><cell>184</cell><cell>125,235</cell><cell>-&amp; -</cell><cell>×</cell><cell>3 years</cell><cell>22,632</cell><cell>Unix timestamps</cell></row><row><cell>UCI</cell><cell>Social</cell><cell>1,899</cell><cell>59,835</cell><cell>-&amp; -</cell><cell>×</cell><cell>196 days</cell><cell>58,911</cell><cell>Unix timestamps</cell></row><row><cell>Flights</cell><cell cols="3">Transport 13,169 1,927,145</cell><cell>-&amp; 1</cell><cell>×</cell><cell>4 months</cell><cell>122</cell><cell>days</cell></row><row><cell cols="2">UN Trade Economics</cell><cell>255</cell><cell>507,497</cell><cell>-&amp; 1</cell><cell>×</cell><cell>32 years</cell><cell>32</cell><cell>years</cell></row><row><cell>Contact</cell><cell>Proximity</cell><cell>692</cell><cell>2,426,279</cell><cell>-&amp; 1</cell><cell>×</cell><cell>1 month</cell><cell>8,064</cell><cell>5 minutes</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 5 :</head><label>5</label><figDesc>Some Experiment Hyper-parameters</figDesc><table><row><cell>Dataset</cell><cell cols="3">num_neighbors num_epoch patience</cell></row><row><cell>Wiki</cell><cell>10</cell><cell>20</cell><cell>5</cell></row><row><cell>Review</cell><cell>10</cell><cell>5</cell><cell>2</cell></row><row><cell>Coin</cell><cell>10</cell><cell>3</cell><cell>2</cell></row><row><cell>Comment</cell><cell>10</cell><cell>3</cell><cell>1</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Proof. In the proposed theorem, the time complexity is denoted as the aggregate quantity of events processed throughout the training phase. The objective herein is to ascertain the precise count of such utilized events.</p><p>In the context of the memory-based methodology, it is evident that each event is utilized a singular time. Consequently, the cumulative number of events is expressed as |E|, which infers that the time complexity adheres to the order of Θ (|E|).</p><p>In the context of k-hop-subgraph-based algorithms wherein k = 1, an event (u, v, t) is exploited once for every incident event within the neighborhood of vertices u or v. Without loss of generality, we focus on all events within the 1-hop-subgraph of vertex u. The aggregate count of events processed is given by</p><p>, where d(u) denotes the degree of vertex u. Consequently, the computational complexity is fundamentally proportional to u∈N d(u) 2 . Drawing on the results of de Caen <ref type="bibr">[1998]</ref>, the lower bound on the time complexity is established as</p><p>In the context of k-hop-subgraph-based algorithms wherein k = 2" we adopt similar strategy where each event(u, v, t) will only be utilized once another event within the subgraph of u or v is firstly considered. The total number of events can be formulated as u∈N d(u) v∈Nu w∈Nv d(w).</p><p>. Following Cauchy inequality and conclusions of u∈N d(u) 2 , we got the the upper-bound time complexity is O</p><p>We commence with a restatement of Theorem 5.6 for clarity: Theorem C.3. TNCN is strictly more expressive than CN, RA, and AA.</p><p>We first give definitions of these structural features under temporal settings. Given two nodes u and v, the structural features before time t are defined as follows:</p><p>Given a node u, the degree of node u is the number of events e with an endpoint at node u. Without loss of generality (WLOG), we consider node u as the source node, and the events are</p><p>With the MPNN universal approximation theorem, msgfunc can be a constant function, and upd src can be an addition function. Thus,</p><p>(11) Then the embedding can learn arbitrary functions of node degrees, i.e.,</p><p>Thus, the neural common neighbor T N CN 1 (u, v) = ⊕ w∈N t 1 (u)∩N t 1 (v) emb t w can express Equation <ref type="formula">9</ref>.</p><p>Extending to situations where the common neighbor node has some features we want to learn, the traditional CN, RA, and AA cannot accommodate this. However, our TNCN can express these features, demonstrating that TNCN is strictly more expressive than CN, RA, and AA.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<author>
+			<persName><forename type="first">A</forename><surname>Adamic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Adar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Friends and neighbors on the web</title>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+			<biblScope unit="volume">25</biblScope>
+			<biblScope unit="page" from="211" to="230" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Graph neural networks for link prediction with subgraph sketching</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">P</forename><surname>Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Shirobokov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Frasca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Markovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">Y</forename><surname>Hammerla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">M</forename><surname>Bronstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hansmire</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The eleventh international conference on learning representations</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">Efficient dynamic graph representation learning at scale</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Song</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2112.07768</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Huzhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Yuanpeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhou</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note>Recurrent temporal revision graph networks</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<author>
+			<persName><forename type="first">W</forename><surname>Cong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Tong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mahdavi</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2302.11636</idno>
+		<title level="m">Do we really need complicated model architectures for temporal networks? arXiv preprint</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">An upper bound on the sum of squares of degrees in a graph</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>De Caen</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/S0012-365X(97</idno>
+		<ptr target="https://www.sciencedirect.com/science/article/pii/S0012365X97002136" />
+	</analytic>
+	<monogr>
+		<title level="j">Discrete Mathematics</title>
+		<idno type="ISSN">0012-365</idno>
+		<imprint>
+			<biblScope unit="volume">185</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="213" to="216" />
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Temporal graph benchmark for machine learning on temporal graphs</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Poursafaei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Danovitch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bronstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Rabusseau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Rabbany</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">A new status index derived from sociometric analysis</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Katz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Psychometrika</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="39" to="43" />
+			<date type="published" when="1953">1953</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Predicting dynamic embedding trajectory in temporal interaction networks</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th ACM SIGKDD international conference on knowledge discovery &amp; data mining</title>
+		<meeting>the 25th ACM SIGKDD international conference on knowledge discovery &amp; data mining</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="1269" to="1278" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Evaluating graph neural networks for link prediction: Current pitfalls and new benchmarking</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Shomer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Yin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">36</biblScope>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Can gnns learn heuristic information for link prediction</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Chen</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Random walks on graphs: A survey</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Lov´asz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Winkler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Luk´acs</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kotlov</surname></persName>
+		</author>
+		<ptr target="https://api.semanticscholar.org/CorpusID:10655982" />
+		<imprint>
+			<date type="published" when="1993">1993</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Neighborhood-aware scalable temporal network representation learning</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Learning on Graphs Conference</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="1" to="1" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<author>
+			<persName><forename type="first">H</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Shomer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2310.00793</idno>
+		<title level="m">Revisiting link prediction: A data perspective</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Stgsn -a spatial-temporal graph neural network framework for time-evolving social networks</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Min</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Fang</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.knosys.2021.106746</idno>
+		<ptr target="https://www.sciencedirect.com/science/article/pii/S0950705121000095" />
+	</analytic>
+	<monogr>
+		<title level="j">Knowledge-Based Systems</title>
+		<idno type="ISSN">0950-7051</idno>
+		<imprint>
+			<biblScope unit="volume">214</biblScope>
+			<biblScope unit="page">106746</biblScope>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Clustering and preferential attachment in growing networks</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">E</forename><surname>Newman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Physical review E</title>
+		<imprint>
+			<biblScope unit="volume">64</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page">25102</biblScope>
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Robust classification of crisis-related data on social networks using convolutional neural networks</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Ali Al Mannai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Joty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Sajjad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Imran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mitra</surname></persName>
+		</author>
+		<idno type="DOI">10.1609/icwsm.v11i1.14950</idno>
+		<ptr target="https://ojs.aaai.org/index.php/ICWSM/article/view/14950" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International AAAI Conference on Web and Social Media</title>
+		<meeting>the International AAAI Conference on Web and Social Media</meeting>
+		<imprint>
+			<date type="published" when="2017-05">May 2017</date>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="page" from="632" to="635" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">The pagerank citation ranking: Bringing order to the web</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Page</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Brin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Motwani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Winograd</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Towards better evaluation for dynamic link prediction</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Poursafaei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Pelrine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Rabbany</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="32928" to="32941" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Temporal graph networks for deep learning on dynamic graphs</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Frasca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Eynard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Monti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bronstein</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2006.10637</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">The graph neural network model</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Scarselli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Gori</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">C</forename><surname>Tsoi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hagenbuchner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Monfardini</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="volume">20</biblScope>
+			<biblScope unit="page" from="61" to="80" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Dyrep: Learning representations over dynamic graphs</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Trivedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Farajtabar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Biswal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zha</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on learning representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ł</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Polosukhin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2105.07944</idno>
+		<title level="m">Tcl: Transformer-based dynamic graph modelling via contrastive learning</title>
+		<imprint>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Apan: Asynchronous propagation attention network for real-time temporal graph embedding</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Lyu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Guo</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3448016.3457564</idno>
+		<ptr target="http://dx.doi.org/10.1145/3448016.3457564" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 International Conference on Management of Data, SIGMOD/PODS &apos;21</title>
+		<meeting>the 2021 International Conference on Management of Data, SIGMOD/PODS &apos;21</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2021-06">June 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Neural common neighbor with completion for link prediction</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2302.00890</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Inductive representation learning in temporal networks via causal anonymous walks</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-Y</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Li</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2101.05974</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Graph neural networks in recommender systems: a survey</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Cui</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Computing Surveys</title>
+		<imprint>
+			<biblScope unit="volume">55</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="1" to="37" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Ruan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Korpeoglu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Achan</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2002.07962</idno>
+		<title level="m">Inductive representation learning on temporal graphs</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Research on financial assets transaction prediction model based on lstm neural network</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Weihan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Chang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neural Computing and Applications</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="257" to="270" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">A neural network approach to jointly modeling social networks and mobile trajectories</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">X</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">Y</forename><surname>Chang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Information Systems (TOIS)</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="1" to="28" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">A deeper graph neural network for recommender systems</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Knowledge-Based Systems</title>
+		<imprint>
+			<biblScope unit="volume">185</biblScope>
+			<biblScope unit="page">105020</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Towards better dynamic graph learning: New architecture and unified library</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Lv</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="page" from="67686" to="67700" />
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Neo-gnns: Neighborhood overlap-aware graph neural networks for link prediction</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Yun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">J</forename><surname>Kim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="13683" to="13694" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Link prediction based on graph neural networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page">31</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Labeling trick: A theory of using graph neural networks for multi-node representation learning</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Jin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="9061" to="9073" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<monogr>
+		<title level="m" type="main">A model based on convolutional neural network for online transaction fraud detection. Security and Communication Networks</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Wang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018. 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

@@ -1,0 +1,979 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">RTFE: A Recursive Temporal Fact Embedding Framework for Temporal Knowledge Graph Completion</title>
+				<funder ref="#_ES9RRag">
+					<orgName type="full">National Science Foundation of China</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">Ministry of Education</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Youri</forename><surname>Xu</surname></persName>
+							<email>youri.xu@bupt.edu.cn</email>
+							<affiliation key="aff0">
+								<orgName type="department">yang jinrui School of Computer Science</orgName>
+								<orgName type="institution">Xiaodong Lv</orgName>
+								<address>
+									<addrLine>Meina Song, wenyu song, wang haotian</addrLine>
+								</address>
+							</affiliation>
+							<affiliation key="aff1">
+								<orgName type="institution">Beijing University of Posts and Telecommunications</orgName>
+								<address>
+									<country key="CN">China</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">RTFE: A Recursive Temporal Fact Embedding Framework for Temporal Knowledge Graph Completion</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="MD5">02496E33C1045241EC43755C2024FC33</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T09:46+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Static knowledge graph (SKG) embedding (SKGE) has been studied intensively in the past years. Recently, temporal knowledge graph (TKG) embedding (TKGE) has emerged. In this paper, we propose a Recursive Temporal Fact Embedding (RTFE) framework to transplant SKGE models to TKGs and to enhance the performance of existing TKGE models for TKG completion. Different from previous work which ignores the continuity of states of TKG in time evolution, we treat the sequence of graphs as a Markov chain, which transitions from the previous state to the next state. RTFE takes the SKGE to initialize the embeddings of TKG. Then it recursively tracks the state transition of TKG by passing updated parameters/features between timestamps. Specifically, at each timestamp, we approximate the state transition as the gradient update process. Since RTFE learns each timestamp recursively, it can naturally transit to future timestamps. Experiments on five TKG datasets show the effectiveness of RTFE.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Temporal knowledge graph (TKG) is an extension of static knowledge graphs (SKGs) which introduce the time dimension. In SKGs, facts are considered to be time-invariant <ref type="bibr" target="#b24">(Sil and Cucerzan, 2014)</ref>. In reality, facts are not always true. For example, the triple (Obama, President, United States) was true only from 2009 to 2016 and (Obama, married, Mitchell) since 1992. However, SKGs do not reflect the change in facts over time. An example of TKG is shown in Figure <ref type="figure" target="#fig_0">1</ref>. Besides, facts on social networks, e-commerce platforms and trading platforms also change over time. Therefore, TKGs have the potential to improve the performance of question answering, search, recommendation and prediction based on KGs <ref type="bibr" target="#b12">(Huang et al., 2020;</ref><ref type="bibr" target="#b9">Garg et al., 2020)</ref>.</p><p>TKG can be expressed as a set of quadruples <ref type="bibr">(subject, relation, object, timestamp)</ref>. Different from SKGs which ignore the time attribute of facts, the facts of TKGs are distributed in timestamps, which can reflect the dynamic change of entities and relationships over time. Due to the limited coverage of KGs, TKGs are also incomplete. By completing TKG, missing and potential knowledge under specific timestamps can be found.</p><p>In recent years, a lot of work <ref type="bibr" target="#b4">(Bordes et al., 2013;</ref><ref type="bibr" target="#b30">Wang et al., 2014;</ref><ref type="bibr" target="#b20">Lin et al., 2015;</ref><ref type="bibr" target="#b17">Kazemi and Poole, 2018;</ref><ref type="bibr" target="#b23">Schlichtkrull et al., 2018;</ref><ref type="bibr" target="#b25">Sun et al., 2019;</ref><ref type="bibr">Zhang et al., 2020)</ref> has focused on KG completion by methods of graph embedding. These efforts have yielded good results, but most of them focused on SKGs and required training in a large number of triples.</p><p>However, the TKG under a certain timestamp is a sparse multi-relation graph <ref type="bibr" target="#b7">(Esteban et al., 2016)</ref>, so it is necessary to absorb information from other timestamps. What's more, SKGE methods lacked the modeling of time attribute of relations, and were proposed based on the assumption that all facts occur at the same time. So they cannot reflect the temporal dependencies of facts. To handle these two problems, our RTFE passes parameters and features between timestamps in a recursive manner, which not only alleviates the sparsity problem of TKG, but takes advantage of the continuity and relevance characteristics of the fact as well.</p><p>Existing TKG completion methods <ref type="bibr" target="#b5">(Dasgupta et al., 2018;</ref><ref type="bibr" target="#b10">Goel et al., 2019;</ref><ref type="bibr" target="#b18">Lacroix et al., 2020)</ref> follow the training pattern of SKGE, which shuffles facts (s, r ,o ,t) of different time randomly and learns all facts in a chaotic temporal order by minibatch gradient descent algorithm. In other words, they just take time as a parameter but ignore the correlations in time evolution.</p><p>However, the early state may affect the later one and later facts tend to be dependent on early ones. In particular, the state at t i directly influences that at t i+1 . E.g., <ref type="bibr">(Obama, Campaign, President, 2008)</ref> directly influences (Obama, Inaugurated as, <ref type="bibr">President, 2009)</ref>. It has been verified that the chronological order of events can be used to improve the performance of link prediction <ref type="bibr">(Jiang et al., 2016a;</ref><ref type="bibr">Jiang et al., 2016b)</ref>. Based on this, we further find that the early training state can improve later one if we train facts in their chronological order. In order to capture changes in TKG's state transition, we think TKG as a sequence of dynamic graphs, not as a whole graph labeled with time information.</p><p>Besides, since new facts of future timestamps can be added to TKG, TKG is expanding dynamically. And the graphs of new timestamps may still be incomplete. However, existing TKG completion methods provide no solution to complete unseen future graphs. In their training pattern, facts of all timestamps are trained jointly to complete the graphs that have appeared. Models may need to be retrained on facts of all timestamps when a new timestamp appears. In contrast, our RTFE embeds and completes TKG's each timestamp in a recursive way. By using the information of previous timestamps, RTFE can be naturally extended to future timestamps during the state transition of parameters/features. RTFE only needs to be trained on new emerging facts, which is light and immediate.</p><p>SKGE has been studied for many years while TKGE is still at birth. Problems encountered in SKGE (e.g., diverse relation patterns) can also occur in TKGE. Thus the advantages of SKG researches can be used to accelerate the development of TKGs if we bridge the gap between them. Our RTFE provides a way to migrate SKGE methods to TKGs while preserving their excellent effects.</p><p>Further, existing TKG completion methods de-signed specifically for the characteristics of TKGs can also be enhanced using the training pattern of RTFE. To sum up, we have made the following contributions:</p><p>1. We propose a training pattern to bridge the gap between SKGE and TKGE. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Recursive Temporal Fact Embedding (RTFE) Framework</head><p>The state of TKGs change with the change of entities and relations over time. SKGE models fail to capture correlations during state transition. And existing TKGE models for TKG completion capture it implicitly. It can be observed that the TKG after the current change changes on the closest former state, which is similar to a first order Markov chain (Given the state at the current moment, the state at the next moment is independent of the state at the past moment).</p><p>Inspired by Markov analysis, we use the time granularity of TKGs to discretely divide states. Then the basic model of RTFE can be expressed as:</p><formula xml:id="formula_0">S t i+1 = S t i • P t i (1)</formula><p>where S t i represents the state of G t i and P t i represents probability transition matrix to transform S t i to that of t i+1 . A typical KG embedding learner uses its parameters θ and features X to represent the semantic information of KG. Thus we approximate state vectors as:</p><formula xml:id="formula_1">S t i := [θ t i , X t i ]<label>(2)</label></formula><p>The idea of RTFE is to dynamically adjust θ and X as the TKG changes while passing the information of each timestamp graph. We simply assume the features and parameters satisfy Markov Property:</p><formula xml:id="formula_2">P (X t i+1 , θ t i+1 |X t 1 , ..., X t i ; θ t 1 , ..., θ t i ) = P (X t i+1 , θ t i+1 |X t i , θ t i ) (3)</formula><p>where X t i and θ t i denote features and parameters at time t i .</p><p>RTFE does not specify a model, but rather a training method for TKG completion. Existing SKGE methods and TKGE methods that follow the SKGE training pattern such as DE-SimplE <ref type="bibr" target="#b10">(Goel et al., 2019)</ref> and TComplEx <ref type="bibr" target="#b18">(Lacroix et al., 2020)</ref> can potentially be utilized as the embedding component. The RTFE framework is illustrated in Figure <ref type="figure">2</ref>. In section 3, we specify that RTFE how to use SKGE models for TKG completion. In section 4, we generalize RTFE to existing TKGE models to enhance their performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Preliminary training for static features</head><p>Instead of training from scratch, RTFE uses SKGE as input to the first timestamp. In order to obtain the input features, the TKG is transformed into SKG G static , which is obtained by merging the facts of each timestamp:</p><formula xml:id="formula_3">G static : = n i=1 G t i = {(s, r, o)|(s, r, o, t i ) ∈ G t i , G t i ∈ G} (4)</formula><p>Suppose the SKG embedding learner be θ, which takes the knowledge graph G (facts of G) and the feature X (which can be predefined or randomly initialized) as inputs. Send G static and X to θ, and then get the updated feature X after training, which will be the input to the first timestamp.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Learning each timestamp recursively</head><p>In TKGs, parameters θ and features X should change with time (i.e., with the change of TKG). We find that, due to the continuity of facts, most of the facts are the same in the adjacent timestamps, while only a small number of facts changed. For discrete events, they influence the states of the surrounding entities, leading to the possibility that these entities may produce new facts. Therefore, model parameters and features fitting a certain timestamp provide a good starting point for the learning of the next timestamp.</p><p>Different from most neural network-based SKGE models <ref type="bibr" target="#b23">(Schlichtkrull et al., 2018;</ref><ref type="bibr" target="#b32">Wu et al., 2019)</ref> which only update θ during training, leaving the input features X unchanged, we let X be updated as well, to capture the temporal dynamics of entities and relations.</p><p>Therefore, in our framework RTFE, model parameters θ and input features X are both updated in the way similar to equation ( <ref type="formula">1</ref>) during state transition:</p><formula xml:id="formula_4">θ t i+1 , X t i+1 = [θ t i , X t i ] • P t i (5)</formula><p>where θ t i and X t i denote the state vectors of θ and X at time t i respectively; P t i represent the probability transition matrix. To transform state vectors at t i to that at t i+1 , we approximate the state transition P t i as the gradient update process of learning G t i (i.e., updating according to the gradient of the loss function for several epochs):</p><formula xml:id="formula_5">θ t i+1 = θ t i -α • ∇ θ l(θ t i , X t i , G t i ) (6) X t i+1 = X t i -α • ∇ X l(θ t i , X t i , G t i ) (7)</formula><p>where α is the learning rate; l is the loss function defined by the specified embedding learner; ∇ θ is the gradient of l with respect to θ.</p><p>It must be pointed out that the state transition matrix in Markov analysis is fixed, so the above analysis method is generally applicable to shortterm prediction. But the state vectors are different in different states and the gradient between the states is also different. Since the state vector is fixed in a specific state, a model can be established for each discrete state by the time interval of TKG. Then the gradient can be updated between states according to the difference of each state vector, to continue our framework.</p><p>RTFE recursively trains each timestamp according to equation ( <ref type="formula">6</ref>) and <ref type="bibr" target="#b2">(7)</ref> and uses θ t i and X t i to test G t i . Since RTFE is trained and tested by timestamp, only the latest parameters and features need to be stored, which shows good scalability for large TKGs. The framework RTFE is illustrated in For translation-based methods like TransE <ref type="bibr" target="#b4">(Bordes et al., 2013</ref><ref type="bibr">), TransD (Ji et al., 2015)</ref>, RotatE <ref type="bibr" target="#b25">(Sun et al., 2019)</ref> and HAKE <ref type="bibr">(Zhang et al., 2020)</ref>, they can be directly used as the embedding learner of RTFE without change of models.</p><p>For Graph neural network-based methods like RGCN <ref type="bibr" target="#b23">(Schlichtkrull et al., 2018)</ref>, we make its input feature do gradient update as well, so that the input features encode the information of each timestamp, so as to enhance the information transfer between timestamps. In addition, a residual connection is added to the network between the network inputs and outputs of each timestamp.</p><p>For RDGCN <ref type="bibr" target="#b32">(Wu et al., 2019)</ref> that was designed for entity alignment, in order to measure the plausibility of a triple (s, r, o) for SKG completion, we design a distance function consisting of type distance and semantic distance:</p><formula xml:id="formula_6">d(s, r, o) = d type (s, r, o)+λ•d seman (s, r, o) (8) d type (s, r, o) = | X E s , X E o -X R r | (9) d seman (s, r, o) = |( X E s , X E o -X R r )[: d] -( X E s , X E o -X R r )[d :]| (10) where X E ∈ R |V |×d and X R ∈ R |V |×2d denotes</formula><p>output entity and relation representations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Enhancing TKGE models</head><p>Since existing TKGE models such as DE-SimplE <ref type="bibr" target="#b10">(Goel et al., 2019)</ref> and TComplEx <ref type="bibr" target="#b18">(Lacroix et al., 2020)</ref> for TKG completion follow the training pattern of SKGE models (i.e., think of TKG as a whole graph, not as a sequence of graphs), we can use them as the embedding leaner of RTFE. Specifically, we think their own training process as the preliminary training of RTFE. After TKGE models finish their own training process, we use the obtained features and parameters as the input to the learning of the first timestamp. Then RTFE trains the TKGE model recursively by equation ( <ref type="formula">6</ref>) and equation <ref type="bibr" target="#b2">(7)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Extensibility for future timestamps</head><p>Since RTFE embeds each timestamp recursively, transforming form current state to the next state, it provides a way to complete upcoming future timestamps. Specifically, given a sequence of observed graphs of a TKG: G obs = {G t 1 , . . . , G tn } and a sequence of upcoming future graphs: G f ut = {G t n+1 , . . . , G t n+j }. We pre-train RTFE on G obs , then embeds timestamp recursively to obtain the latest features X tn and parameters θ tn . To complete G t n+1 , we use equation ( <ref type="formula">6</ref>) to equation ( <ref type="formula">7</ref>) to obtain X t n+1 and θ t n+1 similarly. Then graphs of G f ut can also be completed in this recursive way, without retraining of G obs .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Experiment</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Experimental setup</head><p>Dataset: We evaluated models on two fact datasets proposed by Hyte (Dasgupta et al., 2018): YAGO11k and Wikidata12k and three event datasets ICEWS14, ICEWS05-15 and GDELT <ref type="bibr" target="#b10">(Goel et al., 2019)</ref>. The details of the five datasets are illustrated in appendix.</p><p>Evaluation settings and metrics: For entity prediction, we used mean reciprocal rank (M RR) and Hits@1, Hits@3, Hits@10 as metrics. Hits@n is defined as:</p><formula xml:id="formula_7">Hits@n = f act∈test_set bool(rank(f act) ≤ n) |test_set|</formula><p>For relation prediction, we used mean rank</p><formula xml:id="formula_8">(M R) = f act∈test_set rank(f act)≤n #test_set</formula><p>and Hits@1 as metrics since the number of relations is small. The rank of a test triple is obtained by replacing its head/tail/relation with remaining negative samples, and then evaluating the score rank of the original triple in all the replacement samples. Mean rank (M R) is the average rank of all test triples. And Mean reciprocal rank (M RR) is the average of the reciprocal ranks.</p><p>For our RTFE framework, a timestamp-bytimestamp train-test mode was adopted. The total test result was a weighted average of all timestamp test results. For example, the final M RR was calculated as:</p><formula xml:id="formula_9">M RR all = i |G t i | × M RR Gt i i |G t i |</formula><p>Baselines: We compared our framework RTFE to state-of-the-art TKGE models including t-TransE <ref type="bibr">(Jiang et al., 2016a</ref><ref type="bibr">), Hyte (Dasgupta et al., 2018)</ref>, DE-SimplE <ref type="bibr" target="#b10">(Goel et al., 2019)</ref>, ATiSE <ref type="bibr" target="#b33">(Xu et al., 2019)</ref>, TComplEx <ref type="bibr" target="#b18">(Lacroix et al., 2020)</ref> for TKG completion. Then we used several stateof-the-art SKGE models including TransE <ref type="bibr" target="#b4">(Bordes et al., 2013</ref><ref type="bibr">), TransD (Ji et al., 2015)</ref>, RGCN <ref type="bibr" target="#b23">(Schlichtkrull et al., 2018)</ref>, RDGCN <ref type="bibr" target="#b32">(Wu et al., 2019)</ref>, RotatE <ref type="bibr" target="#b25">(Sun et al., 2019)</ref> and HAKE <ref type="bibr">(Zhang et al., 2020)</ref> as the embedding learner of RTFE to perform TKG completion as well. And finally we use TKGE models as the embedding learner of RTFE to show the gain of performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Entity prediction</head><p>Entity prediction is given a quadruple (s, r, o, t), to perform head entity prediction (i.e., to predict the plausibility of (?, r ,o, t) ) , and performs tail entity prediction (i.e., to predict the plausibility of (s, r, ?, t)). The plausibility of (s, r, o, t) is ranked among all corrupted quadruples, while all true quadruples are excluded according to TransE's filtering protocol.</p><p>The experimental results are shown in Table <ref type="table">1</ref> and Table <ref type="table" target="#tab_1">2</ref> where results marked (*) are taken from reported results of Hyte and ATiSE.</p><p>Table <ref type="table">1</ref> shows that on continuous fact datasets, both translation-based and graph neural networkbased methods can be transplanted to RTFE, and the results are better than Hyte, indicating the generality and superiority of RTFE. For both TransEbased approaches, RTFE-TransE outperforms Hyte on all metrics (e.g., with the improvement of 15.0% in tail M RR on Wikidata12k) because RTFE takes advantage of the continuity of facts directly.</p><p>RotatE and HAKE are the most advanced translation-based approaches and RTFE-RotatE or RTFE-HAKE outperforms other methods, which demonstrates that our framework can preserve the excellent results of these methods over SKG. Besides, the performance of state-of-the-art TKGE model TComplEx is enhanced by RTFE, which shows the gain from our recursive training pattern.</p><p>Table <ref type="table" target="#tab_1">2</ref> shows that on discrete event datasets, RTFE also significantly improves the performance of TKGE models. Besides, on a dense dataset (i.e., with a small number of entities and a large number of facts) like GDELT, RTFE can take advantage of SKGE models such as HAKE.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Relation prediction</head><p>Relation prediction is given a quadruple (s, r, o, t), to evaluate the plausibility of (s, ?, o, t). The experimental results are shown in Table <ref type="table" target="#tab_2">3</ref>. RTFE-RDGCN type outperforms Hyte on YAGO11k that has only 10 relations (e.g., with the improvement of 12.5% in Hits@1), which implies that type information plays an important role in this task. Since the number of relations between these two datasets is relatively small (10 and 24), the performance improvement is not obvious after adding semantic information (e.g., with the improvement of 1.3% in Hits@1).</p><p>Hyte performed well on Wikdata12k. This may be attributed to its SKGE training pattern, which helped to capture applicable relation types between two entities from all the facts. In contrast, the timestamp of RTFE is trained by time, so only the facts of the current timestamp and information of last timestamp are directly utilized. To provide RTFE-RDGCN with more training data about relations, we added additional 30% negative samples obtained by replacing relations of quadruples into the negative sample set: {(s, r , o)|(s, r, o) ∈  G t , (s, r , o) / ∈ G}. We call this variant RTFE-RDGCN rel , which improves the performance of relation prediction on Wikidata12k compared with RTFE-RDGCN (with the improvement of 9.1% in Hits@1).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">Extensibility validation</head><p>In order to verify the influence of pre-trained static features on RTFE's entire TKG completion, we divide timestamps into four time intervals and perform pre-training of RTFE on them respectively. Then the pre-trained static features of these time intervals are used as inputs to RTFE to test the performance of entity prediction at all timestamps.</p><p>The experimental results are presented in Figure <ref type="figure" target="#fig_2">3</ref>. Although a complete SKG is not provided for pre-training, RTFE still remains a similar performance, which verifies the framework's extensibility for future timestamps. So RTFE can be extended to future timestamps to some extent, without the retraining of former timestamps, which shows good lightness and immediacy.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.5">Ablation study</head><p>In this subsection, we explore the effects of pre-   <ref type="bibr">, 2009-2016)</ref>. And discrete events have temporal attributes (happens at. . . ) like (Obama, Inaugurated as, <ref type="bibr">President, 2009)</ref>.</p><p>In recent years, some work <ref type="bibr">(Jiang et al., 2016a;</ref><ref type="bibr" target="#b7">Esteban et al., 2016;</ref><ref type="bibr" target="#b27">Tresp et al., 2017;</ref><ref type="bibr" target="#b28">Trivedi et al., 2017;</ref><ref type="bibr" target="#b8">García-Durán et al., 2018;</ref><ref type="bibr" target="#b13">Jain et al., 2020;</ref><ref type="bibr" target="#b22">Ma et al., 2019;</ref><ref type="bibr" target="#b33">Xu et al., 2019;</ref><ref type="bibr" target="#b16">Jin et al., 2019;</ref><ref type="bibr" target="#b21">Liu et al., 2019;</ref><ref type="bibr" target="#b31">Wang and Li, 2019;</ref><ref type="bibr" target="#b26">Tang et al., 2020;</ref><ref type="bibr" target="#b10">Goel et al., 2019;</ref><ref type="bibr" target="#b34">Xu et al., 2020;</ref><ref type="bibr" target="#b13">Jain et al., 2020;</ref><ref type="bibr" target="#b18">Lacroix et al., 2020;</ref><ref type="bibr">)</ref> began to use the time information to improve the KG completion or directly complete the TKG. Based on the fact or event they dealt with, we state representative TKGE methods as follows.</p><p>(1) Event completion: DE <ref type="bibr" target="#b10">(Goel et al., 2019</ref>) made the entity embedding into a function DEEMB that takes the time point as a variable. While DE transplanted SKG embedding methods to TKGs, it didn't involve recent GNN-based SKG embedding methods. TComplEx <ref type="bibr" target="#b18">(Lacroix et al., 2020)</ref> presented an extension of Complex <ref type="bibr" target="#b29">(Trouillon et al., 2016)</ref> by adding timestamp embedding into decomposition of tensors of order 4. ATiSE <ref type="bibr" target="#b33">(Xu et al., 2019)</ref> incorporated time information into entity/relation representations by using Additive Time Series decomposition.</p><p>(2) Event prediction: <ref type="bibr" target="#b7">(Esteban et al., 2016</ref>) trained an event prediction model by using background information provided by KG and recent events. RE-NET <ref type="bibr" target="#b16">(Jin et al., 2019)</ref> models the event sequence as a temporal joint probability distribution. The method is trained on historical data and then, by sampling from the probability distribution, predicts the events of the future timestamp graph. GHNN <ref type="bibr" target="#b11">(Han et al., 2020)</ref> used Hawkes process to capture the dynamic of evolving graph sequences. Glean <ref type="bibr" target="#b6">(Deng et al., 2020)</ref> incorporated both relational and world contexts to capture historical information.</p><p>(3) Continuous fact completion: <ref type="bibr">(Jiang et al., 2016a;</ref><ref type="bibr">Jiang et al., 2016b)</ref> used the order of relations and temporal consistency constraints to improve completion but did not make the embedding space directly contain time information. <ref type="bibr" target="#b8">(García-Durán et al., 2018)</ref> used RNN to learn the representation of temporal relations, but did not consider that the embedding of entities should also change over time. <ref type="bibr">Hyte (Dasgupta et al., 2018)</ref> represented timestamps as hyperplanes, and projected the entities and relations onto these hyperplanes. Then, the facts of all timestamps are learned jointly using a translation-based score function.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Conclusion</head><p>We propose a framework RTFE for TKG completion. We have transplanted SKGE models to TKGs and enhance the performance of existing TKGE models. Experiments show that on five TKG datasets RTFE outperformed baselines and is extensible for future timestamps to some extent.</p><p>In the future, we will further deal with discrete events. Since events with adjacent timestamps are correlated, we plan to modify RTFE so that it can learn correlations (especially causality) of events. By modeling spatio-temporal dependency of TKG, events in future timestamps can be forecasted. Besides, we plan to deal with the task of predicting time validity of facts <ref type="bibr" target="#b19">(Leblay and Chekol, 2018)</ref>.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: A toy example of TKG where solid edges represent observed edges and red edges represent new facts that occurred at that timestamp. Besides, dotted edges represent missing or potential facts.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head></head><label></label><figDesc>Figure 2 and the overall training and testing algorithm is shown in Algorithm 1. 4 Transplanting SKGE/TKGE models 4.1 SKGE models</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Extensibility validation experiment. Using equation (4) to convert TKG to SKG, different time intervals of TKG are used for pre-training. Then all timestamps are trained and tested to validate the extensibility for timestamps unseen during pre-training. The horizontal axis represents the time interval for pre-training and the ordinate represents the MRR of test results for all timestamps.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>{G t 1 , . . . , G tn } , to infer the missing quadruples (s, r, o, t) in test set G test = {G t 1 , . . . , G tn } (i.e., assign high scores to true quadruples and low scores to false ones). As shown in Figure1, missing facts with high probability are dotted. Figure 2: The framework of RTFE. TKG is first transformed to SKG G static . RTFE pre-train embedding learner θ on G static to obtained the input of the first timestamp. Then features and parameters are recursively passed to next timestamp after learning the current timestamp.</figDesc><table><row><cell></cell><cell>recursively pass</cell><cell>recursively pass</cell></row><row><cell></cell><cell>𝑡 1</cell><cell>𝑡 2</cell></row><row><cell></cell><cell>𝐺 𝑡 1</cell><cell>𝐺 𝑡 2</cell></row><row><cell>𝐺 𝑠𝑡𝑎𝑡𝑖𝑐 pre-train Embedding learner θ</cell><cell cols="2">Therefore, state-of-the-art SKGE models can be used to accelerate the development of TKGE. 2. Existing TKGE models can be further en-hanced with our framework RTFE, after fin-ishing their own regular training. 3. To the best of our knowledge, we are the first to deal with the TKG evolution problem (i.e., new future timestamps are added to TKGs) in the TKG completion task. 4. The experimental results on 5 TKG datasets show that RTFE preserve SKGE models' ex-cellent performance. And the predictive per-formance of state-of-the-art TKGE models are further enhanced using RTFE. 2 Problem definition A temporal knowledge graph (TKG) can be rep-resented as a sequence of graphs, i.e. G = {G t 1 , . . . , G tn } where G t i is a set of quadru-ples that occured at timestamp t i , i.e. G t i = {(s, r, o, t i )} where V is the set of G's entities and s, o ∈ V ; R is the set of G's relations and r ∈ R. We focus on the following task: given a train-LOSS Boston Chicago United States 𝑋 𝑡 2 … Embedding Embedding learner θ LOSS update learner θ recursively pass ing TKG G train = Boston Chicago United States 𝑋 𝑡 1 Embedding recursively pass update learner θ … Michelle … update … … update Gradient Michelle Gradient</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Entity prediction on discrete event datasets: ICEWS14, ICEWS05-15 and GDELT.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 :</head><label>3</label><figDesc>Relation prediction. For RTFE-RDGCNtype, λ is set to 0, which only considered type distance. For RTFE-RDGCN, λ is set to 0.2.</figDesc><table><row><cell>Dataset</cell><cell cols="2">YAGO11k</cell><cell cols="2">Wikidata12k</cell></row><row><cell>Metric</cell><cell cols="4">MR Hits@1 MR Hits@1</cell></row><row><cell>TransE*</cell><cell>1.70</cell><cell>78.4</cell><cell>1.35</cell><cell>88.4</cell></row><row><cell>TransH*</cell><cell>1.53</cell><cell>76.1</cell><cell>1.40</cell><cell>88.1</cell></row><row><cell>HoIE*</cell><cell>2.57</cell><cell>69.3</cell><cell>2.23</cell><cell>84.0</cell></row><row><cell>t-TransE*</cell><cell>1.66</cell><cell>75.5</cell><cell>1.97</cell><cell>74.2</cell></row><row><cell>Hyte*</cell><cell>1.23</cell><cell>81.2</cell><cell>1.13</cell><cell>92.6</cell></row><row><cell>RTFE-TransE</cell><cell>1.43</cell><cell>84.1</cell><cell>1.88</cell><cell>73.7</cell></row><row><cell cols="2">RTFE-RDGCN type 1.19</cell><cell>93.7</cell><cell>1.77</cell><cell>82.9</cell></row><row><cell>RTFE-RDGCN</cell><cell>1.11</cell><cell>95.0</cell><cell>1.36</cell><cell>83.2</cell></row><row><cell cols="2">RTFE-RDGCN rel 1.10</cell><cell>96.4</cell><cell>1.20</cell><cell>92.3</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head></head><label></label><figDesc>liminary training and recursive training. w/o pretrain refers to RTFE without preliminary training for static futures (i.e., only recursive training). As shown in Table 4, RTFE generally outperforms w/o pre-train, which verfies the significance of preliminary training. For TKGE models, w/o pre-train is generally competitive with them. With preliminary training, RTFE gets a good starting point. So RTFE outperforms the original TKGE models.However, it's interesting to find that on GDELT w/o pre-trains outperform RTFE-DE-SimpleE and RTFE-TComplEx. This can be attributed to the special denseness of this dataset. RTFE can fit each timestamp well with its enough facts and recursive</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4 :</head><label>4</label><figDesc>Ablation study. w/o pre-train refers to RTFE without preliminary training for static futures. training. Pre-training provides a local optimum of all timestamps. In this case, it's not as good as the random initialization of the first timestamp 6 Related work There are two kinds of facts in the TKGs: continuous facts and discrete events. Continuous facts have temporal attributes (since. . . is true, until. . . ends) like (Obama, President, United States</figDesc><table /></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgements</head><p>This work was supported in part by the <rs type="funder">National Science Foundation of China</rs> (Grant No. <rs type="grantNumber">61902034</rs>); <rs type="institution">Engineering Research Center of Information Networks</rs>, <rs type="funder">Ministry of Education</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_ES9RRag">
+					<idno type="grant-number">61902034</idno>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Details of datasets</head><p>In YAGO11k and Wikidata12k, each fact was formatted as (s, r, o, start_date, end_date). Following the step of Hyte to divide the timestamps, we used a year with more than 300 occurrences as the timestamp boundary. So the timestamp could be formatted as (year, the next year with more than 300 occurrences). Then, the facts were divided into these timestamps to get the set of quadruples (s, r, o, t), where t represents the timestamp of the fact (A original fact can appear in multiple adjacent timestamps after decomposition). The statistics of the five datasets are illustrated in Table <ref type="table">5</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Examples of feature X in RTFE</head><p>Feature X refers to the input vectors of entites/relations. E.g., for RGCN <ref type="bibr" target="#b23">(Schlichtkrull et al., 2018)</ref>, feature X refers to the input hidden state h (0) at layer 0; For TransE <ref type="bibr" target="#b4">(Bordes et al., 2013)</ref>, feature X refers to the embeddings.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Parameter settings</head><p>The same parameters are used for the SKGE method and its corresponding RTFE version. Their main parameters are shown in Table <ref type="table">6</ref>. Besides, for TransE, the number of batches is set to 100. For RGCN, dropout ratio is set to 0.2; the number of GCN layer is set 2 and a res-net layer is added between the two RGCN layers. For RDGCN, λ is set to 0.2.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Table 1: Entity prediction on continuous fact datasets: YAGO11k and Wikidata12k. Since the relations of these 2 datasets have typical &quot;one-to-many&quot; nature, the performance of tail prediction is better than that of head prediction</title>
+	</analytic>
+	<monogr>
+		<title level="m">Dataset ICEWS14 ICEWS05-15 GDELT Metric MRR Hits@1 Hits@3 Hits@10 MRR Hits@1 Hits@3 Hits@10 MRR Hits@1 Hits@3 Hits</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Transe</forename></persName>
+		</author>
+		<imprint>
+			<biblScope unit="volume">25</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">Dataset Wikidata12k YAGO11k</title>
+		<idno>ICEWS14 ICEWS05-15</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>De-Simple</surname></persName>
+		</author>
+		<idno>52.6 41.8 51.3 39.2 23.0 14.1 RTFE-DE-SimplE</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multirelational data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="2787" to="2795" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Hyte: Hyperplane-based temporally aware knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">Swayambhu</forename><surname>Shib Sankar Dasgupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Partha</forename><surname>Nath Ray</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Talukdar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 conference on empirical methods in natural language processing</title>
+		<meeting>the 2018 conference on empirical methods in natural language processing</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="2001" to="2011" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Dynamic knowledge graph based multievent forecasting</title>
+		<author>
+			<persName><forename type="first">Songgaojun</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huzefa</forename><surname>Rangwala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yue</forename><surname>Ning</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining</title>
+		<meeting>the 26th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1585" to="1595" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Predicting the co-evolution of event and knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Cristóbal</forename><surname>Esteban</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinchong</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Denis</forename><surname>Baier</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Krompaß</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2016 19th International Conference on Information Fusion (FUSION)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="98" to="105" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">Learning sequence encoders for temporal knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>García-Durán</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastijan</forename><surname>Dumančić</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mathias</forename><surname>Niepert</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1809.03202</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Temporal attribute prediction via joint modeling of multi-relational structure evolution</title>
+		<author>
+			<persName><forename type="first">Sankalp</forename><surname>Garg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Navodita</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Woojeong</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Ren</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2003.03919</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<author>
+			<persName><forename type="first">Rishab</forename><surname>Goel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seyed</forename><surname>Mehran Kazemi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marcus</forename><surname>Brubaker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pascal</forename><surname>Poupart</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1907.03143</idno>
+		<title level="m">Diachronic embedding for temporal knowledge graph completion</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Graph hawkes neural network for forecasting on temporal knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunpu</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuyi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Günnemann</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Volker Tresp</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">8</biblScope>
+		</imprint>
+	</monogr>
+	<note>th Automated Knowledge Base Construction (AKBC</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Cluster query: a new query pattern on temporal knowledge graph</title>
+		<author>
+			<persName><forename type="first">Jinjing</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">An</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weiqing</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongzhi</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Zhao</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<publisher>World Wide Web</publisher>
+			<biblScope unit="volume">23</biblScope>
+			<biblScope unit="page" from="755" to="779" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding via dynamic mapping matrix</title>
+		<author>
+			<persName><forename type="first">Prachi</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sushant</forename><surname>Rathi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soumen</forename><surname>Chakrabarti</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2005.05035</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 53rd annual meeting of the association for computational linguistics and the 7th international joint conference on natural language processing</title>
+		<meeting>the 53rd annual meeting of the association for computational linguistics and the 7th international joint conference on natural language processing</meeting>
+		<imprint>
+			<date type="published" when="2015">2020. 2015</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="687" to="696" />
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+	<note>Temporal knowledge base completion: New algorithms and evaluation protocols</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Towards time-aware knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Tingsong</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyu</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Ge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Sha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baobao</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sujian</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhifang</forename><surname>Sui</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of COLING 2016, the 26th International Conference on Computational Linguistics: Technical Papers</title>
+		<meeting>COLING 2016, the 26th International Conference on Computational Linguistics: Technical Papers</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="1715" to="1724" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Encoding temporal information for time-aware link prediction</title>
+		<author>
+			<persName><forename type="first">Tingsong</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyu</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Ge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Sha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sujian</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baobao</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhifang</forename><surname>Sui</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2016 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2016 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2350" to="2354" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<author>
+			<persName><forename type="first">Woojeong</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">He</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Changlin</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pedro</forename><surname>Szekely</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Ren</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1904.05530</idno>
+		<title level="m">Recurrent event network: Global structure inference over temporal knowledge graph</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Simple embedding for link prediction in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Seyed</forename><surname>Mehran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kazemi</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Poole</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="4284" to="4295" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<author>
+			<persName><forename type="first">Timothée</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Obozinski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2004.04926</idno>
+		<title level="m">Tensor decompositions for temporal knowledge base completion</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Deriving validity time in knowledge graph</title>
+		<author>
+			<persName><forename type="first">Julien</forename><surname>Leblay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Melisachew</forename><forename type="middle">Wudage</forename><surname>Chekol</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Companion Proceedings of the The Web Conference 2018</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1771" to="1776" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Learning entity and relation embeddings for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Yankai</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="s">Google Scholar Google Scholar Digital Library Digital Library</title>
+		<imprint>
+			<date type="published" when="2015">2015. 2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Context-aware temporal knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen</forename><surname>Hua</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kexuan</forename><surname>Xin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaofang</forename><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Web Information Systems Engineering</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="583" to="598" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Embedding models for episodic knowledge graphs</title>
+		<author>
+			<persName><forename type="middle">Yunpu</forename><surname>Springer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Volker</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Erik</forename><forename type="middle">A</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Daxberger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Web Semantics</title>
+		<imprint>
+			<biblScope unit="volume">59</biblScope>
+			<biblScope unit="page">100490</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Modeling relational data with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Bloem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rianne</forename><surname>Van Den</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><surname>Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Titov</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">European Semantic Web Conference</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="593" to="607" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Towards temporal scoping of relational facts based on wikipedia data</title>
+		<author>
+			<persName><forename type="first">Avirup</forename><surname>Sil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Silviu</forename><surname>Cucerzan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Eighteenth Conference on Computational Natural Language Learning</title>
+		<meeting>the Eighteenth Conference on Computational Natural Language Learning</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="109" to="118" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Zhiqing</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhi-Hong</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian-Yun</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1902.10197</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Timespan-aware dynamic knowledge graph embedding by incorporating temporal evolution</title>
+		<author>
+			<persName><forename type="first">Xiaoli</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qianyu</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tengyun</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haizhi</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yundong</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hengjie</forename><surname>Song</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Access</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page" from="6849" to="6860" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Embedding learning for declarative memories</title>
+		<author>
+			<persName><forename type="first">Yunpu</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinchong</forename><surname>Baier</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">European Semantic Web Conference</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="202" to="216" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Know-evolve: Deep temporal reasoning for dynamic knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Rakshit</forename><surname>Trivedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanjun</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yichen</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Le</forename><surname>Song</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1705.05742</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Complex embeddings for simple link prediction</title>
+		<author>
+			<persName><forename type="first">Théo</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Éric</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding by translating on hyperplanes</title>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianwen</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianlin</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Aaai</title>
+		<imprint>
+			<publisher>Citeseer</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="page" from="1112" to="1119" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Hybrid-te: Hybrid translation-based temporal knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">Zhihao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2019 IEEE 31st International Conference on Tools with Artificial Intelligence (ICTAI)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="1446" to="1451" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<author>
+			<persName><forename type="first">Yuting</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yansong</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongyan</forename><surname>Zhao</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1908.08210</idno>
+		<title level="m">Relation-aware entity alignment for heterogeneous knowledge graphs</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<author>
+			<persName><forename type="first">Chengjin</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mojtaba</forename><surname>Nayyeri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fouad</forename><surname>Alkhoury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jens</forename><surname>Lehmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hamed Shariat</forename><surname>Yazdi</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1911.07893</idno>
+		<title level="m">Temporal knowledge graph embedding model based on additive time series decomposition</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Learning hierarchy-aware knowledge graph embeddings for link prediction</title>
+		<author>
+			<persName><forename type="first">Chengjin</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mojtaba</forename><surname>Nayyeri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fouad</forename><surname>Alkhoury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hamed Shariat</forename><surname>Yazdi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jens</forename><surname>Lehmann</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2010.01029</idno>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<editor>
+			<persName><forename type="first">Zhanqiu</forename><surname>Zhang</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jianyu</forename><surname>Cai</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Yongdong</forename><surname>Zhang</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jie</forename><surname>Wang</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2020">2020. 2020</date>
+			<biblScope unit="page" from="3065" to="3072" />
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+	<note>Tero: A time-aware knowledge graph embedding via temporal rotation</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

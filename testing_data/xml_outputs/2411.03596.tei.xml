@@ -1,0 +1,729 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Enhancing the Expressivity of Temporal Graph Networks through Source-Target Identification</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-11-28">28 Nov 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Benedict</forename><forename type="middle">Aaron</forename><surname>Tjandra</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">University of Oxford</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Federico</forename><surname>Barbero</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">University of Oxford</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Michael</forename><surname>Bronstein</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">University of Oxford</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Enhancing the Expressivity of Temporal Graph Networks through Source-Target Identification</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-11-28">28 Nov 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">B87C95C9B4FE9E271FBE53B1B348ECB5</idno>
+					<idno type="arXiv">arXiv:2411.03596v3[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:18+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>Preprint. Under review</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Despite the successful application of Temporal Graph Networks (TGNs) for tasks such as dynamic node classification and link prediction, they still perform poorly on the task of dynamic node affinity prediction -where the goal is to predict 'how much' two nodes will interact in the future. In fact, simple heuristic approaches such as persistent forecasts and moving averages over ground-truth labels significantly and consistently outperform TGNs. Building on this observation, we find that computing heuristics over messages is an equally competitive approach, outperforming TGN and all current temporal graph (TG) models on dynamic node affinity prediction. In this paper, we prove that no formulation of TGN can represent persistent forecasting or moving averages over messages, and propose to enhance the expressivity of TGNs by adding source-target identification to each interaction event message. We show that this modification is required to represent persistent forecasting, moving averages, and the broader class of autoregressive models over messages. Our proposed method, TGNv2, significantly outperforms TGN and all current TG models on all Temporal Graph Benchmark (TGB) dynamic node affinity prediction datasets.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Temporal Graph (TG) models have become increasingly popular in recent years <ref type="bibr" target="#b20">(Xue et al., 2021;</ref><ref type="bibr" target="#b13">Skarding et al., 2021;</ref><ref type="bibr" target="#b2">Feng et al., 2024)</ref> due to their suitability for modeling a range of real-world systems as dynamic graphs that evolve through time, e.g. social networks, traffic networks, and physical systems <ref type="bibr" target="#b1">(Deng et al., 2019;</ref><ref type="bibr" target="#b14">Song et al., 2019;</ref><ref type="bibr" target="#b23">Zhao et al., 2020;</ref><ref type="bibr" target="#b3">Guo et al., 2019;</ref><ref type="bibr" target="#b10">Sanchez-Gonzalez et al., 2020;</ref><ref type="bibr" target="#b8">Pfaff et al., 2021)</ref>. Unlike static graphs, dynamic graphs allow the addition of nodes and edges, and graph features to change over time. Despite the successes of current TG models for dynamic node classification and link prediction, they have been shown to struggle in dynamic node affinity prediction, being significantly outperformed by simple heuristics such as persistent forecasting and moving average over ground-truth labels <ref type="bibr" target="#b5">(Huang et al., 2023;</ref><ref type="bibr" target="#b21">Yu, 2023)</ref>.</p><p>In dynamic node affinity prediction, the task is to predict a node's future 'affinity' for other nodes given the temporal evolution of the graph. Informally, the affinity of a node x towards a node y over some time interval [t, t + δ] refers to how much x has interacted with y over that interval. For example, if node A sends 10 identical messages to node B and 100 of the same messages to node C over some time interval [t, t + δ], then A has a higher affinity for C over that interval. This formulation is useful in settings such as recommender systems, e.g. predicting a user's future song preferences given their past listening history <ref type="bibr" target="#b5">(Huang et al., 2023)</ref>. A concrete example from the Temporal Graph Benchmark (TGB) <ref type="bibr" target="#b5">(Huang et al., 2023)</ref> is tgbn-trade, where nodes represent nations and edges represent the amount of goods exchanged in a single trade. In this case, the goal of dynamic node affinity prediction is to predict the amount of trade one nation would have with another nation in the next year, given the past evolution of global trading patterns.</p><p>Contributions. This work is based on the assumption that considering past messages between two nodes is important to predict their affinity at a future time. We start by empirically validating this assumption by demonstrating that a moving average computed over a node's past messages to another node is a powerful heuristic, beating all existing TG models. Armed with this result, we ask whether Temporal Graph Networks (TGNs) <ref type="bibr" target="#b9">(Rossi et al., 2020)</ref>, a popular TG model, can represent moving averages over messages. Surprisingly, we find that no formulation of TGN can represent moving averages of any order k. This result implies that TGNs are unable to represent persistent forecasting (i.e. the simple heuristic of outputting the most recent message between a pair of nodes), indicating a substantial weakness in its design. To remedy this, we propose to modify TGN by adding source-target identification to each interaction event message. We prove that our method, TGNv2, is strictly more expressive than TGN as it is able to represent persistent forecasting, moving averages, and autoregressive models. Further, we show that TGNv2 significantly outperforms all current TG models on all TGB datasets on dynamic node affinity prediction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">The Hidden Limitation of Temporal Graph Networks</head><p>This work is motivated by our observation that computing moving averages over past messages, despite still lagging behind moving average over ground-truth labels, is a competitive heuristic that outperforms all current TG models on every node affinity prediction dataset (Table <ref type="table" target="#tab_0">1</ref>). Given an order k ∈ N + , the moving average heuristic over past messages for node affinity prediction is defined as:</p><formula xml:id="formula_0">ŷt [u, v] = 1 k t ′ ∈M (u,v,t,k) e uv (t ′ )</formula><p>where M (u, v, t, k) returns k ordered timestamps that constitute the k most-recent messages sent from node u to node v up to time t and e uv (t ′ ) is the scalar event message passed from node u to node v during their interaction at time t ′ . Given this observation, we focus on TGNs and study if there exists a formulation of TGN that can exactly represent a moving average of order k. Our first important result is proving that this cannot be the case: Theorem 1. No formulation of TGN can represent a moving average of order k ∈ N + for any temporal graph with a bounded number of vertices.</p><p>We prove Theorem 1 in Appendix B.1. In short, the proof constructs a minimal example of two nodes in two graphs sending different messages. We show that TGNs cannot distinguish the two nodes, leading them to compute the same moving average for both nodes. This is a direct consequence of the permutation-invariance of TGNs, which renders them unable to discriminate between senders and receivers of messages, and in turn incapable of capturing important functions.</p><p>Since the above theorem holds for any k and persistent forecasting is equivalent to a moving average when k = 1, it follows that TGNs cannot represent persistent forecasting. Proceeding similarly to our proof for Theorem 1, we can show that, more generally, TGNs cannot represent the class of autoregressive functions (proof in Appendix B.2): Corollary 1. No formulation of TGN can represent an autoregressive model of order k ∈ N + for any temporal graph with a bounded number of vertices.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">TGNv2: Increasing the expressive power of TGNs</head><p>The main problem with TGN lies in the construction of the messages when an event occurs. In TGN, for every interaction between nodes i and j, two messages are constructed:</p><formula xml:id="formula_1">m i (t) = msg s (s i (t -), s j (t -), ϕ(∆t), e ij (t)); m j (t) = msg d (s j (t -), s i (t -), ϕ(∆t), e ij (t))</formula><p>If we look closely, however, we can see that each message does not contain the source or the destination of the message. Not only does this make it impossible for the memory vectors to have an imprint of past interactions, but this also renders TGNs to be invariant to the identities of the senders and receivers of messages-a property that is undesirable for dynamic node affinity prediction. To address this issue, we introduce TGNv2, where we modify the message construction of TGNs to include source-target identification:</p><formula xml:id="formula_2">m i (t) = msg s (s i (t -), s j (t -), ϕ t (∆t), e ij (t), ϕ n (i), ϕ n (j)) m j (t) = msg d (s j (t -), s i (t -), ϕ t (∆t), e ij (t), ϕ n (j), ϕ n (i))</formula><p>Here, we map all nodes to an arbitrary, but fixed node index, and ϕ n ∈ R → R d is an encoder function for node indices, similar to ϕ t . Incoming nodes that have not been encountered before are assigned to fresh, unused node indices as the graph evolves. This modification is a way to break the permutation-invariance of TGN, which is necessary to compute moving averages and autoregressive models. We are now able to prove: Theorem 2. There exists a formulation of TGNv2 that can represent persistent forecasting, moving average of order k ∈ N + , or any autoregressive model of order k ∈ N + for any temporal graph with a bounded number of vertices.</p><p>Our proof of Theorem 2 (Appendix B.3) leverages the existence of the node identification to 'index' into the memory vector to store information. From this, it follows that TGNv2 is strictly more expressive than TGN, as TGN is a special case of TGNv2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Experiments</head><p>Table <ref type="table" target="#tab_0">1</ref> shows our experimental results on the TGB benchmark. The top 3 rows are simple heuristics over ground-truth labels / ground-truth messages. 'Persistent Frcst (L)' and 'Moving Average (L)' refer to persistent forecasting and moving average over ground-truth labels respectively; while 'Moving Avg (M)' is a moving average over messages. The rest of the rows correspond to TG models. We describe the experimental details in Appendix C.</p><p>Evidently from Table <ref type="table" target="#tab_0">1</ref>, Moving Average (M) is a competitive method that outperforms all TG models. TGN (tuned) denotes the TGN that we trained using the same set of hyperparameters for TGNv2. Though TGN enjoys a performance boost with this set of hyperparameters, TGNv2 significantly outperforms TGN and all TG models on all datasets. Further, we can see that TGNv2 performs comparably to Moving Avg (M) on tgbn-trade, tgbn-genre, tgbn-reddit while TGN is beaten by Moving Avg (M) on all datasets. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Related Work</head><p>We believe this work is the first to address the limitations of TG models in dynamic node affinity prediction. <ref type="bibr" target="#b5">Huang et al. (2023)</ref> were the first to point out this problem, highlighting that TGN and DyRep <ref type="bibr" target="#b15">(Trivedi et al., 2018)</ref> are outperformed by heuristics over ground-truth labels. <ref type="bibr" target="#b21">Yu (2023)</ref> extended this work and found that a suite of other TG models (JODIE <ref type="bibr" target="#b7">(Kumar et al., 2019)</ref>, TGAT <ref type="bibr" target="#b18">(Xu et al., 2020)</ref>, CAWN <ref type="bibr" target="#b17">(Wang et al., 2022)</ref>, TCL <ref type="bibr" target="#b16">(Wang et al., 2021)</ref>, GraphMixer <ref type="bibr">(Cong et al., 2023)</ref>, and DyGFormer <ref type="bibr" target="#b22">(Yu et al., 2023</ref>)) all underperform in dynamic node affinity prediction. Despite still lagging behind heuristics over ground-truth labels, TGNv2 significantly outperforms all of the methods above, constituting what we believe to be the first positive result in improving TG models for dynamic node affinity prediction. Our method of augmenting TGNs with source-target identification to increase expressivity is most similar to the work of <ref type="bibr" target="#b11">Sato et al. (2019)</ref>, where they increased the expressivity of static GNNs via port numbering. Relatedly, other works demonstrated that breaking the permutation-invariance of static GNNs (e.g. by using RNNs to aggregate messages) led to empirical benefits <ref type="bibr" target="#b19">(Xu and Veličković, 2024;</ref><ref type="bibr" target="#b4">Hamilton et al., 2018)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusion</head><p>In this paper, we proposed to augment TGN with source-target identification. We proved that TGNv2 is strictly more expressive than TGN and consequently showed that TGNv2 achieves significantly higher performance than current TG models across all dynamic node affinity prediction datasets from TGB. In the future, we would like to close the remaining empirical gap between TGNv2 and the heuristics approaches. We believe this is because we formulated our message aggregator to output the last message, which was necessary to compare our results fairly with prior TGN experiments (Appendix C). To address this, we hope to explore more expressive aggregation functions. Moreover, we would like to further develop our work by studying TGNv2 on other TG tasks, such as dynamic link prediction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A TGN Recap</head><p>For the reader's convenience, we restate the core modules of TGN. For a more thorough explanation of each module, we refer the reader to the original paper <ref type="bibr" target="#b9">(Rossi et al., 2020)</ref>.</p><p>Message Function. For each interaction between i and j, we construct two messages msg s and msg d :</p><formula xml:id="formula_3">m i (t) = msg s (s i (t -), s j (t -), ϕ(∆t), e ij (t)); m j (t) = msg d (s j (t -), s i (t -), ϕ(∆t), e ij (t))</formula><p>We can also opt to construct node messages if node events exist:</p><formula xml:id="formula_4">m i (t) = msg n (s i (t -), t, v i (t))</formula><p>Message Aggregator.</p><formula xml:id="formula_5">mi (t) = agg(m i (t 1 ), ..., m i (t b ))</formula><p>Memory Updater.</p><formula xml:id="formula_6">s i (t) = mem( mi (t), s i (t -)))</formula><p>Embedding</p><formula xml:id="formula_7">z i (t) = g h(s i (t), s j (t), e ij , v i (t), v j (t)) : j ∈ N L i ([0, t])</formula><p>Here, h is a learnable function, g is a permutation-invariant function such as a sum or mean, and L corresponds to the number of layers used for temporal message passing. We note that our formulation of the embedding layer is a more general version than in the TGN paper, and we can recover the original formulation by setting g to be a sum. Proof. The main idea of the proof is that TGNs are unable to distinguish nodes whose messages are identical in every form but have different senders and/or recipients. To show this, we construct a temporal graph G with 3 nodes (Node 1, 2, and 3) and 'flip' it in such a way to yield a G ′ such that Node 1 in G ′ is sending different messages when compared to Node 1 in G but is indistinguishable from Node 1 in G from the point of view of TGNs (Appendix B.1).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Proofs</head><p>We proceed by way of contradiction. Assume that there exists a particular formulation of TGN that can implement a moving average of order k for any temporal graph with a bounded number of vertices. We initialise all memory vectors to be the zero vector, as per TGN's original formulation. Now, consider the following sequence of events that implicitly define the temporal graph G:</p><p>1. Node 1 sends Node 2 a series of n events with features α 1 , . . . , α n at timestamps t 1 , . . . , t n .</p><p>2. Node 1 sends Node 3 a series of m events with features β 1 , . . . , β m at timestamps t n+1 , . . . , t n+m .</p><p>where</p><formula xml:id="formula_8">t 1 &lt; • • • &lt; t n &lt; t n+1 &lt; • • • &lt; t n+m , n ≥ k, and m ≥ k. Let ᾱ = α n-k+1 +•••+αn k</formula><p>, the moving average of order k of α 1 , ..., α n . Similarly, define β to be the moving average of order k of β 1 , ..., β m . Suppose we compute Node 1's embedding at time t T where t T &gt; t n+m . We assume that no node updates are done, and all v 1 (t) = v 2 (t) = v 3 (t) for all t. Node 1 receives n messages from its interactions with Node 2: Similarly, Node 1 receives m messages from its interactions with Node 3:</p><formula xml:id="formula_9">m 1 (t i ) = msg s (0, 0, t i , α i ) ∀i ∈ [1, . . . , n]</formula><formula xml:id="formula_10">m 1 (t n+i ) = msg s (0, 0, t n+i , β i ) ∀i ∈ [1, . . . , m]</formula><p>Node 1 then aggregates the messages it receives and updates its memory:</p><formula xml:id="formula_11">m1 (t T ) = agg(m 1 (t 1 ), . . . , m 1 (t n+m )) s 1 (t T ) = mem( m1 (t T ), 0)</formula><p>We can do the same set of calculations for Node 2 and Node 3:</p><formula xml:id="formula_12">m 2 (t i ) = msg d (0, 0, t i , α i ) ∀i ∈ [1, . . . , n] m 3 (t n+i ) = msg d (0, 0, t n+i , β i ) ∀i ∈ [1, . . . , m] m2 (t T ) = agg(m 2 (t 1 ), . . . , m 2 (t n )) m3 (t T ) = agg(m 3 (t n+1 ), . . . , m 3 (t n+m )) s 2 (t T ) = mem( m2 (t T ), 0) s 3 (t T ) = mem( m3 (t T ), 0)</formula><p>Then, as we have assumed no node events have occurred, and all v i (t T ) are the same, then we can ignore them during the embedding computation:</p><formula xml:id="formula_13">z 1 (t T ) = g h(s 1 (t T ), s 2 (t T ), α i ) : i ∈ [1, . . . n] ∪ h(s 1 (t T ), s 3 (t T ), β i ) : i ∈ [1, . . . m] = [0, ᾱ, β] T</formula><p>as per our assumption. Consider now the flipped temporal graph G ′ with events:</p><p>1. Node 1 sends Node 3 a series of n events with features α 1 , . . . , α n at timestamps t 1 , . . . , t n .</p><p>2. Node 1 sends Node 2 a series of m events with features β 1 , . . . , β m at timestamps t n+1 , . . . , t n+m .</p><p>where</p><formula xml:id="formula_14">t 1 &lt; • • • &lt; t n &lt; t n+1 &lt; • • • &lt; t n+m , n ≥ k, m ≥ k as before.</formula><p>Suppose we are again to compute the node embeddings at time t T &gt; t n+m . Node 1 receives n messages from its interactions with Node 3:</p><formula xml:id="formula_15">m ′ 1 (t i ) = msg s (0, 0, t i , α i ) ∀i ∈ [1, . . . , n]</formula><p>Node 1 receives m messages from its interactions with Node 2:</p><formula xml:id="formula_16">m ′ 1 (t i ) = msg s (0, 0, t n+i , β i ) ∀i ∈ [1, . . . , m]</formula><p>But observe that Node 1 receives the same set of messages as it did in G. Therefore, s ′ 1 (t T ) must be equal to s 1 (t T ):</p><formula xml:id="formula_17">m′ 1 (t T ) = agg(m ′ 1 (t 1 ), . . . , m ′ 1 (t n+m )) = agg(m 1 (t 1 ), . . . , m 1 (t n+m )) = m1 (t T ) s ′ 1 (t T ) = mem( m′ 1 (t T ), 0) = mem( m1 (t T ), 0) = s 1 (t T )</formula><p>Further, we can see that Node 3 in G ′ receives the same set of messages as Node 2 in G, and Node 2 in G ′ receives the same set of messages as Node 3 in G. Following the same reasoning, we can conclude that:</p><formula xml:id="formula_18">m′ 2 (t T ) = agg(m ′ 2 (t n+1 ), . . . , m ′ 2 (t n+m )) = agg(m 3 (t n+1 ), . . . , m 3 (t n+m )) = m3 (t T ) s ′ 2 (t T ) = mem( m′ 2 (t T ), 0) = mem( m3 (t T ), 0) = s 3 (t T ) m′ 3 (t T ) = agg(m ′ 3 (t 1 ), . . . , m ′ 3 (t n )) = agg(m 2 (t 1 ), . . . , m 2 (t n )) = m2 (t T ) s ′ 3 (t T ) = mem( m′ 3 (t T ), 0) = mem( m2 (t T ), 0) = s 2 (t T ) Therefore: z ′ 1 (t T ) = g h(s ′ 1 (t T ), s ′ 3 (t T ), α i ) : i ∈ [1, . . . n] ∪ h(s ′ 1 (t T ), s ′ 2 (t T ), β i ) : i ∈ [1, . . . m] = g h(s 1 (t T ), s 2 (t T ), α i ) : i ∈ [1, . . . n] ∪ h(s 1 (t T ), s 3 (t T ), β i ) : i ∈ [1, . . . m] = z 1 (t T ) = [0, ᾱ, β] T</formula><p>which is a contradiction, as a moving average of order k would've computed [0, β, ᾱ] T for G ′ .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.2 Proof for Corollary 2</head><p>Corollary 2. No formulation of TGN can represent an autoregressive model of order k ∈ N + for any temporal graph with a bounded number of vertices.</p><p>Proof. Our proof for Theorem 2 proceeds very similarly to Theorem 1. Notice that in our proof of Theorem 1, we did not make use of the fact that ᾱ and β are moving averages. Therefore, if our auto-regressive model has weights w 1 , . . . , w k , then we can define ᾱ and β to be:</p><formula xml:id="formula_19">ᾱ = k i=1 w i α n-i β = k i=1 w i β n-i</formula><p>and consequently proceeding in the same manner as we did in Theorem 1.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.3 Proof for Theorem 3</head><p>Theorem 2. There exists a formulation of TGNv2 that can represent persistent forecasting, moving average of order k ∈ N + , or any autoregressive model of order k ∈ N + for any temporal graph with a bounded number of vertices.</p><p>Proof. We first prove the theorem for the case of moving averages of order k, and extend that to apply to persistent forecasting and autoregressive models. Let the maximum number of nodes encountered in the temporal graph be n, and assign each node an identifier such that each node is uniquely identified by an i ∈ [0, . . . , n -1]. We initialise all memory vectors s i to be 0 ∈ R nk .</p><p>Next, denote e (l) ij be the feature of the l-th message that i sends to j, and let M (i, j, t) return the index of the most recent message that i sent to j at time t. We assume that the batch size is 1, which means that as soon as a message is sent, we update the memory vectors. Further, for the time being, we ignore the formulation of msg d , and assume that all the messages received by the aggregator are messages constructed by msg s .</p><p>Our goal is to find a formulation of TGNv2 such that, for each timestamp t, it computes z i (t)[j] =</p><formula xml:id="formula_20">1 k k-1 x=0 e (M (i,j,t)-x) ij</formula><p>. We assume that the moving average is defined for all values of t by letting e (l) ij = 0 for all negative l. We now concretely define the formulation of TGNv2, and subsequently show that it computes the moving average. Now, suppose some node i sends j a message at time t. Let msg s be formulated as:</p><formula xml:id="formula_21">msg s (s i (t -), s j (t -), ϕ t (∆t), e ij (t), ϕ n (i), ϕ n (j)) = [e ij (t), j]</formula><p>i.e. msg s simply outputs a 2-element vector with the feature of the event message and the index of the destination node. Since our batch size is 1, the aggregator only receives at most one message. We let the aggregator be the identity function. The main idea of the proof is in the formulation of the memory module, which takes advantage of the node index of the destination to 'store' the newest feature message between i and j.</p><p>We introduce some machinery to aid our formulation. Consider a block matrix B ∈ R nk×nk with n matrices B 1 , . . . , B n ∈ R k×k in its diagonal: where I is the R k×k identity matrix. Observe that PBP T cyclically shifts the order of B 1 , . . . , B n in B by one:</p><formula xml:id="formula_22">PBP T =     B n 0 . . . 0 0 B 1 . . . 0 . . . . . . . . . . . . 0 . . . 0 B n-1    </formula><p>Similarly, define the permutation matrix Q that analogously shifts the elements of a vector cyclically by 1:</p><formula xml:id="formula_23">Q =       0 0 . . . 1 1 0 . . . 0 0 1 . . . 0 . . . . . . . . . . . . 0 . . . 1 0      </formula><p>In order to compute the moving average, then each time we receive a message, we need to 'make room' in our memory vector to store the message. We introduce the shift matrix S, which is a k × k matrix that is obtained by taking the (k -1) × (k -1) identity matrix and sufficiently padding the top row and rightmost column with zeroes which, when applied to a vector v ∈ R k , keeps the top k -1 elements and discards the last element: Similarly, define the generator vector y ∈ R nk = [1, 0, . . . , 0] T . Next, define f (j) = (P) j X(P T ) j , which cyclically shifts the block matrices in X a total number of j times, and p(j) = Q j y, which cyclically shifts the elements of y a total number of j times. Now, let the memory module be:</p><formula xml:id="formula_24">S =    <label>0</label></formula><formula xml:id="formula_25">s i (t) = mem( mi (t), s i (t -)) = mem([e ij (t), j], s i (t -)) = f (j) • s i (t -)) + p(j) • e ij (t)</formula><p>It is quite easy to see, via a straightforward induction, that at every timestamp t, s i (t) stores the k most recent messages sent to j in the 'subarray' s i (t)[jk : jk + k -1]. Consequently, making z i (t) compute the moving average is straightforward. Define the aggregator matrix A ∈ R n×nk to be:</p><formula xml:id="formula_26">A[m, n] = 1 k if mk ≤ n ≤ mk + k -1 0 otherwise</formula><p>and let our embedding layer be defined as:</p><formula xml:id="formula_27">z i (t) = g({{h(s i (t), s j (t), e ij , v i (t), v j (t)) : j ∈ N L i ([0, t]}}) = 1 |N L i ([0, t]| |N L i ([0,t]| j=0 A • s i (t) = A • s i (t)</formula><p>which is the moving average of order k, as multiplying A with s i (t) has the effect of summing the k most recent messages for each node and multiplying the sum by 1 k . From this, we can see that the theorem holds for persistent forecasting as persistent forecasting is moving average with k = 1. Subsequently, we can adapt our proof above to hold for autoregressive models of any order k by formulating the aggregator matrix A to have the autoregressive weights w k , . . . , w 1 in entries where 1 is present.</p><p>In our constructions above, we assumed that our batch size is 1 and we ignored the fact that nodes are receiving messages from msg d . To adapt the proof for an arbitrary batch size, we can define the aggregator module to concatenate all incoming messages, and then during the memory update, we 'unpack' this concatenation and apply our logic above for each message. Finally, to handle messages from msg d , we can expand the size of the message vector by 1 to include a 'tag' that is nonzero if and only if the message originates from msg d . Then, the aggregator module can drop messages from msg d by inspecting this tag, leaving us with messages from msg s -which we have shown how to handle.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Experiment Details</head><p>The code to reproduce our experiments can be found at https://github.com/batjandra/ TGNv2-NeurReps.</p><p>For both TGN and TGNv2, we utilise the same choices of core modules where applicable and use the same hyperparameters in order to make the results as comparable as possible. We repeat each experiment run three times with three different random seeds, each time picking the best-performing model on the validation set, and reporting the mean and standard deviation NDCG @ 10 on both the validation and test set. For our experiments, our choice of core module largely follows the choices made in TGB's experiments with TGN <ref type="bibr" target="#b5">(Huang et al., 2023)</ref> for dynamic node affinity prediction: Message Function. Our message function concatenates its inputs. For example, in the case of TGN: msg s (s i (t -), s j (t -), ϕ(∆t), e ij (t)) = [s i (t -) • s j (t -) • ϕ(∆t) • e ij (t)] T msg d (s j (t -), s i (t -), ϕ(∆t), e ij (t)) = [s j (t -) • s i (t -) • ϕ(∆t) • e ij (t)] T where • is a concatenation operator. Since there are no node events in the TGB dataset, we chose to ignore formulating the message function for node events. Message Aggregator. We set the message aggregator to take the last message in a batch: mi (t) = agg(m i (t 1 ), ..., m i (t b ))</p><p>= m i (t b ) Memory Updater. We set the memory updater to be a GRU:</p><p>s i (t) = mem( mi (t), s i (t -)))</p><p>= GRU( mi (t), s i (t -)))</p><p>where s i ∈ R dmemory .</p><p>Embedding We set the embedding module to be one layer of TransformerConv <ref type="bibr" target="#b12">(Shi et al., 2021)</ref> with 2 heads and a dropout value of 0.1. For efficiency, we only use the last x neighbours for temporal message passing. We describe the value of x for each experiment in Table <ref type="table" target="#tab_1">2</ref>. We set z i (t) to have a dimension of d embedding .</p><p>Decoder The decoder takes in the embedding for each node and outputs the node affinities for all other nodes. For our decoder, we chose an MLP with 2 layers + ReLU. Both layers have dimensionality d decoder .</p><p>Time / Node Encoder We set ϕ t (t) = cos(w t • t) and ϕ n (i) = cos(w n • i) where w t ∈ R dtime and w n ∈ R d node . Hyperparameters For moving average over the ground-truth labels (Moving Average (L)), we set k = 7. For moving average over messages (Moving Average (M)), we set k = 2048 for tgbn-trade, tgbn-genre, tgbn-reddit, and k = 512 for tgbn-token due to memory issues. We use a constant learning rate schedule for all experiments, except for tgbn-trade, where we decay the learning rate by 0.5 every 250 epochs. We use the Adam optimiser <ref type="bibr" target="#b6">(Kingma and Ba, 2017)</ref> to train our models. We set a global hidden dimension d, that is used in all places where we need to select a dimension, i.e. d = d memory = d embedding = d decoder = d time = d node . The hyperparameters that we chose can be found in Table <ref type="table" target="#tab_1">2</ref>.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>B. 1</head><label>1</label><figDesc>Proof for Theorem 1 Theorem 1. No formulation of TGN can represent a moving average of order k ∈ N + for any temporal graph with a bounded number of vertices.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Graphs G and G ′ . Clearly Node 1 in G and G ′ are sending different sequences of messages, but TGNs are unable to distinguish them.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>Define the block-permutation matrix P ∈ R nk×nk :</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head></head><label></label><figDesc>Define the generator block matrix X ∈ R nk×nk that has the same form as B and consists of n matrices B 1 , . . . , B n , but with B 1 = S and all other B i = I :</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>±0.001 0.374 ±0.001 0.357 ±0.001 0.351 ±0.001 0.344 ±0.001 0.312 ±0.001 0.151 ±0.006 0.141 ±0.006 TGN † 0.395 ±0.002 0.374 ±0.001 0.403 ±0.010 0.367 ±0.058 0.379 ± 0.004 0.315 ± 0.020 0.189 ±0.005 0.169 ±0.006 TGN (tuned) 0.445 ±0.009 0.409 ±0.005 0.443 ±0.002 0.423 ±0.007 0.482 ±0.007 0.408 ±0.006 0.251 ±0.000 0.200 ±0.005 TGNv2 (ours) 0.807 ± 0.006 0.735 ± 0.006 0.481 ± 0.001 0.469 ± 0.002 0.544 ± 0.000 0.507 ±0.002 0.321 ± 0.001 0.294 ± 0.001</figDesc><table><row><cell></cell><cell cols="2">tgbn-trade</cell><cell cols="2">tgbn-genre</cell><cell cols="2">tgbn-reddit</cell><cell cols="2">tgbn-token</cell></row><row><cell>Method</cell><cell cols="2">NDCG @ 10 ↑</cell><cell cols="2">NDCG @ 10 ↑</cell><cell cols="2">NDCG @ 10 ↑</cell><cell cols="2">NDCG @ 10 ↑</cell></row><row><cell></cell><cell>Validation</cell><cell>Test</cell><cell>Validation</cell><cell>Test</cell><cell>Validation</cell><cell>Test</cell><cell>Validation</cell><cell>Test</cell></row><row><cell cols="2">Persistent Frcst (L)  † 0.860</cell><cell>0.855</cell><cell>0.350</cell><cell>0.357</cell><cell>0.380</cell><cell>0.369</cell><cell>0.403</cell><cell>0.430</cell></row><row><cell>Moving Avg (L)  †</cell><cell>0.841</cell><cell>0.823</cell><cell>0.499</cell><cell>0.509</cell><cell>0.574</cell><cell>0.559</cell><cell>0.491</cell><cell>0.508</cell></row><row><cell>Moving Avg (M)</cell><cell>0.793</cell><cell>0.777</cell><cell>0.478</cell><cell>0.472</cell><cell>0.499</cell><cell>0.481</cell><cell>0.402</cell><cell>0.415</cell></row><row><cell>JODIE  ‡</cell><cell>0.394 ±0.05</cell><cell>0.374 ±0.09</cell><cell>0.358 ±0.03</cell><cell>0.350 ±0.04</cell><cell>0.345 ±0.02</cell><cell>0.314 ±0.01</cell><cell></cell><cell></cell></row><row><cell>TGAT  ‡</cell><cell>0.395 ±0.14</cell><cell>0.375 ±0.07</cell><cell>0.360 ±0.04</cell><cell>0.352 ±0.03</cell><cell>0.345 ±0.01</cell><cell>0.314 ±0.01</cell><cell></cell><cell></cell></row><row><cell>CAWN  ‡</cell><cell>0.393 ±0.07</cell><cell>0.374 ±0.09</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>TCL  ‡</cell><cell>0.394 ±0.11</cell><cell>0.375 ±0.09</cell><cell>0.362 ±0.04</cell><cell>0.354 ±0.02</cell><cell>0.347 ±0.01</cell><cell>0.314 ±0.01</cell><cell></cell><cell></cell></row><row><cell>GraphMixer  ‡</cell><cell>0.394 ±0.17</cell><cell>0.375 ±0.11</cell><cell>0.361 ±0.04</cell><cell>0.352 ±0.03</cell><cell>0.347 ±0.01</cell><cell>0.314 ±0.01</cell><cell></cell><cell></cell></row><row><cell>DyGFormer  ‡</cell><cell>0.408 ±0.58</cell><cell>0.388 ±0.64</cell><cell>0.371 ±0.06</cell><cell>0.365 ±0.20</cell><cell>0.348 ±0.02</cell><cell>0.316 ±0.01</cell><cell></cell><cell></cell></row><row><cell>DyRep  †</cell><cell>0.394</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table><note><p><p><p><p><p><p>Main results. † are results obtained from</p><ref type="bibr" target="#b5">Huang et al. (2023)</ref></p>, while ‡ are obtained from</p><ref type="bibr" target="#b21">Yu (2023)</ref></p>. TGNv2 outperforms all current TG models by a large margin.</p>.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Hyperparameters for TGB experiments, for both TGN and TGNv2.</figDesc><table><row><cell></cell><cell cols="4">tgbn-trade tgbn-genre tgbn-reddit tgbn-token</cell></row><row><cell>Learning Rate</cell><cell>1e-3</cell><cell>1e-4</cell><cell>1e-4</cell><cell>1e-4</cell></row><row><cell>Batch Size</cell><cell>200</cell><cell>200</cell><cell>200</cell><cell>200</cell></row><row><cell>Epochs</cell><cell>750</cell><cell>50</cell><cell>50</cell><cell>50</cell></row><row><cell>d</cell><cell>784</cell><cell>784</cell><cell>784</cell><cell>1024</cell></row><row><cell>No. of temporal neighbours x</cell><cell>25</cell><cell>30</cell><cell>30</cell><cell>10</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<author>
+			<persName><forename type="first">W</forename><surname>Cong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Tong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mahdavi</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2302.11636" />
+		<title level="m">Do we really need complicated model architectures for temporal networks?, 2023</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Learning dynamic context graphs for predicting social events</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Rangwala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Ning</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3292500.3330919</idno>
+		<ptr target="https://doi.org/10.1145/3292500.3330919" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining, KDD &apos;19</title>
+		<meeting>the 25th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining, KDD &apos;19<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="1007" to="1016" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">A comprehensive survey of dynamic graph neural networks: Models, frameworks, benchmarks, experiments and challenges</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>He</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2405.00476" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Attention based spatial-temporal graph convolutional networks for traffic flow forecasting</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Wan</surname></persName>
+		</author>
+		<idno type="DOI">10.1609/aaai.v33i01.3301922</idno>
+		<ptr target="https://ojs.aaai.org/index.php/AAAI/article/view/3881" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2019-07">Jul. 2019</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="922" to="929" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">Inductive representation learning on large graphs</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1706.02216" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Temporal graph benchmark for machine learning on temporal graphs</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Poursafaei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Danovitch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bronstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Rabusseau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Rabbany</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1412.6980" />
+		<title level="m">Adam: A method for stochastic optimization</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Predicting dynamic embedding trajectory in temporal interaction networks</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3292500.3330895</idno>
+		<ptr target="http://dx.doi.org/10.1145/3292500.3330895" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining, KDD &apos;19</title>
+		<meeting>the 25th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining, KDD &apos;19</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2019-07">July 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">Learning mesh-based simulation with graph networks</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Pfaff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fortunato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sanchez-Gonzalez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">W</forename><surname>Battaglia</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2010.03409" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Temporal graph networks for deep learning on dynamic graphs</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Frasca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Eynard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Monti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bronstein</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Learning to simulate complex physics with graph networks</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sanchez-Gonzalez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Godwin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Pfaff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">W</forename><surname>Battaglia</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2002.09405" />
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Approximation ratios of graph neural networks for combinatorial problems</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Yamada</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Kashima</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1905.10261" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Masked label prediction: Unified message passing model for semi-supervised classification</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Sun</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2009.03509" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Foundations and modeling of dynamic networks using dynamic graph neural networks: A survey</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Skarding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Gabrys</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Musial</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/ACCESS.2021.3082932</idno>
+		<ptr target="http://dx.doi.org/10.1109/ACCESS.2021.3082932" />
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Access</title>
+		<idno type="ISSN">2169-3536</idno>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="79143" to="79168" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Session-based social recommendation via dynamic graph attention networks</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Charlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3289600.3290989</idno>
+		<ptr target="http://dx.doi.org/10.1145/3289600.3290989" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twelfth ACM International Conference on Web Search and Data Mining, WSDM &apos;19</title>
+		<meeting>the Twelfth ACM International Conference on Web Search and Data Mining, WSDM &apos;19</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2019-01">Jan. 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<author>
+			<persName><forename type="first">R</forename><surname>Trivedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Farajtabar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Biswal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zha</surname></persName>
+		</author>
+		<title level="m">Representation learning over dynamic graphs</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">Tcl: Transformer-based dynamic graph modelling via contrastive learning</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yang</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2105.07944" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Inductive representation learning in temporal networks via causal anonymous walks</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-Y</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Li</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2101.05974" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Inductive representation learning on temporal graphs</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Ruan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Korpeoglu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Achan</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Recurrent aggregators in neural algorithmic reasoning</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Veličković</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2409.07154" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Dynamic network embedding survey</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Xue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kong</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2103.15447" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">An empirical evaluation of temporal graph benchmark</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yu</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2307.12510" />
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Lv</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2303.13047" />
+		<title level="m">Towards better dynamic graph learning: New architecture and unified library</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">T-gcn: A temporal graph convolutional network for traffic prediction</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Li</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/TITS.2019.2935152</idno>
+		<ptr target="http://dx.doi.org/10.1109/TITS.2019.2935152" />
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Intelligent Transportation Systems</title>
+		<idno type="ISSN">1558-0016</idno>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="issue">9</biblScope>
+			<biblScope unit="page" from="3848" to="3858" />
+			<date type="published" when="2020-09">Sept. 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

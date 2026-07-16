@@ -1,0 +1,837 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Reevaluation of Inductive Link Prediction</title>
+				<funder ref="#_sWNPz5K">
+					<orgName type="full">Austrian security research program KIRAS of the Federal Ministry of Finance (BMF)</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-09-30">30 Sep 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Simon</forename><surname>Ott</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">AIT Austrian Institute of Technology GmbH</orgName>
+								<address>
+									<country key="AT">Austria</country>
+								</address>
+							</affiliation>
+							<affiliation key="aff1">
+								<orgName type="institution">University of Mannheim</orgName>
+								<address>
+									<country key="DE">Germany</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Reevaluation of Inductive Link Prediction</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-09-30">30 Sep 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">2ADA4CB70F27783B1B978BCC69AC1484</idno>
+					<idno type="arXiv">arXiv:2409.20130v1[cs.AI]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:16+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>Inductive link prediction</term>
+					<term>Evaluation</term>
+					<term>Rule-based baseline</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Within this paper, we show that the evaluation protocol currently used for inductive link prediction is heavily flawed as it relies on ranking the true entity in a small set of randomly sampled negative entities. Due to the limited size of the set of negatives, a simple rulebased baseline can achieve state-of-the-art results, which simply ranks entities higher based on the validity of their type. As a consequence of these insights, we reevaluate current approaches for inductive link prediction on several benchmarks using the link prediction protocol usually applied to the transductive setting. As some inductive methods suffer from scalability issues when evaluated in this setting, we propose and apply additionally an improved sampling protocol, which does not suffer from the problem mentioned above. The results of our evaluation differ drastically from the results reported in so far.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Knowledge graphs are commonly used to store knowledge in a structured format. However, even well-maintained, large-scale knowledge graphs such as Freebase <ref type="bibr" target="#b1">[2]</ref>, DBPedia <ref type="bibr" target="#b0">[1]</ref> or the Google Knowledge Graph <ref type="bibr" target="#b11">[12]</ref> are notoriously incomplete <ref type="bibr" target="#b4">[5]</ref>, which limits their usefulness. Given the knowledge already encoded in the graph, some of the missing facts can be entailed or are rather likely due to the probabilistic regularities inherent in the graph. The automated task of predicting missing facts in a knowledge graph without using external knowledge is known as link prediction or knowledge graph completion.</p><p>Over time many different approaches were proposed to address this task. Some of the most prominent ones, such as TransE <ref type="bibr" target="#b2">[3]</ref>, Complex <ref type="bibr" target="#b17">[18]</ref>, ConvE <ref type="bibr" target="#b3">[4]</ref>, and RotateE <ref type="bibr" target="#b14">[15]</ref> are based on embedding entities (constants) and relations (predicates) in a vector space. These embeddings are learned as a solution to an optimization problem which is defined by the triples in the graph and a specific scoring function which determines the likelihood of a triple being correct. Learnt vectors are then applied to the scoring function to entail missing triples. While these models have proven to perform well in some established evaluation datasets <ref type="bibr" target="#b12">[13]</ref>, they can only make predictions about entities that were already seen during training. If no embedding for an entity has been learned, it is impossible to compute a score for this entity. Nevertheless, these models have been dominating knowledge base completion for a long time. This is related to the fact that the entities of the evaluation test sets of the most prominent benchmark datasets, such as FB15k-237 <ref type="bibr" target="#b16">[17]</ref> and WN18RR <ref type="bibr" target="#b3">[4]</ref>, are subsets of the entities appearing in the training set. Such a scenario is referred to as transductive link prediction. However, there might be link prediction applications where it is not realistic to assume that a transductive setting is given.</p><p>A scenario, where the training and test set does not overlap is referred to as inductive link prediction <ref type="bibr" target="#b22">[23,</ref><ref type="bibr" target="#b15">16]</ref>. The inductive setting has received lots of attention and many different approaches have been proposed <ref type="bibr" target="#b5">[6,</ref><ref type="bibr" target="#b6">7,</ref><ref type="bibr" target="#b7">8,</ref><ref type="bibr" target="#b8">9,</ref><ref type="bibr" target="#b15">16,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b23">24,</ref><ref type="bibr" target="#b24">25,</ref><ref type="bibr" target="#b25">26]</ref>. Within this work we are concerned with a flaw of the data sets and evaluation principles that are usually applied in the context of inductive link prediction. Both transductive and inductive link prediction evaluation are based on computing rankings of candidates for a given completion query, such as married(john, ?). The positions of the correct candidates in the rankings determine the evaluation result. Surprisingly, there is a major difference in the evaluation protocol not related to the difference between the inductive and the transductive setting: In the transductive setting usually the correct entity is ranked within all entities of the dataset. Contrary to this, in the inductive setting the correct entity is ranked only within a relatively small randomly drawn subset of all candidates.</p><p>We argue that the results obtained by the random sampling evaluation do not measure predictive accuracy but the capability to distinguish between a potentially meaningful candidate and a nonsensical. Suppose we create a random sample of 50 entities from a knowledge graph such as DBpedia or Freebase. This sample will contain entities of widely varying types, such as organisations, locations, languages, persons, currencies or other. How many entities are persons that might be married to someone? The answer is probably a relatively small number. Thus, it is obviously easy to rank the correct candidate at a top position for our example query given a set of 50 randomly chosen candidates.</p><p>Within this paper we analyse the problems of the random sampling evaluation protocol, which has become the de-facto standard for the inductive setting. We propose a simple rule-based baseline which is designed to solve the task to distinguish between a potentially meaningful candidate, that has an appropriate type, and nonsensical candidates. We show in a rich set of experiments that this baseline outperforms many other approaches when applying the random sampling evaluation protocol. This shows that this evaluation protocol is not really measuring predictive accuracy.</p><p>We propose, instead, to rank the correct entity within all possible candidates. If this is not possible due to scalability issues, we release a collection of type-matched negatives (TMN) for each benchmark dataset to rank the candidate within a set of entities that have at least an appropriate type. We perform experiments using both approaches with 13 current state-of-the-art methods. Our experiments prove that the random sampling evaluation yields misleading results and that results obtained by a reasonable evaluation protocol differ significantly. We release code, evaluation datasets, and additional results at https://github.com/nomisto/inductiveeval.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Preliminaries</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Link Prediction</head><p>A knowledge graph (KG) G = (E, R, T ) is a heterogeneous directed multigraph consisting of triples T , a set of entities E and a set of relations R. A triple p(s, o) ∈ T is a fact consisting of subject s, relation p and object o where s ∈ E, p ∈ R, o ∈ E. From a logical point of view, a relation is a binary predicate and the entities in E are constants. Figure <ref type="figure" target="#fig_0">1</ref> shows a small example of a knowledge graph. The entities E described in this graph are cities, counties, countries and currencies. Some of these entities are linked with each other via one of the three relations in R.</p><p>The term link prediction origins from calling a relation between two entities a link. In a realistic link prediction application, we have an incomplete knowledge graph T and we use a link prediction model to create new triples T ′ with T ′ ∩T = ∅. If the approach works well, most of the triples in T ′ are correct even though they have been missing in T . Within an evaluation context we split a given knowledge graph T into train set T train , test set T test and a validation set T valid . This split is jointly exhaustive and pairwise disjoint. T train is usually used to train a model, T valid can be used to optimize the hyperparameters and T test to evaluate the model performance. Link prediction, often interchangeably called knowledge graph completion, is the task of predicting a target entity given a source entity and a relation. We call such a task a completion task. Each test triple t test ∈ T test results in two completion tasks p(s, ?) and p(?, o). The task of link prediction is to predict the correct candidate that acts as a substitution for the ? in the query.</p><p>In transductive link prediction the test set T test only contains test triples where subject and object appear in the training set T train . Given a triple p(s, o) ∈ T test , we have at least one triple in train where s appears in subject or object position and at least one triple where o appears in subject or object position. The information encoded in the training set serves two purposes. It is used to  train the model and it contains also the information that describes the relevant features.</p><p>We illustrated this setting on the left side of Figure <ref type="figure" target="#fig_2">2</ref>. The area in the piechart colored with a violet/teal grid refers to T train , the blue area to T valid and the red area to T test . Below the pie chart, we depicted an example graph. We used the same coloring scheme for the edges of the triples that belong to the respective sets. The important aspect of the transductive setting is related to the fact that each of the entities involved in a test triple is described also via one or several triples in the train graph. The fact that we have this type of overlap between T train and T test is a characteristic feature of the transductive setting, which allows, for example, to use embeddings of entities learned in the training phase to score candidates in the test phase.  On the right side of Figure <ref type="figure" target="#fig_2">2</ref> we depicted the inductive setting. Here we have a strict separation of entities that appear in the graph used to train the model, and entities that appear in the triples of the test set. Note that the test graph contains not not only the test triples (red), but also triples (purple) that describe the entities that appear in the test triples. In the context of inductive link predictions this set of triples is sometimes called inference set, as it is required to infer the missing triples of the test set. The entities described in the training graph are not overlapping with the entities used in the test graph.</p><p>It is, nevertheless, possible to learn a model on a set of entities that are disjoint from the entities to which the model is applied. This is the case because both sets of entities are described by the same set of relations. If we would learn a rule-based model, we might for example learn the rule genre(X, Y ) ← prequel(X, Z), genre(Z, Y ). This rule says that a movie has the same genre (with a certain probability) as its prequel (if there is a prequel of that movie). It is obviously applicable in the transductive and inductive setting. However, a rule containing constants such as nationality(X, dutch) ← bornIn(X, amsterdam) (a person born in Amsterdam has nationality Dutch) can only be applied to the transductive setting.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Evaluation Protocol</head><p>The most prominent metrics for measuring the quality of link prediction methods are ranking-based metrics. They are calculated based on the position of the correct candidate within a ranking of candidate entities. These candidates are elements of a set of possible entities E * . The target candidate itself is always an element of E * . In the transductive setting, we have usually E * = E. This means that all known entities have to be ranked. In the inductive setting, E * is usually a sample from E with |E * | ≪ |E|. We call an evaluation protocol which asks to rank all possible candidates a non-sampling evaluation protocol contrary to a protocol that asks to rank the candidates from a restrictive set, which we call a random sampling evaluation protocol.</p><p>Furthermore, according to the filtering protocol of <ref type="bibr" target="#b2">[3]</ref>, already known triples in the knowledge graph are ignored when calculating the ranking. This filtered setting is the quasi standard and unfiltered scores are rarely reported. We follow this approach and report always filtered scores in our experiments.</p><p>The most prominent metrics are the hits@k and the mean reciprocal rank (MRR). Let I be the set of ranks of the correct candidates for the completion tasks p(s, ?) and p(?, o) derived from all test triples p(s, o) in a given datasets.</p><p>Hits@k is then the ratio of test queries where the rank i of the correct candidate is less than or equal to k and MRR is the arithmetic mean over individual reciprocal ranks. Let I be the set of ranks i of the correct candidates for the completion tasks p(s, ?) and p(?, o) derived from all test triples p(s, o) in a given datasets. Then we have:</p><formula xml:id="formula_0">hits@k = 1 |I| i∈I 1 if i ≤ k M RR = 1 |I| i∈I 1 i</formula><p>We argue in the following that a small and, in particular, randomly chosen E * makes its easy to achieve high hits@10 and MRR scores. This is especially the case if the completion methods under discussion is tailored to such a setting, while such a method will perform poor in any realistic setting.</p><p>Sometimes classification metrics as AUC-PR are reported <ref type="bibr" target="#b15">[16,</ref><ref type="bibr" target="#b7">8]</ref>. To calculate the AUC-PR, a single negative triple is constructed for each test triple p(s, o) by randomly corrupting the head or the tail with a random entity. Since we want to compare our results with those of the transductive setting where primarily ranking-based metrics are used, we will only focus on them in the following. Nevertheless, our findings are also applicable to the AUC-PR metric and similar metrics.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">The Random Sampling Evaluation Protocol</head><p>In <ref type="bibr" target="#b15">[16]</ref> the authors proposed inductive link prediction as research problem and introduced a pioneering approach called GraIL. In this paper the authors also introduced the most commonly used benchmarks. These benchmarks would support also a non-sampling based evaluation protocol. However, the authors decided to use a random sampling-based variant of the evaluation protocol due to performance issues of GraIL. Instead of ranking E for each completion task they used a randomly chosen sample E * of 50 candidates (one of them is the correct target candidate). Unfortunately most succeeding work <ref type="bibr" target="#b5">[6,</ref><ref type="bibr" target="#b25">26,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b6">7,</ref><ref type="bibr" target="#b8">9,</ref><ref type="bibr" target="#b7">8]</ref> adapted this evaluation protocol. Thus, the random sampling approach has become the defacto standard for evaluating inductive link prediction.</p><p>Using the random sampling evaluation protocol the set of sampled negative entities contains a variety of entities of different types. Due to this variety, the type of the sampled negative often does not make sense. For example, for the completion task genre(StarW ars, ?) the set of negatives could contain entities such as countries, artists or professions. Due to the lack of type-matched negatives it is sufficient for an approach to simply make predictions about the type of an entity rather than the entity itself to achieve high scores.</p><p>Furthermore, all approaches evaluated using this evaluation protocol report hits@10. This high choice of k further limits the ability to evaluate the models real inductive link prediction performance, as a model which randomly assigns scores to entities on average already achieves a hits@10 score of 0.2 as the probability of assigning a top-10 score to the correct entity by chance is 10/50 = 0.2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Baseline</head><p>We propose a simple baseline in which candidates are simply ranked higher if they are valid answers to a prediction task depending on the entity type of the candidate. For each relation p we learn rules that determine whether entities are valid candidates for the subject position and for the object position of p. We iterate over all possible pairs of relations h and b (h = b). If the set of subject entities of relation b has a high overlap with the set of subject entities of h, the presence of an outgoing relation b of an entity can be used to predict the outgoing relation h. We thus learn rules adhering to the following language bias</p><formula xml:id="formula_1">r ss : h(X, A) ← b(X, B) r so : h(X, A) ← b(B, X) r os : h(A, X) ← b(X, B) r oo : h(A, X) ← b(B, X)</formula><p>where h is the head relation and b is the relation of the body atom. Uppercase letters represent variables. A and B are unbound variables. Note that we learn rules for any combination of subject and object positions of relations h and b. These rules are an indirect way to implicitly infer the type of an entity. Here a type expresses the validity of entities for the subject/object position of a relation. For each rule we calculate a confidence which can be used as how well a rule predicts an entity X for being a valid type for the subject or object position of h depending on whether the bound variable X is on the subject or object position of the rule. This confidence is the relative proportion of correctly predicted subject/object positions of all predicted entities conf (r</p><formula xml:id="formula_2">) = |{x : x ∈ X b ∧ x ∈ X h }|/|{x : x ∈ X b }|</formula><p>where X b is the set of subjects/objects (depending on the position of the bound variable X) of triples in the training set having body relation b, while X h is the set of subjects/objects of triples in the training set having head relation h.</p><p>Given a list of entities to be ranked as predictions for a prediction task p(s, ?), we then rank those entities higher that based on the confidence of the rule have a more suitable type for ?. For each head p(?, o) and tail p(s, ?) query in the test set of the test graph we apply the rules learned by our baseline. Since the same entity can be proposed by multiple rules, we order the entities via the confidence of the rule with the highest confidence.</p><p>For example, from Figure <ref type="figure" target="#fig_0">1</ref> we might learn a rule r 1 that says that an entity might be a good candidate for the subject of the relation currency if it is the object of a triple with the relation capital. As both require entities of type country this rule makes sense. Furthermore, subjects of relation locatedIn can take on a mixture of entities of type county and city. A rule such as r 2 makes sense, however it can only predict a subset of types. Due to the mixture of types of subjects of relation locatedIn, its ability to determine entities of type city based on its presence is rather limited. Thus the confidence of r 3 is rather low.</p><formula xml:id="formula_3">r 1 : currency(X, A) ← capital(B, X) 1.0[3/3] r 2 : locatedIn(X, A) ← capital(X, B) 1.0[3/3] r 3 : capital(X, A) ← locatedIn(X, B) 0.3[3/10]</formula><p>This baseline should result in low inductive link prediction performance as it is simply predicting linked entities based on correct types. For example a rule marriedT o(X, A) ← bornIn(B, X) could be learned, which would have almost a perfect confidence as every person that was married was also born somewhere. In the context of link prediction this does not make sense as this would mean that e.g. the link prediction query marriedT o(?, paul) would be answered with every person born. However, as we will show in later experiments, when evaluated using the flawed random sampling evaluation protocol this baseline appears to perform very well in inductive link prediction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Type-Matched Sampling Protocol</head><p>Approaches which require repeated sampling of subgraphs such as GraIL <ref type="bibr" target="#b15">[16]</ref> and its variants <ref type="bibr" target="#b6">[7,</ref><ref type="bibr" target="#b8">9,</ref><ref type="bibr" target="#b20">21]</ref> are very slow to evaluate. In fact the flawed sampling evaluation protocol was introduced to help overcome this limitation. In order to be able to evaluate approaches where it is infeasible to score and rank all entities we release a collection of type-matched negatives (TMN) for each benchmark dataset. For each test query we provide 50 negatives that adhere to the type of the searched answer and thus create a more challenging set of negatives. For example for the test triple &lt;Indie rock, /music/genre/artists, Oasis&gt; of FB15k-237 v3 the set of type-matched head negatives contains genre entities like Pop rock, Hip hop music or Death metal while the set of tail negatives contains artist entities like Katy Perry, The Smashing Pumpkins, Miley Cyrus or AC/DC.</p><p>We created these sets by applying the rules learned by our baseline for each head p(?, o) and tail p(s, ?) query in the test set as described above. Since we aggregate the confidences of an entity predicted by multiple rules using the maximum it could be possible that one rule dominates the creation of the 50 negatives. For example if the rule with the highest confidence would be city(X, A) ← capital(X, B) and would predict more than 50 entities the resulting set of negatives would only contain capitals. To circumvent this and provide a good mixture of high confident entities we bin the predictions in three buckets: entities with a confidence c ≥ 0.75, entities with a confidence 0.75 &gt; c ≥ 0.25 and entities with a confidence 0.25 &gt; c. First we try to randomly sample 50 negative entities from the bucket of entities with the highest confidence. If this bucket contains less than 50 entities, we try to sample missing entities from the bucket with the next highest confidence and so on until the a set of negatives reaches a size of 50 entities. If the baseline does not generate enough entities we fill missing entities with randomly sampled entities. Furthermore in each step we keep only true negative entities, which means that the resulting negative triples only contain triples that do not appear in the knowledge graph. This is true for all benchmarks and versions except NELL-995 v1 where due to the limited size of entities it was not possible to create 50 non-positive candidates for all queries. As mentioned in the introduction, we publicly release sets of type-matched negatives for all the benchmarks used in this paper, and code to generate such sets for other datasets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experimental Evaluation</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Datasets, Approaches and Metrics</head><p>For the evaluation of different approaches we use the commonly used inductive link prediction benchmarks created by <ref type="bibr" target="#b15">[16]</ref>. They were created by sampling two disjunct subgraphs from the transductive benchmark datasets FB15k-237 <ref type="bibr" target="#b16">[17]</ref>, WN18RR <ref type="bibr" target="#b3">[4]</ref> and NELL-995 <ref type="bibr" target="#b19">[20]</ref>. Each benchmark was released as 4 size-increasing different versions denoted v1, v2, v3 and v4. Table <ref type="table" target="#tab_1">1</ref> shows the statistics of the benchmarks. It should be noted that the relation counts differ for unknown reasons from the original statistics in <ref type="bibr" target="#b15">[16]</ref>. We perform experiments using different approaches for inductive link prediction, which can be categorized in rule-based (Neural-LP <ref type="bibr" target="#b21">[22]</ref>, DRUM <ref type="bibr" target="#b13">[14]</ref>, RuleN <ref type="bibr" target="#b10">[11]</ref>, AnyBURL <ref type="bibr" target="#b9">[10]</ref>) and graph neural network (GNN) based (GraIL <ref type="bibr" target="#b15">[16]</ref>, ConGLR <ref type="bibr" target="#b6">[7]</ref>, COMPILE <ref type="bibr" target="#b8">[9]</ref>, SNRI <ref type="bibr" target="#b20">[21]</ref>, INDIGO <ref type="bibr" target="#b7">[8]</ref>, NBFNet <ref type="bibr" target="#b25">[26]</ref>, AStarNet <ref type="bibr" target="#b24">[25]</ref>, RED-GNN <ref type="bibr" target="#b23">[24]</ref>). An exception to this classification is NodePiece <ref type="bibr" target="#b5">[6]</ref> which can be used without a GNN in theory. However, due to its low performance otherwise, it is used in combination with a GNN in the context of inductive link prediction. We will now give a short overview of the different approaches. Approaches described within the same bullet point belong to the same family of approaches.</p><p>-RuleN <ref type="bibr" target="#b10">[11]</ref> and AnyBURL <ref type="bibr" target="#b9">[10]</ref> are both symbolic rule-based approaches, which extract first-order logic rules in the form of horn clauses directly from knowledge graphs. Both calculate an approximated rule confidence which is used to score predictions. -NeuralLP <ref type="bibr" target="#b21">[22]</ref> and DRUM <ref type="bibr" target="#b13">[14]</ref> are end-to-end differentiable approaches for rule learning. NeuralLP uses TensorLog operations to learn first-order logic rules, while DRUM uses bidirectional RNNs.</p><p>-NBFNet <ref type="bibr" target="#b25">[26]</ref>, RED-GNN <ref type="bibr" target="#b23">[24]</ref> and AStarNet <ref type="bibr" target="#b24">[25]</ref> are both approaches that progressively propagate from a node to its neighborhood in a breadth-firstsearching (BFS) manner. RED-GNN is utilizing dynamic programming for efficient subgraph encoding, while NBFNet is based on the Bellman-Ford algorithm for shortest path problems. AStarNet enhances scalability by learning to preselect important nodes and edges. -Usually entities are encoded using shallow encoding which means there is one embedding for each entity. NodePiece <ref type="bibr" target="#b5">[6]</ref> is an approach to reduce the number of embeddings needed by embedding-based approaches. The embedding of a node is retrieved using its relational context and the distance of it to selected anchor nodes. In the inductive setting only the relational context is used in combination with a relational message passing GNN based on CompGCN <ref type="bibr" target="#b18">[19]</ref>.</p><p>-INDIGO <ref type="bibr" target="#b7">[8]</ref> is another GNN-based approach, which encodes the triples of the knowledge graph pair-wise, i.e. nodes in the graph correspond to pairs of entities. It is trained as a denoising autoencoder. -GraIL <ref type="bibr" target="#b15">[16]</ref> is a GCN-based approach adapted to the inductive link prediction setting. It scores triples consisting of unseen entities by performing message passing on extracted enclosing subgraphs between the target nodes using khop neighbourhood. Nodes in extracted subgraphs are labelled with respect to the target nodes using a double radius vertex labeling scheme. GraIL and all its extensions require to extract a subgraph for each link which is not scalable to large graphs. This was the main reason for using a random sampling evaluation protocol. -CoMPILE, ConGLR and SNRI extend GraIL by adding additional processing steps. CoMPILE <ref type="bibr" target="#b8">[9]</ref> introduces the ability to naturally handle asymmetric/antisymmetric relations. ConGLR <ref type="bibr" target="#b6">[7]</ref> can be seen as a hybrid approach between GCN-based and rule-based approaches. It extends GraIL by the additional extraction of a context graph from the k-hop neighbourhood subgraph. SNRI <ref type="bibr" target="#b20">[21]</ref> extends GraIL by not only considering the enclosing subgraph between the target node, but also partial neighbouring relations by applying mutual information (MI) maximization.</p><p>We train each approach using the settings from their respective papers. We refer to https://github.com/nomisto/inductiveeval for details. Due to the amount of different versions of benchmark datasets we will mainly discuss averages over the four versions for each dataset. For better comparability with the random sampling protocol, for which hits@10 results have often been reported, we will also base most of our discussion on hits@10. Tables containing the results using both hits@10 and MRR can be found at the URL above.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Results</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Random Sampling Evaluation Protocol The upper part of Table 2 labeled</head><p>Random Sampling shows the hits@10 results using the random sampling evaluation protocol. If available, we report the numbers presented in the original paper. If not available, we report results based on our own experiments with these approaches. As a cross-check, we compare all our models with models for which numbers are available. We observed only insignificant differences from the numbers of the original papers.</p><p>Our simple baseline outperforms current state-of-the-art approaches on FB15k-237. It achieves an average hits@10 of about 0.938 over the different versions by simply distinguishing the correct entity based on its type. The baseline also outperforms or rivals the performance of state-of-the-art approaches on NELL-995, especially on the bigger versions V3 and V4. Since WN18RR is a knowledge graph of word senses and general relations such as hypernym, it does not contain strongly typed entities. As a result, the baseline fails to achieve competitive results with the exception of the V3 version. The reason for that are different distributions of relations of the test sets. V3 is dominated by relations for which the tail entity is always an entity from a small set of entities (for example countries or regions), which can be learned by the baseline.</p><p>These results illustrate already clearly that the random sampling evaluation protocol together with the hits@10 metric is not an appropriate protocol to evaluate and rank approaches for inductive link prediction. With respect to the average hits@10 score our baseline ranks at position #1, #13 and #3 out of 14 approaches (including the baseline) on the three evaluation datasets. We also measured the MRR results, to check if we can observe a similar behaviour. For the MRR it is more important to rank the correct candidate at the top position, thus, the MRR has a stronger focus on a high precision. Here our baselines occupies the positions #7, #13 and #13. While the MRR solves some issues of the random sampling protocol, the baseline still achieves a midfield position for FB15k-237 and there are 7 approaches that perform worse.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Non-Sampling Evaluation Protocol The middle part of Table 2 labeled</head><p>Non-Sampling shows the hits@10 results for the non-sampling evaluation protocol, i.e. ranking the correct candidate within all entities of the knowledge graph. Since the evaluation of GraIL and its extensions is very inefficient, we decided to only evaluate benchmarks where the evaluation does not take significantly longer than 12 hours. For example the evaluation of GraIL on FB15k-237 V3 takes 10 hours, while the evaluation of CoMPILE/ConGLR/SNRI on FB15k-237 V2 already takes 9/10.75/11.5 hours.</p><p>The non-sampling evaluation approach draws a completely different picture. Similar to the random sampling evaluation protocol, NBFNet still can be considered as the best performing approach by achieving the highest average hits@10 on FB15k-237 and NELL-995, while achieving the second highest average hits@10 on WN18RR. NodePiece, which showed one of the best performances when evaluated using the random sampling evaluation protocol, loses over-proportionally as it now only scores 0.450 average hits@10, scoring 0.476 percentage points lower compared to the random sampling evaluation protocol, while NBFNet only scores 0.257 percentage points lower. NodePiece, which was the best performing approach given the results of the random sampling protocol, has been overtaken by five other approaches in the realistic non-sampling protocol. One reason for its good performance on the random sampling evaluation could be, that as NodePiece primarily uses 1-hop incoming and outgoing relations of a node, it could be prone to leverage typing information of a node. AStarNet and RED-GNN appear to behave similarly to NBFNet, with a difference in scores of about 0.221 percentage points for AStarNet and 0.207 percentage points for RED-GNN compared to the random sampling evaluation protocol.</p><p>The predictive performances of rule-based approaches, such as the symbolic rule-based approach AnyBURL, seem to be actually better than assessed using the random sampling evaluation protocol. AnyBURL has an average hits@10 of 0.584 on FB15k-237, only 0.169 percentage points less than the average sampled hits@10, achieving competitive results comparable to NBFNet. On WN18RR AnyBURL scores an average hits@10 of about 0.687, where the best performing approaches NBFNet achieve 0.664 and AStarNet 0.623. The difference of sampling and non-sampling average hits@10 for DRUM also only amount to 0.134 percentage points and for NeuralLP 0.173.</p><p>Type-matched Sampling Evaluation Protocol Using sampled negatives that have an appropriate type draws a similar picture than using the nonsampling protocol. However, this protocol has the advantage that it is also applicable to less efficient models. The bottom part of Table <ref type="table">2</ref> labeled Typematched Sampling shows the hits@10 using the type-matched sampling evaluation protocol. This evaluation protocol still shows that NBFNet is one of the top-performing approaches as it achieves the best average hits@10 on all datasets. However approaches, such as NodePiece, that performed well on the random sampling evaluation approach as they might learn types of entities, do not perform well in this setting. It is still evident that rule-based approaches Table <ref type="table">2</ref>. Hits@10 results using the random sampling (upper part), non-sampling (middle part) and type-matched sampling evaluation protocol (bottom part). † results were generated by us, ⋆ results are from <ref type="bibr" target="#b15">[16]</ref>, other results for random sampling evaluation protocol are from the original papers. All results using the non-sampling (middle part) and type-matched sampling evaluation protocol were generated by us. To compensate the variance of the random sampling protocol, we report the average of 100 evaluation runs. RED-GNN <ref type="bibr" target="#b23">[24]</ref> and AStarNet <ref type="bibr" target="#b24">[25]</ref> also report results using the non-sampling evaluation protocol in their respective papers. However, for reasons unknown, they do not only evaluate on the test set of the test graph, but rather a combination of the test set of the test graph and a further hold-out set of the test graph. The usage of this hold-out set, sometimes referred to as validation set of the test graph, is not really clear and is neither used for training, validation or testing in the original paper <ref type="bibr" target="#b15">[16]</ref>. Numbers reported by us were created using solely the test set however.</p><p>produce competitive results. Thus, the type-matched sampling protocol can be used as substitute for the non-sampling protocol in case of scalability issues.</p><p>Comparing different protocols Figure <ref type="figure" target="#fig_3">3</ref> shows trajectories that illustrate how the performance of the different approaches changes on the FB15k-237 benchmark, when evaluated using the random, type-matched and non-sampling evaluation protocols. As the different protocols get increasingly difficult we normalize the performance of each approach by showing the absolute difference to the performance of AnyBURL. As can be seen by the green trajectories, robust approaches such as NBFNet, AStarNet and RED-GNN can maintain a steady advantage compared to AnyBURL. NodePiece, however, which scored 0.173 better on hits@10 than AnyBURL evaluated using the random sampling protocol, scores about 0.068 lower on hits@10 than AnyBURL when evaluated under typematched sampling protocol and substantially lower (0.134) when evaluated under non-sampling protocol. This might be a hint that this approach learns types very well instead of learning the likelihood of links between entities. GraIL and its extensions show similar behaviour using hits@10, where the lead of these approaches is diminishing when evaluated under type-matched sampling protocol and lose lead by a margin when evaluated under non-sampling protocol. On MRR AnyBURL already performs better than GraIL and its extensions using the random sampling protocol. Using the type-matched sampling protocol, they could make up leeway and perform similar or only a little worse than AnyBURL. Using the non-sampling protocol, MRR behaves similar to hits@10 again.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusion</head><p>Current inductive link prediction approaches are evaluated by comparing a prediction only against a small set of randomly selected negatives. Due to the limited size of the set of negatives, errors are introduced that prevent the assessment of the model's true inductive link prediction ability. We show that current stateof-the-art results for inductive link prediction can be achieved using a simple rule-based baseline. Furthermore, we re-evaluate approaches to inductive link prediction, where the order of the state-of-the-art changes drastically. Our corrected results indicate that GNN-based approaches such as NBNnet, AStarNet and RED-GNN are clearly ahead compared to the other approaches. The rulebased approach AnyBURL is an efficient and fully explainable alternative that performs only slightly worse. At the same time we observed that approaches as NodePiece and GraIL as well as its successors lag behind if we evaluate them under a realistic protocol.</p><p>We advocate that further research should be evaluated using an evaluation protocol where all entities of the knowledge graph are used as negatives. If it is not possible to evaluate an approach on all entities, we publish datasets of type-matched head and tail negatives and encourage inductive link prediction researchers to use them instead of randomly sampling negatives.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 .</head><label>1</label><figDesc>Fig. 1. Example KG of cities, counties, countries and currencies. Different colors represent different relations.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 2 .</head><label>2</label><figDesc>Fig. 2. Difference between transductive (on the left) and inductive link prediction (on the right).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 3 .</head><label>3</label><figDesc>Fig.3. Absolute changes in performance of different approaches compared to Any-BURL under different evaluation protocols (random sampling, type-matched and nonsampling) using average hits@10 (left) and average MRR (right) on FB15k-237.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 .</head><label>1</label><figDesc>Number of relations (#R), entities (#E) and training, validation and test triples of the training and test graph for each benchmark dataset.</figDesc><table><row><cell></cell><cell>Graph</cell><cell cols="4">FB15k-237 #R #E Train Valid Test #R #E Train Valid Test #R #E Train Valid Test WN18RR NELL-995</cell></row><row><cell>v1</cell><cell cols="2">train 180 test</cell><cell>1594 4245 489 492 9 1093 1993 206 205</cell><cell>2746 5410 630 638 14 922 1618 185 188</cell><cell>3103 4687 414 439 225 833 101 100</cell></row><row><cell>v2</cell><cell cols="2">train 200 test</cell><cell>2608 9739 1166 1180 10 1660 4145 469 478</cell><cell>6954 15262 1838 1868 88 2757 4011 411 441</cell><cell>2564 8219 922 968 2086 4586 459 476</cell></row><row><cell>v3</cell><cell cols="3">train 215 3668 17986 2194 2214 11 test 2501 7406 866 865</cell><cell>12078 25901 3097 3152 142 5084 6327 538 605</cell><cell>4647 16393 1851 1873 3566 8048 811 809</cell></row><row><cell>v4</cell><cell cols="2">train 219 test</cell><cell>4707 27203 3352 3361 9 3051 11714 1416 1424</cell><cell>3861 7940 934 968 76 7084 12334 1394 1429</cell><cell>2092 7546 876 867 2795 7073 716 731</cell></row></table></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><p>Acknowledgments. This work was funded by the <rs type="funder">Austrian security research program KIRAS of the Federal Ministry of Finance (BMF)</rs> through the <rs type="projectName">DAGMAR</rs> project (grant No. <rs type="grantNumber">52224305</rs>).</p></div>
+<div><head>Disclosure of Interests.</head><p>The authors have no competing interests to declare that are relevant to the content of this article.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funded-project" xml:id="_sWNPz5K">
+					<idno type="grant-number">52224305</idno>
+					<orgName type="project" subtype="full">DAGMAR</orgName>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0" />			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Dbpedia: A nucleus for a web of open data</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Auer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Bizer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Kobilarov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lehmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Cyganiak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ives</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The semantic web</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="722" to="735" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Freebase: a collaboratively created graph database for structuring human knowledge</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Bollacker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Evans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Paritosh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Sturge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Taylor</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2008 ACM SIGMOD international conference on Management of data</title>
+		<meeting>the 2008 ACM SIGMOD international conference on Management of data</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="1247" to="1250" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multi-relational data</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">26</biblScope>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI conference on artificial intelligence</title>
+		<meeting>the AAAI conference on artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Knowledge vault: A web-scale approach to probabilistic knowledge fusion</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Gabrilovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Heitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Horn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Lao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Strohmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="601" to="610" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Nodepiece: Compositional and parameter-efficient representations of large knowledge graphs</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Galkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Denis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=xMJWUKJnFSw" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Incorporating context graph with logical reasoning for inductive relation prediction</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhao</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3477495.3531996</idno>
+		<ptr target="https://doi.org/10.1145/3477495.3531996" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 45th International ACM SIGIR Conference on Research and Development in Information Retrieval</title>
+		<meeting>the 45th International ACM SIGIR Conference on Research and Development in Information Retrieval<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="893" to="903" />
+		</imprint>
+	</monogr>
+	<note>SIGIR &apos;22, Association for Computing Machinery</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Indigo: Gnn-based inductive knowledge graph completion using pair-wise encoding</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">C</forename><surname>Grau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Horrocks</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">V</forename><surname>Kostylev</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<publisher>NeurIPS</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Communicative message passing for inductive relation reasoning</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Hu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="4294" to="4302" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Anytime bottom-up rule learning for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Meilicke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">W</forename><surname>Chekol</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Stuckenschmidt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-Eighth International Joint Conference on Artificial Intelligence</title>
+		<meeting>the Twenty-Eighth International Joint Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="3137" to="3143" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Fine-grained evaluation of rule-and embedding-based systems for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Meilicke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fink</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gemulla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Stuckenschmidt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Semantic Web Conference</title>
+		<meeting>the International Semantic Web Conference</meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="3" to="20" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Industry-scale knowledge graphs: Lessons and challenges: Five diverse technology companies show how it&apos;s done</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Noy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Narayanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Patterson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Taylor</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Queue</title>
+		<imprint>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="48" to="75" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding for link prediction: A comparative analysis</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Barbosa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Firmani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Matinata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Merialdo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Knowledge Discovery from Data (TKDD)</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="1" to="49" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Drum: End-to-end differentiable rule mining on knowledge graphs</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sadeghian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Armandpour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2019">2019. 2019/file/0c72cb7ee1512f800abe27823a792d03-Paper.pdf</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><forename type="middle">H</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">Y</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1902.10197</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Inductive relation prediction by subgraph reasoning</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">K</forename><surname>Teru</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">G</forename><surname>Denis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 37th International Conference on Machine Learning. ICML&apos;20</title>
+		<meeting>the 37th International Conference on Machine Learning. ICML&apos;20</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Observed versus latent features for knowledge base and text inference</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 3rd workshop on continuous vector space models and their compositionality</title>
+		<meeting>the 3rd workshop on continuous vector space models and their compositionality</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="57" to="66" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Complex embeddings for simple link prediction</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">É</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Bouchard</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2071" to="2080" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Composition-based multirelational graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Vashishth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sanyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Nitin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Talukdar</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=BylA_C4tPr" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">DeepPath: A reinforcement learning method for knowledge graph reasoning</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hoang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D17-1060</idno>
+		<ptr target="https://doi.org/10.18653/v1/D17-1060" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing</title>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Palmer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Hwa</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</editor>
+		<meeting>the 2017 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Copenhagen, Denmark</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017-09">Sep 2017</date>
+			<biblScope unit="page" from="564" to="573" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Subgraph neighboring relations infomax for inductive link prediction on knowledge graphs</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Chao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Yan</surname></persName>
+		</author>
+		<idno type="DOI">10.24963/ijcai.2022/325</idno>
+		<ptr target="https://doi.org/10.24963/ijcai.2022/325" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence</title>
+		<editor>
+			<persName><forename type="first">L</forename><forename type="middle">D</forename><surname>Raedt</surname></persName>
+		</editor>
+		<meeting>the Thirty-First International Joint Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="page" from="2341" to="2347" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Differentiable learning of logical rules for knowledge base reasoning</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">W</forename><surname>Cohen</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="2319" to="2328" />
+		</imprint>
+		<respStmt>
+			<orgName>NIPS</orgName>
+		</respStmt>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Revisiting semi-supervised learning with graph embeddings</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">W</forename><surname>Cohen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 33rd International Conference on International Conference on Machine Learning</title>
+		<meeting>the 33rd International Conference on International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">48</biblScope>
+			<biblScope unit="page" from="40" to="48" />
+		</imprint>
+	</monogr>
+	<note>ICML&apos;16, JMLR.org</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Knowledge graph reasoning with relational digraph</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Yao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the ACM Web Conference 2022</title>
+		<meeting>the ACM Web Conference 2022</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="912" to="924" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">A*net: A scalable path-based reasoning approach for knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Galkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Xhonneux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Gazeau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2206.04798</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Neural bellman-ford networks: A general graph neural network framework for link prediction</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">P</forename><surname>Xhonneux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+	<note>Advances in Neural</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

@@ -1,0 +1,2260 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Contextualization Distillation from Large Language Model for Knowledge Graph Completion</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-02-24">24 Feb 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Dawei</forename><surname>Li</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">San Diego</orgName>
+								<orgName type="institution">University of California</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Zhen</forename><surname>Tan</surname></persName>
+							<affiliation key="aff1">
+								<orgName type="institution">Arizona State University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Tianlong</forename><surname>Chen</surname></persName>
+							<email>tianlong@cs.unc.edu</email>
+							<affiliation key="aff2">
+								<orgName type="institution">University of North Carolina at Chapel Hill</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Huan</forename><surname>Liu</surname></persName>
+							<email>huanliu@asu.edu</email>
+							<affiliation key="aff1">
+								<orgName type="institution">Arizona State University</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Contextualization Distillation from Large Language Model for Knowledge Graph Completion</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-02-24">24 Feb 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">5839239998F9E0641B441D03665C1477</idno>
+					<idno type="arXiv">arXiv:2402.01729v3[cs.CL]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:04+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>While textual information significantly enhances the performance of pre-trained language models (PLMs) in knowledge graph completion (KGC), the static and noisy nature of existing corpora collected from Wikipedia articles or synsets definitions often limits the potential of PLM-based KGC models. To surmount these challenges, we introduce the Contextualization Distillation strategy, a versatile plug-in-and-play approach compatible with both discriminative and generative KGC frameworks. Our method begins by instructing large language models (LLMs) to transform compact, structural triplets into contextrich segments. Subsequently, we introduce two tailored auxiliary tasks-reconstruction and contextualization-allowing smaller KGC models to assimilate insights from these enriched triplets. Comprehensive evaluations across diverse datasets and KGC techniques highlight the efficacy and adaptability of our approach, revealing consistent performance enhancements irrespective of underlying pipelines or architectures. Moreover, our analysis makes our method more explainable and provides insight into generating path selection, as well as the choosing of suitable distillation tasks. All the code and data in this work will be released at https://github.com/David-Li0406/Contextulization-Distillation</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Knowledge graph completion (KGC) is a fundamental task in natural language processing (NLP), aiming at unveiling hidden insights within diverse knowledge graphs to explore novel knowledge patterns. Traditional KGC methods <ref type="bibr" target="#b34">(Nickel et al., 2011;</ref><ref type="bibr" target="#b3">Bordes et al., 2013)</ref> typically predict the missing part of the triplets by learning the representation of each entity and relation based on their structural information. However, such embeddingbased methods tend to overlook the rich textual in-</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Methods</head><p>H@1 H@3 H@8/10 ChatGPT-1-shot 15.6 17.6 19.6 PaLM2-1-shot 15.7 20.8 25.4 KG-S2S <ref type="bibr">(Chen et al., 2022a) 28.5 38.8 49.3</ref> Table <ref type="table">1</ref>: ChatGPT and PaLM2's unsatisfactory performance on the test set of FB15k-237N compared to a smaller KGC model, KG-S2S <ref type="bibr">(Chen et al., 2022a)</ref>.</p><p>formation of the knowledge graph. Therefore, pretrained language models (PLMs) have been introduced to KGC and achieved promising results <ref type="bibr" target="#b20">(Kenton and Toutanova, 2019;</ref><ref type="bibr" target="#b55">Xie et al., 2022)</ref>.  While it has been well-discovered that textual information can be beneficial for PLM-based KGC models <ref type="bibr" target="#b59">(Yao et al., 2019;</ref><ref type="bibr">Wang et al., 2021b;</ref><ref type="bibr">Chen et al., 2022a;</ref><ref type="bibr">Li et al., 2022;</ref><ref type="bibr">Chen et al., 2023a)</ref>, prior attempts to augment KGC models with textual data from Wikipedia article <ref type="bibr" target="#b64">(Zhong et al., 2015)</ref> or synsets definitions <ref type="bibr" target="#b59">(Yao et al., 2019)</ref> have encountered certain limitations: (i) Entity descriptions, often succinct and static, may inhibit the formation of a comprehensive understanding of entities within KGC models. (ii) The incorporation of triplet descriptions, albeit potentially enriching, can introduce substantial noise, particularly when derived through automatic entity alignment <ref type="bibr" target="#b40">(Sun et al., 2020)</ref>. Figure <ref type="figure" target="#fig_0">1</ref> demonstrates an example to illustrate the aforementioned limitations. The description for the head "J. G. Ballard" is limited and for the tail "Shanghai", it mistakenly uses the definition of the movie also named "Shanghai". Also, while the two entities show up in the triplet description, it falls short in conveying the semantic essence of the relation "place_of_birth".</p><p>In light of these limitations, our attention shifts to Large Language Models (LLMs) <ref type="bibr" target="#b4">(Brown et al., 2020;</ref><ref type="bibr" target="#b61">Zhang et al., 2022;</ref><ref type="bibr" target="#b1">Anil et al., 2023;</ref><ref type="bibr" target="#b43">Touvron et al., 2023)</ref>, renowned for their capability in generating articulate and high-quality data <ref type="bibr" target="#b11">(Dai et al., 2023;</ref><ref type="bibr" target="#b38">Shridhar et al., 2023;</ref><ref type="bibr" target="#b63">Zheng et al., 2023)</ref>. Our exploration commences with a scrupulous evaluation of LLMs, such as ChatGPT and PaLM2, in KGC, benchmarking them across several esteemed KGC datasets <ref type="bibr" target="#b12">(Dettmers et al., 2018;</ref><ref type="bibr" target="#b13">Garcia-Duran et al., 2018;</ref><ref type="bibr" target="#b32">Mahdisoltani et al., 2013)</ref>. Utilizing 1-shot In-Context Learning (ICL), we deduce missing heads or tails in triplets and report evaluation metrics. It reveals a significant performance discrepancy of two LLMs in comparison to KG-S2S <ref type="bibr">(Chen et al., 2022a)</ref> despite its reliance on a smaller foundational model, T5-base <ref type="bibr" target="#b35">(Raffel et al., 2020)</ref>. This insight propels us toward the conclusion that direct utilization of LLMs for KGC tasks, while intuitive, is outperformed by the fine-tuning of more diminutive, specialized KGC models. This observation aligns with findings from <ref type="bibr" target="#b28">Liang et al. (2022)</ref>; <ref type="bibr" target="#b39">Sun et al. (2023);</ref><ref type="bibr">Zhao et al. (2023)</ref>; <ref type="bibr" target="#b52">Wei et al. (2023)</ref>, which highlighted the limitations of LLMs in knowledge-centric tasks. Experiment results and analysis on more KGC datasets can be found in Appendix A.</p><p>To optimally harness LLMs for KGC, we draw inspiration from recent works <ref type="bibr" target="#b53">(Xiang et al., 2022;</ref><ref type="bibr">Kim et al., 2022a)</ref> and introduce a novel approach, Contextualization Distillation. Contextualization Distillation first extracts descriptive contexts from LLMs with well-designed prompts, thereby securing dynamic, high-quality context for each entity and triplet. Subsequent to this, two auxiliary tasks are proposed to train smaller KGC models with these informative, descriptive contexts. The plug-in-and-play characteristic of our contextualization distillation enables us to apply and evaluate it on various KGC datasets and baseline models.</p><p>Through extensive experiments, we affirm that Contextualization Distillation consistently enhances the performance of smaller KGC models, irrespective of architectural and pipeline disparities. Additionally, we provide an exhaustive analysis of each step of Contextualization Distillation, encouraging further insights and elucidations.</p><p>The contributions of this work can be summarized into three main aspects:</p><p>• We identify the constraints of the current corpus for PLMs-based KGC models and introduce a plug-in-and-play approach, Contextualization Distillation, to enhance smaller KGC models with extracted rationale from LLMs.</p><p>• We conduct extensive experiments across several widely recognized KGC datasets and utilize various baseline models. Through these experiments, we validate the effectiveness of Contextualization Distillation in consistently improving smaller KGC models.</p><p>• We delve into a comprehensive analysis of our proposed method and provide valuable insights and guidance on generating path selection for distillation, as well as the selection of suitable distillation tasks.</p><p>2 Related Work</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Knowledge Graph Completion</head><p>Traditional KGC methods <ref type="bibr" target="#b34">(Nickel et al., 2011;</ref><ref type="bibr" target="#b3">Bordes et al., 2013)</ref> involve embedding entities and relations into a representation space. In pursuit of a more accurate depiction of entity-relation pairs, different representation spaces <ref type="bibr" target="#b44">(Trouillon et al., 2016;</ref><ref type="bibr" target="#b54">Xiao et al., 2016)</ref> have been proposed considering various factors, e.g., differentiability and calculation possibility <ref type="bibr" target="#b18">(Ji et al., 2021)</ref>. During training, two primary objectives emerge to assign higher scores to true triplets than negative ones: 1) Translational distance methods gauge the plausibility of a fact by measuring the distance between the two entities under certain relations <ref type="bibr" target="#b29">(Lin et al., 2015;</ref><ref type="bibr" target="#b50">Wang et al., 2014)</ref>; 2) Semantic matching methods compute the latent semantics of entities and relations <ref type="bibr" target="#b57">(Yang et al., 2015;</ref><ref type="bibr" target="#b12">Dettmers et al., 2018)</ref>.</p><p>To better utilize the rich textual information of knowledge graphs, PLMs have been introduced in KGC. <ref type="bibr" target="#b59">Yao et al. (2019)</ref> first propose to use <ref type="bibr">BERT (Kenton and Toutanova, 2019)</ref> to encode the entity and relation's name and adopt a binary classifier to predict the validity of given triplets. Following them, <ref type="bibr">Wang et al. (2021a)</ref> leverage the Siamese network to encode the head-relation pair and tail in a triplet separately, aiming to reduce the time cost and make the inference scalable. <ref type="bibr" target="#b30">Lv et al. (2022)</ref> convert each triple and its textual information into natural prompt sentences to fully inspire PLMs' potential in the KGC task. <ref type="bibr">Chen et al. (2023a)</ref> design a conditional soft prompts framework to maintain a balance between structural information and textual Given a triplet (Portishead | music , genre , parent genre | Ambient music),please gener ate a short paragraph to introduce "Portishe ad " and "Ambient music" and reflect their r elationship "music , genre , parent genre".  knowledge in KGC. Recently, there are also some works trying to leverage generative PLMs to perform KGC in a sequence-to-sequence manner and achieve promising results <ref type="bibr" target="#b55">(Xie et al., 2022;</ref><ref type="bibr" target="#b37">Saxena et al., 2022;</ref><ref type="bibr">Chen et al., 2022a)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>LLM Contextualized Triplet Distillation Prompt</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Distillation from LLMs</head><p>Knowledge distillation has proven to be an effective approach for transferring expertise from larger, highly competent teacher models to smaller, affordable student models <ref type="bibr" target="#b5">(Buciluǎ et al., 2006;</ref><ref type="bibr" target="#b15">Hinton et al., 2015;</ref><ref type="bibr" target="#b2">Beyer et al., 2022)</ref>. With the emergence of LLMs, a substantial body of research has concentrated on distilling valuable insights from these LLMs to enhance the capabilities of smaller PLMs. One of the most common methods is to prompt LLMs to explain their predictions and then use such rationales to distill their reasoning abilities into smaller models <ref type="bibr">(Wang et al., 2022a;</ref><ref type="bibr" target="#b16">Ho et al., 2022;</ref><ref type="bibr" target="#b31">Magister et al., 2022;</ref><ref type="bibr" target="#b17">Hsieh et al., 2023;</ref><ref type="bibr" target="#b38">Shridhar et al., 2023)</ref>. Distilling conversations from LLMs is another cost-effective method to build new dialogue datasets <ref type="bibr">(Kim et al., 2022b;</ref><ref type="bibr">Chen et al., 2023b;</ref><ref type="bibr">Kim et al., 2022a)</ref> or augment existing ones <ref type="bibr">(Chen et al., 2022b;</ref><ref type="bibr" target="#b65">Zhou et al., 2022;</ref><ref type="bibr" target="#b63">Zheng et al., 2023)</ref>. There are also some attempts <ref type="bibr" target="#b33">(Marjieh et al., 2023;</ref><ref type="bibr">Zhang et al., 2023)</ref> that focus on distilling domain-specific knowledge from LLMs for various downstream applications.</p><p>Several recent studies have validated the contextualization capability of LLMs to convert structural data into raw text. Among them, <ref type="bibr" target="#b53">Xiang et al. (2022)</ref> convert triplets in the data-to-text generation dataset into their corresponding descriptions to facilitate disambiguation. <ref type="bibr">Kim et al. (2022a)</ref> design a pipeline for synthesizing a dialogue dataset by distilling conversations from LLMs, enhanced with a social commonsense knowledge graph. By contrast, we are the first to leverage descriptive context generated by LLMs as an informative auxiliary corpus to the KGC models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Contextualization Distillation</head><p>In this section, we first illustrate how we curate prompts to extract the descriptive context of each triplet from the LLM. Subsequently, we design a multi-task framework, together with two auxiliary tasks-reconstruction and contextualization-to train smaller KGC models with these high-quality context corpus. The overview pipeline of our method is illustrated in Figure <ref type="figure" target="#fig_1">2</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Input Output</head><p>Portishead is a British trip hop band formed in Bristol in 1991. They are co nsidered one of the pioneers of the genre, along with Massive Attack and Tricky. Ambient music is a genre of music that emerged in the 1970s and i s characterized by its atmospheric and often relaxing sound. Portishead's m usic is often described as ambient, due to its use of loops, drones, and othe r sound effects.</p><p>Given a triplet (Portishead | music , genre , parent genre | Ambient music), please generate a short paragraph to introduce "Portishead " and "Ambient music" and reflect their relationship "music , genre , parent genre". </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Extract Descriptive Context from LLMs</head><p>Recent studies have highlighted the remarkable ability of LLMs to contextualize structural data and transform it into context-rich segments <ref type="bibr" target="#b53">(Xiang et al., 2022;</ref><ref type="bibr">Kim et al., 2022a)</ref>. Here we borrow their insights and extract descriptive context from LLMs to address the limitations of the existing KGC corpus we mentioned in Section 1.</p><p>In particular, we focus on two commonly employed types of descriptions prevalent in prior methodologies: entity description (ED) <ref type="bibr" target="#b59">(Yao et al., 2019;</ref><ref type="bibr">Chen et al., 2022a)</ref> and triplet description (TD) <ref type="bibr" target="#b40">(Sun et al., 2020)</ref>. Entity description refers to the definition and description of individual entities, while triplet description refers to a textual segment that reflects the specific relationship between two entities within a triplet. Given triplets of a knowledge graph t i ∈ T , we first curate prompt p i for the i th triplet by filling the pre-defined template:</p><formula xml:id="formula_0">p i = Template(h i , r i , t i ),<label>(1)</label></formula><p>where h i , r i , t i are the head entity, relation, and tail entity of the i th triplet. Then, we use p i as the input to prompt the LLM to generate the descriptive context c i for each triplet:</p><formula xml:id="formula_1">c i = LLM(p i ),<label>(2)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Generating Path</head><p>Without loss of generalization, we consider different generating paths to instruct the LLMs to generate textual information and conduct an ablation study in Section 4.3. All the generating paths we adopt are as follows:</p><p>T -→ (ED, T D) generates both entity description and triplet description at one time. As Figure <ref type="figure" target="#fig_2">3</ref> shows, this is the context generating path we use in the main experiment.</p><p>T -→ ED curates prompt to instruct the LLM to generate the entity description only.</p><p>T -→ T D curates prompt to instruct the LLM to generate the triplet description only.</p><p>T -→ RA prompts the LLM to generate rationale rather than descriptive context.</p><p>T -→ ED -→ T D produces entity description and triplet description in a two-step way. The final descriptive context is obtained by concatenating the two segments of text.</p><p>We also give further details and examples of our prompt in Appendix F.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Multi-task Learning with Descriptive Context</head><p>Different PLM-based KGC models adopt diverse loss functions and pipeline architectures <ref type="bibr" target="#b59">(Yao et al., 2019;</ref><ref type="bibr">Chen et al., 2022a;</ref><ref type="bibr" target="#b55">Xie et al., 2022;</ref><ref type="bibr">Chen et al., 2023a)</ref>. To ensure the compatibility of our Contextualization Distillation to be applied in various PLM-based KGC methods, we design a multi-task learning framework for these models to learn from both the KGC task and auxiliary descriptive context-based tasks. For the auxiliary tasks, we design reconstruction (Section 3.3.1) and contextualizatioin (Section 3.3.2) for discriminative and generative KGC models respectively.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.1">Reconstruction</head><p>The reconstruction task aims to train the model to restore the corrupted descriptive contexts. For the discriminative KGC models, we follow the implementation of Kenton and Toutanova (2019) and use masked language modeling (MLM). Previous studies have validated that such auxiliary selfsupervised tasks in the domain-specific corpus can benefit downstream applications <ref type="bibr" target="#b14">(Han et al., 2021;</ref><ref type="bibr">Wang et al., 2021b)</ref>.</p><p>To be specific, MLM randomly identifies 15% of the tokens within the descriptive context. Among these tokens, 80% are tactically concealed with the special token "&lt; M ask &gt;", 10% are seamlessly substituted with random tokens, while the remaining 10% keep unchanged. For each selected token, the objective of MLM is to restore the original content at that particular position, achieved through the cross-entropy loss. The aforementioned process can be formally expressed as follows:</p><formula xml:id="formula_2">c ′ i = MLM(c i ),<label>(3)</label></formula><formula xml:id="formula_3">L rec = 1 N N i=1 ℓ(f (c ′ i ), c i ) (4)</formula><p>The final loss of discriminative KGC models is the combination of the KGC loss<ref type="foot" target="#foot_0">1</ref> and the proposed reconstruction loss:</p><formula xml:id="formula_4">L dis = L kgc + α • L rec , (<label>5</label></formula><formula xml:id="formula_5">)</formula><p>where α is a hyper-parameter to control the ratios between the two losses.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.2">Contextualization</head><p>The objective of contextualization is to instruct the model in generating the descriptive context c i when provided with the original triplet t i = h, r, t.</p><p>Compared with reconstruction, contextualization demands a more nuanced and intricate ability from PLM. It necessitates the PLM to precisely grasp the meaning of both entities involved and the inherent relationship that binds them together, to generate fluent and accurate descriptions. Specifically, we concatenate head, relation and tail with a special token "&lt; Sep &gt;" as input:</p><formula xml:id="formula_6">I i = Con(h i , &lt; Sep &gt;, r i , &lt; Sep &gt;, t i ) (6)</formula><p>Then, we input them into the generative PLM and train the model to generate descriptive context c i using the cross-entropy loss:</p><formula xml:id="formula_7">L con = 1 N N i=1 ℓ(f (I i ), c i ) (7)</formula><p>The final loss of generative KGC models is the combination of the KGC loss<ref type="foot" target="#foot_1">2</ref> and the proposed contextualization loss:</p><formula xml:id="formula_8">L gen = L kgc + α • L con (8)</formula><p>For generative KGC models, it is also applicable to apply reconstruction as the auxiliary task. We have done an ablation study in Section 4.5 to examine the effectiveness of each auxiliary task on generative KGC models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiment</head><p>In this section, we apply our Contextualization Distillation across a range of PLM-based KGC baselines. We compare our enhanced model with our approach against the vanilla models using several KGC datasets. Additionally, we do further analysis of each component in our contextualized distillation and make our method more explainable by conducting case studies.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Experimental Settings</head><p>Datasets We use WN18RR <ref type="bibr" target="#b12">(Dettmers et al., 2018)</ref> and FB15k-237N <ref type="bibr" target="#b30">(Lv et al., 2022)</ref> in our experiment. WN18RR serves as an enhanced version of its respective counterparts, WN18 <ref type="bibr" target="#b3">(Bordes et al., 2013)</ref>. The improvements involve the removal of all inverse relations to prevent potential data leakage. For FB15K-237N, it's a refine version of FB15k <ref type="bibr" target="#b3">(Bordes et al., 2013)</ref>, by eliminating concatenated relations stemming from Freebase mediator nodes <ref type="bibr" target="#b0">(Akrami et al., 2020)</ref> to avoid Cartesian production relation issues.</p><p>Baselines we adopt several PLM-based KGC models as baselines and apply the proposed Contextualization Distillation to them. KG-BERT <ref type="bibr" target="#b59">(Yao et al., 2019)</ref> is the first to suggest utilizing PLMs for the KGC task. we also consider CSProm-KG <ref type="bibr">(Chen et al., 2023a)</ref>, which combines PLMs with traditional Knowledge Graph Embedding (KGE) models, achieving a balance between efficiency and performance in KGC. In addition to these discriminative models, we also harness generative KGC models. GenKGC <ref type="bibr" target="#b55">(Xie et al., 2022)</ref> is the first to accomplish KGC in a sequence-tosequence manner, with a fine-tuned BART <ref type="bibr" target="#b24">(Lewis et al., 2020)</ref> as its backbone. Following them, KG-S2S <ref type="bibr">(Chen et al., 2022a)</ref> adopt soft prompt tuning and lead to a new SOTA performance among the generative KGC models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Implementation details</head><p>All our experiments are conducted on a single GPU (RTX A6000), with CUDA version 11.1. We use PaLM2-540B <ref type="bibr" target="#b1">(Anil et al., 2023)</ref> as the large language model to distill descriptive context. We tune the Contextualization Distillation hyper-parameter α ∈ {0.1, 0.5, 1.0}. We follow the hyper-parameter settings in the original papers to reproduce each baseline's result. For all datasets, we follow the previous works <ref type="bibr">(Chen et al., 2022a</ref><ref type="bibr">(Chen et al., , 2023a) )</ref> and report Mean Reciprocal Rank (MRR), Hits@1, Hits@3 and Hits@10. More details about our experiment implementation and dataset statistics are shown in Appendix C.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Main Result</head><p>Table <ref type="table" target="#tab_2">2</ref> displays the results of our experiments on WN18RR and FB15k-237N. We observe that our Contextualization Distillation consistently enhances the performance of all baseline methods, regardless of whether they are based on generative or discriminative models. This unwavering WN18RR FB15k-237N MRR H@1 H@3 H@10 MRR H@1 H@3 H@10 Traditional Methods TransE* <ref type="bibr" target="#b3">(Bordes et al., 2013)</ref> 24 improvement demonstrates the robust generalization and compatibility of our approach across various PLMs-based KGC methods.</p><p>Additionally, some baselines we choose to implement our Contextualization Distillation also utilize context information. For example, both KG-BERT and CSProm-KG adopt entity descriptions to enhance entity embedding representation. Nevertheless, our approach manages to deliver additional improvements to these context-based baselines. Among them, it is worth noting that the application of our approach to KG-BERT achieves an overall 31.7% enhancement in MRR. All these findings lead us to the conclusion that Contextualization Distillation is not only compatible with context-based KGC models but also capable of further enhancing their performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Ablation Study on Generating Path</head><p>We investigate the efficacy of different context types in the distillation process by employing various generative paths. As illustrated in Table <ref type="table">3</ref>, we initially explore the impact of entity description and triplet description when utilized separately as auxiliary corpora (T -→ ED and T -→ T D). The experimental findings underscore the critical roles played by both entity description and triplet description as distillation corpora, leading to noticeable enhancements in the performance of smaller KGC models. Furthermore, we ascertain that</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Paths</head><p>FN15k-237N H@1 H@3 H@10 -18.7 27. Table <ref type="table">3</ref>: Ablation study results in GenKGC with different generating paths to distill corpus from LLMs. We conduct the experiment using FB15k-237N. We add the vallina GenKGC in the first row for comparison. our method's generating path T -→ (ED, T D), which utilizes these two corpora, achieves more improvements by endowing the models with a more comprehensive and richer source of information.</p><p>To gain a comprehensive understanding of the effectiveness of our Contextualization Distillation, we also explored other alternative generative paths. While rationale distillation has demonstrated its potential in various NLP tasks <ref type="bibr" target="#b17">(Hsieh et al., 2023;</ref><ref type="bibr" target="#b38">Shridhar et al., 2023)</ref>, our investigation delves into the T -→ RA path, wherein we instruct the LLM to generate rationales for each training sample. Although the model utilizing rationale distillation exhibits improved performance compared to the vanilla one, it falls short when compared with our Contextualization Distillation incorporating entity descriptions and triplet descriptions. One plausible explanation for this disparity lies in the intrinsic nature of rationales, which tend to be intricate and structurally complex. This complexity can pose a greater challenge for smaller models to fully comprehend, in contrast to the more straightforward descriptive text utilized in our approach.</p><p>T -→ ED -→ T D borrows the insight from Chain-of-CoT (CoT) <ref type="bibr" target="#b51">(Wei et al., 2022)</ref> that generates the content step by step. Interestingly, our findings indicate that this multi-step generative path also yields suboptimal performance when compared to the single-step generative path. This discrepancy can be attributed to the text incoherence resulting from the concatenation of three segments of descriptions. In light of the insights gained from these observations, we summarize our distillation guidance for KGC as follows: smaller models can benefit more from comprehensive, descriptive and coherent content generated by LLMs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Ablation Study on Descriptive Context</head><p>FN15k-237N H@1 H@3 H@10 GenKGC 18.7 27.3 33.7 GenKGC w/ Contextualization w/ Wikipedia 19.2 27.9 34.0</p><p>GenKGC-CD 20.4 29.3 34.9</p><p>Table <ref type="table">4</ref>: Ablation study results in GenKGC with descriptive context generated by our method and collected by <ref type="bibr" target="#b64">Zhong et al. (2015)</ref>.</p><p>In this section, we replace the auxiliary corpus used in the auxiliary task with the Wikipedia corpus collected by <ref type="bibr" target="#b64">(Zhong et al., 2015)</ref> to study the effectiveness of the distillation. As Table <ref type="table">4</ref> shows, while the auxiliary task with Wikipedia corpus improves the model's performance, the overall enhancement is not as significant as that brought by our Contextualization Distillation. This further demonstrates the corpus generated by large language models effectively tackles the limitations of the preceding corpus for KGC, resulting in more pronounced improvements for the KGC model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.5">Ablation Study on Generative KGC Models</head><p>In this section, we compare the effectiveness of reconstruction and contextualization in generative Table <ref type="table">5</ref>: Ablation study results on GenKGC and KG-S2S with reconstruction and contextualization as the auxiliary task respectively. We conduct the experiment using FB15k-237N. KGC models. For GenKGC and KG-S2S, we employ the pre-trained tasks of their respective backbone models (BART for GenKGC and T5 for KG-S2S) as the reconstruction objective. More details of our reconstruction implementation for generative KGC models can be found in Appendix D.</p><p>Table <ref type="table">5</ref> presents the ablation study results on FB15k-237N. We find reconstruction is also effective in improving the performance of generative KGC models, showing that KGC models can consistently benefit from the descriptive context with different auxiliary tasks. Comparing the two auxiliary tasks, models with contextualization outperform those with reconstruction on almost every metric, except for Hits@1 in KG-S2S. This implies that contextualization is a critical capability for generative KGC models to master for better KGC performance. Generative models have benefited more from the training of converting structural triplets into descriptive context than simply restoring the corrupted corpus.</p><p>from Wikipedia <ref type="bibr" target="#b64">(Zhong et al., 2015)</ref> Ours Head Ballard was a novelist. J.G. <ref type="bibr">Ballard (1930</ref><ref type="bibr">Ballard ( -2009) )</ref>  Ballard was born in Shanghai in 1930. He lived there until he was eight years old, when his family moved to England. Ballard's early experiences in Shanghai had a profound impact on his writing...  <ref type="bibr">Ballard, place_of_birth, Shanghai)</ref>. The text in green represents positive content and the text in red represents negative content.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.6">Efficiency Analysis</head><p>The additional training cost brought by the auxiliary distillation tasks may pose a potential constraint on our approach. However, we also notice baseline models with our method coverage faster on the validation set. Figure <ref type="figure" target="#fig_4">4</ref> presents the validation MRR vs epoch numbers during the CSProm-KG training on FB15k-237N. It is obvious that CSProm-KG with Contextualization Distillation achieves a faster convergence and attains the best checkpoint earlier (at around 125 epochs) compared to the variant without our method (at around 220 epochs). This implies auxiliary distillation loss can also expedite model learning in KGC. This trade-off between batch processing time and training steps ultimately results in a training efficiency comparable to that of the vanilla models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.7">Case Study</head><p>We conduct a comparative analysis between the description corpus collected from Wikipedia <ref type="bibr" target="#b64">(Zhong et al., 2015)</ref> and those generated using our method to show the advantage of our Contextualization Distillation more straightforwardly. As presented in Table <ref type="table" target="#tab_5">6</ref>, entity descriptions generated by the LLM effectively address the limitations issue and static shortcomings, resulting in more informative and accurate content. Regarding the triplet description, although the "semi-autobiographical" used in <ref type="bibr" target="#b64">Zhong et al. (2015)</ref>   J.G. Ballard's connection to Shanghai during his childhood, it still fails to express the semantics of "place_of_birth" clearly. In contrast, the descriptive context generated by our method provides a more elaborate and coherent contextualization of the "place_of_birth" between "J.G. Ballard" and "Shanghai". These comparisons highlight the effectiveness of our method in addressing the previous corpus' limitation.</p><p>Furthermore, We showcase how the auxiliary training with descriptive context enhances the baseline models. Table <ref type="table" target="#tab_7">7</ref> presents the results of KG-S2S performance in a test sample of FB15k-237N, both with and without our contextualization distil-lation. In this case, the vanilla KG-S2S wrongly predicts the genre of the film "The Devil's Double" as "'War film', whereas the KG-S2S trained with our auxiliary task correctly labels it as "Biographical film". Also, by making the model contextualize each triplet, we find the model with our method applied successfully captures many details about the movie, such as the genre and plot, and presents this information as fluent text. In summary, the model not only acquires valuable insights about the triplets but also gains the ability to adeptly contextualize this information through our Contextualization Distillation.</p><p>Due to the space limitation, we put further analysis about LLMs' sizes in Appendix E.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusion</head><p>In this work, we propose Contextualization Distillation, addressing the limitation of the existing KGC textual data by prompting LLMs to generate descriptive context. To ensure the versatility of our approach across various PLM-based KGC models, we have designed a multi-task learning framework. Within this framework, we incorporate two auxiliary tasks, reconstruction and contextualization, which aid in training smaller KGC models in the informative descriptive context. We conduct experiments on several mainstream KGC benchmarks and the results show that our Contextualization Distillation consistently enhances the baseline model's performance. Furthermore, we conduct in-depth analyses to make the effect of our method more explainable, providing guidance on how to effectively leverage LLMs to improve KGC as well. In the future, we plan to adapt our method to other knowledge-driven tasks, such as entity linking and knowledge graph question answering.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Limitation</head><p>Due to limitations in computing resources, we evaluate our method on two KGC datasets, while disregarding scenarios such as temporal knowledge graph completion <ref type="bibr" target="#b13">(Garcia-Duran et al., 2018)</ref>, fewshot knowledge graph completion <ref type="bibr" target="#b56">(Xiong et al., 2018)</ref> and commonsense knowledge graph completion <ref type="bibr">(Li et al., 2022)</ref>. In future research, we plan to investigate the effectiveness of our method in border scenarios.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>FB15k-237N</head><p>H@1 H@3 H@8 PaLM2-1-shot 15.7 20.8 25.4 PaLM2-2-shot 16.9 22.1 26.8 PaLM2-4-shot 17.7 23.1 27.9 </p><formula xml:id="formula_9">= f (h, r, t) = sigmoid(CW T ),</formula><p>where s is a 2-dimensional real vector s τ 0 , s τ 1 ∈ [0, 1] and CW T is the embedding of the "[CLS]" token. Cross-entropy loss is computed using the triple labels and scores for positive and negative triple sets:</p><formula xml:id="formula_10">L kgc = τ ∈D + +D - (y τ log(s τ 0 ) + (1 -y τ )log(s τ 1 )),<label>(9)</label></formula><p>where y τ ∈ {0, 1} is the label of that triplet. The negative triplet D -is simply generated by replacing the head entity h or tail entity t in the original triplet (h, r, t) ∈ D + . CSProm-KG <ref type="bibr">(Chen et al., 2023a)</ref> combines PLM and traditional KGC models together to utilize both textual and structural information. It first concatenates the entity description and relation description behind a sequence of conditional soft prompts as the input. The input is then fed into a PLM, denoted as P , where the model parameters are held constant. Subsequently, CSProm-KG extracts embeddings from the soft prompts, which serve as the representations for entities and relations. These representations are then supplied as input to another graph-based KGC model, labeled as G, to perform the final predictions. It also introduces a local adversarial regularization (LAR) method to enable the PLM P to distinguish the true entities from n textually similar entities t l :</p><formula xml:id="formula_11">L l = max(f (h, r, t), - 1 n i∈n f (h, r, t l i ) + γ, 0),<label>(10)</label></formula><p>where γ is the margin hyper-parameter. Finally, CSProm-KG utilizes the standard cross entropy loss with label smoothing and LAR to optimize the whole pipeline:</p><formula xml:id="formula_12">L c = -(1 -ϕ) • log p(t|h, r) - ϕ |V | t ′ ∈V /t log p(t ′ h, r),<label>(11)</label></formula><formula xml:id="formula_13">L kgc = L c + β • L l , (<label>12</label></formula><formula xml:id="formula_14">)</formula><p>where ϕ is the label smoothing value and β is the LAR term weight.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.2 Generative KGC Pipelines</head><p>In GenKGC <ref type="bibr" target="#b55">(Xie et al., 2022)</ref>, entities and relations are represented as sequences of tokens, rather than unique embeddings, to connect with pre-trained language models. For the triples (e i , r j , e k ) with the tail entity e k missing, descriptions of e i and r j are concatenated to form the input sequence, which is then used to generate the output sequence. BART is employed for model training and inference, and a relation-guided demonstration approach is proposed for encoder training. This method leverages the fact that knowledge graphs often exhibit long-tailed distributions and constructs demonstration examples guided by the relation r j . The final input sequence format is defined as: x = [&lt; BOS &gt;, demonstration(r j ), &lt; SEP &gt; , d e i , dr j , &lt; SEP &gt;], where d e i and dr j are description of the head entity and relation respectively. And demonstration(r j ) means the demonstration examples with the relation r j . Given the input, the target of GenKGC in the decoding stage is to correctly generate the missing entity y, which can be formulated as:</p><formula xml:id="formula_15">L kgc = -log p(e K |x)<label>(13)</label></formula><p>Additionally, an entity-aware hierarchical decoding strategy has been proposed to improve the time efficiency.</p><p>Following them, KG-S2S <ref type="bibr">(Chen et al., 2022a)</ref> adds the entity description in both the encoder and decoder ends, training the model to generate both the missing entity and its corresponding description. It also maintains a soft prompt embedding for each relation to facilitate the model to distinguish the relations with similar surface meanings. Given the query (e i , r j , e k ), the input x and the label y to predict the tail entity e k can be expressed as:</p><p>x = [&lt; BOS &gt;, P e1 , e i , des e i , P e1 , &lt; SEP &gt;, P r1 , r j , P r2 ],</p><p>(14)</p><formula xml:id="formula_16">y = [&lt; BOS &gt; e k , des e k ],<label>(15)</label></formula><p>where des e represents the entity description and P here is the soft prompt embedding for entities or relations. Additionally, it adopts a sequence-to-sequence dropout strategy by randomly masking some content in the entity description to avoid model overfitting in the training stage:</p><formula xml:id="formula_17">x = RandomM ask(x),<label>(16)</label></formula><p>and the total loss can be expressed as:</p><formula xml:id="formula_18">L kgc = -log p(y|x)<label>(17)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Additional Implementation Details</head><p>We show the detailed statistics of the KGC datasets we use in Table <ref type="table" target="#tab_10">11</ref>.  The rationale for [MASK] should be Shanghai is that:1. J.G. Ballard was born in Shanghai, China.2. Ballard's father was a British engineer who worked in China.3. Ballard spent his early childhood in Shanghai.4. Ballard's experiences in Shanghai influenced his writing.5. Ballard's novels and short stories often feature themes of alienation, isolation, and dystopia.6. Ballard's work has been praised for its originality, its insights into human nature, and its depiction of the future.In conclusion, the rationale for [MASK] should be Shanghai is that Ballard was born and raised there, and his experiences in Shanghai shaped his writing. Output-Head J.G. Ballard was born in Shanghai on 15 November 1930. His father was a British businessman and his mother was a Chinese woman. Ballard lived in Shanghai until the Japanese invasion in 1937, when he and his family were evacuated to England. Ballard's experiences in Shanghai during the war had a profound impact on his writing, and many of his novels are set in dystopian cities that are reminiscent of Shanghai. Ballard's work is often characterized by its bleak vision of the future, but it also contains a strong element of hope. Ballard believed that the future could be a place of beauty and wonder, but only if we are willing to confront the challenges that we face. </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: An example to illustrate the limitations of the current textual information for KGC.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure2: An overview pipeline of our Contextualization Distillation. We first extract descriptive contexts from LLMs (Section 3.1). Then, two auxiliary tasks, reconstruction (Section 3.3.1) and contextualization (Section 3.3.2) are designed to train the smaller KGC models with the contextualized information.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: An example contains our instruction to LLMs and the generated descriptive context. We use green to highlight entity description prompt/ generation result and blue to highlight triplet description prompt/ generation result.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: MRR scores on the validation set during the CSProm-KG training on FB15k-237N. We use thin bars to mark the epochs in which the models achieve the best performance in the validation set.</figDesc><graphic coords="7,306.14,238.47,218.27,151.36" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Experiment results on WN18RR and FB15k-237. * denotes results we take fromChen et al. (2022a). Methods suffixed with "-CD" indicate the baseline models with our Contextualization Distillation applied. The best results of each metric are in bold.</figDesc><table><row><cell></cell><cell>.3</cell><cell>4.3</cell><cell>44.1</cell><cell>53.2</cell><cell>25.5</cell><cell>15.2</cell><cell>30.1</cell><cell>45.9</cell></row><row><cell>DisMult* (Yang et al., 2015)</cell><cell>44.4</cell><cell>41.2</cell><cell>47.0</cell><cell>50.4</cell><cell>20.9</cell><cell>14.3</cell><cell>23.4</cell><cell>33.0</cell></row><row><cell>ComplEx* (Trouillon et al., 2016)</cell><cell>44.9</cell><cell>40.9</cell><cell>46.9</cell><cell>53.0</cell><cell>24.9</cell><cell>18.0</cell><cell>27.6</cell><cell>38.0</cell></row><row><cell>ConvE* (Dettmers et al., 2018)</cell><cell>45.6</cell><cell>41.9</cell><cell>47.0</cell><cell>53.1</cell><cell>27.3</cell><cell>19.2</cell><cell>30.5</cell><cell>42.9</cell></row><row><cell>RotatE* (Sun et al., 2018)</cell><cell>47.6</cell><cell>42.8</cell><cell>49.2</cell><cell>57.1</cell><cell>27.9</cell><cell>17.7</cell><cell>32.0</cell><cell>48.1</cell></row><row><cell>CompGCN* (Vashishth et al., 2019)</cell><cell>47.9</cell><cell>44.3</cell><cell>49.4</cell><cell>54.6</cell><cell>31.6</cell><cell>23.1</cell><cell>34.9</cell><cell>48.0</cell></row><row><cell>PLMs-based Methods</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>MTL-KGC* (Kim et al., 2020)</cell><cell>33.1</cell><cell>20.3</cell><cell>38.3</cell><cell>59.7</cell><cell>24.1</cell><cell>16.0</cell><cell>28.4</cell><cell>43.0</cell></row><row><cell>StAR* (Wang et al., 2021a)</cell><cell>40.1</cell><cell>24.3</cell><cell>49.1</cell><cell>70.9</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell>PKGC* (Lv et al., 2022)</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>30.7</cell><cell>23.2</cell><cell>32.8</cell><cell>47.1</cell></row><row><cell>KGT5* (Saxena et al., 2022)</cell><cell>50.8</cell><cell>48.7</cell><cell>-</cell><cell>54.4</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell>Our Implementation</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>KG-BERT (Yao et al., 2019)</cell><cell>21.6</cell><cell>4.1</cell><cell>30.2</cell><cell>52.4</cell><cell>20.3</cell><cell>13.9</cell><cell>20.1</cell><cell>40.3</cell></row><row><cell>KG-BERT-CD</cell><cell>30.3</cell><cell>16.5</cell><cell>35.4</cell><cell>60.2</cell><cell>25.0</cell><cell>17.2</cell><cell>26.6</cell><cell>45.5</cell></row><row><cell>GenKGC (Xie et al., 2022)</cell><cell>-</cell><cell>28.6</cell><cell>44.4</cell><cell>52.4</cell><cell>-</cell><cell>18.7</cell><cell>27.3</cell><cell>33.7</cell></row><row><cell>GenKGC-CD</cell><cell>-</cell><cell>29.3</cell><cell>45.6</cell><cell>53.3</cell><cell>-</cell><cell>20.4</cell><cell>29.3</cell><cell>34.9</cell></row><row><cell>KG-S2S (Chen et al., 2022a)</cell><cell>57.0</cell><cell>52.5</cell><cell>59.7</cell><cell>65.4</cell><cell>35.4</cell><cell>28.5</cell><cell>38.8</cell><cell>49.3</cell></row><row><cell>KG-S2S-CD</cell><cell>57.6</cell><cell>52.6</cell><cell>60.7</cell><cell>67.2</cell><cell>35.9</cell><cell>28.9</cell><cell>39.4</cell><cell>50.2</cell></row><row><cell>CSProm-KG (Chen et al., 2023a)</cell><cell>55.2</cell><cell>50.0</cell><cell>57.2</cell><cell>65.7</cell><cell>36.0</cell><cell>28.1</cell><cell>39.5</cell><cell>51.1</cell></row><row><cell>CSProm-KG-CD</cell><cell>55.9</cell><cell>50.8</cell><cell>57.8</cell><cell>66.0</cell><cell>37.2</cell><cell>28.8</cell><cell>41.0</cell><cell>53.0</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head></head><label></label><figDesc>was an English writer. He was born in Shanghai, China, and his early experiences there shaped his writing. His novels often explored themes of alienation, technology, and the future...</figDesc><table><row><cell>Tail</cell><cell>Shanghai is a 2010 American mys-</cell><cell>Shanghai is a city in China. It is one of the</cell></row><row><cell></cell><cell>tery/thriller neo-noir film directed by</cell><cell>most populous cities in the world, and it</cell></row><row><cell></cell><cell>Mikael Håfström, starring John Cusack</cell><cell>is a major center of commerce and culture.</cell></row><row><cell></cell><cell>and Gong Li...</cell><cell>Shanghai has a long history, and it has</cell></row><row><cell></cell><cell></cell><cell>been home to many different cultures over</cell></row><row><cell></cell><cell></cell><cell>the centuries...</cell></row><row><cell cols="2">Triplet In 1984, J.G. Ballard won broad, critical</cell><cell></cell></row><row><cell></cell><cell>recognition for the war novel Empire of</cell><cell></cell></row><row><cell></cell><cell>the Sun, a semi-autobiographical story of</cell><cell></cell></row><row><cell></cell><cell>the experiences of a British boy during the</cell><cell></cell></row><row><cell></cell><cell>Japanese occupation of Shanghai.</cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 6 :</head><label>6</label><figDesc>Descriptive context of the triplet (J.G.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 7 :</head><label>7</label><figDesc>Case study on FB15K-237N with KG-S2S. we also let the model generate a descriptive context for each test sample. The text in bold represents informative content in the generated descriptive context.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 10 :</head><label>10</label><figDesc>Experiment results of the demonstration number's effect on LLMs when performing KGC.<ref type="bibr" target="#b59">Yao et al., 2019)</ref> is the first to propose utilizing PLMs for triplet modeling. It employs a special "[CLS]" token as the first token in input sequences. The head entity, relation, and tail entity are represented as separate sentences, with segments separated by[SEP]  tokens. The input token representations are constructed by combining token, segment, and position embeddings. Tokens in the head and tail entity sentences share the same segment embedding, while the relation sentence has a different one. The input is fed into a BERT model, and the final hidden vector of the "[CLS]" token is used to compute triple scores. The scoring function for a triple (h, r, t) is calculated as s</figDesc><table><row><cell>B Details of Various KGC Pipelines</cell></row><row><cell>B.1 Discriminative KGC Pipelines</cell></row><row><cell>KG-BERT (</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head></head><label></label><figDesc>Table 12 displays the hyperparameters we adopt for each baseline model and dataset.</figDesc><table><row><cell>Dataset</cell><cell cols="3"># Entity # Relation # Train # Valid # Test</cell></row><row><cell>WN18RR</cell><cell>40,943</cell><cell>11</cell><cell>86,835 3,034 3,134</cell></row><row><cell cols="2">FB15k-237N 14,541</cell><cell>93</cell><cell>87,282 7,041 8,226</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 11 :</head><label>11</label><figDesc>Statistics of the Datasets.</figDesc><table><row><cell>model</cell><cell>dataset</cell><cell cols="4">batch size learning rate epoch α</cell></row><row><cell>KG-BERT</cell><cell>WN18RR FB15k-237N</cell><cell>32 32</cell><cell>5e-5 5e-5</cell><cell>5 5</cell><cell>0.1 0.1</cell></row><row><cell>CSProm-KG</cell><cell>WN18RR FB15k-237N</cell><cell>128 128</cell><cell>5e-4 5e-4</cell><cell>500 500</cell><cell>1.0 1.0</cell></row><row><cell>GenKGC</cell><cell>WN18RR FB15k-237N</cell><cell>64 64</cell><cell>1e-4 1e-4</cell><cell>10 10</cell><cell>1.0 1.0</cell></row><row><cell>KG-S2S</cell><cell>WN18RR FB15k-237N</cell><cell>64 32</cell><cell>1e-3 1e-3</cell><cell>100 50</cell><cell>0.5 0.5</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_11"><head>Table 12 :</head><label>12</label><figDesc>Details of hyper-parameter settings for each baseline and dataset.Triplet (J.G. Ballard, place_of_birth, Shanghai) Prompt-Tail Given a triplet (J.G. Ballard | people, person, place_of_birth | [MASK]), please generate rationale to explain why [MASK] should be Shanghai Prompt-Head Given a triplet ([MASK] | people, person, place_of_birth | J.G. Ballard), please generate rationale at least 100 words to explain why [MASK] should be J.G. Ballard Output-Tail</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_12"><head>Table 19 :</head><label>19</label><figDesc>Rationale obtained from the generating path T -→ RA</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>We give the illustration of the discriminative KGC models we used in Appendix B.1</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>We give the illustration of the generative KGC models we used in Appendix B.2</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_2"><p>Table 9: ChatGPT and PaLM2's results on other KGC datasets.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_3"><p>Table18: Descriptive context obtained from the generating path T -→ ED -→ T D. &lt;Output-Tail&gt; and &lt;Output-head&gt; refer to the tail description and head description generated by the LLM in previous steps.</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Large Language Model Performance on KGC</head><p>We follow <ref type="bibr" target="#b66">Zhu et al. (2023)</ref> to assess the performance of directly instructing LLMs to perform KGC and Table <ref type="table">8</ref> gives an example of our input to LLMs. For PaLM, we utilize the API parameter "candidate_count", while for ChatGPT, we use "n" to obtain multiple candidates, enabling the calculation of Hit@1, Hit@3, and Hit@10 metrics. After obtaining the model's outputs, we use the Sentence-BERT <ref type="bibr" target="#b36">(Reimers and Gurevych, 2019)</ref> to guarantee each output result matches a corresponding entity in the dataset's entity set.</p><p>Table <ref type="table">9</ref> displays the additional experimental results for ChatGPT and PaLM2 across several KGC datasets. Although LLMs demonstrate promising performance in a series of NLP tasks <ref type="bibr" target="#b28">(Liang et al., 2022;</ref><ref type="bibr" target="#b58">Yang et al., 2023;</ref><ref type="bibr" target="#b6">Chang et al., 2023)</ref> with various reasoning strategies <ref type="bibr" target="#b51">(Wei et al., 2022;</ref><ref type="bibr">Wang et al., 2022b;</ref><ref type="bibr">Li et al., 2023a;</ref><ref type="bibr" target="#b42">Tong et al., 2023)</ref>, they present a surprisingly poor performance in KGC with ICL. It is evident that the performance of ICL of LLM falls short of KG-S2S's in every dataset. One potential explanation for this subpar performance can be attributed to the phenomenon of hallucination in LLMs <ref type="bibr" target="#b19">(Ji et al., 2023;</ref><ref type="bibr" target="#b58">Yang et al., 2023)</ref>, leading to incorrect responses when the LLM encounters unfamiliar content. Additionally, <ref type="bibr">Li et al. (2023b)</ref> exposes the ICL of LLMs' limitation in learning a domain-specific entity across the whole dataset, which provides another perspective to explain ICL's poor performance in KGC.</p><p>We also conducted an analysis of the influence of the number of demonstration samples. As Table <ref type="table">10</ref> shows, we find while the number of demonstrations increases, the performance of LLMs shows a corresponding improvement. It appears that augmenting the number of demonstrations in the prompt could be a potential strategy for enhancing the capabilities of LLMs in KGC. Nonetheless, it's essential to note that incorporating an excessive number of relevant samples as demonstrations faces practical challenges, primarily due to constraints related to input length and efficiency considerations.  ChatGPT PaLM2 KG-S2S H@1 H@3 H@10 H@1 H@3 H@8 H@1 H@3 H@10 WN18RR 11.4 13.5 </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D Implementation Details of Reconstruction for Generative KGC Models</head><p>In the case of GenKGC, we adhere to the denoising pre-training methodology used in BART <ref type="bibr" target="#b24">(Lewis et al., 2020)</ref>. This approach commences by implementing a range of text corruption techniques, such as token masking, sentence permutation, document rotation, token deletion, and text infilling, to shuffle the integrity of the initial text. The primary objective of BART's reconstruction task is to restore the original corpus from the corrupted text.</p><p>For KG-S2S, we follow the pre-training approach proposed by T5 <ref type="bibr" target="#b35">(Raffel et al., 2020)</ref>. This approach employs a BERT-style training objective and extends the concept of single token masking to encompass the replacement of text spans. In this process, we apply a 15% corruption ratio for each segment, randomly substituting a span of text with a designated special token "&lt;extra_id&gt;". Here we employ a span length of 3. The ultimate goal of T5's reconstruction task is to accurately predict the content associated with these special tokens.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E Analysis on LLMs' Sizes</head><p>We conduct further analysis to validate the compatibility of our Contextualization Distillation with distillation models in various sizes. We choose 3 smaller language models, GPT2, T5-base and T5-3B, each possessing comparable parameter counts to the KGC models we use (T5-base, BERT-base and BART-base). Additionally, we incorporated a larger language model, vicuna-7B, into our analysis. As the first step, we follow the method in Section 3.1 and instruct all these models to generate descriptive contexts for the triplet "(J.G. Ballard| people, person, place_of_birth | Shanghai)".</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Model</head><p>Output GPT2-base relationship "people, person, place_of_birth". Please generate a paragraph to introduce "J.G.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>T5-base</head><p>The first paragraph should be a single sentence, with the following:\n\n"I am a person, person, place_of_birth. T5-3B</p><p>, person, place_of_birth | Shanghai) Contextualize: (J.G. Ballard| Vicuna-7B J.G. Ballard was a British novelist, short king, and essayist, best known for his dystopian and post-apocalyptic fiction... PaLM2-540B J.G. <ref type="bibr">Ballard (1930</ref><ref type="bibr">Ballard ( -2009) )</ref> was an English writer. He was born in Shanghai, China, and his... As shown in Table <ref type="table">13</ref>, our observations reveal that the results produced by the three smaller language models (GPT-2, T5-base, and T5-3B) are subpar and irrelevant, indicating their incapacity to adhere to contextualization instructions effectively. By contrast, the context generated by Vicuna-7B is both fluent and informative, providing an accurate textual description of the entire triplet. So we conclude our first findings: smaller language models, lacking the requisite capability to fully comprehend contextualization instructions and abstract triplets, are unsuitable as teacher models for our Contextualization Distillation.</p><p>In the second step, we aim to investigate whether the context generated by smaller large language models would be beneficial for the KGC model. We follow exactly our method described in Section 3 and replace the PaLM2 with Vicuna-7B. We conducted an experiment in the FB15k-237N dataset with GenKGC as the KGC backbone model.</p><p>As depicted in Table <ref type="table">14</ref>, our Contextualization Distillation with Vicuna-7B remains effective in enhancing the KGC model, albeit not to the extent observed with CD utilizing PaLM2. This leads us to the conclusion that Contextualization Distillation is also compatible with large language models with fewer parameters, even as small as 7B in size. In the future, we will continue to explore the impact of different language model sizes (such as 13B and 30B) on our method.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>FN15k-237N</head><p>H@1 H@3 H@10 GenKGC 18.7 27.3 33.7 GenKGC-CD w/ Vicuna-7B</p><p>19.9 28.6 34.6</p><p>GenKGC-CD w/ PaLM2-540B 20.4 29.3 34.9</p><p>Table <ref type="table">14</ref>: Comparison between our method using Vicuna-7B and PaLM2-540B.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>F Additional Case Study</head><p>In this section, we provide detailed examples to illustrate the input and output of each generating path we adopt in the descriptive context/ rationale extraction stage. We present examples in Table <ref type="table">15</ref>, 16, 17, 18, 19.</p><p>Triplet (J.G. Ballard, place_of_birth, Shanghai) Prompt Given a triplet (J.G. Ballard| people, person, place_of_birth | Shanghai),please generate a paragraph to introduce "J.G. Ballard" and "Shanghai" and reflect their relationship "people, person, place_of_birth". Output J.G. <ref type="bibr">Ballard (1930</ref><ref type="bibr">Ballard ( -2009) )</ref> was an English writer. He was born in Shanghai, China, and his early experiences there shaped his writing. His novels often explored themes of alienation, technology, and the future. Ballard's work has been praised for its originality and its insights into modern society.</p><p>He is considered one of the most important writers of the 20th century. Shanghai is a city in China. It is one of the most populous cities in the world, and it is a major center of commerce and culture. Shanghai has a long history, and it has been home to many different cultures over the centuries. The city is known for its skyscrapers, its nightlife, and its vibrant atmosphere. J.G. Ballard was born in Shanghai in 1930. He lived there until he was eight years old, when his family moved to England. Ballard's early experiences in Shanghai had a profound impact on his writing. His novels often explore themes of alienation, technology, and the future. Ballard's work has been praised for its originality and its insights into modern society.</p><p>He is considered one of the most important writers of the 20th century. Triplet (J.G. Ballard, place_of_birth, Shanghai) Prompt Given a triplet (J.G. Ballard | people, person, place_of_birth | Shanghai), please generate a short paragraph to introduce "J.G. Ballard" and "people, person, place_of_birth". "J.G. Ballard" and "people, person, place_of_birth" must be concluded in the generated text. Output J.G. <ref type="bibr">Ballard (1930</ref><ref type="bibr">Ballard ( -2009) )</ref> was a British novelist, short story writer, and essayist. Born in Shanghai, China, he was raised there until the age of eight, when his family returned to England. Ballard's early experiences in China had a profound impact on his writing, and many of his novels and stories explore themes of alienation, isolation, and dystopia. He is considered one of the most important science fiction writers of the 20th century.  </p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Realistic re-evaluation of knowledge graph completion methods: An experimental study</title>
+		<author>
+			<persName><forename type="first">Farahnaz</forename><surname>Akrami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohammed</forename><surname>Samiul Saeef</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qingheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengkai</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 ACM SIGMOD International Conference on Management of Data</title>
+		<meeting>the 2020 ACM SIGMOD International Conference on Management of Data</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1995" to="2010" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<author>
+			<persName><forename type="first">Rohan</forename><surname>Anil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><forename type="middle">M</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Orhan</forename><surname>Firat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Melvin</forename><surname>Johnson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dmitry</forename><surname>Lepikhin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandre</forename><surname>Passos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Siamak</forename><surname>Shakeri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emanuel</forename><surname>Taropa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paige</forename><surname>Bailey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhifeng</forename><surname>Chen</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2305.10403</idno>
+		<title level="m">Palm 2 technical report</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Knowledge distillation: A good teacher is patient and consistent</title>
+		<author>
+			<persName><forename type="first">Lucas</forename><surname>Beyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaohua</forename><surname>Zhai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amélie</forename><surname>Royer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Larisa</forename><surname>Markeeva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rohan</forename><surname>Anil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Kolesnikov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF conference on computer vision and pattern recognition</title>
+		<meeting>the IEEE/CVF conference on computer vision and pattern recognition</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="10925" to="10934" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Translating embeddings for modeling multirelational data. Advances in neural information processing systems</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page">26</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Language models are few-shot learners</title>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benjamin</forename><surname>Mann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nick</forename><surname>Ryder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Melanie</forename><surname>Subbiah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jared</forename><forename type="middle">D</forename><surname>Kaplan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prafulla</forename><surname>Dhariwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arvind</forename><surname>Neelakantan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pranav</forename><surname>Shyam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Girish</forename><surname>Sastry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amanda</forename><surname>Askell</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="1877" to="1901" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Model compression</title>
+		<author>
+			<persName><forename type="first">Cristian</forename><surname>Buciluǎ</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rich</forename><surname>Caruana</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandru</forename><surname>Niculescu-Mizil</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 12th ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the 12th ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="page" from="535" to="541" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">A survey on evaluation of large language models</title>
+		<author>
+			<persName><forename type="first">Yupeng</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xu</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jindong</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Linyi</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kaijie</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoyuan</forename><surname>Yi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cunxiang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yidong</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Intelligent Systems and Technology</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Knowledge is flat: A seq2seq generative framework for various knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Chen</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yufei</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bing</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kwok-Yan</forename><surname>Lam</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 29th International Conference on Computational Linguistics</title>
+		<meeting>the 29th International Conference on Computational Linguistics</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="4005" to="4017" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<author>
+			<persName><forename type="first">Chen</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yufei</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aixin</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bing</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kwok-Yan</forename><surname>Lam</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2307.01709</idno>
+		<title level="m">Dipping plms sauce: Bridging structure and text for effective knowledge graph completion via conditional soft prompting</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<author>
+			<persName><forename type="first">Maximillian</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandros</forename><surname>Papangelis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenyang</forename><surname>Tao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seokhwan</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andy</forename><surname>Rosenbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhou</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dilek</forename><surname>Hakkani-Tur</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2302.03269</idno>
+		<title level="m">Places: Prompting language models for social conversation synthesis</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Weakly supervised data augmentation through prompting for dialogue understanding</title>
+		<author>
+			<persName><forename type="first">Maximillian</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandros</forename><surname>Papangelis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenyang</forename><surname>Tao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andy</forename><surname>Rosenbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seokhwan</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhou</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dilek</forename><surname>Hakkani-Tur</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS 2022 Workshop on Synthetic Data for Empowering ML Research</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<author>
+			<persName><forename type="first">Haixing</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhengliang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenxiong</forename><surname>Liao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoke</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zihao</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lin</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ninghao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dajiang</forename><surname>Zhu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2302.13007</idno>
+		<title level="m">Chataug: Leveraging chatgpt for text data augmentation</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pontus</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI conference on artificial intelligence</title>
+		<meeting>the AAAI conference on artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Learning sequence encoders for temporal knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastijan</forename><surname>Dumančić</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mathias</forename><surname>Niepert</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2018 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="4816" to="4821" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Finegrained post-training for improving retrieval-based dialogue systems</title>
+		<author>
+			<persName><forename type="first">Janghoon</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Taesuk</forename><surname>Hong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Byoungjae</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Youngjoong</forename><surname>Ko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jungyun</forename><surname>Seo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="1549" to="1558" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeff</forename><surname>Dean</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1503.02531</idno>
+		<title level="m">Distilling the knowledge in a neural network</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<author>
+			<persName><forename type="first">Namgyu</forename><surname>Ho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laura</forename><surname>Schmid</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Se-Young</forename><surname>Yun</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2212.10071</idno>
+		<title level="m">Large language models are reasoning teachers</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Distilling step-by-step! outperforming larger language models with less training data and smaller model sizes</title>
+		<author>
+			<persName><forename type="first">Cheng-Yu</forename><surname>Hsieh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chun-Liang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chih-Kuan</forename><surname>Yeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hootan</forename><surname>Nakhost</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yasuhisa</forename><surname>Fujii</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Ratner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ranjay</forename><surname>Krishna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chen-Yu</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Pfister</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2305.02301</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">A survey on knowledge graphs: Representation, acquisition, and applications</title>
+		<author>
+			<persName><forename type="first">Shaoxiong</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shirui</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Erik</forename><surname>Cambria</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pekka</forename><surname>Marttinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philip</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE transactions on neural networks and learning systems</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="494" to="514" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Survey of hallucination in natural language generation</title>
+		<author>
+			<persName><forename type="first">Ziwei</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nayeon</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rita</forename><surname>Frieske</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tiezheng</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yan</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Etsuko</forename><surname>Ishii</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ye</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jin</forename><surname>Bang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrea</forename><surname>Madotto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pascale</forename><surname>Fung</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Computing Surveys</title>
+		<imprint>
+			<biblScope unit="volume">55</biblScope>
+			<biblScope unit="issue">12</biblScope>
+			<biblScope unit="page" from="1" to="38" />
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Bert: Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lee</forename><surname>Kristina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Toutanova</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of naacL-HLT</title>
+		<meeting>naacL-HLT</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page">2</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Multi-task learning for knowledge graph completion with pre-trained language models</title>
+		<author>
+			<persName><forename type="first">Bosung</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Taesuk</forename><surname>Hong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Youngjoong</forename><surname>Ko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jungyun</forename><surname>Seo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th International Conference on Computational Linguistics</title>
+		<meeting>the 28th International Conference on Computational Linguistics</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1737" to="1743" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<author>
+			<persName><forename type="first">Hyunwoo</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jack</forename><surname>Hessel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liwei</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ximing</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Youngjae</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pei</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronan</forename><surname>Le Bras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Malihe</forename><surname>Alikhani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gunhee</forename><surname>Kim</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2212.10465</idno>
+		<title level="m">Maarten Sap, et al. 2022a. Soda: Million-scale dialogue distillation with social commonsense contextualization</title>
+		<imprint/>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Prosocialdialog: A prosocial backbone for conversational agents</title>
+		<author>
+			<persName><forename type="first">Hyunwoo</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Youngjae</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liwei</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ximing</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Khashabi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gunhee</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yejin</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maarten</forename><surname>Sap</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2022 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="4005" to="4029" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Denoising sequence-to-sequence pre-training for natural language generation, translation, and comprehension</title>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinhan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naman</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marjan</forename><surname>Ghazvininejad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abdelrahman</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Omer</forename><surname>Levy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Veselin</forename><surname>Stoyanov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Bart</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="7871" to="7880" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Jianwei Cui, and Bin Wang. 2022. C3kg: A chinese commonsense conversation knowledge graph</title>
+		<author>
+			<persName><forename type="first">Dawei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanran</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiayi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ke</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chen</forename><surname>Wei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: ACL 2022</title>
+		<imprint>
+			<biblScope unit="page" from="1369" to="1383" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">2023a. Dail: Data augmentation for incontext learning via self-paraphrase</title>
+		<author>
+			<persName><forename type="first">Dawei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaxuan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dheeraj</forename><surname>Mekala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuyao</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xueqi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Hogan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingbo</forename><surname>Shang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2311.03319</idno>
+		<imprint/>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">2023b. Multi-level contrastive learning for script-based character understanding</title>
+		<author>
+			<persName><forename type="first">Dawei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hengyuan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanran</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shiping</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2023 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<biblScope unit="page" from="5995" to="6013" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<author>
+			<persName><forename type="first">Percy</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rishi</forename><surname>Bommasani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tony</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dimitris</forename><surname>Tsipras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dilara</forename><surname>Soylu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michihiro</forename><surname>Yasunaga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yian</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Deepak</forename><surname>Narayanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuhuai</forename><surname>Wu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2211.09110</idno>
+		<title level="m">Holistic evaluation of language models</title>
+		<imprint>
+			<date type="published" when="2022">Ananya Kumar, et al. 2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Learning entity and relation embeddings for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Yankai</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuan</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI conference on artificial intelligence</title>
+		<meeting>the AAAI conference on artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">29</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Do pretrained models benefit knowledge graph completion? a reliable evaluation and a reasonable approach</title>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Lv</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yankai</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixin</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Hou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juanzi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: ACL 2022</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="3570" to="3581" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<author>
+			<persName><forename type="first">Charlotte</forename><surname>Lucie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Magister</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakub</forename><surname>Mallinson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Adamek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aliaksei</forename><surname>Malmi</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Severyn</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2212.08410</idno>
+		<title level="m">Teaching small language models to reason</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Yago3: A knowledge base from multilingual wikipedias</title>
+		<author>
+			<persName><forename type="first">Farzaneh</forename><surname>Mahdisoltani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joanna</forename><surname>Biega</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabian</forename><forename type="middle">M</forename><surname>Suchanek</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CIDR</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<author>
+			<persName><forename type="first">Raja</forename><surname>Marjieh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilia</forename><surname>Sucholutsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nori</forename><surname>Pol Van Rijn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">L</forename><surname>Jacoby</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Griffiths</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2302.01308</idno>
+		<title level="m">What language reveals about perception: Distilling psychophysical knowledge from large language models</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">A three-way model for collective learning on multi-relational data</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hans-Peter</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kriegel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th International Conference on International Conference on Machine Learning</title>
+		<meeting>the 28th International Conference on International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="809" to="816" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Exploring the limits of transfer learning with a unified text-to-text transformer</title>
+		<author>
+			<persName><forename type="first">Colin</forename><surname>Raffel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Roberts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katherine</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sharan</forename><surname>Narang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Matena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanqi</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><forename type="middle">J</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="5485" to="5551" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Sentence-bert: Sentence embeddings using siamese bert-networks</title>
+		<author>
+			<persName><forename type="first">Nils</forename><surname>Reimers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Iryna</forename><surname>Gurevych</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="3982" to="3992" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Sequence-to-sequence knowledge graph completion and question answering</title>
+		<author>
+			<persName><forename type="first">Apoorv</forename><surname>Saxena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adrian</forename><surname>Kochsiek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rainer</forename><surname>Gemulla</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 60th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Long Papers</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="2814" to="2828" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Distilling reasoning capabilities into smaller language models</title>
+		<author>
+			<persName><forename type="first">Kumar</forename><surname>Shridhar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alessandro</forename><surname>Stolfo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mrinmaya</forename><surname>Sachan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: ACL 2023</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="7059" to="7073" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ethan</forename><surname>Yifan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanwen</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yue</forename><surname>Zha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dong</forename><surname>Luna</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2308.10168</idno>
+		<title level="m">Head-to-tail: How knowledgeable are large language models (llm)? aka will llms replace knowledge graphs? arXiv preprint</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Colake: Contextualized language and knowledge embedding</title>
+		<author>
+			<persName><forename type="first">Tianxiang</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunfan</forename><surname>Shao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xipeng</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qipeng</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaru</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuan-Jing</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th International Conference on Computational Linguistics</title>
+		<meeting>the 28th International Conference on Computational Linguistics</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="3660" to="3670" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Zhiqing</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhi-Hong</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian-Yun</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<monogr>
+		<author>
+			<persName><forename type="first">Yongqi</forename><surname>Tong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yifan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dawei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sizhe</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zi</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simeng</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingbo</forename><surname>Shang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2310.12342</idno>
+		<title level="m">Eliminating reasoning via inferring with planning: A new framework to guide llms&apos; non-linear thinking</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<author>
+			<persName><forename type="first">Hugo</forename><surname>Touvron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Louis</forename><surname>Martin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Stone</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Albert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amjad</forename><surname>Almahairi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yasmine</forename><surname>Babaei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nikolay</forename><surname>Bashlykov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soumya</forename><surname>Batra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prajjwal</forename><surname>Bhargava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shruti</forename><surname>Bhosale</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2307.09288</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Open foundation and fine-tuned chat models</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="volume">2</biblScope>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Complex embeddings for simple link prediction</title>
+		<author>
+			<persName><forename type="first">Théo</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Éric</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Bouchard</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2071" to="2080" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Composition-based multirelational graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Shikhar</forename><surname>Vashishth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soumya</forename><surname>Sanyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nitin</forename><surname>Vikram</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Partha</forename><surname>Talukdar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">2021a. Structure-augmented text representation learning for efficient knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guodong</forename><surname>Long</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyi</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ying</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Chang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Web Conference 2021</title>
+		<meeting>the Web Conference 2021</meeting>
+		<imprint>
+			<biblScope unit="page" from="1737" to="1748" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">2022a. Pinto: Faithful language reasoning using prompt-generated rationales</title>
+		<author>
+			<persName><forename type="first">Peifeng</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Filip</forename><surname>Ilievski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Muhao</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Ren</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Eleventh International Conference on Learning Representations</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<title level="m" type="main">Kepler: A unified model for knowledge embedding and pre-trained language representation</title>
+		<author>
+			<persName><forename type="first">Xiaozhi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyu</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhaocheng</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhengyan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juanzi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="176" to="194" />
+		</imprint>
+	</monogr>
+	<note>Transactions of the Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Self-consistency improves chain of thought reasoning in language models</title>
+		<author>
+			<persName><forename type="first">Xuezhi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dale</forename><surname>Schuurmans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Quoc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ed</forename><forename type="middle">H</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sharan</forename><surname>Chi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aakanksha</forename><surname>Narang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Denny</forename><surname>Chowdhery</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Eleventh International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding by translating on hyperplanes</title>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianwen</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianlin</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI conference on artificial intelligence</title>
+		<meeting>the AAAI conference on artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="volume">28</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Chain-of-thought prompting elicits reasoning in large language models</title>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuezhi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dale</forename><surname>Schuurmans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maarten</forename><surname>Bosma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fei</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ed</forename><surname>Chi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Quoc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Denny</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="24824" to="24837" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Kicgpt: Large language model with knowledge in context for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Yanbin</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qiushi</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Kwok</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: EMNLP 2023</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="8667" to="8683" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Asdot: Any-shot datato-text generation with pretrained language models</title>
+		<author>
+			<persName><forename type="first">Jiannan</forename><surname>Xiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhengzhong</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yucheng</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Xing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiting</forename><surname>Hu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: EMNLP 2022</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="1886" to="1899" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Transg: A generative model for knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">Han</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minlie</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoyan</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Long Papers</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="2316" to="2325" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">From discrimination to generation: Knowledge graph completion with generative transformer</title>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ningyu</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhoubo</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shumin</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hui</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Feiyu</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mosha</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huajun</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Companion Proceedings of the Web Conference 2022</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="162" to="165" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">One-shot relational learning for knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Wenhan</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mo</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shiyu</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoxiao</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wang</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2018 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1980" to="1990" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">Bishan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Wen-Tau Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Deng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Learning Representations (ICLR)</title>
+		<meeting>the International Conference on Learning Representations (ICLR)</meeting>
+		<imprint>
+			<date type="published" when="2015">2015. 2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<monogr>
+		<title level="m" type="main">A new benchmark and reverse validation method for passage-level hallucination detection</title>
+		<author>
+			<persName><forename type="first">Shiping</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Renliang</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaojun</forename><surname>Wan</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2310.06498</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<monogr>
+		<author>
+			<persName><forename type="first">Liang</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengsheng</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Luo</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1909.03193</idno>
+		<title level="m">Kgbert: Bert for knowledge graph completion</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<monogr>
+		<author>
+			<persName><forename type="first">Hongbo</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junying</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Feng</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fei</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhihong</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianquan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guiming</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiangbo</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyi</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2305.15075</idno>
+		<title level="m">Qingying Xiao, et al. 2023. Huatuogpt, towards taming language model to be a doctor</title>
+		<imprint/>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<monogr>
+		<author>
+			<persName><forename type="first">Susan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Roller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naman</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mikel</forename><surname>Artetxe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Moya</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuohui</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Dewan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mona</forename><surname>Diab</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xian</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xi</forename><surname>Victoria Lin</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2205.01068</idno>
+		<title level="m">Opt: Open pre-trained transformer language models</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<monogr>
+		<author>
+			<persName><forename type="first">Kun</forename><surname>Wayne Xin Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junyi</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaolei</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yupeng</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yingqian</forename><surname>Hou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Beichen</forename><surname>Min</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junjie</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zican</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Dong</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2303.18223</idno>
+		<title level="m">A survey of large language models</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b63">
+	<analytic>
+		<title level="a" type="main">Augesc: Dialogue augmentation with large language models for emotional support conversation</title>
+		<author>
+			<persName><forename type="first">Chujie</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sahand</forename><surname>Sabour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiaxin</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minlie</forename><surname>Huang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: ACL 2023</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="1552" to="1568" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b64">
+	<analytic>
+		<title level="a" type="main">Aligning knowledge and text embeddings by entity descriptions</title>
+		<author>
+			<persName><forename type="first">Huaping</forename><surname>Zhong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianwen</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hai</forename><surname>Wan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2015 conference on empirical methods in natural language processing</title>
+		<meeting>the 2015 conference on empirical methods in natural language processing</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="267" to="272" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b65">
+	<analytic>
+		<title level="a" type="main">Reflect, not reflex: Inference-based common ground improves dialogue response quality</title>
+		<author>
+			<persName><forename type="first">Pei</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hyundong</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pegah</forename><surname>Jandaghi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dong-Ho</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bill</forename><surname>Yuchen Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jay</forename><surname>Pujara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Ren</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2022 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="10450" to="10468" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b66">
+	<monogr>
+		<author>
+			<persName><forename type="first">Yuqi</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaohan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jing</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuofei</forename><surname>Qiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixin</forename><surname>Ou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunzhi</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shumin</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huajun</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ningyu</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2305.13168</idno>
+		<title level="m">Llms for knowledge graph construction and reasoning: Recent capabilities and future opportunities</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b67">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">(</forename><forename type="middle">J G</forename><surname>Triplet</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ballard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">)</forename><surname>Shanghai</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b68">
+	<monogr>
+		<title level="m" type="main">Prompt-Tail Given a triplet (J.G. Ballard | people, person, place_of_birth | Shanghai), please generate a short paragraph to introduce &quot;Shanghai&quot; Prompt-Triplet Given a triplet (J.G. Ballard | people, person, place_of_birth | Shanghai) and the description of the two entities J.G. Ballard: &lt;Output-Head&gt;Shanghai: &lt;Output-Tail&gt;please generate a short paragraph to reflect their relationship people, person, place_of_birth</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">G</forename><surname>Ballard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">)</forename><surname>Shanghai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">G</forename><surname>Ballard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">G</forename><surname>Ballard</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Shanghai</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+	<note>Ballard was born in Shanghai and is a British writer. He is best known for his novels about science fiction and post-apocalyptic fiction. Some of his most famous works include. The Drowned World&quot;, &quot;The Crystal World&quot;, and &quot;Empire of the Sun</note>
+</biblStruct>
+
+<biblStruct xml:id="b69">
+	<analytic>
+		<title level="a" type="main">It is the largest city in China and one of the most populous cities in the world. Shanghai is a major economic and cultural center, and is home to many skyscrapers and other landmarks. The city is also known for its nightlife and its vibrant street life</title>
+	</analytic>
+	<monogr>
+		<title level="m">Empire of the Sun&quot;, was born in Shanghai in 1930</title>
+		<editor>
+			<persName><forename type="first">J</forename><forename type="middle">G</forename><surname>Ballard</surname></persName>
+		</editor>
+		<imprint/>
+	</monogr>
+	<note>The Crystal World. and &quot;Empire of the Sun</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

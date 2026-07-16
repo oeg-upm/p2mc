@@ -1,0 +1,1228 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">On the Aggregation of Rules for Knowledge Graph Completion</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2023-09-01">1 Sep 2023</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Patrick</forename><surname>Betz</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Stefan</forename><forename type="middle">L</forename><surname>Üdtke</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Christian</forename><surname>Meilicke</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Heiner</forename><surname>Stuckenschmidt</surname></persName>
+						</author>
+						<title level="a" type="main">On the Aggregation of Rules for Knowledge Graph Completion</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2023-09-01">1 Sep 2023</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">A469CADDB8560D2283FC5F412EDE7861</idno>
+					<idno type="arXiv">arXiv:2309.00306v1[cs.AI]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:56+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Rule learning approaches for knowledge graph completion are efficient, interpretable and competitive to purely neural models. The rule aggregation problem is concerned with finding one plausibility score for a candidate fact which was simultaneously predicted by multiple rules. Although the problem is ubiquitous, as data-driven rule learning can result in noisy and large rule sets, it is underrepresented in the literature and its theoretical foundations have not been studied before in this context. In this work, we demonstrate that existing aggregation approaches can be expressed as marginal inference operations over the predicting rules. In particular, we show that the common Max-aggregation strategy, which scores candidates based on the rule with the highest confidence, has a probabilistic interpretation. Finally, we propose an efficient and overlooked baseline which combines the previous strategies and is competitive to computationally more expensive approaches.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>A knowledge graph (KG) is a collection of relation <ref type="bibr">(subject, object)</ref> facts which can be used to compactly describe certain domains. KGs can be utilized for various downstream applications such as drug repurposing <ref type="bibr">(Liu et al., 2021)</ref> or visual relationship detection <ref type="bibr" target="#b0">(Baier et al., 2017)</ref>. Most of the real-world KGs are incomplete, which means that absent facts are not necessarily false. The problem of knowledge graph completion (KGC) aims to derive the missing facts by using the information in the existing graph <ref type="bibr" target="#b38">(Ruffinelli et al., 2020;</ref><ref type="bibr" target="#b37">Rossi et al., 2021)</ref>. The proposed model classes in the literature are data-driven, e.g., a model might learn the regularity that people which appear in movies tend to be actors and can use it to make new predictions. Although the dominating paradigm in the liter-ature lies on models based on latent representation, a KG is symbolic by its nature.</p><p>Symbolic machine learning approaches for KGC employ rule mining techniques and represent the KG with the raw predicates which makes them inherently interpretable. In regard to predictive performance they are shown to be competitive to latent based approaches <ref type="bibr" target="#b37">(Rossi et al., 2021)</ref> and can achieve state-of-the-art results on large graphs <ref type="bibr" target="#b24">(Meilicke et al., 2023)</ref>. To perform KGC with a symbolic approach, a previously learned set of rules has to be applied to the KG to derive plausibility scores for unseen target facts. Whenever multiple rules predict a candidate fact, the question arises of how to aggregate individual rules, as demonstrated in the following running example. Here wf represents the relation worksFor and locIn represents locatedIn. The numbers in brackets denote rule confidences, i.e., the proportion of correct predictions on a training KG. The first and third rule are quite intuitive. The second rule expresses that a person might work for a company if that company is located at the same place where this person went to university. Now assume that all three rules predict Anna to work for Google. The rule aggregation problem is concerned with finding a final score derived from the three confidence values. The aggregation will also reflect if, e.g., Anna is more likely to work at Google than a person for which only the first two rules made the prediction.</p><p>While combining logical reasoning and probabilistic uncertainty is a fundamental aspect of statistical relational learning <ref type="bibr" target="#b28">(Muggleton et al., 1996;</ref><ref type="bibr" target="#b16">Kersting &amp; De Raedt, 2001;</ref><ref type="bibr" target="#b35">Richardson &amp; Domingos, 2006)</ref>, the aggregation problem is often not expressed explicitly. Additionally, these approaches perform model theoretic entailment, which is too expensive in our settings, as KGs can consist of a large number of facts with millions of learned rules. Similarly, in the field of association rule mining, rule quality is often estimated for individual rules independently without considering the problem of aggregation <ref type="bibr" target="#b10">(Galárraga et al., 2013;</ref><ref type="bibr" target="#b4">Chen et al., 2016;</ref><ref type="bibr" target="#b30">Ortona et al., 2018;</ref><ref type="bibr" target="#b8">Fan et al., 2022)</ref>.</p><p>The predictive quality of a mined rule set depends to a large extend on the aggregation decision and surprisingly there exists a theoretical and empirical gap in the recent KGC literature between techniques to learn rules and their successful application. To the best of our knowledge, there only exist two recent works which are primarily concerned with the aggregation problem for KGC <ref type="bibr" target="#b31">(Ott et al., 2021;</ref><ref type="bibr">Betz et al., 2022b)</ref>. While they improve upon simple strategies, the approaches are computationally expensive and theoretical foundations are not discussed.</p><p>The goal of this work is to close this gap and to inspire new research in this direction. We aim to achieve this by developing the formal foundations of the problem and by empirically analysing the practicality of existing approaches. We present a probabilistic model in which the aggregation reduces to performing marginal inference over a joint distribution of the rules when rule marginals are approximated with confidences <ref type="bibr">(Section 4.1 and 4.3)</ref>. With this formulation we are able to show that the common Max-aggregation strategy can be recovered from the model when the correlation matrix of the rules is set to the upper Fréchet-Hoeffding bound for the correlation of random variables (Section 4.4). We then search for the simplest and most efficient way to combine the assumptions made by common aggregation strategies. This leads to an efficient baseline, Noisy-or top-h, which is competitive when taking into account the performance-runtime trade-off (Section 5). Moreover, our experiments show that the choice of the aggregation function has significant performance impacts and therefore it deserves more attention in the context of rulebased KGC.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Related Work</head><p>While data-driven rule learning approaches for KGC are often evaluated in comparison to embedding models, the focus of this work is rule aggregation and we therefore refer to the recent literature for an overview to latent-based KGC <ref type="bibr" target="#b37">(Rossi et al., 2021)</ref>.</p><p>Rule mining approaches learn datalog rules from a KG. In the context of association rule mining, AMIE <ref type="bibr" target="#b10">(Galárraga et al., 2013)</ref> and the respective improved versions AMIE+ <ref type="bibr" target="#b9">(Galárraga et al., 2015)</ref> and AMIE3 <ref type="bibr" target="#b18">(Lajus et al., 2020)</ref> show how to mine rules when data is incomplete. AnyBURL <ref type="bibr" target="#b21">(Meilicke et al., 2019)</ref> is the successor of RuleN <ref type="bibr" target="#b20">(Meilicke et al., 2018)</ref>. It is shown to be competitive to neural approaches <ref type="bibr" target="#b37">(Rossi et al., 2021;</ref><ref type="bibr" target="#b24">Meilicke et al., 2023)</ref> and it can be utilized to explain predictions made by embedding models <ref type="bibr">(Betz et al., 2022a)</ref>. Other approaches are tailored towards large graphs <ref type="bibr" target="#b8">(Fan et al., 2022;</ref><ref type="bibr" target="#b4">Chen et al., 2016)</ref> or to learn negative rules <ref type="bibr" target="#b30">(Ortona et al., 2018)</ref>. There also exist attempts to improve rule quality by providing more advanced confidence computations <ref type="bibr" target="#b10">(Galárraga et al., 2013;</ref><ref type="bibr" target="#b33">Pellissier Tanon et al., 2017;</ref><ref type="bibr">Zupanc &amp; Davis, 2018)</ref>. The rule quality is evaluated by calculating the precision of the individual rules independent from the remaining rules on a gold standard KG. For the resulting metrics, the aggregation problem is irrelevant. In this work we regard rule quality from the viewpoint of the predictions made by the rules, which also allows comparisons to other model classes.</p><p>Related branches of work combine latent and symbolic models in hybrid approaches <ref type="bibr" target="#b12">(Guo et al., 2016;</ref><ref type="bibr">2018;</ref><ref type="bibr" target="#b11">García-Durán &amp; Niepert, 2018;</ref><ref type="bibr" target="#b45">Wu et al., 2022;</ref><ref type="bibr" target="#b23">Meilicke et al., 2021)</ref>. Moreover, some work propose differentiable rule learning i.e., learning rules by solving a smooth optimization problem <ref type="bibr">(Yang et al., 2017;</ref><ref type="bibr" target="#b39">Sadeghian et al., 2019)</ref>. Rule mining and the aggregation are arguably coalesced in one forward pass of a neural module. It has been shown, nevertheless, that the rules extracted from the models might not derive the same facts as the models themselves and achieve a lower predictive performance <ref type="bibr">(Tena Cucala et al., 2022)</ref>. Therefore, they might benefit from encapsulating rule learning and the aggregation. A step in this direction is made by RNNlogic <ref type="bibr" target="#b34">(Qu et al., 2021)</ref>, in which a neural rule generator and a reasoning predictor operate independently. The predictive performance of the resulting model, when not augmented with embeddings, lacks, however, in regard to purely symbolic models.</p><p>The combination of logic and uncertainty has a rich history in the statistical relational learning literature. For instance, Stochastic Logic Programs <ref type="bibr" target="#b28">(Muggleton et al., 1996;</ref><ref type="bibr" target="#b41">Sato &amp; Kameya, 1997)</ref> and Bayesian Logic Programs (BLP) <ref type="bibr" target="#b16">(Kersting &amp; De Raedt, 2001)</ref> augment inductive logic programming <ref type="bibr" target="#b27">(Muggleton &amp; De Raedt, 1994)</ref> with probability semantics. Rules are represented as conditional probabilities and a joint probability distribution is modelled over the least Herbrand base of the logic program. Here, the aggregation problem becomes explicit. In particular, when multiple conditionals have the same effect variable, they are collapsed into one by the use of a combining rule. Nevertheless, this heuristic is applied on top of the formal framework whereas in this work we model the problem directly. A difficulty for BLPs is that the probability distribution is only well defined when the underlying graph does not contain cycles which is quite unlikely in the context of KGC when millions of rules are learned. Markov Logic Networks (MLNs) <ref type="bibr" target="#b35">(Richardson &amp; Domingos, 2006)</ref> are proposed to overcome the cycle problem as well as the requirement to define the ad hoc combining rule. MLNs subsume many of the approaches from the statistical learning literature. Each possible ground fact is associated with a binary random variable and every possible grounding of every rule with a weight and a binary feature. The aggregation of clauses is performed implicit for MLNs and can not be modelled easily. We show an example regarding MLNs in the appendix of this work.</p><p>The focus of this work are settings where model theoretic entailment is not feasible. For instance, an MLN would need to define 15k • 237 random variables on the dataset FB15k-237 <ref type="bibr" target="#b44">(Toutanova &amp; Chen, 2015)</ref> and a feature for every possible rule grounding with a ruleset size of 5 million. Even if we would just calculate the immediate predictions of the rules on this dataset, including storing some indices for further processing, this would already take more than 600GB of memory. A similar note can be made for neural theorem proofing, where the forward-chaining algorithm is relaxed to a smooth differentiable function <ref type="bibr" target="#b7">(Evans &amp; Grefenstette, 2018;</ref><ref type="bibr" target="#b36">Rocktäschel &amp; Riedel, 2017;</ref><ref type="bibr">Minervini et al., 2020a;</ref><ref type="bibr">b)</ref>. To the best of our knowledge, these approaches have not shown yet to scale to datasets of the size used in our experiments. This also holds for ProbLog <ref type="bibr" target="#b5">(De Raedt et al., 2007)</ref> which combines probabilistic inference with model theoretic entailment and has the strongest resemblance to our approach. We discuss the details in Section 4.4 and in the appendix of this work.</p><p>The rule aggregation problem is discussed explicitly by SAFRAN <ref type="bibr" target="#b31">(Ott et al., 2021)</ref> where a clustering of the rules is learned and by <ref type="bibr">Betz et al. (2022b)</ref> who represent rules with embeddings. These works show improvements in regard to simple strategies but they do not consider a fundamental treatment of the problem and the models are inefficient to use, which will be demonstrated in the experimental section.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Background</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.">Knowledge Graph Completion</head><p>A KG G is a set of relation(subject, object) triples or facts with G ⊆ E × P × E where E denotes a set of entities and P a set of binary predicates which we term relations. KGC is concerned with finding unknown facts, given an input or training KG G. In this work, we focus on the mostly used evaluation protocols which are defined by ranking based evaluation metrics. The derivations of this work are, however, independent of the evaluation protocol as long as scalar scores for candidate predictions are required.</p><p>The common practice is to split the graph into disjoint training, validation, and testing sets. After the training or mining phase a model is evaluated by proposing answers to queries formed from the facts in the test set. For each of these evaluation facts a head query and a tail query are formed. For example, from worksF or(Anna, Google) the queries worksF or(Anna, ?) and worksF or(?, Google) are formed, where worksF or is a relation and Anna and Google are entities. A model has to propose candidate facts for the tail query, e.g., worksF or(Anna, e 1 ) and candidate facts for the head query worksF or(e 2 , Google) for multiple e 1 , e 2 ∈ E. Each candidate fact is assigned with a score such that for each direction a ranking of answers can be formed. The metrics usually are presented with their filtered versions, e.g., if e 2 = Anna but worksF or(e 2 , Google) exists in one of the data splits, then it is removed from from the ranking of the current query to not penalize the model when it correctly ranks true answers on top positions. Performance is measured by the ranking position of the respective true candidate worksF or(Anna, Google) in both directions where the mean reciprocal rank (MRR) and Hits@X being the most common evaluation metrics. The definitions of the metrics can be found in the appendix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.">Rules and Application</head><p>We let a c ∈ C denote a logical clause, which we will term rule throughout the work, where C is a collection of clauses. The c will later be indexed and represented by separate random variables. The rules that we consider in this work are of the form as given in the running example. They are composed of variables and relations and they additionally can contain entities as shown in the following example. speaks(X, English) ← livesIn(X, London)</p><p>We call speaks(X, English) the head of the rule and livesIn(X, London) the body of the rule. The rules and the KG can be described with a subset of Prolog, where entities are constants, relations are predicates, rules are clauses, and the facts of the KG are ground atoms where we do not consider negation. We will use the rule learners AnyBURL <ref type="bibr" target="#b21">(Meilicke et al., 2019)</ref> and AMIE3 <ref type="bibr" target="#b18">(Lajus et al., 2020)</ref> in our experimental section and we refer to the respective works for further details, nevertheless, the descriptions and derivations in this work are independent of the particular syntax.</p><p>We define a substitution to be the expression obtained when replacing the variables of the rules with entities from E. For instance, for the first rule from the running example with (X=Anna, Y =Google) we obtain the substitution worksF or(Anna, Google)←internsAt(Anna, Google). A detailed formalization is suppressed here for brevity.</p><p>Rule application refers to predicting previously unseen facts given a set of rules and the input or training KG. We can describe it compactly with the recently introduced concept of one-step-entailment <ref type="bibr">(Betz et al., 2022a)</ref>. Let C be a set of rules and G a KG. Definition 3.1 (One-step entailment |= 1 ). The fact t is onestep entailed by C ∪ G, written as C ∪ G |= 1 t, iff there is a rule in C for which a substitution exists such that the resulting body facts are in G and the head is equal to t.</p><p>Clearly, one-step entailment is weaker but more efficient than model theoretic entailment. As mentioned before, we focus on settings where general entailment is not feasible. One-step-entailment implies entailment but not vice versa. <ref type="foot" target="#foot_2">1</ref>In the context of KGC often the less formal notion of an individual rule predicting a candidate is used which we can now describe precisely. 2 Definition 3.2 (Prediction). A rule c ∈ C predicts a fact t iff it individually one-step entails t, i.e., iff {c} ∪ G |= 1 t.</p><p>For simplicity, we will write c |= 1 t instead of {c} ∪ G |= 1 t, where from the context the reference to the facts G will be clear. The section concludes with an example.</p><p>Example 3.3 (cont.). Let e d , e u , and e g be entities in E. Let t = wf (e d , e g ) and assume that</p><formula xml:id="formula_0">G =    cooperatesW ith(e g , e u ) internAt(e d , e g ) studentAt(e d , e u )    .</formula><p>Consider the three rules from the running example. Then the joint set of rules and every pairwise set of rules onestep entail t while only the first and the third rule predict t.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.">Rule Aggregation</head><p>For the remainder of the work we assume that C is a given rulset that has been learned from the training graph G. Furthermore, for a target triple t / ∈ G we let C t (G) denote the set of rules that predicted t with respect to the KG G. For performing KGC under any evaluation protocol a model has to assign plausibility scores to candidate facts. For rulebased KGC this requires the introduction of two additional concepts, rule confidences and aggregation strategies.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.1.">CONFIDENCES</head><p>Rule confidences originate from the context of association rule mining and we will now assume that each rule in C is assigned with a confidence which can be calculated as follows.</p><formula xml:id="formula_1">conf(c) = {t ′ | c |= 1 t ′ ∧ t ′ ∈ G} {t ′ | c |= 1 t ′ } (1)</formula><p>Equation ( <ref type="formula">1</ref>) is the vanilla confidence definition described in many works (e.g., <ref type="bibr" target="#b10">Galárraga et al., (2013)</ref>). The confidence divides the number of all true predictions a rule makes by the number of all predictions of the rule. Intuitively, we could interpret this as the probability that the rule is true, which will be discussed in later sections.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.2.">AGGREGATION STRATEGIES</head><p>In practical scenarios it rarely occurs that a candidate fact is predicted by only one rule, i.e., then</p><formula xml:id="formula_2">|C t (G)| &gt; 1.</formula><p>The rule aggregation problem, also termed joint prediction <ref type="bibr" target="#b9">(Galárraga et al., 2015)</ref>, is concerned with defining a function that maps the confidences of the rules that predicted the candidate to a real valued score.</p><p>Note that the number of rules that predict a candidate fact simultaneously can be large, as mentioned before, such that rules are to some extend redundant. For instance, if the second rule from the running example predicts Anna to work for Google, the question arises whether the third rule provides additional evidence for this prediction. The rules make the prediction for seemingly similar reasons, as it is more likely for an university and a company to cooperate when they are located in the same location. In the following the two most common aggregation strategies are defined.</p><p>Definition 3.4 (Max-Aggregation). The Max-Aggregation score s M is calculated according to the rule with the highest confidence from the rules that predicted the candidate,</p><formula xml:id="formula_3">s M (t) = max{conf(c) | c ∈ C t (G)}.</formula><p>Max-aggregation was first used in the context of KGC by <ref type="bibr" target="#b9">Galárraga et al. (2015)</ref> and it was later adapted to Max+ aggregation <ref type="bibr" target="#b21">(Meilicke et al., 2019)</ref> which allows for tie handling. When the two predicting rules with the highest confidences for two candidates are identical the candidates are compared according to the rules with the second highest confidence which is continued until the candidates can be discriminated.</p><p>Definition 3.5 (Noisy-or aggregation). The Noisy-or score s N O is calculated as the noisy-or product over the predicting rules,</p><formula xml:id="formula_4">s N O (t) = 1 -c∈Ct(G) (1 -conf (c)).</formula><p>The Noisy-or product originates from Bayesian networks where it is used to express independent causes <ref type="bibr" target="#b32">(Pearl, 1988)</ref> and it was proposed by <ref type="bibr" target="#b9">Galárraga et al. (2015)</ref> for KGC.</p><p>Example 3.6 (cont). Let us assume that Anna is predicted by all rules from the starting example to work for Google, while Lisa is predicted by only the second and third rule to work for Google. The Max-aggregation and Noisy-or scores for Anna are 0.64 and 0.88, respectively. For Lisa they are 0.44 and 0.67.</p><p>While the aggregation functions have the purpose of merging the various confidences into a final score, this value also should be meaningful in the sense that a higher value for one prediction should mean it is more likely than another prediction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Probabilistic and Efficient Rule Aggregation</head><p>In the following section we present the notation for the probabilistic representation, subsequently we introduce the inference model and show how the introduced rule aggregation functions can be recovered from the framework when making certain dependency assumptions. Finally, we will present an efficient baseline, that combines these assumptions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.">Representation</head><p>First, we enumerate the rules in C with an index set Ĩ = {1, ..., N } such that c i ∈ C for i ∈ Ĩ. Each rule c i is represented by a binary random variable Ri which is also indexed by Ĩ and has realisations ri ∈ {0, 1}. We let R denote the random vector representing all rules and likewise r = (r i ) i∈ Ĩ ∈ {0, 1} N is the vector of realisations. For brevity we write p(r) for p( R=r), that is, the probability that R takes value r.</p><p>For the rule aggregation problem the set of rules C t (G) ⊆ C that predict a target fact t based on G are of particular relevance. Therefore, similar as above C t (G) is enumerated by I = {1, ..., k} and the random vector R with realisations r = (r j ) j∈I ∈ {0, 1} k represents the rules that predict the target. Note that R represents a subset of all the rules and this depends on t, however, to not clutter notation we not write this explicit and the reference to t will be clear from the context.</p><p>Moreover, we write p j or p i for the probability that a rule is true, i.e., for the marginals p(R j =1) or p( Ri =1). We assume that index sets are ordered according to the marginals, e.g., p m ≥ p n when m ≤ n with m, n being indices. Facts t are likewise represented as binary variables, here we overload notation for brevity and write p(t) for the probability of a query triple to be true. For an observed triple t ∈ G we set p(t) = 1.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.">Dealing with Uncertainty</head><p>To incorporate uncertainty into the prediction of new facts we take the following approach. If we are certain that a rule is true, then we deduce that a prediction it makes must be also true. We can model this for all the learned rules with a conditional distribution that conditions on the truth values of the rules and the data.</p><formula xml:id="formula_5">p(t|r, G) = 1, if L(r) |= 1 t 0, else,<label>(2)</label></formula><p>Here, L is a simple mapping that collects all rule objects in C whose realisation are one in r and takes the union with G, i.e.,</p><formula xml:id="formula_6">L G Î : r → L G Î (r) = {c i | ri = 1 and i ∈ Î} ∪ G.<label>(3)</label></formula><p>We drop, as shown in equation ( <ref type="formula" target="#formula_5">2</ref>), the reference to the index set Ĩ and G from L for readability. Clearly, if the rules would not be associated with uncertainty evaluating equation (2) would boil down to performing rule application in regard to the correct rules. However, the truth values of the rules cannot be observed from the data.</p><p>We have, on the other hand, an estimate that statistically quantifies the uncertainty of the rules, the defined rule confidences. A confidence may serve as an approximation for the marginal probability that the respective rule is true, i.e., p( Ri =1). However, we have to acknowledge that it is only the marginal p( Ri = 1, r-i ), which sums over all realisations of the remaining rules, where r-i is the vector of realisations with ri dropped.</p><p>The last paragraph makes the difference to the viewpoint of association rule mining explicit. In fact, we assume that p( Ri =1) is potentially influenced by an underlying joint distribution. For instance, the confidence of the rule c 2 of the running example might be influenced by the confidence of c 3 through the second term in the sum p( R2 =1) = p( R2 =1, R3 =0) + p( R2 =1, R3 =1). Therefore, for fact prediction associated with uncertainty we have to take into account the joint distribution over the rules which will be discussed in the next section.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3.">Inference for Target Facts</head><p>We want to calculate the probability that an unknown target fact t / ∈ G is true, given the known triples, i.e., we seek to compute p(t|G). However, we cannot observe the truth values r of the rules from the data and we therefore choose a standard approach regarding such settings, i.e., we marginalize over all possible rule realisations,</p><formula xml:id="formula_7">p(t|G) = r∈{0,1} N p(t|r, G)p(r|G).<label>(4)</label></formula><p>Where we set p(t|r, G) to equation (2). We can simply calculate p(t|r, G) by collecting all rules that are one in r and subsequently evaluate if one of these rules predicts the target, i.e., performing rule application. The distribution p(r|G) seems to be more problematic. It defines the joint distribution over all N rules, given the data, including the rules that did not predict t. Rule aggregation, however, was defined with only the k rules that predicted a candidate. We will argue in the following proposition that under onestep entailment for calculating p(t|G) it is indeed sufficient also under the probabilistic model to exclusively take into account the rules R with realisations r that predicted t. Proposition 4.1. Under a one-step entailment regime, i.e., using equation (2) for p(t|r, G), and a global distribution p(r|G) we have that</p><formula xml:id="formula_8">p(t|G) = r∈{0,1} k p(t|r, G)p(r|G). (<label>5</label></formula><formula xml:id="formula_9">)</formula><p>The proof is in the appendix. Instead of using the global distribution we can focus directly on performing marginal inference p(r|G) with respect to the rules that predicted t.</p><p>Although marginal inference can equally be expensive, the complexity can be reduced if the joint distribution is specified accordingly and if some parameters of the joint are known such as the individual rule marginals. Additionally, it might even be beneficial to model p(r|G) directly.</p><p>Note that Proposition (4.1) would not hold if we would consider general model theoretic entailment. Finally, by the definition of equation ( <ref type="formula" target="#formula_5">2</ref>) and one-step entailment it is easy to see that the query probability is the probability that at least one rule from R is true.</p><p>Proposition 4.2. For the query probability it holds that</p><formula xml:id="formula_10">p(t|G) = p j∈I R j ≥ 1 | G .<label>(6)</label></formula><p>Proof. We write out p(t|r, G) in equation ( <ref type="formula" target="#formula_8">5</ref>) and then drop the one term that is zero. The proposition follows from the definition of one-step-entailment as L(r) one-step entails the target if at least one component of r is one. That means the probabilities of all realisations where at least one rule is true are summed up.</p><p>We will henceforth refer to calculating p(t|G) under the previous derivations when mentioning the inference model and we conclude the section with an example.</p><p>Example 4.3 (cont). Lisa is predicted by the two rules c 2 and c 3 to work for Google. Assuming that we know the joint distribution over all rules, we can calculate the probability that Lisa works for Google by querying the joint distribution for the probability that at least one of c 2 and c 3 is true.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4.">Recovering Aggregation Functions</head><p>We will demonstrate in this section that the inference model leads to the different aggregation strategies depending on the assumed joint distribution when marginals are approximated with the rule confidences. Therefore we assume for the following derivations p( Ri =1) = conf(c i ) for i ∈ Ĩ.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4.1.">PROBABILISTIC MAX-AGGREGATION</head><p>Max-aggregation was introduced in the literature as a computational heuristic <ref type="bibr" target="#b9">(Galárraga et al., 2015)</ref>, it was further described as accounting for strong rule dependencies without providing a detailed treatment <ref type="bibr" target="#b21">(Meilicke et al., 2019)</ref>, or it was even described with assuming fact independence <ref type="bibr" target="#b42">(Svatoš et al., 2020)</ref>. We will now introduce the Fréchet-Hoeffding bound which will help us to achieve a formal derivation. It limits the possible association, expressed as correlation, of two random variables <ref type="bibr" target="#b15">(Joe, 1997)</ref>. Let p i and p j be the marginal probabilities for two Bernoulli variables, then it holds for the correlation ρ ij that ρ ij ≤ U (i, j) where</p><formula xml:id="formula_11">U (i, j) = min pi(1-pj ) pj (1-pi) 1/2 , pj (1-pi) pi(1-pj ) 1/2 . (<label>7</label></formula><formula xml:id="formula_12">)</formula><p>Example 4.4 (cont). Let p 1 = 0.64 and p 2 = 0.44 then U (1, 2) ≈ 0.66. Whereas for p 3 = 0.41, U (2, 3) ≈ 0.94.</p><p>While the configuration of the marginals in Example 4.4 allows for complex dependencies in regard to the joint distribution, they are not compatible with complete dependence as this would require unit correlation. Interestingly, equation (7) suffices to specify a joint distribution p(r|G) such that the inference model from Section 4.3 performs Maxaggregation.</p><p>Theorem 4.5. N ) with entries ρ ij for all i, j it holds that ρ ij = U (i, j) then a unique distribution for p(r|G) is induced such that p(t|G) = s M (t).</p><formula xml:id="formula_13">If for the correlation matrix Ω ∈ [-1, 1] (N,</formula><p>We will show the proof for the case where k = 2 rules predicted the candidate here briefly and the general case can be found in the appendix. Let pī = 1 -p i and let, e.g., pī j = p(R i =0, R j =1|G) and likewise for the remaining realisations. Further note for the correlation</p><formula xml:id="formula_14">ρ ij = pij -pipj σi σj</formula><p>where σ is the respective standard deviation.</p><p>Proof (k=2). Following Propositions (4.1) and (4.2), p(t|G) is equivalent to querying the joint distribution marginally for p(r i + r j ≥ 1) assuming c i and c j predicted the target. We here assume the global distribution exists and is unique. It therefore suffices to show that max {p i , p j } = pī j + p i j + p ij .</p><p>Assume w.l.o.g. that p i ≥ p j . Then after plugging in U (i, j) into ρ ij and solving for p ij , we obtain p ij = p j . However, by definition of the marginal it holds that p j = p ij + pī j and therefore pī j = 0. Then we have,</p><formula xml:id="formula_15">max {p i , p j } = max {p i j + p ij , pī j + p ij } = max {p i j + p ij , p ij } = p i j + p ij = pī j + p i j + p ij .</formula><p>Example 4.6 (cont). For p 1 = 0.64 and p 2 = 0.44 we obtain p 12 = 0.44, p1 2 = 0, and p 1 2 = p 1 -p 2 = 0.2, leading to p(t|G</p><formula xml:id="formula_16">) = 0 •p12 + 1 •p 12 + 1 •p 1 2 + 1 •p1 2 = 0.64.</formula><p>We have specified a unique multivariate Bernoulli distribution p(r|G) by simply defining a correlation matrix. Clearly setting the N 2 values of the correlation matrix is in general not sufficient for defining a distribution that has 2 N parameters and also not every correlation matrix is admissible in the first place <ref type="bibr" target="#b14">(Huber &amp; Marić, 2019)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4.2.">NOISY-OR AGGREGATION</head><p>To derive Noisy-or aggregation we have to make an assumption about the joint distribution that goes beyond pairwise interactions.</p><p>Proposition 4.7. If the N rules in p( R|G) are mutually independent then p(t|G) = s N O (t).</p><p>It is trivial to derive the Noisy-or product from the inference model under the independence assumption and the proof is shown in the appendix for completeness.</p><p>The independence assumption of Noisy-or aggregation reveals the connection of the model from section 4.3 to ProbLog <ref type="bibr" target="#b5">(De Raedt et al., 2007)</ref>. ProbLog assigns probabilities to logic programs and inference is performed by aggregating all programs that logically entail a query by assuming individual probabilities are independent. Two results are shown in the appendix that make the connection to the derivations here explicit. First, if the logical semantics of ProbLog would be substituted with one-step entailment than it would perform Noisy-or aggregation. Second if we setup a ProbLog program with the rules C, the fact probability would be always equal or larger than the Noisy-or probability. Note that the computational complexity of reasoning, as discussed earlier, here also applies. Finally, aggregating all the predicting rules with the Noisy-or product might not optimal in the context of data-driven rule learning where millions of rules can be partially redundant, which will be shown in the experimental section.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.5.">Mixing Assumptions</head><p>Both of the aggregation approaches derived in Section 4.4 make strong assumptions in regard to the dependence structure of the joint distribution over the rules. Clearly this can lead to an overestimation or underestimation of the final probability when the assumptions fail. Intuitively, this gives rise to mixture distributions that make assumptions between mutual independence and maximal correlation. Along these lines, previous work proposes models that can express both approaches as their special cases. These models are expensive to use, however, as they learn a clustering of all rules <ref type="bibr" target="#b31">(Ott et al., 2021)</ref> or represent rules with latent embeddings <ref type="bibr">(Betz et al., 2022b)</ref>. We will now present a simple approach that is overlooked in the literature so far which likewise operates in between both assumptions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Definition 4.8. (Noisy-or top-h) Let I * ⊆ I be the subset of indices for the h predicting rules with the highest marginals. The Noisy-or top-h aggregation strategy calculates the final score according to s(t)</head><formula xml:id="formula_17">N O h = 1-j∈I * (1- conf (c j )).</formula><p>The correlation assumption is revealed when considering that for decreasing h the approach converges to Maxaggregation which is stated more compactly in the final proposition of this section. Proposition 4.9. For the score calculated with noisy-or top-h we have that s</p><formula xml:id="formula_18">M (t) ≤ s N O h (t) ≤ s N O (t)</formula><p>where the equalities are achieved for h = 1 and h = k, respectively.</p><p>The proposition immediately follows from the definitions of the approaches. Furthermore, instead of setting one value for h we can exploit the mixture property more finegrained and set the value independently for relations and query-directions which will be discussed in the next section.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Experiments</head><p>The goal of our experimental section is to analyse the predictive performance of the existing aggregation approaches, to evaluate how to efficiently exploit the overlooked Noisyor top-h approach, and to give a potential user an overview about the performance-speed trade-off regarding more complex approaches. We abstain from comparing against the general KGC literature which is not the focus of this work. The competitiveness of rule-based approaches is discussed in many works and we refer to the recent literature for a summary <ref type="bibr" target="#b37">(Rossi et al., 2021;</ref><ref type="bibr" target="#b39">Sadeghian et al., 2019;</ref><ref type="bibr" target="#b24">Meilicke et al., 2023)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1.">Experimental Settings</head><p>We evaluate the aggregation techniques on the most common KGs from the KGC community. We use FB15k-237 <ref type="bibr" target="#b44">(Toutanova &amp; Chen, 2015)</ref>, WNRR <ref type="bibr" target="#b6">(Dettmers et al., 2018)</ref>, Codex-M <ref type="bibr" target="#b40">(Safavi &amp;</ref><ref type="bibr" target="#b40">Koutra, 2020), and</ref><ref type="bibr">Yago3-10 (Dettmers et al., 2018)</ref>. The datasets are downloaded from the LibKGE library <ref type="bibr" target="#b3">(Broscheit et al., 2020)</ref> and we use the same train, valid, testing splits as used throughout the literature as well as the exact same evaluation protocol <ref type="bibr" target="#b37">(Rossi et al., 2021)</ref> which is described in Section 3.1.</p><p>We use AnyBURL <ref type="bibr" target="#b21">(Meilicke et al., 2019)</ref> and AMIE3 <ref type="bibr" target="#b18">(Lajus et al., 2020)</ref> to mine the rulsets C. For AnyBURL we use the same rulesets as used by <ref type="bibr" target="#b23">Meilicke et al. (2021)</ref>. For AMIE3 we tried to find the best possible hyperparameter configuration regarding the results (see appendix).</p><p>We compare Max (MAX), Max+ (MAX+), Noisy-or (NO), and Noisy-or top-h aggregation (NO top-h). For Noisy-or FB15k-237 WNRR Codex-M Yago3-10 Approach h@1 h@10 MRR h@1 h@10 MRR h@1 h@10 MRR h@1 h@10 MRR top-h we investigate how one global value h = 5 performs over all datasets and we additionally search for the best parameter on the validation set for the relations and query directions independently (NO top-h * ) as described in Section 4.5. For AnyBURL we search over the values h ∈ {1, 4 . . . 10} where for h=1 we use MAX+. For AMIE3 we additionally include h=k as AMIE3 learned smaller rulesets and overall a smaller number of rules predict the query candidates. We also include the two works concerned with the aggregation problem, SAFRAN <ref type="bibr" target="#b31">(Ott et al., 2021)</ref> and the supervised sparse aggregator (SV) proposed by <ref type="bibr">Betz et al. (2022b)</ref>. We provide wall-clock times (Table <ref type="table" target="#tab_1">2</ref>) of the approaches for the larger datasets and the rulesets of Any-BURL. Further experimental details, the used server architecture, dataset statistics, and the overall number of learned rules can be found in the appendix of the work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2.">Results</head><p>Table <ref type="table" target="#tab_0">1</ref> shows performance results and Table <ref type="table" target="#tab_1">2</ref> shows runtimes for the rules from AnyBURL. Despite the fact that the datasets are quite different NO top-5 performs surprisingly well and for the rules from AnyBURL it only falls short for the h@1 and MRR metrics for Yago3-10 compared to MAX+ while being faster on average and 1.6PP better on FB15k-237. In general we observe nevertheless that the best performing specification might be dataset specific, e.g., for the rules from AMIE3 NO performs best on FB15k-237, however, the results for these rulesets are significantly worse in general. A pragmatic approach is to simply learn the best value for h on the validation set which, not surprisingly, performs always as good or better as the second best configuration although the improvement is sometimes marginal.</p><p>Although SAFRAN and SV are superior on average in regard to performance they are significantly slower. For instance SAFRAN is outperformed on Codex-m by NO toph * while running approximately 55 times longer and it is 0.8PP better on FB15k-237 where it runs more than 100 times longer. SV performs 0.3PP better on FB15k-237 while being 180 times slower and it performs 0.9PP better on Codex-M with a running time that is 13 times slower.</p><p>To conclude we observe that the aggregation method can have significant impact on the overall performance of the mined rulsets. Furthermore, when runtimes are a consideration factor a simple approach might be the preferred choice of aggregation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Approach</head><p>FB15k </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.">Conclusion</head><p>We have shown that the problem of rule aggregation for KGC can be expressed with marginal inference over a joint distribution over the rules. We provided probabilistic interpretations for previously defined aggregation functions.</p><p>Subsequently we proposed a baseline that is slightly superior over previous simple methods while being efficient and we found that more advanced models are expensive to use while only providing a small boost in regard to predictive performance. Future work might build on these foundations by finding suitable ways of modelling the joint distribution over the rules. For instance, rules could be grouped according to syntactic similarity, distributions might be estimated from more advanced statistics such as pairwise confidences or marginals could be approximated more rigorously.</p><p>Yang, F., Yang, Z., and Cohen, W. W. Differentiable learning of logical rules for knowledge base reasoning. In Advances in Neural Information Processing Systems, pp. 2319-2328, 2017.</p><p>Zupanc, K. and Davis, J. Estimating rule quality for knowledge base completion with the relationship between coverage assumption. In Proceedings of the 2018 World Wide Web Conference, pp. 1073-1081, 2018.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Proofs</head><p>Proof of Proposition 4.1. We show that to perform inference p(t|G) with the probabilistic model it is sufficient to perform marginal inference on the global distribution with respect to the rules that predicted the target candidate t.</p><formula xml:id="formula_19">p(t|G) = r∈{0,1} N p(t|r, G)p(r|G) (8) = r∈{0,1} N L(r)|=1t p(r|G)<label>(9)</label></formula><p>We will now split each r into vectors r + = (r j ) j∈ Ĩ, cj |=1t , the rules that predicted the target, and r -= (r i ) i∈ Ĩ, ci |=1t the rules that did not predict the target. Let r + ||r -= r, where || denotes vector concatenation. Now we can write equation ( <ref type="formula" target="#formula_19">9</ref>) as</p><formula xml:id="formula_20">r + ||r -∈{0,1} N L(r + ||r -)|=1t p(r + , r -|G) (10) = r + ∈{0,1} k L(r + )|=1t r -∈{0,1} N -k L(r -) |=1t p(r + , r -|G).<label>(11)</label></formula><p>Observe that the inner sum contains all possible values of r -as L(r -) |= 1 t does not put a constraint on r -. Continuing from equation ( <ref type="formula" target="#formula_20">11</ref>) we can therefore simply apply reverse marginalization,</p><formula xml:id="formula_21">= r + ∈{0,1} k L(r + )|=1t p(r + |G) = r∈{0,1} k p(t|r, G)p(r|G).</formula><p>Proof of Theorem 4.5. This proof is a generalisation of the binary case from section 4.4.1. We first show that under maximal correlation only very specific realisations of R have non-zero probability if the distribution exists. Once this is established we show the existence and uniqueness of p( R|G) and finally we derive the max-aggregation score from the marginal inference that at least one of the predicting rules is true. As previously we assume that out of N rules k rules predicted the query triple t and that the rule marginals are given. After we have specified p( R|G), by Proposition 4.1 and 4.2, we have to show that</p><formula xml:id="formula_22">1 -p(R = 0|G) = max p(R i = 1) | c i |= 1 t and i ∈ I , (<label>12</label></formula><formula xml:id="formula_23">)</formula><p>where R is the random vector for the k rules that predicted the query triple. We assume throughout the derivations the N variables { R1 , ..., RN } are ordered by Ĩ (and likewise for I) such that R1 is the rule with the highest marginal.</p><p>First we pick two rules represented by Ri , Rj with p i ≥ p j and i, j ∈ Ĩ. The correlation is defined as</p><formula xml:id="formula_24">ρ ij = p ij -p i p j σi σj ,<label>(13)</label></formula><p>Where p ij = p( Ri =1, Rj =1|G). We now assume ρ ij =U (i, j) for every pair i, j from Ĩ. We plug in the upper bound ( <ref type="formula" target="#formula_11">7</ref>) into ( <ref type="formula" target="#formula_24">13</ref>) and solve for p ij which leads to</p><formula xml:id="formula_25">p ij = p j ,<label>(14)</label></formula><p>i.e., we have the following equality</p><formula xml:id="formula_26">r-ij ∈{0,1} N -2 p( Ri =1, Rj =1, r-ij |G) = = r-j ∈{0,1} N -1 p( Rj =1, r-j |G),<label>(15)</label></formula><p>where r-j = (r i ) i∈ Ĩ\j is a vector of realisations with the j'th component dropped from r and equivalently r-ij = (r s ) s∈ Ĩ\{i,j} . Each addend in the left hand side is contained in the right hand side, subtracting the left hand side from both sides of (15) yields a zero probability constraint:</p><formula xml:id="formula_27">0 = r-ij ∈{0,1} N -2 p( Ri = 0, Rj = 1, r -ij |G).<label>(16)</label></formula><p>We are, in fact, interested in all the realisations that may be different from zero after considering the constraints imposed by all possible rule pairs. From equation ( <ref type="formula" target="#formula_27">16</ref>) it follows that p( R = r|G) is not affected by the zero-constraint if for r</p><formula xml:id="formula_28">(r s = 0) =⇒ (r t = 0) ∀ t &gt; s,<label>(17)</label></formula><p>for s, t ∈ Ĩ. Note that each assignment r ∈ {0, 1} N which satisfies ( <ref type="formula" target="#formula_28">17</ref>) is associated with a unique number of components (rules) that are one.</p><p>Our goal is to specify the parameters of p( R|G) that are non-zero. From ( <ref type="formula" target="#formula_28">17</ref>) we can observe that there are only N + 1 of these parameters left and we will therefore introduce N + 1 variables. Let m ∈ {0, ..., N } and let z m denote the probability for the assignment vector that has m ones and satisfies (17) which we write as r(m) , i.e., z m = p(r (m) |G). In fact, r(m) ∈ {0, 1} N holds ones from the first component until the m'th component and zeros starting from the m + 1'th component. It is easy to verify that now it holds for the N marginals with i ∈ Ĩ that p i = N s=i z s and additionally we use the probability constraint p 0 = N s=0 z s = 1. With these expressions we can set up an equation system</p><formula xml:id="formula_29">Az = p, (<label>18</label></formula><formula xml:id="formula_30">)</formula><p>where z is the variable vector with dimensionality N +1, A is an upper triangular coefficient matrix with all non-zero entries being one, and p is the vector of marginals and the probability constraint at the first entry. Given that A is invertible we established uniqueness and we established existence as the solution z = A -1 p satisfies the probability constraint N s=0 z s = 1 while all z m are between 0 and 1. We will now derive the main result from (12). Plugging in the expressions for the marginals in the right-hand side of (12) yields</p><formula xml:id="formula_31">max N s=i z s c i |= 1 t and i ∈ I = N s=s * z s ,<label>(19)</label></formula><p>where s * = min{i | c i |= 1 t and i ∈ I} corresponds to the index for the rule with the highest marginal under the predicting rules. For 1 -p(R=0|G) we have to sum up all probabilities of realisations where at least one of the predicting rules is one. Clearly this includes all realisations where r s * is one which holds by construction of the z m 's for every term in the sum on the right hand side of equation ( <ref type="formula" target="#formula_31">19</ref>). Now given that the remaining probabilities are zero we have that</p><formula xml:id="formula_32">N s=s * z s = 1 -p(R = 0|G).</formula><p>Proof of Proposition 4.7. We directly start with the result from Proposition 4.1.</p><formula xml:id="formula_33">p(t|G) = r∈{0,1} k p(t|r, G)p(r|G) = 0 • p(R = 0|G) + r =0∈{0,1} k p(r|G) = 1 -p(R = 0|G) = 1 - j∈I 1 -p(r j )</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Evaluation Metrics</head><p>Let G e be the test KG. For the target test fact q(c 1 , c 2 ) let rk(c 1 |c 2 , q) be the ranking position of the target in a filtered ranking of candidate facts for the tail query q(c 1 , ?) and likewise let rk(c 2 |q, c 1 ) denote the filtered ranking position for the head query. MRR and Hits@X are defined as:</p><formula xml:id="formula_34">M RR = 1 2|G e | q(c1,c2)∈Ge 1 rk(c 1 |c 2 , q) + 1 rk(c 2 |q, c 1 ) , hits@X = 1 2|G e | q(c1,c2)∈Ge 1 rk(c 1 |c 2 , q) ≤ X + + 1 rk(c 2 |q, c 1 ) ≤ X .</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Rule Aggregation and Reasoning with Problog</head><p>The probability for a logic program P given a ProbLog program T is defined as</p><formula xml:id="formula_35">p(P|T ) = xi∈P p(x i ) xj ∈P (1 -p(x j )), (<label>20</label></formula><formula xml:id="formula_36">)</formula><p>where T is a collection of definite clauses with assigned probabilities. In the scope of this work when using the ProbLog notation we can set T * = {p i :  <ref type="formula">21</ref>) and rearranging leads to:</p><formula xml:id="formula_37">c i | i ∈ Ĩ} ∪ {1 : t ′ | t ′ ∈ G}</formula><formula xml:id="formula_38">r∈{0,1} N p(t|L(r)) xi∈L(r) p(x i ) xj ∈L(r) (1 -p(x j )) = r∈{0,1} N p(t|L(r)) ci∈L(r) p(r i ) cj ∈L(r) (1 -p(r j )) t∈G p(t) = r∈{0,1} N p(t|L(r)) ci∈L(r) p(r i ) cj ∈L(r) (1 -p(r j )) • 1 = r∈{0,1} N p(t|L(r))p(r|G) .</formula><p>The factorization of the logic program implies mutual independence and therefore applying Propositions 4.1 and 4.7 leads to the Noisy-or product over the rules that predicted t.</p><p>The next theorem shows the behaviour when using the full ProbLog algorithm for rule aggregation.</p><p>Theorem C.2. For the query probability p(t|T * ) calculated by ProbLog it holds that p(t|T * ) ≥ s N O (t).</p><p>We first sketch the proof here which is straightforward when using Propositions C.1 and 4.1. The details are given below. ProbLog sums the probabilities of all programs that entail the target fact. This includes 1) the programs that entail and one-step entail the query and 2) the programs that entail but not one-step entail the query which is clearly larger or equal than only aggregating 1) as done in Noisy-or aggregation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Proof of Theorem C.2</head><p>As before let r ∈ {0, 1} N be a vector of realisations. We will now label different assignment vectors according to their logical properties. Let r(e) ∈ {0, 1} N be an assignment vector such that L(r (e) ) entails but not one-step entails the query and let r(o) ∈ {0, 1} N be the corresponding vector where L(r (o) ) entails and one-step entails the query. Let T * denote the ProbLog program as defined above. For the query probability under ProbLog we have</p><formula xml:id="formula_39">p(t|T * ) = r∈{0,1} N p t|L(r) p L(r)|T * ,<label>(22)</label></formula><p>where</p><formula xml:id="formula_40">p(t|L(r)) = 1, if L(r) |= t 0, else.</formula><p>When we plug in p(t|L(r)) then ( <ref type="formula" target="#formula_39">22</ref>) becomes</p><formula xml:id="formula_41">p(t|T * ) = r∈{0,1} N L(r)|=t p(L(r)|T * ) = r(e) ∈{0,1} N L(r (e) )|=t L(r (e) ) |=1t p(L(r (e) )|T * )+ + r(o) ∈{0,1} N L(r (o) )|=1t p(L(r (o) )|T * ) ≥ r(o) ∈{0,1} N L(r (o) )|=1t p(L(r (o) )|T * ) = r∈{0,1} N p t|L(r) p L(r)|T *</formula><p>where it follows from Proposition C.1 that the last expression is the Noisy-or product under the program factorization of ProbLog for p L(r)|T *</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Rule Aggregation and MLNs</head><p>For an MLN query answering p(t|G) as in the main text can be performed by marginal inference given some evidence which is in our case the KG. Nevertheless we start with a simple example with unary predicates. For the MLN definitions we refer to the original publication. Consider the two formulae smokes(X) → cancer(X) and ill(X) → cancer(X), assume they have some confidence conf 1 and conf 2 . Now let the evidence be e = {smokes(karl), ill(karl)} and we do not have any other constant terms. Note that there are 2 3 possible worlds and we seek to calculate p(cancer(karl)=1|e), i.e., the probability that Karl has cancer. We abuse notation slightly for brevity. In particular we write p({a 1 , a 2 }) for the probability of a world where a i is a true atom and all the remaining possible atoms are false. And we write p(a i =1|e) for the marginal probability that an atom is true given the evidence.</p><p>For instantiating a Markov Network, as each formula has one possible grounding, we have two binary features f 1 , f 2 . A feature is one if in a given world the respective formula is satisfied. Assigning the confidences as weights is not useful because of the exponential formulation, therefore we set the feature weights to the log odds w i = ln confi 1-conf1 for i ∈ {1, 2}. Now assume conf 1 = conf 2 = 0.9. For p({cancer(karl)}|e) we have</p><formula xml:id="formula_42">p(c(k) = 1|e) = p c(k), i(k), sm(k) p sm(k) = 1, i(k) = 1</formula><p>Note that the denominator is a marginal that sums over all worlds where smokes(karl) and ill(karl) is true, therefore</p><formula xml:id="formula_43">p(c(k) = 1|e) = p c(k), i(k), sm(k) p c(k), i(k), sm(k) + p i(k), sm(k) = exp (w 1 + w 2 )Z -1 exp (w 1 + w 2 )Z -1 + exp (0)Z -1 = sigmoid(w 1 + w 2 )</formula><p>Plugging in the values for the weights results in 0.8581 which we also exactly recover when using the MLN solver Rockit <ref type="bibr" target="#b29">(Noessner et al., 2013)</ref> under exact marginal inference. Now consider the rules, If we use ProbLog with the confidences we obtain p(t|G) = 0.97 which is here the same as Noisy-or aggregation. Max-aggregation leads to p(t|G) = 0.8 and using Max-group aggregation would be in between depending on the grouping. When using the log-odds for the MLN as above we obtain with Rockit p(t|G) = 0.9032 which is again the sigmoid function applied to the the sum of the log-odds.</p><formula xml:id="formula_44">c 1 : married(X, Y ) ← engaged(X, Y ) c 2 : married(X, Y ) ← commonChild(X, Y ) c 3 : married(X, Y ) ← inLove(X, Y ) Assume the hypothetical confidences conf 1 = 0.8, conf 2 = 0.7, conf 3 = 0.5.</formula><p>Note that in these two examples the only form of reasoning in regard to the query fact is one-step entailment due to the simplicity of the examples. This can be emulated for MLN's also for more complicated examples with the common solvers by defining the rule bodies as observed predicates. Note that additionally the log odds would be weighted with each rule grounding regarding the rules that predicted the query. Nevertheless the resulting aggregation baseline would not perform well in the context of KGC as, for instance, a rule with confidence of 0.4 and many groundings would lead to a small value for the final probability. However, note that, as we mentioned in the main text, a MLN is a more general framework not based on onestep entailment and expressing the aggregation problem requires to make several non trivial decisions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Experimental Details</head><p>We show dataset statistics and the overall number of learned rules in Table <ref type="table">3</ref> and<ref type="table" target="#tab_3">4</ref>  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E.1. Rule learning</head><p>For AnyBURL we use the rulesets provided in previous work <ref type="bibr" target="#b23">(Meilicke et al., 2021)</ref> except for Yago3-10 where we learn with the default parameters for 3600 seconds with the AnyBURL-JUNO version. For AMIE3 under the default parameters only a few rules are learned so we adjusted the parameters. When including rules with constants and longer rules the approach does not terminate within a day therefore we use one execution with rules of length one including constants and one execution with longer rules without constants and subsequently the rulsets are merged. We show below the program execution with constants and the second execution with longer rules. j a v a -j a r am ie . j a r t r a i n . t x t -c o n s t -b i a s d e f a u l t -minhc 0 . 0 -minc 0 . 0 0 1 -m in p ca 0 . 0 0 1 -maxad 2 j a v a -j a r am ie . j a r t r a i n . t x t -b i a s d e f a u l t -minhc 0 . 0 -minc 0 . 0 0 1 -m in p ca 0 . 0 0 1 -maxad 4 -pm s u p p o r t -m in s 2</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E.2. Implementation and Evaluation Details</head><p>Rule-based KGC uses commonly a parameter topX that denotes how many candidate facts q(c 1 , c * ) for the query q(c 1 , ?) (likewise in head direction) should be predicted and ranked. For all our experiments we set topX=200 but we did not notice significant differences to using 100. When two candidates are assigned to the same probability we use random tie handling. The aggregation functions are implemented under the AnyBURL-JUNO codebase. For MAX+ we use the existing implementation. For Noisyor top-h we start predicting with the rule with the highest marginal continuing with the second highest rule and we stop when for topX candidates each one was predicted by at least h rules. For Noisy-or we set h = k and for MAX we set h = 1.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E.3. Experiment Details and Execution</head><p>Our experiments are run on a CPU server with 768 GB RAM and two Intel(R) Xeon(R) CPU E5-2640 v4 @ 2.40GHz cores with 40 logical cores each. For the standard experiments we use the AnyBURL-JUNO codebase with 30 threads. For the Noisy-or top-h * approach we spawn individual processes with 15 threads each for every value of h. The runtimes for the experiments are wall-clock times, i.e., we measure the time before and after the execution on each dataset. For SAFRAN we obtained runtime estimates from the authors for FB15k-237 and Codex-m and we run the approach (architecture as above) on Yago3-10 where it did not terminate within 3 days. Runtimes for SV are also obtained from the authors. Results for SAFRAN are obtained from the authors where on FB15k-237 SAFRAN is run in accordance to a newer AnyBURL version that does not exploit the characteristic that connected entities in the training set cannot form a fact in the test set. See <ref type="bibr" target="#b22">Meilicke et al. (2020)</ref> for a discussion. The results for SV are from the respective publication.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>Example 1.1. Consider the following clauses or rules.c 1 [0.64] : wf(X,Y) ← internAt(X,Y) c 2 [0.44] : wf(X,Y) ← studentAt(X,A), locIn(A,B), locIn(Y,B) c 3 [0.41] : wf(X,Y) ← studentAt(X,A), cooperatesWith(A,Y)    </figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head></head><label></label><figDesc>to obtain the ProbLog program representing the rules and the facts. If we, for instance, let ProbLog only perform one-step entailment we obtain the following result. Proposition C.1. For the probability p(t|T * ) calculated with ProbLog under a one-step entailment regime it holds that p(t|T * ) = s N O (t). Proof of Proposition C.1. The query probability given the ProbLog program T * , as defined above, is calculated as p(t|T * ) = r∈{0,1} N p t|L(r) p L(r)|T * , (21) where p(t|L(r)) is set to equation (2) by requirement of the proposition and p(L(r)|T ) can be interpreted as the probability of a logic program when treating rules as logical clauses and facts as ground atoms. Note that L(r) = {c i | ri = 1 and i ∈ Ĩ} ∪ G. Plugging in equation (20) into equation (</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>b), commonChild(a, b), engaged(a, b)} where a, b are constants. We want to calculate p(t = 1|G) where t = married(a, b).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Results for the joint filtered MRR and Hits@X with rules from AnyBURL or AMIE .</figDesc><table><row><cell></cell><cell>MAX</cell><cell cols="4">0.236 0.496 0.321 0.442 0.561 0.482 0.240 0.443 0.309 0.394 0.640 0.477</cell></row><row><cell>AnyBURL</cell><cell cols="5">MAX+ NO NO top-5 NO top-h  *  0.263 0.524 0.349 0.459 0.578 0.499 0.253 0.464 0.326 0.498 0.698 0.568 0.246 0.506 0.331 0.457 0.574 0.497 0.248 0.452 0.317 0.498 0.691 0.566 0.251 0.499 0.333 0.391 0.560 0.446 0.219 0.427 0.290 0.367 0.628 0.456 0.260 0.524 0.347 0.458 0.578 0.499 0.243 0.461 0.317 0.486 0.697 0.560</cell></row><row><cell></cell><cell>SAFRAN</cell><cell cols="4">0.272 0.524 0.357 0.459 0.578 0.502 0.254 0.458 0.325 0.491 0.693 0.564</cell></row><row><cell></cell><cell>SV</cell><cell>0.266 0.526 0.352 0.459 0.574 0.499 0.266 0.467 0.335</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell></cell><cell>MAX</cell><cell cols="4">0.167 0.384 0.236 0.414 0.511 0.445 0.191 0.383 0.255 0.350 0.592 0.431</cell></row><row><cell>AMIE3</cell><cell>MAX+ NO NO top-5</cell><cell cols="4">0.178 0.394 0.247 0.419 0.514 0.450 0.198 0.395 0.263 0.395 0.622 0.473 0.209 0.430 0.284 0.377 0.513 0.424 0.190 0.390 0.257 0.345 0.615 0.439 0.199 0.425 0.273 0.380 0.513 0.426 0.197 0.401 0.266 0.360 0.622 0.452</cell></row><row><cell></cell><cell cols="5">NO top-h  *  0.217 0.439 0.292 0.419 0.514 0.450 0.199 0.407 0.269 0.401 0.625 0.479</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Runtimes in minutes (m) our hours (h) with rules from AnyBURL.</figDesc><table><row><cell></cell><cell cols="3">-237 Codex-M Yago3-10</cell></row><row><cell>MAX</cell><cell>1.1m</cell><cell>5.5m</cell><cell>4.1m</cell></row><row><cell>MAX+</cell><cell>3.1m</cell><cell>10.4m</cell><cell>4.2m</cell></row><row><cell>Noisy-or</cell><cell>5.4m</cell><cell>25.0m</cell><cell>12.2m</cell></row><row><cell>Noisy-or top-5</cell><cell>1.5m</cell><cell>6.6m</cell><cell>4.3m</cell></row><row><cell>NO top-h  *</cell><cell>13.9m</cell><cell>1.27h</cell><cell>1.01h</cell></row><row><cell>SAFRAN</cell><cell>≈24h</cell><cell>≈72h</cell><cell>&gt;72h</cell></row><row><cell>SV</cell><cell>≈42h</cell><cell>≈16.5h</cell><cell>-</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head></head><label></label><figDesc>. Further experimental details are given in the following subsections.</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">Num facts |G|</cell></row><row><cell>Dataset</cell><cell>|E|</cell><cell>|P|</cell><cell cols="2">Train</cell><cell>Valid</cell><cell>Test</cell></row><row><cell cols="3">FB15k-237 14 505 237</cell><cell cols="2">272 115</cell><cell cols="2">17 535 20 466</cell></row><row><cell>WNRR</cell><cell>40 559</cell><cell>11</cell><cell cols="2">86 835</cell><cell>3 034</cell><cell>3 134</cell></row><row><cell>Codex-M</cell><cell>17 050</cell><cell>51</cell><cell cols="2">185 584</cell><cell cols="2">10 310 10 311</cell></row><row><cell>Yago3-10</cell><cell cols="5">123 182 37 1 079 040 5 000</cell><cell>5 000</cell></row><row><cell cols="6">Table 3: Dataset summary statistics</cell></row><row><cell></cell><cell>Dataset</cell><cell cols="2">AMIE</cell><cell cols="2">AnyBURL</cell></row><row><cell cols="6">FB15k-237 983 546 5 084 903</cell></row><row><cell></cell><cell>WNRR</cell><cell cols="2">3426</cell><cell></cell><cell>97 329</cell></row><row><cell cols="2">Codex-M</cell><cell cols="4">179 898 7 409 385</cell></row><row><cell cols="2">Yago3-10</cell><cell cols="4">900 951 6 692 784</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 4 :</head><label>4</label><figDesc>Number of rules learned</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>University of Mannheim, Germany</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>University of Rostock, Germany.Correspondence to: Patrick Betz &lt;patrick@informatik.uni-mannheim.de&gt;.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_2"><p>Note that |=1 is different to k-entailment which limits the number of constants used in entailment(Kuzelka et al.,  </p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_3"><p>2018).2 A formalization with the immediate consequence operator in the logic programming context is likewise possible.</p></note>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Improving visual relationship detection using semantic modeling of scene descriptions</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Baier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SEMWEB</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Adversarial explanations for knowledge graph embedding models</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Betz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Meilicke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Stuckenschmidt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 31th International Joint Conference on Artificial Intelligence</title>
+		<meeting>the 31th International Joint Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<biblScope unit="page" from="2820" to="2826" />
+		</imprint>
+	</monogr>
+	<note>Ijcai.org, 2022a</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Supervised knowledge aggregation for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Betz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Meilicke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Stuckenschmidt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Extended Semantic Web Conference</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="74" to="92" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Libkge-a knowledge graph embedding library for reproducible research</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Broscheit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kochsiek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Betz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gemulla</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="165" to="174" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Scalekb: scalable learning and inference over large knowledge bases</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Goldberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The VLDB Journal</title>
+		<imprint>
+			<biblScope unit="volume">25</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="893" to="918" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Problog: A probabilistic prolog and its application in link discovery</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>De Raedt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kimmig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Toivonen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twentieth International Joint Conference on Artificial Intelligence</title>
+		<meeting>the Twentieth International Joint Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="2462" to="2467" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1811" to="1818" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Learning explanatory rules from noisy data</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Evans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Grefenstette</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Artificial Intelligence Research</title>
+		<imprint>
+			<biblScope unit="volume">61</biblScope>
+			<biblScope unit="page" from="1" to="64" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Discovering association rules from big graphs</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Tian</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the VLDB Endowment</title>
+		<meeting>the VLDB Endowment</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="page" from="1479" to="1492" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Fast rule mining in ontological knowledge bases with AMIE+</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Galárraga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Teflioudi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Hose</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">M</forename><surname>Suchanek</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The VLDB Journal</title>
+		<imprint>
+			<biblScope unit="volume">24</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="707" to="730" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Amie: association rule mining under incomplete evidence in ontological knowledge bases</title>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">A</forename><surname>Galárraga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Teflioudi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Hose</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Suchanek</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd international conference on World Wide Web</title>
+		<meeting>the 22nd international conference on World Wide Web</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="413" to="422" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">End-to-end learning of knowledge base representations with latent, relational, and numerical features</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>García-Durán</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Niepert</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kblrn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirty-Fourth Conference on Uncertainty in Artificial Intelligence</title>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Globerson</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Silva</surname></persName>
+		</editor>
+		<meeting>the Thirty-Fourth Conference on Uncertainty in Artificial Intelligence</meeting>
+		<imprint>
+			<publisher>AUAI Press</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="372" to="381" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Jointly embedding knowledge graphs and logical rules</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2016 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2016 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="192" to="202" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding with iterative guidance from soft rules</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Admissible bernoulli correlations</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Huber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Marić</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Statistical Distributions and Applications</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="8" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Multivariate models and multivariate dependence concepts</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Joe</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1997">1997</date>
+			<publisher>CRC press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Towards combining inductive logic programming with bayesian networks</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kersting</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>De Raedt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Inductive Logic Programming: Proceedings of the 11th International Conference</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2001">2001</date>
+			<biblScope unit="page" from="118" to="131" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Pacreasoning in relational domains</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Kuzelka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Davis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Schockaert</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirty-Fourth Conference on Uncertainty in Artificial Intelligence</title>
+		<meeting>the Thirty-Fourth Conference on Uncertainty in Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Fast and exact rule mining with amie 3</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lajus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Galárraga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Suchanek</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Extended Semantic Web Conference</title>
+		<meeting>the Extended Semantic Web Conference</meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="36" to="52" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Neural multi-hop reasoning with logical rules on biomedical knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hildebrandt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Joblin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ringsquandl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Raissouni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">European Semantic Web Conference</title>
+		<imprint>
+			<biblScope unit="page" from="375" to="391" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Fine-grained evaluation of rule-and embedding-based systems for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Meilicke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fink</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gemulla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Stuckenschmidt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Semantic Web Conference</title>
+		<meeting>the International Semantic Web Conference</meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="3" to="20" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Anytime bottom-up rule learning for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Meilicke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">W</forename><surname>Chekol</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Stuckenschmidt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-Eighth International Joint Conference on Artificial Intelligence</title>
+		<meeting>the Twenty-Eighth International Joint Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="3137" to="3143" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Reinforced anytime bottom up rule learning for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Meilicke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">W</forename><surname>Chekol</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fink</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Stuckenschmidt</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2004.04412</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Why a naive way to combine symbolic and latent knowledge base completion works surprisingly well</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Meilicke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Betz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Stuckenschmidt</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">3</biblScope>
+		</imprint>
+	</monogr>
+	<note>rd Conference on Automated Knowledge Base Construction</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Anytime bottom-up rule learning for large scale knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Meilicke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">W</forename><surname>Chekol</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Betz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fink</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Stuckenschmidt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The VLDB Journal-The International Journal on Very Large Data Bases</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Differentiable reasoning on large knowledge bases and natural language</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bošnjak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Rocktäschel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Grefenstette</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="5182" to="5190" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Learning reasoning strategies in end-toend differentiable proving</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Grefenstette</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Rocktäschel</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="6938" to="6949" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Inductive logic programming: Theory and methods</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Muggleton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>De Raedt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The Journal of Logic Programming</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="page" from="629" to="679" />
+			<date type="published" when="1994">1994</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">S. Stochastic logic programs</title>
+		<author>
+			<persName><surname>Muggleton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in inductive logic programming</title>
+		<imprint>
+			<date type="published" when="1996">1996</date>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="254" to="264" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Exploiting parallelism and symmetry for map inference in statistical relational models</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Noessner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Niepert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Stuckenschmidt</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Rockit</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">27</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Robust discovery of positive and negative rules in knowledge bases</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ortona</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">V</forename><surname>Meduri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Papotti</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">34th IEEE International Conference on Data Engineering</title>
+		<imprint>
+			<publisher>IEEE Computer Society</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1168" to="1179" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">SAFRAN: An interpretable, rule-based link prediction method outperforming embedding models</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Meilicke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Samwald</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=jCt9S3wS9" />
+	</analytic>
+	<monogr>
+		<title level="m">3rd Conference on Automated Knowledge Base Construction</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<title level="m" type="main">Probabilistic reasoning in intelligent systems: networks of plausible inference</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pearl</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1988">1988</date>
+			<publisher>Morgan kaufmann</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Completeness-aware rule learning from knowledge graphs</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Pellissier Tanon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Stepanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Razniewski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mirza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Weikum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Semantic Web Conference</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="507" to="525" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Learning logic rules for reasoning on knowledge graphs</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L.-P</forename><surname>Xhonneux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Rnnlogic</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Learning Representations</title>
+		<meeting>the International Conference on Learning Representations</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Markov logic networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Richardson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Domingos</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Machine learning</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="volume">62</biblScope>
+			<biblScope unit="page" from="107" to="136" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">End-to-end differentiable proving</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Rocktäschel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 30: Annual Conference on Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2017">2017. 2017</date>
+			<biblScope unit="page" from="3788" to="3800" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding for link prediction: A comparative analysis</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Barbosa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Firmani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Matinata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Merialdo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Knowledge Discovery from Data (TKDD)</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="1" to="49" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">You CAN teach an old dog new tricks! on training knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Broscheit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gemulla</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">8th International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Drum: End-to-end differentiable rule mining on knowledge graphs</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sadeghian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Armandpour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">Z</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="15321" to="15331" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">CoDEx: A Comprehensive Knowledge Graph Completion Benchmark</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Safavi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Koutra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="8328" to="8350" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Prism: a language for symbolicstatistical modeling</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Sato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Kameya</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Fifteenth International Joint Conference on Artificial Intelligence</title>
+		<meeting>the Fifteenth International Joint Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="1997">1997</date>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="1330" to="1339" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Strike: Rule-driven relational learning using stratified kentailment</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Svatoš</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Schockaert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Davis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Kuželka</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the European Conference of Artificial Intelligence</title>
+		<meeting>the European Conference of Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Faithful Approaches to Rule Learning</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Tena Cucala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Cuenca Grau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Motik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 19th International Conference on Principles of Knowledge Representation and Reasoning</title>
+		<meeting>the 19th International Conference on Principles of Knowledge Representation and Reasoning</meeting>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page">2022</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Observed versus latent features for knowledge base and text inference</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chen</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/W15-4007</idno>
+		<ptr target="https://aclanthology.org/W15-4007" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 3rd Workshop on Continuous Vector Space Models and their Compositionality</title>
+		<meeting>the 3rd Workshop on Continuous Vector Space Models and their Compositionality<address><addrLine>Beijing, China</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2015-07">July 2015</date>
+			<biblScope unit="page" from="57" to="66" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Learning typed rules over knowledge graphs</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-D</forename><surname>Shen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Principles of Knowledge Representation and Reasoning</title>
+		<meeting>the International Conference on Principles of Knowledge Representation and Reasoning</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="page" from="494" to="503" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

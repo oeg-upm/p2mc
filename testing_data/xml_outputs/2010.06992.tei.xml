@@ -1,0 +1,1254 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main"></title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2020-10-14">14 Oct 2020</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">S</forename><surname>¸tefan Postȃvaru</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Anton</forename><surname>Tsitsulin</surname></persName>
+							<email>tsitsulin@bit.uni-bonn.de</email>
+						</author>
+						<author>
+							<persName><forename type="first">Filipe</forename><forename type="middle">Miguel</forename><surname>Gonc</surname></persName>
+							<email>filipea@google.com</email>
+						</author>
+						<author>
+							<persName><forename type="first">¸alves</forename><surname>De Almeida</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Yingtao</forename><surname>Tian</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Silvio</forename><surname>Lattanzi</surname></persName>
+							<email>silviol@google.com</email>
+						</author>
+						<author>
+							<persName><forename type="first">Bryan</forename><surname>Perozzi</surname></persName>
+							<email>bperozzi@acm.org</email>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution">Google Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">University of Bonn</orgName>
+							</affiliation>
+						</author>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2020-10-14">14 Oct 2020</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">4FBEF4A2D5AAB178FC5CF0A08DA680C7</idno>
+					<idno type="arXiv">arXiv:2010.06992v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T09:48+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>In this paper, we introduce InstantEmbedding, an efficient method for generating single-node representations using local PageRank computations. We theoretically prove that our approach produces globally consistent representations in sublinear time. We demonstrate this empirically by conducting extensive experiments on real-world datasets with over a billion edges. Our experiments confirm that Instant-Embedding requires drastically less computation time (over 9,000 times faster) and less memory (by over 8,000 times) to produce a single node's embedding than traditional methods including DeepWalk, node2vec, VERSE, and FastRP. We also show that our method produces high quality representations, demonstrating results that meet or exceed the state of the art for unsupervised representation learning on tasks like node classification and link prediction.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">I N T R O D U C T I O N</head><p>Graphs are widely used to represent data when are objects connected to each other, such as social networks, chemical molecules, and knowledge graphs. A widely used approach in dealing with graphs is learning compact representations of graphs <ref type="bibr" target="#b30">(Perozzi et al., 2014;</ref><ref type="bibr" target="#b13">Grover &amp; Leskovec, 2016;</ref><ref type="bibr" target="#b1">Abu-El-Haija et al., 2018)</ref>, which learns a d-dimensional embedding vector for each node in a given graph. Unsupervised embeddings in particular have shown improvements in many downstream machine learning tasks, such as visualization <ref type="bibr" target="#b25">(Maaten &amp; Hinton, 2008)</ref>, node classification <ref type="bibr" target="#b30">(Perozzi et al., 2014)</ref> and link prediction <ref type="bibr" target="#b1">(Abu-El-Haija et al., 2018)</ref>. Importantly, since such embeddings are learned solely from the structure of the graph, they can be used across multiple tasks and applications.</p><p>Typically, graph embedding models often assume that graph data fits in memory <ref type="bibr" target="#b30">(Perozzi et al., 2014)</ref> and require representations for all nodes to be generated. However, in many real-world applications, it is often the case that graph data is large but also scarcely annotated. For example, the Friendster social graph <ref type="bibr" target="#b40">(Yang &amp; Leskovec, 2015)</ref> has only 30% nodes assigned to a community, from its total 65M entries. At the same time, many applications of graph embeddings such as classifying a data item only require one current representation for the item itself, and eventually representations of labeled nodes. Therefore, computing a full graph embedding is at worst infeasible and at best inefficient. These observations motivate the problem which we study in this paper -the Local Node Embedding problem. In this setting, the embedding for a node is restricted to using only local structural information, and can not access the representations of other nodes in the graph or rely on trained global model state. In addition, we require that a local method needs to produce embeddings which are consistent with all other node's representations, so that the final representations can be used in the same downstream tasks that graph embeddings have proved adapt at in the past.</p><p>In this work, we introduce InstantEmbedding, an efficient method to generate local node embeddings on the fly in sublinear time which are globally consistent. Considering previous work that links embedding learning methods to matrix factorization <ref type="bibr" target="#b35">(Tsitsulin et al., 2018;</ref><ref type="bibr" target="#b31">Qiu et al., 2018)</ref>, our method leverages a high-order similarity matrix based on Personalized PageRank (PPR) as foundations on which local node embeddings are computed via hashing. We offer theoretical guarantees on the locality of the computation, as well as the proof of the global consistency of the generated embeddings. We show empirically that our method is able to produce high-quality representations on par with state of the art methods, with efficiency several orders of magnitude better in clock time and memory consumption: running 9,000 times faster and using 8,000 times less memory on the largest graphs that contenders can process.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">P R E L I M I N</head><formula xml:id="formula_0">A R I E S &amp; R E L AT E D W O R K 2 . 1 G R A P H E M B E D D I N G</formula><p>Let G = (V, E) represent an unweighted graph, which contains a set of nodes V , |V | = n, and edges E ⊆ (V × V ), |E| = m. A graph can also be represented as an adjacency matrix A ∈ {0, 1} n×n where A u,v = 1 iff (u, v) ∈ E. The task of graph embedding then, is to learn a d-dimensional node embedding matrix X ∈ R n×d where X v serves as the embedding for any node v ∈ G. We note that d n, i.e. the learned representations are low-dimensional, and the challenge of graph embedding is to best preserve graph properties (such as node similarities) in this space.</p><p>Following the formalization in Abu- <ref type="bibr" target="#b1">El-Haija et al. (2018)</ref>, many graph embedding can be thought of minimizing an objective in the general form: min X L(f (X), g(A)), where f : R n×d → R n×n is a pairwise distance function on the embedding space, g : R n×n → R n×n is a distance function on the (possibly transformed) adjacency matrix, and L is a loss function over all (u, v) ∈ (V × V ) pairs. A number of graph embedding methods have been proposed. One family of these methods simply learn X as a lookup dictionary of embeddings and calculate the loss via distance <ref type="bibr" target="#b22">(Kruskal, 1964)</ref>, or matrix factorization (either implicit <ref type="bibr" target="#b30">(Perozzi et al., 2014;</ref><ref type="bibr" target="#b13">Grover &amp; Leskovec, 2016)</ref> or explicit <ref type="bibr" target="#b28">(Ou et al., 2016)</ref>). On attributed structured data, Graph Convolutional Networks <ref type="bibr" target="#b20">(Kipf &amp; Welling, 2016)</ref> have been successfully applied to both supervised and unsupervised tasks <ref type="bibr" target="#b37">(Veličković et al., 2018)</ref>. However, in the absence of node-level features, <ref type="bibr" target="#b12">Duong et al. (2019)</ref> demonstrated that these methods do not produce meaningful representations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">. L O C</head><formula xml:id="formula_1">A L A L G O R I T H M S O N G R A P H S</formula><p>Local algorithms on graphs <ref type="bibr" target="#b34">(Suomela, 2013)</ref> solve graph without using the full graph. A wellstudied problem in this space is personalized recommendation <ref type="bibr" target="#b18">(Jeh &amp; Widom, 2003)</ref> where users are represented as nodes in a graph and the goal is to recommend items to specific users leveraging the graph structure. Classic solutions to this problem are Personalized PageRank <ref type="bibr" target="#b14">(Gupta et al., 2013)</ref> and Collaborative Filtering <ref type="bibr" target="#b32">(Schafer et al., 2007;</ref><ref type="bibr" target="#b16">He et al., 2017)</ref>. Interestingly, these methods have been recently applied to graph neural networks <ref type="bibr" target="#b21">(Klicpera et al., 2019;</ref><ref type="bibr" target="#b17">He et al., 2020)</ref>. We now recall the definition of Personalized PageRank that is one of the main ingredients in our embedding algorithm. Definition (Personalized PageRank (PPR)). Given s ∈ R n (s i ≥ 0, i s i = 1), a distribution of the starting node of random walks, and α ∈ (0, 1), a decay factor, the Personalized PageRank vector π(s) ∈ R n is defined recursively as:</p><formula xml:id="formula_2">π(s) = αs + (1 -α)π(s) D -1 A,<label>(1</label></formula><p>) where D -1 A is the transition matrix.</p><p>PPR takes as input a distribution of starting nodes s, which is typically a n dimensional one-hot vector e i with 1 in the i-th coordinate, enforcing a local random walks starting from node i. Following this practice, we denote π i ∈ R n , the PPR vector starting from a single node i, and PPR ∈ R n×n , the full PPR matrix for all nodes in the graph, where PPR i,: = π(e i ). VERSE <ref type="bibr" target="#b35">(Tsitsulin et al., 2018)</ref> proposes to learn node embeddings by implicitly factorizing PPR. Its stochastic approach can perform well, but lacks guarantees of stability and convergence. The idea of learning embeddings based on local random walks has also been used in the property testing framework, a direction in graph algorithm aiming at analyzing the clustering structure of a graph <ref type="bibr" target="#b19">(Kale &amp; Seshadhri, 2008;</ref><ref type="bibr" target="#b9">Czumaj &amp; Sohler, 2010;</ref><ref type="bibr" target="#b10">Czumaj et al., 2015;</ref><ref type="bibr" target="#b7">Chiplunkar et al., 2018)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">. 3 P R O B L E M S TAT E M E N T</head><p>In this work, we consider the problem of embedding a single node in a graph quickly. More formally, we consider what we term the Local Node Embedding problem: given a graph G and any node v, return a globally consistent structural representation for v using only local information around v, in time sublinear to the size of the graph.</p><p>A solution to the local node embedding problem should posses two following properties:</p><p>1. Locality. The embeddings for a node are computed locally, i.e. the embedding for a node can be produced using only local information and in time independent of the total graph size. 2. Global Consistency. A local method must produce embeddings that are globally consistent (i.e. able to relate each embedding to each other, s.t. distances in the space preserve proximity). While many node embedding approaches have been proposed <ref type="bibr" target="#b4">(Chen et al., 2018)</ref>, to the best of our knowledge we are the first to examine the local embedding problem. Furthermore, no existing methods for positional representations of nodes meet these requirements. We briefly discuss these requirements in detail below, and put the related work in terms of these properties in Table <ref type="table" target="#tab_0">1</ref>.</p><p>Locality. While classic node embedding methods, such as DeepWalk <ref type="bibr" target="#b30">(Perozzi et al., 2014)</ref>, node2vec <ref type="bibr" target="#b13">(Grover &amp; Leskovec, 2016)</ref>, or VERSE <ref type="bibr" target="#b35">(Tsitsulin et al., 2018)</ref> rely on information aggregated from local subgraphs (e.g. sampled by a random walk), they do not meet our locality requirement. Specifically, they also require the representations of all the nodes around them, resulting in a dependency on information from all nodes in the graph (in addition to space complexity O(nd) where d is the embedding dimension) to compute a single representation. Classical random-projection based methods also require access to the full adjacency matrix in order to compute the higher-order ranking matrix. We briefly remark that even methods capable of local attributed subgraph embedding (such as GCN or DGI) also do not meet this definition of locality, as they require a global training phase to calibrate their graph pooling functions.</p><p>Global Consistency. This property allows embeddings produced by local node embedding to be used together, perhaps as features in a model. While existing methods for node embeddings are global ones which implicitly have global consistency, this property is not trivial for a local method to achieve. One exciting implication of a local method which is globally consistent is that it can wait to compute a representation until it is actually required for a task. For example, in a production system, one might only produce representations for immediate classification when they are requested.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">M E T H O D</head><p>Here we outline our proposed approach for local node embedding. We begin by discussing the connection between a recent embedding approach and matrix factorization. Then using this analysis, we propose an embedding method based on randomly hashing the PPR matrix. We note that this approach has a tantalizing property -it can be decomposed into entirely local operations per node. With this observation in hand, we present our solution, InstantEmbedding. Finally, we analyze the algorithmic complexity of our approach, showing that it is both a local algorithm (which runs in time sublinear to the size of G) and that the local representations are globally consistent.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">. 1 G L O B A L E M B E D D I N G U S I N G P P R</head><p>A recently proposed method for node embedding, VERSE <ref type="bibr" target="#b35">(Tsitsulin et al., 2018)</ref>, learns node embeddings using a neural network which encodes Personalized PageRank similarities. Their objective function, in the form of Noise Contrastive Estimation (NCE) <ref type="bibr" target="#b15">(Gutmann &amp; Hyvärinen, 2010)</ref>, is:</p><formula xml:id="formula_3">L = n i=1 n j=1 PPR ij log σ x i x j + bE j ∼U log σ -x i x j , (<label>2</label></formula><formula xml:id="formula_4">)</formula><p>where PPR is the Personalized PageRank matrix, σ is the sigmoid function, b is the number of negative samples, and U is a uniform noise distribution from which negative samples are drawn. Like many SkipGram-style methods <ref type="bibr" target="#b27">(Mikolov et al., 2013)</ref>, this learning process can be linked to matrix factorization by the following lemma:</p><p>Lemma 3.1 <ref type="bibr" target="#b36">(Tsitsulin et al. (2020)</ref>). VERSE implicitly factorizes the matrix log(PPR)+log n-log b into XX , where n is the number of nodes in the graph and b is the number of negative samples.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">. 1 . 1 H</head><formula xml:id="formula_5">A S H I N G F O R G R A P H E M B E D D I N G</formula><p>Lemma 3.1 provides an incentive to find an efficient alternative to factorizing the dense similarity matrix M = log(PPR)+log n-log b. Our choice of the algorithm requires two important properties: a) providing an unbiased estimator for the inner product, and b) requiring less than O(n) memory.</p><p>The first property is essential to ensure we have a good sketch of M for the embedding, while the second one keeps our complexity per node sublinear. In order to meet both requirements we propose to use hashing <ref type="bibr" target="#b38">(Weinberger et al., 2009)</ref> to preserve the essential similarities of PPR in expectation.</p><p>We leverage two global hash functions h d : N → {0, ..., d-1} and h sgn : N → {-1, 1} sampled from universal hash families U d and U -1,1 respectively, to define the hashing kernel H h d ,hsgn : R n → R d . Applied to an input vector x, it yields h = H h d ,hsgn (x), where h i = k∈h -1 d (i) x k h sgn (k). We note that although H h d ,hsgn is proposed for vectors, it can be trivially extended to matrix M when applied to each row vector of that matrix, e.g. by defining H h d ,hsgn (M) i,: ≡ H h d ,hsgn (M i,: ). In the appendix we prove the next lemma that follows from <ref type="bibr" target="#b38">(Weinberger et al., 2009)</ref> and highlights both the aforementioned properties: Lemma 3.2. The space complexity of H h d ,hsgn is O(1) and:</p><formula xml:id="formula_6">E h d ∼U d ,hsgn∼U-1,1 H h d ,hsgn (M)H h d ,hsgn (M) = MM</formula><p>Our algorithm for global node embedding is presented in Algorithm 1. First, we compute the PPR matrix PPR (Line 2) with a generic approach (CreateP P RM atrix), which takes a graph and , the desired precision of the approximation. We remark that any of the many proposed approaches for computing such a matrix (e.g. from <ref type="bibr" target="#b18">Jeh &amp; Widom (2003)</ref>; <ref type="bibr" target="#b3">Andersen et al. (2007);</ref><ref type="bibr" target="#b24">Lofgren et al. (2014)</ref>) can be used for this calculation. As the PPR could be dense, the same could be said about the implicit matrix M. Thus, we filter the signal from non-significant PPR values by applying the max operator. We remove the constant log b from the implicit target matrix. In lines (4-6), the provided hash function accumulates each value in the corresponding embedding dimension.</p><p>Interestingly, the projection operation only uses information from each node's individual PPR vector π i to compute its representation. In the following section, we will show that local calculation of the PPR can be utilized to develop an entirely local algorithm for node embedding.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Algorithm 1 Global Node Embedding using Personalized PageRank</head><p>Input: graph G, embedding dimension d, PPR precision , hash functions h d , hsgn Output:</p><formula xml:id="formula_7">embedding matrix W 1: function G R A P H E M B E D D I N G(G, d, , h d , hsgn) 2: PPR ← CreateP P RM atrix(G, ) 3: W = 0 n×d 4:</formula><p>for πi in PPR do 5:</p><p>for rj in πi do 6:</p><formula xml:id="formula_8">W i,h d (j) += hsgn(j) × max(log(rj * n), 0) 7: return W 3 . 2 L O C A L N O D E E M B E D D I N G V I A I N S TA N T E M B E D D I N G</formula><p>Having a local projection method, all that we require is a procedure that can calculate the PPR vector for a node in time sublinear to size of the graph. Specifically, for InstantEmbedding we propose that the CreateP P RM atrix operation consists of invoking the SparseP P R routine from Andersen et al. <ref type="bibr" target="#b3">(Andersen et al., 2007)</ref> once for each node i. This routine is an entirely local algorithm for efficiently constructing π i , the PPR vector for node i, which offers strong guarantees. The following lemma formalizes the result (proof in Appendix A.4). We present InstantEmbedding, our algorithm for local node embedding, in Algorithm 2. As we will show, it is a self-contained solution for the local node embedding problem that can generate embeddings for individual nodes extremely efficiently. Notably, per Lemma 3.3, the local area around v explored by InstantEmbedding is independent of n. Therefore the algorithm is strictly local.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Algorithm 2 InstantEmbedding</head><p>Input: node v, graph G, embedding dimension d, PPR precision , hash functions h d , hsgn Output: embedding vector w 1: function</p><formula xml:id="formula_9">I N S TA N T E M B E D D I N G(v, G, d, , h d , hsgn) 2: πv ← SparseP P R(v, G, ) 3: w ← 0 d 4:</formula><p>for rj in πv do 5:</p><formula xml:id="formula_10">w h d (j) += hsgn(j) × max(log(rj * n), 0) 6:</formula><p>return w</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">. 2 . 1 A N A LY S I S</head><p>We now prove some basic properties of our proposed approach. First, we show that the runtime of our algorithm is local and independent of n, the number of nodes in the graph. Then, we show that our local computations are globally consistent, i.e., the embedding of a node v is the same independently if we compute it locally or if we recompute the embeddings for all nodes in the graph at the same time. Note that we focus on bounding the running time to compute the embedding for a single node in the graph. Nonetheless, the global complexity to compute all the embeddings can be obtained by multiplying our bound by n, although it is not the focus of this work.</p><p>We state the following theorem and prove it in Appendix A.5. Theorem 3.4. The InstantEmbedding(v, G, d, ) algorithm has running time</p><formula xml:id="formula_11">O (d + 1 /α(1-α) ).</formula><p>Besides the embedding size d, both the time and and space complexity of our algorithm depend only on the approximation factor and the decay factor α. Both are independent of n, the size of the graph, and m, the size of the edge set. Notably, if O ( 1 /α(1-α) ) ∈ o(n), as commonly happen in real world applications, our algorithm has sublinear time w.r.t. the graph size. Lastly, we note that the space complexity is also sublinear (due to Lemma 3.3), which we show in the appendix.</p><p>Now we turn our attention to the consistency of our algorithm, by showing that for a node v the embeddings computed by InstantEmbedding and GraphEmbedding are identical. In the fol-lowing we denote the graph embedding computed by GraphEmbedding(G, d, ) for node v by GraphEmbedding(G, d, ) v , and we prove the following theorem (Appendix A.6).</p><p>Theorem 3.5 (Global Consistency). InstantEmbedding(v, G, d, ) output equals one of GraphEmbedding(G, d, ) at position v.</p><p>Complexity Comparison. Table <ref type="table" target="#tab_0">1</ref> compares the complexity of InstantEmbedding with that of previous works: d, n, m stands for embedding dimension, size of graph and number of edges respectively. Specifically, b ≥ 1 stands for the number of samples used in node2vec and VERSE. It is noteworthy that all the previous works have time complexity depending on n, and perform at least linear w.r.t. size of the graph. In contrast, our algorithm depends only on and α, and has sublinear time w.r.t. n, the graph size. In Section 4, we experimentally verify the advantages of our principled method.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">E X P E R I M E N T S</head><p>In the light of the theoretical guarantees about the proposed method, we perform extended experiments in order to verify our two main hypotheses:</p><p>1. H1. Computing local node-embedding is more efficient than generating a global embedding. 2. H2. The local representations are consistent and of high-quality, being competitive with and even surpassing state-of-the-art methods on several tasks.</p><p>We assess H1 in Section 4.2, in which we measure the efficiency of generating a single node embedding for each method. Then in Section 4.3 we validate H2 by comparing our method against the baselines on multiple datasets using tasks of node classification, link prediction and visualization. To ensure a relevant and fair evaluation, we compare our method against multiple strong baselines, including Deep-Walk <ref type="bibr" target="#b30">(Perozzi et al., 2014)</ref>, node2vec <ref type="bibr" target="#b13">(Grover &amp; Leskovec, 2016)</ref>, VERSE <ref type="bibr" target="#b35">(Tsitsulin et al., 2018)</ref>, and FastRP <ref type="bibr" target="#b5">(Chen et al., 2019)</ref>. Each method was run on a virtual machine hosted on the Google Cloud Platform, with a 2.3GHz 16core CPU and 128GB of RAM. All reported results use dimensionality d = 512 for every method. We provide additional experiments for multiple dimensions, along with full details regarding each method and its parameterization in the Appendix B.1. For reproducibility, we release an implementation of our method.<ref type="foot" target="#foot_0">1</ref> </p><formula xml:id="formula_12">4 . 1 D ATA S E T S A N D E X P E R I M E N TA L S E T T I N G S</formula><p>InstantEmbedding Instantiation. As presented in Section 3, our implementation of the presented method relies on the choice of PPR approximation used. For instant single-node embeddings, we use the highly efficient PushFlow <ref type="bibr" target="#b3">(Andersen et al., 2007)</ref> approximation that enables us to dynamically load into memory at most 2 /(1-α) nodes from the full graph to compute a single PPR vector π. This is achieved by storing graphs in binarized compressed sparse row format that allows selective reads for nodes of interest. In the special case when a full graph embedding is requested, we have the freedom to approximate the PPR in a distributed manner (we omit this from runtime analysis, as we had no distributed implementations for the baselines, but we note our local method is trivially parallelizable). We refer to Appendix B.5 for the study of the influence of on runtime and quality.</p><p>Datasets. We perform our evaluations on 10 datasets, as presented in Table <ref type="table" target="#tab_1">2</ref>. Detailed descriptions of these datasets are available in the supplementary material. Note that on YouTube and Orkut the number of labeled nodes is much smaller than the total. We observe this behavior in several real-world application scenarios, where our method shines the most. Our method is over 9,000 times faster than FastRP and uses over 8,000 times less memory than VERSE, the next most efficient baselines respectively, in the largest graph that these baseline methods can process. </p><formula xml:id="formula_13">4 . 2 P E R F O R M A N C E C H A R A C T E R I S T I C S</formula><p>We report the mean wall time and total memory consumption <ref type="bibr">(Wolff)</ref> required to generate an embedding (d=512) for a node in the given dataset. We repeat the experiment 1,000 times for InstantEmbedding due to its locality property; for the baselines, we measure the time 5 times, and memory once. Complete results for all results and method can be found in Appendix B.3.</p><p>Running Time. As Figure <ref type="figure" target="#fig_1">1</ref>(a) shows, InstantEmbedding is the most scalable method, drastically outperforming all the other methods. We are over 9,000 times faster than the next fastest baseline in the largest graph both methods can process, and can scale to graphs of any size.</p><p>Memory Consumption. As Figure <ref type="figure" target="#fig_1">1</ref>(b) shows, InstantEmbedding is the most efficient method having been able to run in all datasets using negligible memory compared to the other methods. Compared to the next most memory-efficient baseline (VERSE) we are over 8,000 times more efficient in the largest graph both methods can process.</p><p>The results of running time and memory analysis confirm hypothesis H1 and show that Instant-Embedding has a significant speed and space advantage versus the baselines. The relative speedup continues to grow as the size of the datasets increase. On a dataset with over 1 billion edges (Friendster), we can compute an embedding in 80ms -fast enough for a real-time application!</p><formula xml:id="formula_14">4 . 3 E M B E D D I N G Q U A L I T Y</formula><p>Node Classification. This task measures the semantic information preserved by the embeddings by training a simple classifier on a small fraction of labeled representations. For each method, we perform three different random splits of the data. More details are available in the Appendix B.4.1.</p><p>In Table <ref type="table" target="#tab_2">3</ref> we report the mean Micro F1 scores with their respective confidence intervals (corresponding Macro-F1 scores in the supplementary material). For each dataset, we perform Welch's t-test between our method and the best performing contender. We observe that InstantEmbedding is remarkably good on these node classification, despite its several approximations and locality restriction. Specifically, on four out of five datasets, no other method is statistically significant above ours, and three of these (PPI, CoCit and YouTube) we achieve the best classification results. In Figure <ref type="figure" target="#fig_2">2</ref>, we study how our hyperparameter, the PPR approximation error , influences both the classification performance, running time, and memory consumption. There is a general sweet spot (around = 10 -5 ) across datasets where InstantEmbedding outperforms competing methods while being orders of magnitude faster. Data on the other datasets is available in Section B.5. For the other datasets, we uniformly sample 80% of the available edges as training (to learn embeddings on), and use the rest for validation (10%) and testing (10%). Over repeated runs, we vary the splits. More details about the experimental design are available in the supplementary material. We report results for each method in in Table <ref type="table" target="#tab_3">4</ref>, which shows average ROC-AUC and confidence intervals for each method. Across the datasets, our proposed method beats all baselines except VERSE, however we do achieve the best performance on YouTube by a statistically significant margin.</p><p>Visualization. Figure <ref type="figure" target="#fig_3">3</ref> presents UMAP <ref type="bibr" target="#b26">(McInnes et al., 2018)</ref> projections on the CoCit dataset, where we grouped together similar conferences. We note that our sublinear approach is especially well suited to visualizing graph data, as visualization algorithms only require a small subset of points (typically downsampling to only thousands) to generate a visualization for datasets.</p><p>The experimental analysis of node classification, link prediction, and visualization show that despite relying on two different approximations (PPR &amp; random projection), InstantEmbedding is able to very quickly produce representations which meet or exceed the state of the art in unsupervised representation learning for graph structure, confirming hypothesis H2. We remark that interestingly InstantEmbedding seems slightly better at node classifications than link prediction. We suspect that the randomization may effectively act as a regularization which is more useful on classification. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">C O N C L U S I O N</head><p>The present work has two main contribution: a) introducing and formally defining the Local Node Embedding problem and b) presenting InstantEmbedding, a highly efficient method that selectively embeds nodes using only local information, effectively solving the aforementioned problem. As existing graph embedding methods require accessing the global graph structure at least once during the representation generating process, the novelty brought by InstantEmbedding is especially impactful in real-world scenarios where graphs outgrow the capabilities of a single machine, and annotated data is scarce or expensive to produce. Embedding selectively only the critical subset of nodes for a task makes many more applications feasible in practice, while reducing the costs for others.</p><p>Furthermore, we show theoretically that our method embeds a single node in space and time sublinear to the size of the graph. We also empirically prove that InstantEmbedding is capable of surpassing state-of-the-art methods, while being many orders of magnitude faster than them -our experiments show that we are over 9,000 times faster on large datasets and on a graph over 1 billion edges we can compute a representation in 80ms.  <ref type="formula">2018</ref>)) Since PPR is right-stochastic and the noise distribution does not depend on j we can decompose the positive and negative terms from the objective of VERSE:</p><formula xml:id="formula_15">A P P E N D I X A P R O O F S A . 1 V E R S E A S M</formula><formula xml:id="formula_16">L = n i=1 n j=1 PPR ij log σ x i x j + b n n i=1 n j =1 log σ -x i x j .</formula><p>Isolating the loss for a pair of vertices i, j:</p><formula xml:id="formula_17">L ij = PPR ij log σ x i x j + b n log σ -x i x j .</formula><p>We substitute z ij = x i x j , use our independence assumption, and solve for</p><formula xml:id="formula_18">∂Lij ∂zij = PPR ij σ(-z ij )- b n σ(z ij ) = 0 to get z ij = log n•PPRij b , hence log(PPR)+log n-log b = XX . A . 2 H A S H K E R N E L</formula><p>Lemma A.2. (restated from Weinberger et al. ( <ref type="formula">2009</ref>)) The hash kernel is unbiased:</p><formula xml:id="formula_19">E h d ∼U d ,hsgn∼U-1,1 H h d ,hsgn (x) H h d ,hsgn (x) = x x Corollary A.2.1. (ref. Lemma 3.</formula><p>2) The space complexity of H h d ,hsgn is O(1) and:</p><formula xml:id="formula_20">E h d ∼U d ,hsgn∼U-1,1 H h d ,hsgn (M)H h d ,hsgn (M) = MM</formula><p>Proof. We note that the space complexity required to store a hash function from an universal family is O(1). Indeed, one can choose and universal hash family such that its elements are uniquely determined by a fixed choice of keys. As an example, the multiplication hash function (Cormen et al. ( <ref type="formula">2009</ref>)) h A (x) = n(xA mod 1)) requires constant memory to store the key A ∈ (0, 1).</p><p>In order to prove the projection provides unbiased dot-products, considering the expectation per each entry, we have:</p><formula xml:id="formula_21">E h d ∼U d ,hsgn∼U-1,1 H h d ,hsgn (M)H h d ,hsgn (M) i,j =E h d ∼U d ,hsgn∼U-1,1 H h d ,hsgn (M i )H h d ,hsgn (M j ) =M i M j From Lemma A.2 = MM i,j</formula><p>which holds for all i, j pairs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A . 3 S PA R S E P E R S O N A L I Z E D PA G E R A N K P R O P E R T I E S</head><p>Theorem A.3. (restated from <ref type="bibr" target="#b3">Andersen et al. (2007)</ref>) Properties of the</p><formula xml:id="formula_22">S PA R S E P E R S O N A L I Z E D PA G E R A N K(v, G, )<label>(3</label></formula><p>) algorithm are as follows. For any starting vector v, and any constant ∈ (0, 1], the algorithm computes an -approximate Personal-izedPageRank vector p. Furthermore the support of p satisfies vol(Supp(p)) ≤ O ( 1 /(1-α) ), and the running time of the algorithm is O( 1 /α ).</p><p>We note here that <ref type="bibr" target="#b3">Andersen et al. (2007)</ref> prove their results for the lazy transition matrix and not the standard transition matrix that we consider here. Nevertheless as discussed in Appendix A.7 switching between the two definitions does not change the asymptotic of their results. <ref type="bibr" target="#b3">Andersen et al. (2007)</ref> Input: node v, graph G, precision , return probability α Output: PPR vector π We now focus our attention to the second part of our algorithm, projecting the sparse PPR vector into the embedding space. For each non-zero entry r j of the PPR vector π, we compute hash functions h d (j), h sgn (j) and max(log(r j * n), 0) in O(1) time. The total number of iterations is equal to the support size of π, i.e. O ( 1 /(1-α) ).</p><formula xml:id="formula_23">Algorithm 3 S PA R S E P E R S O N A L I Z E D PA G E R A N K cf.</formula><formula xml:id="formula_24">1: function S PA R S E P E R S O N A L I Z E D PA G E R A N K(v, G, , α) 2: r ← 0n (sparse) 3: π ← 0n (sparse) 4: r[v] = 1 5: while ∃ w ∈ G, r[w] &gt; × deg(w) do 6: r ← r[w] 7: π[w] ← π[w] + αr 8: r[w] ← (1-α)r 2 9: r[u] ← r[u] + (1-α)r 2 deg(w) , ∀(w,</formula><p>Finally, we note that our algorithm always generates a dense embedding, handling this variable in O(d) time complexity. However, in practice this term is negligible as 1 /e &gt;&gt; d. Summing up the aforementioned bounds we get the total running time of our algorithm:</p><formula xml:id="formula_25">O (d + 1 /α + 1 /(1-α) ) = O (d + 1 /α(1-α) ) A . 6 G L O B A L C O N S I S T E N C Y Theorem A.6. (ref. Theorem 3.5) I N S TA N T E M B E D D I N G(v, G, d, ) output equals G R A P H E M B E D D I N G(G, d, ) v .</formula><p>Proof. We begin by noting that for a fixed parameterization, the S PA R S E P E R S O N A L I Z E D PA G E R A N K routine will compute an unique vector for a given node. Analyzing now the W v,j entry of the embedding matrix generated by G R A P H E M B E D D I N G(G, d, ), we have:</p><formula xml:id="formula_26">W v,j = r k ∈πv h sgn (k) × max(log(r k * n), 0)I[h d (k) = j]</formula><p>The entire computation is deterministic and directly dependent only on the hash functions of choice and the indexing of the graph. By fixing the two hash functions h d and h sgn , we also have that</p><formula xml:id="formula_27">W v,j = w v j where w v = I N S TA N T E M B E D D I N G(v, G, d, ), ∀v ∈ [0..n -1], j ∈ [0..d -1]. A . 7 R E PA R A M E T E R I Z AT I O N</formula><p>We note that <ref type="bibr" target="#b3">Andersen et al. (2007)</ref> in their paper use a lazy random walk transition matrix. Furthermore in their analysis they also consider a lazy random walk. Nevertheless, this does not affect the asymptotic of their results, in fact in Proposition 8.1 in <ref type="bibr" target="#b3">Andersen et al. (2007)</ref> they show that the two definition are equivalent up to a small change in α. More precisely, a standard personalized PageRank with decay factor α is equivalent to a lazy random walk with decay factor α 2-α . So all the asymptotic of the bounds in <ref type="bibr" target="#b3">Andersen et al. (2007)</ref> apply also to the classic random walk setting that we study in this paper.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B E X P E R I M E N T S B . 1 M E T H O D S D E S C R I P T I O N S</head><p>We ran all baselines on 128 and 512 embedding dimensions. As we expect our method to perform better as we increase the projection size, we performed an auxiliary test with embedding size 2048 for InstantEmbedding. We also make the observation that learning-based methods generally do not scale well with an increase of the embedding space. The following are the description and individual parameterization for each method.</p><p>• DeepWalk <ref type="bibr" target="#b30">(Perozzi et al., 2014)</ref>: Constructs node-contexts from random-walks and learns representations by increasing the nodes co-occurrence likelihood by modeling the posterior distribution with hierarchical softmax. We set the number of walks per node and their length to 80, and context windows size to 10. • Node2Vec <ref type="bibr" target="#b13">(Grover &amp; Leskovec, 2016)</ref>: Samples random paths in the graph similar to DeepWalk, while adding two parameters, p and q, controlling the behaviour of the walk.</p><p>Estimates the likelihood through negative sampling. We set again the number of walks per node and their length to 80 and windows size 10, number of negative samples to 5 per node and p = q = 1. • Verse <ref type="bibr" target="#b35">(Tsitsulin et al., 2018)</ref>: Minimizes objective through gradient descent, by sampling nodes from PPR random walks and negatives samples from a noise distribution. We train it over 10 5 epochs and set the stopping probability to 0.15. • FastRP <ref type="bibr" target="#b5">(Chen et al., 2019)</ref>: Computes a high-order similarity matrix as a linear combination of multiple-steps transitions matrices and projects it into an embedding space through a sparse random matrix. We fix the linear coefficients to [0, 0, 1, 6] and the normalization parameter -0.65. • InstantEmbedding (this work): Approximate per-node PPR vectors with return probability α and precision , which are projected into the embedding space using two fixed hash functions. In all our experiments, we set α = 0.15 and &gt; 1 n , where n is the number of nodes in the graph.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B . 2 D ATA S E T D E S C R I P T I O N S</head><p>The graph datasets we used in our experiments are as follows:</p><p>• PPI <ref type="bibr" target="#b33">(Stark et al., 2006)</ref>: Subgraph of the protein-protein interaction for Homo Sapiens species and ground-truth labels represented by biological states. Data originally processed by <ref type="bibr" target="#b13">Grover &amp; Leskovec (2016)</ref>. • Blogcatalog (Tang &amp; Liu, 2010): Network of social interactions between bloggers. Authors specify categories for their blog, which we use as labels. • Microsoft Academic Graph (MAG) (mag, 2016): Collection of scientific papers, authors, journals and conferences. Two distinct subgraphs were originally processed by <ref type="bibr" target="#b35">Tsitsulin et al. (2018)</ref>, based on co-authorship (CoAuthor) and co-citations (CoCit) relations. For the latter one, labels are represented by the unique conference where the paper was published.</p><p>• Flickr (Tang &amp; Liu, 2010): Contact network of users within 195 randomly sampled interest groups.</p><p>• YouTube (Tang &amp; Liu, 2010) Social network of users on the video-sharing platform. Labels are represented by group of interests with at least 500 subscribers.</p><p>• Amazon2M <ref type="bibr" target="#b6">(Chiang et al., 2019)</ref>: Network of products where edges are represented by co-purchased relations.</p><p>• Orkut <ref type="bibr" target="#b40">(Yang &amp; Leskovec, 2015)</ref>: Social network where users can create and join groups, used at ground-truth labels. We followed the approach of <ref type="bibr" target="#b35">Tsitsulin et al. (2018)</ref> and selected only the top 50 largest groups.</p><p>• Friendster <ref type="bibr" target="#b40">(Yang &amp; Leskovec, 2015)</ref>: Social network where users can form friendship edge each other. It also allows users form a group which other members can then join.</p><formula xml:id="formula_28">B . 3 R U N T I M E A N A LY S I S B . 3 . 1 G E N E R A L S E T U P</formula><p>For the runtime analysis we use the same parameterization as described in B.1 for all methods. In the special case of InstantEmbedding, we dynamically load into memory just the required subgraph in order to approximate the PPR vector for a single node. We individually ran each method on a virtual machine hosted on the Google Cloud Platform, with a 2.3GHz 16-core CPU and 128GB of RAM.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B . 3 . 2 R U N T I M E : S P E E D</head><p>All methods, except the single-threaded FastRP, leveraged the 16 cores of our machines. Some methods did not complete all the tasks: none ran on Friendster; node2vec was unable to run on Amazon2M and Orkut; FastRP did not run on Orkut specifically for a 512-dimension embedding.</p><p>We note that all reported numbers are real execution times, taking into account also loading the data in memory. When computing InstantEmbedding for multiple nodes, the average time-per node is expected to decrease, as less I/O operations are required. The detailed results are shown in Table <ref type="table" target="#tab_4">5</ref>. The methods that failed to complete in the Running Times section are also marked here accordingly. We note that due to the local nature of our method, we can consistently keep the average memory usage under 1MB for all datasets. This observation reinforces the sublinear guarantees of our algorithm when being within a good -regime, as stated in Lemma A.4. The detailed results are shown in Table <ref type="table">6</ref>.</p><p>Table <ref type="table">6</ref>: Peak memory used (in MB) to generate a 128-size and 512-size node embedding for each method and each dataset. Each experiment was run once for all the methods (given their global property) except for InstantEmbedding for which we ran the experiment 1000 times (given the method's locality property) and report the mean peak memory consumption with the respective standard deviation. bold -improvement over the baselines; DNC -Did Not Complete.  These tasks aim to measure the semantic information preserved by the embeddings, through the means of the generalization capacity of a simple classifier, trained on a small fraction of labeled representations. All methods use 512 embedding dimensions. For each methods, we perform three different splits of the data, and for our method we generate five embeddings, each time sampling a different projection matrix. We use a logistic regression (LR) classifier from using Scikit-Learn <ref type="bibr" target="#b29">(Pedregosa et al., 2011)</ref> to train the classifiers. In the case of multi-class classification (we follow <ref type="bibr" target="#b30">Perozzi et al. (2014)</ref> and use a one-vs-rest LR ensemble) -we assume the number of correct labels K is known and select the top K probabilities from the ensemble. To simulate the sparsity of labels in the real-wold, we train on 10% of the available labels for PPI and Blogcatalog and only 1% for the rest of them, while testing on the rest.</p><p>We treat CoCit as a multi-class problem as each paper is associated an unique conference were it was published. Also, for Orkut we follow the approach from <ref type="bibr" target="#b35">Tsitsulin et al. (2018)</ref> and select only the top 50 largest communities, while further filtering nodes belonging to more than one community. In these two cases, are fitting a simply logistic regression model on the available labeled nodes. The other datasets have multiple labels per node, and we are using a One-vs-The-Rest ensemble. When evaluating, we assume the number of correct labels, K, is known and select the top K probabilities from the ensemble. For each methods, we are performing three different splits of the data, and for our method we generate five embeddings, sampling different projection matrices.</p><p>We report the average and 90% confidence interval for micro and macro F1-scores at different fractions of known labels. For this task we create edge embeddings by combining node representations, and treat the problem as a binary classification. We observed that different strategies for aggregating embeddings could maximize the performance of different methods under evaluation, so we conducted an in-depth investigation in order for the fairest possible evaluation. Specifically, for two node embeddings w and ŵ we adopt the following strategies for creating edge representations:</p><p>1. dot-product: w ŵ 2. cosine distance: w ŵ w ŵ</p><p>3. hadamard product: w ŵ 4. element-wise average: 1 2 (w + ŵ) 5. L1 element-wise distance: |w -ŵ| 6. L2 element-wise distance (w -ŵ) (w -ŵ)</p><p>While the first two strategies directly create a ranking from two embeddings, for the other ones we train a logistic regression on examples from the validation set. In all cases, a likelihood scalar value will be attributed to all edges, and we report their ROC-AUC score on the test set.</p><p>Taking into account that different embedding methods may determine a specific topology of the embedding space, that may in turn favour a specific edge aggregation method, for each method we consider only the strategy that consistently provides good results on all datasets. This ensures that all methods can be objectively compared to one another, independent of the particularities of induced embedding space geometry.</p><p>The following tables show detailed analysis of link prediction results for BlogCatalog (Table <ref type="table" target="#tab_7">12</ref>) and CoAuthor (Table <ref type="table" target="#tab_8">13</ref>).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B . 5 E P S I L O N I N F L U E N C E</head><p>In order to gain insight into the effect of on the behaviour of our method, we test 6 values in the range of [10 -1 , ..., 10 -6 ]. We note that the decrease of is strongly correlated with a better classification performance, but also to a larger computational overhead. The only apparent exception seems to be the Micro-F1 score on the Blogcatalog dataset, which drops suddenly when = 10 -6 . We argue that this is due to the fact that more probability mass is dispersed further away from the central node, but the max operator cuts that information away (as the number of nodes is small), and thus the resulting embedding is actually less accurate.           <ref type="bibr">et al., 2018)</ref> projections on the CoCit dataset, where we grouped together similar conferences. We note that our sublinear approach is especially well suited to visualizing graph data, as visualization algorithms (such as t-SNE or UMAP) only require a small subset of points (typically downsampling to only thousands) to generate a visualization for datasets.  </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>Lemma 3.3. The I N S TA N T E M B E D D I N G(v, G, d, ) algorithm computes the local embedding of a node v by exploring at most the O ( 1 /(1-α) ) nodes in the neighborhood of v.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 1 :</head><label>1</label><figDesc>Figure1: Required (a) running time and (b) memory consumption to generate a node embedding (d=512) based on the edge count of each graph (|E|), with the best line fit drawn. Our method is over 9,000 times faster than FastRP and uses over 8,000 times less memory than VERSE, the next most efficient baselines respectively, in the largest graph that these baseline methods can process.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 2 :</head><label>2</label><figDesc>Figure2: The impact of the choice of on the quality of the resulting embedding (through the Micro-F1 score), average running time and peak memory increase for the YouTube dataset. Link prediction. We conduct link prediction experiments to assess the capability of the produced representations to model hidden connections in the graph. For the dataset which has temporal information (CoAuthor), we select data until 2014 as training data, and split co-authorship links between 2015-2016 in two balanced partitions that we use as validation and test. For the other datasets, we uniformly sample 80% of the available edges as training (to learn embeddings on), and use the rest for validation (10%) and testing (10%). Over repeated runs, we vary the splits. More details about the experimental design are available in the supplementary material. We report results for each method in in Table4, which shows average ROC-AUC and confidence intervals for each method. Across the datasets, our proposed method beats all baselines except VERSE, however we do achieve the best performance on YouTube by a statistically significant margin.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: UMAP visualization of CoCit (d=512). Research areas ( ML, DM, DB, IR).</figDesc><graphic coords="8,207.01,636.67,84.73,63.69" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head></head><label></label><figDesc>AT R I X FA C T O R I Z AT I O N Lemma A.1. (restated from Tsitsulin et al. (2020), (ref. Lemma 3.1)) VERSE implicitly factorizes the matrix log(PPR) + log n -log b into XX , where n is the number of nodes in the graph and b is the number of negative samples. Proof. (from Tsitsulin et al. (2020), following Levy &amp; Goldberg (2014); Qiu et al. (</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head></head><label></label><figDesc>N S TA N T E M B E D D I N G L O C A L I T Y Lemma A.4. (ref. Lemma 3.3) The I N S TA N T E M B E D D I N G(v, G, d, ) algorithm computes the local embedding of a node v by exploring at most the O ( 1 /(1-α) ) nodes in the neighborhood of v.Proof. First recall that the only operation that explores the graph inI N S TA N T E M B E D D I N G is S PA R S E P E R S O N A L I Z E D PA G E R A N K,which explores a node w in the graph if and only if a neighbor of w has positive score and so it is part of the support of π. Furthermore at the beginning of the algorithm only v is active and executes a push operation. So it follows that every node explored by the algorithm is connected to v via a path composed only by the nodes with π score strictly larger than 0. So its distance from v is bounded by the support of the π vector that is O ( 1 /(1-α) ) cf. Theorem A.3. A . 5 I N S TA N T E M B E D D I N G C O M P L E X I T Y Theorem A.5. (ref. Theorem 3.4) The I N S TA N T E M B E D D I N G(v, G, d, ) algorithm has running time O (d + 1 /α(1-α) ). Proof. The first step of the I N S TA N T E M B E D D I N G is computing the approximate Personalized PageRank vector. As noted in Theorem A.3, this can be done in time O ( 1 /α ).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>B . 4</head><label>4</label><figDesc>E M B E D D I N G Q U A L I T Y B . 4 . 1 Q U A L I T Y: N O D E C L A S S I F I C AT I O N</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Effect of on the PPI dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Effect of on the BlogCatalog dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: Effect of on the CoCit dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: Effect of on the Flickr dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_13"><head>Figure 8 :</head><label>8</label><figDesc>Figure 8: Effect of on the YouTube dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_14"><head></head><label></label><figDesc>Figure3presents multiple UMAP<ref type="bibr" target="#b26">(McInnes et al., 2018)</ref> projections on the CoCit dataset, where we grouped together similar conferences. We note that our sublinear approach is especially well suited to visualizing graph data, as visualization algorithms (such as t-SNE or UMAP) only require a small subset of points (typically downsampling to only thousands) to generate a visualization for datasets.</figDesc><graphic coords="23,291.59,362.41,211.89,159.27" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_16"><head>Figure 9 :</head><label>9</label><figDesc>Figure 9: UMAP visualization of CoCit (d=512). Research areas ( ML, DM, DB, IR).</figDesc><graphic coords="23,93.59,517.72,211.89,159.27" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Related work in terms of desirable properties and complexities. Analysis in Section 3.2.1.</figDesc><table><row><cell></cell><cell></cell><cell cols="2">Properties</cell><cell></cell><cell cols="3">Complexities</cell></row><row><cell>method</cell><cell>Local</cell><cell>No Global</cell><cell>Unsupervised</cell><cell>Attribute-</cell><cell cols="2">Time O</cell><cell>Memory O</cell></row><row><cell cols="2">Inference</cell><cell>Training</cell><cell>Embedding</cell><cell>Free</cell><cell></cell><cell></cell></row><row><cell>DeepWalk</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">dn log n</cell><cell>dn + m</cell></row><row><cell>node2vec</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>dbn</cell><cell></cell><cell>n 3</cell></row><row><cell>VERSE FastRP</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>dbn dm √</cell><cell>n</cell><cell>dn + m dn + m</cell></row><row><cell>GCN</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>dm</cell><cell></cell><cell>dn + m</cell></row><row><cell>DGI</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>dm</cell><cell></cell><cell>dn + m</cell></row><row><cell>InstantEmbedding</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">1 α(1-α) + d</cell><cell>1 α(1-α) + d</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Dataset attributes: size of vertices |V |, edges |E|, labeled vertices |S|.</figDesc><table><row><cell>Dataset</cell><cell>|V |</cell><cell>|E|</cell><cell>|S|</cell></row><row><cell>PPI</cell><cell>3.8k</cell><cell>38k</cell><cell>3.8k</cell></row><row><cell>BlogCatalog</cell><cell>10k</cell><cell>334k</cell><cell>10k</cell></row><row><cell>CoCit</cell><cell>44k</cell><cell>195k</cell><cell>44k</cell></row><row><cell>CoAuthor</cell><cell>52k</cell><cell>356k</cell><cell>-</cell></row><row><cell>Flickr</cell><cell>81k</cell><cell>5.9M</cell><cell>81k</cell></row><row><cell>YouTube</cell><cell>1.1M</cell><cell>3.0M</cell><cell>32k</cell></row><row><cell>Amazon2M</cell><cell>2.4M</cell><cell>62M</cell><cell>-</cell></row><row><cell>Orkut</cell><cell>3.0M</cell><cell cols="2">117M 110k</cell></row><row><cell>Friendster</cell><cell cols="2">66M 1806M</cell><cell>-</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 :</head><label>3</label><figDesc>Average Micro-F1 classification scores and confidence intervals. Our method is marked as follows: * -above baselines; bold -no other method is statistically significant better. ± 0.64 32.48 ± 0.35 37.44 ± 0.67 31.22 ± 0.38 38.69 ± 1.17 87.67 ± 0.23 node2vec 15.03 ± 3.18 33.67 ± 0.93 38.35 ± 1.75 29.80 ± 0.67 36.02 ± 2.01 DNC VERSE 12.59 ± 2.54 24.64 ± 0.85 38.22 ± 1.34 25.22 ± 0.20 36.74 ± 1.05 81.52 ± 1.11 FastRP 15.74 ± 2.19 33.54 ± 0.96 26.03 ± 2.10 29.85 ± 0.26 22.83 ± 0.41</figDesc><table><row><cell>Method \ Dataset</cell><cell>PPI</cell><cell>BlogCatalog</cell><cell>CoCit</cell><cell>Flickr</cell><cell>YouTube</cell><cell>Orkut</cell></row><row><cell>DeepWalk</cell><cell>16.08</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table><note><p>DNC InstantEmbedding 17.67* ± 1.22 33.36 ± 0.67 39.95* ± 0.67 30.43 ± 0.79 40.04* ± 0.97 76.83 ± 1.16</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 4 :</head><label>4</label><figDesc>Average ROC-AUC scores and confidence intervals for the link prediction task. Our method is marked as follows: * -above baselines; bold -no other method is statistically significant better.</figDesc><table><row><cell>Method \ Dataset</cell><cell>CoAuthor</cell><cell>Blogcatalog</cell><cell>Youtube</cell><cell>Amazon2M</cell></row><row><cell>DeepWalk</cell><cell>88.43 ± 1.08</cell><cell>91.41 ± 0.67</cell><cell>82.17 ± 1.02</cell><cell>98.79 ± 0.41</cell></row><row><cell>node2vec</cell><cell>86.09 ± 0.85</cell><cell>92.18 ± 0.12</cell><cell>81.27 ± 1.58</cell><cell>DNC</cell></row><row><cell>VERSE</cell><cell>92.75 ± 0.73</cell><cell>93.42 ± 0.35</cell><cell>80.03 ± 0.99</cell><cell>99.67 ± 0.18</cell></row><row><cell>FastRP</cell><cell>82.19 ± 2.22</cell><cell>88.68 ± 0.70</cell><cell>76.30 ± 1.46</cell><cell>92.12 ± 0.61</cell></row><row><cell>InstantEmbedding</cell><cell>90.44 ± 0.48</cell><cell>92.74 ± 0.60</cell><cell>82.89* ± 0.83</cell><cell>99.15 ± 0.18</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 5 :</head><label>5</label><figDesc>Average run time (in seconds) to generate a 128-size and a 512-size node embedding for each method and each dataset with the respective standard deviation. Each experiment was run 5 times for all the methods (given their global property) except for InstantEmbedding for which we ran the experiment 1000 times (given the method's locality property). bold -improvement over the baselines; DNC -Did Not Complete.</figDesc><table><row><cell></cell><cell></cell><cell>InstantEmbedding</cell><cell>DeepWalk</cell><cell>node2vec</cell><cell>VERSE</cell><cell>FastRP</cell></row><row><cell></cell><cell>128</cell><cell>0.00735 ± 0.00130</cell><cell>92.74 ± 0.68</cell><cell>12.90 ± 0.26</cell><cell>40.05 ± 0.08</cell><cell>1.42 ± 0.02</cell></row><row><cell>PPI</cell><cell>512</cell><cell>0.00751 ± 0.00137</cell><cell>254.31 ± 7.68</cell><cell>24.82 ± 0.17</cell><cell>87.53 ± 0.24</cell><cell>1.81 ± 0.02</cell></row><row><cell></cell><cell>128</cell><cell>0.00627 ± 0.00221</cell><cell>349.66 ± 30.03</cell><cell>37.10 ± 0.19</cell><cell>109.15 ± 1.20</cell><cell>3.03 ± 0.08</cell></row><row><cell>BlogCatalog</cell><cell>512</cell><cell>0.00826 ± 0.00436</cell><cell>711.76 ± 17.81</cell><cell>67.86 ± 0.11</cell><cell>198.75 ± 1.68</cell><cell>5.62 ± 0.15</cell></row><row><cell></cell><cell>128</cell><cell>0.01993 ± 0.01042</cell><cell>1,015.44 ± 3.23</cell><cell>149.53 ± 1.14</cell><cell>427.06 ± 4.23</cell><cell>3.51 ± 0.12</cell></row><row><cell>CoCit</cell><cell>512</cell><cell>0.02019 ± 0.01048</cell><cell>2,766.99 ± 5.71</cell><cell>280.35 ± 0.82</cell><cell>904.53 ± 7.89</cell><cell>7.21 ± 0.72</cell></row><row><cell></cell><cell>128</cell><cell>0.01612 ± 0.00733</cell><cell>1,334.55 ± 10.84</cell><cell>189.30 ± 11.78</cell><cell>468.47 ± 1.88</cell><cell>2.71 ± 0.02</cell></row><row><cell>CoAuthor</cell><cell>512</cell><cell>0.01630 ± 0.00761</cell><cell>3,561.27 ± 27.86</cell><cell>339.01 ± 1.04</cell><cell>1,029.88 ± 9.96</cell><cell>5.50 ± 0.08</cell></row><row><cell></cell><cell>128</cell><cell>0.02042 ± 0.01140</cell><cell>2,519.22 ± 121.60</cell><cell>564.71 ± 5.01</cell><cell>1,038.87 ± 11.27</cell><cell>38.41 ± 0.42</cell></row><row><cell>Flickr</cell><cell>512</cell><cell>0.02051 ± 0.01128</cell><cell>6,035.50 ± 102.25</cell><cell>802.64 ± 4.95</cell><cell>1,863.41 ± 39.82</cell><cell>79.88 ± 2.00</cell></row><row><cell></cell><cell>128</cell><cell>0.06065 ± 0.04521</cell><cell>27,249.93 ± 1,383.18</cell><cell>4,301.05 ± 21.36</cell><cell>16,618.20 ± 282.96</cell><cell>30.44 ± 1.14</cell></row><row><cell>YouTube</cell><cell>512</cell><cell>0.06128 ± 0.04534</cell><cell>81,168.81 ± 2,752.42</cell><cell>7,600.46 ± 64.14</cell><cell>31,101.92 ± 121.03</cell><cell>85.52 ± 4.81</cell></row><row><cell></cell><cell>128</cell><cell>0.09746 ± 0.05306</cell><cell>63,525.32 ± 164.83</cell><cell>DNC</cell><cell>38,627.77 ± 4,058.04</cell><cell>450.84 ± 21.07</cell></row><row><cell>Amazon2M</cell><cell>512</cell><cell>0.09715 ± 0.05187</cell><cell>173,966.97 ± 1,094.66</cell><cell>DNC</cell><cell>73,993.64 ± 2,110.29</cell><cell>940.88 ± 31.16</cell></row><row><cell></cell><cell>128</cell><cell>0.17192 ± 0.04782</cell><cell>94,217.21 ± 1,121.94</cell><cell>DNC</cell><cell>50,516.07 ± 4,082.24</cell><cell>843.46 ± 17.69</cell></row><row><cell>Orkut</cell><cell>512</cell><cell>0.17231 ± 0.04806</cell><cell>219,003.92 ± 781.12</cell><cell>DNC</cell><cell>84,468.50 ± 3,407.44</cell><cell>DNC</cell></row><row><cell></cell><cell>128</cell><cell>0.07910 ± 0.04084</cell><cell>DNC</cell><cell>DNC</cell><cell>DNC</cell><cell>DNC</cell></row><row><cell>Friendster</cell><cell>512</cell><cell>0.07930 ± 0.04090</cell><cell>DNC</cell><cell>DNC</cell><cell>DNC</cell><cell>DNC</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 11 :</head><label>11</label><figDesc>Classification micro and macro F1-scores for YouTube.</figDesc><table><row><cell>Labeled Nodes</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 12 :</head><label>12</label><figDesc>Link-prediction ROC-AUC scores for Blogcatalog. For each method, we highlight the aggregation function that consistently performs good on all datasets. ± 0.38 95.10 ± 0.67 85.21 ± 0.88 75.74 ± 0.85 75.92 ± 0.73 94.07 ± 0.47 512 93.42 ± 0.35 93.40 ± 0.67 61.48 ± 0.88 91.52 ± 0.26 92.17 ± 0.61 93.14 ± 0.58 FastRP 128 73.54 ± 0.23 68.16 ± 0.55 76.32 ± 1.90 85.78 ± 2.31 82.46 ± 2.01 89.25 ± 0.85 512 78.34 ± 2.80 70.67 ± 0.79 79.25 ± 1.02 88.68 ± 0.70 84.56 ± 0.76 90.99 ± 0.55 ± 1.48 84.95 ± 4.19 51.57 ± 1.14 72.52 ± 1.71 64.39 ± 1.37 87.65 ± 0.70 512 92.74 ± 0.60 90.77 ± 1.51 51.75 ± 1.16 83.07 ± 1.00 70.39 ± 1.11 90.63 ± 0.56 2048 93.84 ± 0.33 93.44 ± 0.53 51.35 ± 1.18 88.95 ± 0.85 77.39 ± 1.02 92.40 ± 0.42</figDesc><table><row><cell>Aggregation Function</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 13 :</head><label>13</label><figDesc>Temporal link-prediction ROC-AUC scores for CoAuthor. For each method, we highlight the aggregation function that consistently performs good on all datasets. ± 0.88 74.05 ± 1.58 83.5 ± 0.12 86.99 ± 0.09 87.21 ± 0.73 73.64 ± 1.72 512 78.42 ± 0.53 76.40 ± 1.87 82.05 ± 1.20 87.85 ± 0.29 88.43 ± 1.08 79.56 ± 0.70 node2vec 128 80.18 ± 0.67 45.00 ± 1.34 54.59 ± 0.88 70.14 ± 1.31 70.32 ± 0.58 79.07 ± 0.53 512 86.09 ± 0.85 45.19 ± 0.20 42.99 ± 1.66 72.41 ± 1.84 72.70 ± 1.43 84.00 ± 0.38 VERSE 128 93.16 ± 0.44 92.74 ± 0.15 90.85 ± 0.20 79.24 ± 1.49 80.27 ± 0.41 86.50 ± 0.47 512 92.75 ± 0.73 92.36 ± 1.08 90.33 ± 0.20 72.58 ± 1.17 73.82 ± 1.49 86.69 ± 1.02 FastRP 128 60.23 ± 1.78 59.97 ± 1.61 65.08 ± 0.93 78.51 ± 0.64 77.66 ± 0.23 57.69 ± 1.90 512 61.16 ± 1.75 61.92 ± 0.85 70.12 ± 0.38 82.19 ± 2.22 78.51 ± 1.99 63.87 ± 1.49 Instant Embedding 128 89.41 ± 0.67 88.88 ± 0.79 89.15 ± 0.63 66.19 ± 1.92 66.78 ± 1.90 83.22 ± 0.86 512 90.44 ± 0.48 90.10 ± 0.69 90.60 ± 0.55 76.50 ± 1.44 75.76 ± 1.41 85.64 ± 0.67 2048 89.45 ± 0.62 90.38 ± 0.60 90.84 ± 0.44 88.42 ± 0.48 84.83 ± 0.67 87.67 ± 1.07</figDesc><table><row><cell>Aggregation Function</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>https://github.com/google-research/google-research/tree/master/graph embedding/instant embedding</p></note>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Microsoft academic graph (mag) -kkd cup</title>
+		<ptr target="https://www.kdd.org/kdd-cup/view/kdd-cup-2016/Data" />
+		<imprint>
+			<date type="published" when="2016">2016. 2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Watch your step: Learning node embeddings via graph attention</title>
+		<author>
+			<persName><forename type="first">Sami</forename><surname>Abu-El-Haija</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rami</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><forename type="middle">A</forename><surname>Alemi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="9180" to="9190" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Database-friendly random projections: Johnson-lindenstrauss with binary coins</title>
+		<author>
+			<persName><forename type="first">Dimitris</forename><surname>Achlioptas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of computer and System Sciences</title>
+		<imprint>
+			<biblScope unit="volume">66</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="671" to="687" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Using pagerank to locally partition a graph</title>
+		<author>
+			<persName><forename type="first">Reid</forename><surname>Andersen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fan</forename><surname>Chung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Lang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Internet Mathematics</title>
+		<imprint>
+			<biblScope unit="volume">4</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="35" to="64" />
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<author>
+			<persName><forename type="first">Haochen</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rami</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Skiena</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1808.02590</idno>
+		<title level="m">A tutorial on network embeddings</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Fast and accurate network embeddings via very sparse random projection</title>
+		<author>
+			<persName><forename type="first">Haochen</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yingtao</forename><surname>Syed Fahad Sultan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Muhao</forename><surname>Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Skiena</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th ACM International Conference on Information and Knowledge Management</title>
+		<meeting>the 28th ACM International Conference on Information and Knowledge Management</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="399" to="408" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Cluster-gcn: An efficient algorithm for training deep and large graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Wei-Lin</forename><surname>Chiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuanqing</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Si</forename><surname>Si</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samy</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cho-Jui</forename><surname>Hsieh</surname></persName>
+		</author>
+		<ptr target="http://web.cs.ucla.edu/˜chohsieh/data/Amazon2M.tar.gz" />
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD)</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Testing graph clusterability: Algorithms and lower bounds</title>
+		<author>
+			<persName><forename type="first">Ashish</forename><surname>Chiplunkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Kapralov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanjeev</forename><surname>Khanna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aida</forename><surname>Mousavifar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuval</forename><surname>Peres</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2018 IEEE 59th Annual Symposium on Foundations of Computer Science (FOCS)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="497" to="508" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<author>
+			<persName><forename type="first">Charles</forename><forename type="middle">E</forename><surname>Thomas H Cormen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronald</forename><forename type="middle">L</forename><surname>Leiserson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clifford</forename><surname>Rivest</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Stein</surname></persName>
+		</author>
+		<title level="m">Introduction to algorithms</title>
+		<imprint>
+			<publisher>MIT press</publisher>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Testing expansion in bounded-degree graphs</title>
+		<author>
+			<persName><forename type="first">Artur</forename><surname>Czumaj</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christian</forename><surname>Sohler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Combinatorics, Probability and Computing</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="issue">5-6</biblScope>
+			<biblScope unit="page" from="693" to="709" />
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Testing cluster structure of graphs</title>
+		<author>
+			<persName><forename type="first">Artur</forename><surname>Czumaj</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christian</forename><surname>Sohler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the forty-seventh annual ACM symposium on Theory of Computing</title>
+		<meeting>the forty-seventh annual ACM symposium on Theory of Computing</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="723" to="732" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">A sparse johnson: Lindenstrauss transform</title>
+		<author>
+			<persName><forename type="first">Anirban</forename><surname>Dasgupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ravi</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tamás</forename><surname>Sarlós</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the forty-second ACM symposium on Theory of computing</title>
+		<meeting>the forty-second ACM symposium on Theory of computing</meeting>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="341" to="350" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">On node features for graph neural networks</title>
+		<author>
+			<persName><forename type="first">Chi Thang</forename><surname>Duong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thanh</forename><forename type="middle">Dat</forename><surname>Hoang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ha</forename><surname>The</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hien</forename><surname>Dang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quoc</forename><surname>Viet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hung</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karl</forename><surname>Aberer</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1911.08795</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">node2vec: Scalable feature learning for networks</title>
+		<author>
+			<persName><forename type="first">Aditya</forename><surname>Grover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the 22nd ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="855" to="864" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Wtf: The who to follow service at twitter</title>
+		<author>
+			<persName><forename type="first">Pankaj</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ashish</forename><surname>Goel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aneesh</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dong</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Reza</forename><surname>Zadeh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd international conference on World Wide Web</title>
+		<meeting>the 22nd international conference on World Wide Web</meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="505" to="514" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Noise-contrastive estimation: A new estimation principle for unnormalized statistical models</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Gutmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aapo</forename><surname>Hyvärinen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirteenth International Conference on Artificial Intelligence and Statistics</title>
+		<meeting>the Thirteenth International Conference on Artificial Intelligence and Statistics</meeting>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="297" to="304" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Neural collaborative filtering</title>
+		<author>
+			<persName><forename type="first">Xiangnan</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lizi</forename><surname>Liao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanwang</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liqiang</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xia</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tat-Seng</forename><surname>Chua</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th international conference on world wide web</title>
+		<meeting>the 26th international conference on world wide web</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="173" to="182" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Lightgcn: Simplifying and powering graph convolution network for recommendation</title>
+		<author>
+			<persName><forename type="first">Xiangnan</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kuan</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yongdong</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Wang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2002.02126</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Scaling personalized web search</title>
+		<author>
+			<persName><forename type="first">Glen</forename><surname>Jeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jennifer</forename><surname>Widom</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+			<publisher>WWW</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Testing expansion in bounded degree graphs</title>
+		<author>
+			<persName><forename type="first">Satyen</forename><surname>Kale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Seshadhri</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="527" to="538" />
+		</imprint>
+	</monogr>
+	<note>35th ICALP</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1609.02907</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Combining neural networks with personalized pagerank for classification on graphs</title>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Klicpera</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aleksandar</forename><surname>Bojchevski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Günnemann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Multidimensional scaling by optimizing goodness of fit to a nonmetric hypothesis</title>
+		<author>
+			<persName><surname>Joseph</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Psychometrika</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="27" />
+			<date type="published" when="1964">1964</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Neural word embedding as implicit matrix factorization</title>
+		<author>
+			<persName><forename type="first">Omer</forename><surname>Levy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoav</forename><surname>Goldberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="2177" to="2185" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Fast-ppr: Scaling personalized pagerank estimation for large graphs</title>
+		<author>
+			<persName><forename type="first">Siddhartha</forename><surname>Peter A Lofgren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ashish</forename><surname>Banerjee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Goel</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Seshadhri</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1436" to="1445" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Visualizing data using t-sne</title>
+		<author>
+			<persName><forename type="first">Laurens</forename><surname>Van Der Maaten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of machine learning research</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="2579" to="2605" />
+			<date type="published" when="2008-11">Nov. 2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Umap: Uniform manifold approximation and projection</title>
+		<author>
+			<persName><forename type="first">Leland</forename><surname>Mcinnes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Healy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nathaniel</forename><surname>Saul</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lukas</forename><surname>Großberger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Open Source Software</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Distributed representations of words and phrases and their compositionality</title>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Greg</forename><forename type="middle">S</forename><surname>Corrado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeff</forename><surname>Dean</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">C</forename><forename type="middle">J C</forename><surname>Burges</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">L</forename><surname>Bottou</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Z</forename><surname>Ghahramani</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><forename type="middle">Q</forename><surname>Weinberger</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">26</biblScope>
+			<biblScope unit="page" from="3111" to="3119" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Asymmetric transitivity preserving graph embedding</title>
+		<author>
+			<persName><forename type="first">Mingdong</forename><surname>Ou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Pei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ziwei</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenwu</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the 22nd ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="1105" to="1114" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Scikit-learn: Machine learning in Python</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Pedregosa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Varoquaux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gramfort</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Michel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Thirion</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Grisel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Blondel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Prettenhofer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Weiss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Dubourg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Vanderplas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Passos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Cournapeau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Brucher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Perrot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Duchesnay</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="page" from="2825" to="2830" />
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Deepwalk: Online learning of social representations</title>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rami</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Skiena</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="701" to="710" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Network embedding as matrix factorization: Unifying deepwalk, line, pte, and node2vec</title>
+		<author>
+			<persName><forename type="first">Jiezhong</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kuansan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Eleventh ACM International Conference on Web Search and Data Mining</title>
+		<meeting>the Eleventh ACM International Conference on Web Search and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="459" to="467" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Collaborative filtering recommender systems</title>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Schafer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Frankowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jon</forename><surname>Herlocker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shilad</forename><surname>Sen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The adaptive web</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="291" to="324" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Biogrid: a general repository for interaction datasets</title>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Stark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bobby-Joe</forename><surname>Breitkreutz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Teresa</forename><surname>Reguly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lorrie</forename><surname>Boucher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ashton</forename><surname>Breitkreutz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Tyers</surname></persName>
+		</author>
+		<ptr target="https://snap.stanford.edu/node2vec/Homo_sapiens.mat" />
+	</analytic>
+	<monogr>
+		<title level="j">Nucleic acids research</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+	<note>suppl 1): D535-D539</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Lei Tang and Huan Liu. Social dimension approach to classification in large-scale networks</title>
+		<author>
+			<persName><forename type="first">Jukka</forename><surname>Suomela</surname></persName>
+		</author>
+		<ptr target="http://leitang.net/social_dimension.html" />
+	</analytic>
+	<monogr>
+		<title level="j">ACM Computing Surveys (CSUR)</title>
+		<imprint>
+			<biblScope unit="volume">45</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="1" to="40" />
+			<date type="published" when="2010">2013. 2010</date>
+		</imprint>
+	</monogr>
+	<note>Survey of local algorithms</note>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Verse: Versatile graph embeddings from similarity measures</title>
+		<author>
+			<persName><forename type="first">Anton</forename><surname>Tsitsulin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Davide</forename><surname>Mottin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Panagiotis</forename><surname>Karras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emmanuel</forename><surname>Müller</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 World Wide Web Conference</title>
+		<meeting>the 2018 World Wide Web Conference</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="539" to="548" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<monogr>
+		<author>
+			<persName><forename type="first">Anton</forename><surname>Tsitsulin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marina</forename><surname>Munkhoeva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Davide</forename><surname>Mottin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Panagiotis</forename><surname>Karras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><surname>Oseledets</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emmanuel</forename><surname>Müller</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2006.04746</idno>
+		<title level="m">Frede: Linear-space anytime graph embeddings</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<author>
+			<persName><forename type="first">Petar</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Fedus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>William L Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Liò</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Devon</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hjelm</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1809.10341</idno>
+		<title level="m">Deep graph infomax</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Feature hashing for large scale multitask learning</title>
+		<author>
+			<persName><forename type="first">Kilian</forename><surname>Weinberger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anirban</forename><surname>Dasgupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Langford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Smola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Josh</forename><surname>Attenberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th annual international conference on machine learning</title>
+		<meeting>the 26th annual international conference on machine learning</meeting>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="1113" to="1120" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">A heap memory profiler for linux</title>
+		<author>
+			<persName><forename type="first">Milian</forename><surname>Wolff</surname></persName>
+		</author>
+		<ptr target="https://github.com/KDE/heaptrack" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Defining and evaluating network communities based on ground-truth</title>
+		<author>
+			<persName><forename type="first">Jaewon</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<ptr target="https://snap.stanford.edu/data/com-Orkut.htmlhttps://snap.stanford.edu/data/com-Friendster.html" />
+	</analytic>
+	<monogr>
+		<title level="j">Knowledge and Information Systems</title>
+		<imprint>
+			<biblScope unit="volume">42</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="181" to="213" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Billion-scale network embedding with iterative random projection</title>
+		<author>
+			<persName><forename type="first">Ziwei</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haoyang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenwu</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2018 IEEE International Conference on Data Mining (ICDM)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="787" to="796" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Table 7: Classification micro and macro F1-scores for PPI</title>
+	</analytic>
+	<monogr>
+		<title level="m">The following datasets are detailed for node classification: PPI (Table 7), BlogCatalog (Table 8), CoCit (Table 9), Flickr (Table 10), and YouTube (Table 11)</title>
+		<imprint/>
+	</monogr>
+	<note>Labeled Nodes</note>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title/>
+		<idno>128 11.73 ± 2.37 7.24 ± 1.49 16.76 ± 0.70 11.03 ± 1.05 19.45 ± 3.10 11.70 ± 2.98 512 15.74 ± 2.19 11.11 ± 1.20 21.19 ± 2.25 15.72 ± 1.37 21.52 ± 5.31 16.63 ± 1.87</idno>
+	</analytic>
+	<monogr>
+		<title level="j">FastRP</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<monogr>
+		<idno>Instant Embedding 128 27.99 ± 1.20 13.72 ± 1.49 32.40 ± 1.23 18.77 ± 1.40 33.40 ± 2.95 19.94 ± 3.30 512 33.36 ± 1.11 17.37 ± 1.61 37.76 ± 1.37 23.79 ± 1.61 39.33 ± 3.45 26.14 ± 3.07 2048 36.05 ± 1.66 19.01 ± 1.93 41.42 ± 1.49 27.16 ± 1.96 42.46 ± 4.35 29.00 ± 3.94</idno>
+		<title level="m">Classification micro and macro F1-scores for CoCit</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+		</imprint>
+	</monogr>
+	<note>Labeled Nodes</note>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<idno>Instant Embedding 128 38.19 ± 1.07 25.29 ± 1.14 41.23 ± 0.49 27.92 ± 0.63 42.48 ± 0.42 28.44 ± 0.72 512 39.95 ± 0.67 27.64 ± 1.22 43.01 ± 0.51 30.61 ± 0.51 44.05 ± 0.35 31.50 ± 0.63 2048 40.49 ± 1.06 28.86 ± 0.81 43.79 ± 0.46 31.69 ± 0.55 44.85 ± 0.46 32.76 ± 0.41</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Classification micro and macro F1-scores for Flickr</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+		</imprint>
+	</monogr>
+	<note>Labeled Nodes</note>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">% Method d Micro-F1 Macro-F1 Micro-F1 Macro-F1 Micro-F1 Macro-F1 DeepWalk</title>
+		<idno>128 37.53 ± 1.40 29.04 ± 3.77 41.64 ± 0.15 34.45 ± 0.70 42.97 ± 0.29 35.62 ± 0.93 512 38.69 ± 1.17 31.11 ± 1.08 40.26 ± 0.38 35.09 ± 0.26 40.74 ± 0.06 36.14 ± 0.23 VERSE 128 37.13 ± 0.41 28.54 ± 2.39 39.74 ± 0.32 33.87 ± 0.67 41.70 ± 0.38 35.04 ± 0.41 512 36.74 ± 1.05 27.16 ± 0.15 37.47 ± 1.37 32.40 ± 0.91 37.64 ± 0.67 33.00 ± 0.35 node2vec 128 34.64 ± 2.63 25.35 ± 3.83 40.62 ± 1.02 33.26 ± 0.20 42.65 ± 0.70 35.73 ± 0.32 512 36.02 ± 2.01 25.03 ± 2.89 39.64 ± 0.44 33.78 ± 0.38 40.47 ± 0.85 35.01 ± 1.08</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

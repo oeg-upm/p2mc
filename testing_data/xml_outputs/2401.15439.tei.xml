@@ -1,0 +1,1677 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Pre-training and Diagnosing Knowledge Base Completion Models</title>
+				<funder>
+					<orgName type="full">AXA Research Fund</orgName>
+				</funder>
+				<funder ref="#_Rw59cf7">
+					<orgName type="full">Alan Turing Institute</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">ESRC</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-01-30">January 30, 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Vid</forename><surname>Kocijan</surname></persName>
+							<affiliation key="aff0">
+								<address>
+									<addrLine>357 Castro Street, Suite 200 Mountain View</addrLine>
+									<postCode>94041</postCode>
+									<settlement>Kumo</settlement>
+									<region>CA</region>
+									<country key="US">United States</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Myeongjun</forename><forename type="middle">Erik</forename><surname>Jang</surname></persName>
+							<affiliation key="aff1">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">University of Oxford</orgName>
+								<address>
+									<postCode>OX1 3QD</postCode>
+									<settlement>Oxford</settlement>
+									<country key="GB">UK</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Thomas</forename><surname>Lukasiewicz</surname></persName>
+							<affiliation key="aff1">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">University of Oxford</orgName>
+								<address>
+									<postCode>OX1 3QD</postCode>
+									<settlement>Oxford</settlement>
+									<country key="GB">UK</country>
+								</address>
+							</affiliation>
+							<affiliation key="aff2">
+								<orgName type="department">Institute of Logic and Computation</orgName>
+								<orgName type="institution">Vienna University of Technology</orgName>
+								<address>
+									<country key="AT">Austria</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Pre-training and Diagnosing Knowledge Base Completion Models</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-01-30">January 30, 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">C46C9E57758F22DF380A64C8F9C0544F</idno>
+					<idno type="arXiv">arXiv:2401.15439v1[cs.CL]</idno>
+					<note type="submission">Preprint submitted to Artificial Intelligence</note>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:03+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>Knowledge Base Completion</term>
+					<term>transfer learning</term>
+					<term>Bias detection</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>In this work, we introduce and analyze an approach to knowledge transfer from one collection of facts to another without the need for entity or relation matching. The method works for both canonicalized knowledge bases and uncanonicalized or open knowledge bases, i.e., knowledge bases where more than one copy of a real-world entity or relation may exist. The main contribution is a method that can make use of large-scale pre-training on facts, which were collected from unstructured text, to improve predictions on structured data from a specific domain. The introduced method is most impactful on small datasets such as ReVerb20k, where a 6% absolute increase of mean reciprocal rank and 65% relative decrease of mean rank over the previously best method was achieved, despite not relying on large pre-trained models like Bert. To understand the obtained pre-trained models better, we then introduce a novel dataset for the analysis of pre-trained models for Open Knowledge Base Completion, called Doge (Diagnostics of Open knowledge Graph Embeddings). It consists of 6 subsets and is designed to measure multiple properties of a pre-trained model: robustness against synonyms, ability to perform deductive reasoning, presence of gender stereotypes, consistency with reverse relations, and coverage of different areas of general knowledge. Using the introduced dataset, we show that the existing OKBC models lack consistency in presence of synonyms and inverse relations and are unable to perform deductive reasoning. Moreover, their predictions often align with gender stereotypes, which persist even when presented with 1 Work performed while at the University of Oxford.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>A knowledge base (KB) is a collection of facts, stored and presented in a structured way that allows a simple use of the collected knowledge for applications. In this work, a knowledge base is a finite set of triplets ⟨h, r, t⟩, where h and t are head and tail entities, while r is a binary relation between them. Manually constructing a knowledge base is tedious and requires a large amount of labour. To speed up the process of construction, facts can be extracted from unstructured text automatically using, for instance, open information extraction (OIE) tools, such as ReVerb <ref type="bibr" target="#b16">(Fader et al., 2011)</ref> or more recent neural approaches <ref type="bibr" target="#b38">(Stanovsky et al., 2018;</ref><ref type="bibr" target="#b20">Hohenecker et al., 2020)</ref>. Alternatively, missing facts can be inferred from existing ones using knowledge base completion (KBC) algorithms, such as ConvE <ref type="bibr" target="#b14">(Dettmers et al., 2018)</ref>, TuckER <ref type="bibr" target="#b2">(Balažević et al., 2019)</ref>, or 5 ⋆ E <ref type="bibr" target="#b31">(Nayyeri et al., 2021)</ref>.</p><p>It is desirable to use both OIE and KBC approaches to automatically construct knowledge bases. However, automatic extractions from text yield uncanonicalized entities and relations. An entity such as "the United Kingdom" may also appear as "UK", and a relation such as "located at" may also appear as "can be found in". A knowledge base with possible repeated occurrences of entities and relations is called uncanonicalized or open knowledge base. The research area concerned with handling such knowledge bases is called open knowledge base completion (OKBC). If we fail to connect these occurrences and treat them as distinct entities and relations, the performance of KBC algorithms drops significantly <ref type="bibr" target="#b19">(Gupta et al., 2019)</ref>. If our target data are canonicalized, collecting additional uncanonicalized data from unstructured text is therefore not guaranteed to improve the performance of said models. An illustration of a small toy knowledge base is given in Figure <ref type="figure">1</ref>.</p><p>In this work, we design a domain adaptation pre-training procedure for (open) knowledge base completion that does not require entity matching. This allows us to pre-train a model on large automatically collected open knowledge bases (i.e., collections of facts) from unstructured text.</p><p>the United Kingdom UK Alan Turing Europe lived in part of lived in (?) Figure <ref type="figure">1</ref>: An example of a small knowledge base in which the fact whether Alan Turing lived in Europe is missing. If the knowledge base is canonicalized, "the United Kingdom" and "UK" are known to be the same entity. If the knowledge base is uncanonicalized or open, this information may not be given.</p><p>To achieve this, we replace embeddings of entities and relations with RNN-based encoders, which encode entities and relations from textual representations to embeddings. They are pre-trained jointly with a KBC model on a large OKBC benchmark. This pre-trained KBC model and encoders are then used to initialize the final model that is later fine-tuned on a smaller dataset. More specifically, KBC parameters that are shared among all inputs are used as an initialization of the same parameters of the fine-tuned model. When initializing the input-specific embeddings, we introduce and compare two approaches: Either the pre-trained entity and relation encoders are also used and trained during the fine-tuning, or they are used in the beginning to compute the initial values of all entity and relation embeddings, and then dropped.</p><p>We evaluate this approach with three different KBC models and on five existing datasets, showing consistent improvements on most of them. We show that pre-training turns out to be particularly helpful on small datasets with scarce data by achieving SOTA performance on the ReVerb20K and ReVerb45K OKBC datasets and consistent results on the larger KBC datasets Fb15k237 and Wn18rr. The obtained results imply that even larger improvements can be obtained by pre-training on a larger corpus.</p><p>To understand the impact and the role of pre-training better, we introduce a novel diagnostic dataset, called Doge (Diagnostics of Open knowledge Graph Embeddings). Existing approaches to the analysis of KBC models often look at what structures these models can capture in theory and what mathematical properties they have <ref type="bibr" target="#b0">(Abboud et al., 2020;</ref><ref type="bibr" target="#b31">Nayyeri et al., 2021)</ref>. However, when dealing with pre-trained models, we are not only interested in what these models are theoretically capable of, but also what inference pat-terns they have actually picked up during pre-training and what knowledge they may introduce into our target knowledge base. As we will see in this chapter, there is a mismatch between the theoretical properties and practical behaviour.</p><p>The Doge dataset is constructed semi-automatically and curated by the authors instead of crowdsourcing, to ensure a high degree of quality and correctness. It can be used to diagnose the following properties of a pre-trained model for knowledge base completion: robustness against synonyms, ability to perform deductive reasoning, presence of gender stereotypes, consistency with reverse relations, and coverage of different areas of general knowledge. Somewhat surprisingly, we find that the behaviour of models on diagnostic datasets is not always consistent with the behaviour on other benchmarks, indicating that the existing benchmarks may not be rigorously testing the above-mentioned patterns. The Doge dataset can thus serve as an additional way of testing OKBC models, providing more insight than just measuring overall performance.</p><p>All code and data will be made public after acceptance.</p><p>The main contributions of this article are summarized as follows.</p><p>• We introduce a novel technique for open knowledge base completion transfer learning that can transfer to both canonicalized and uncanonicalized knowledge bases. Our approach is to replace fixed word embeddings with RNN-based encoders that map entity and relation names into their embeddings. That removes the need for knowledge base canonicalization, allowing us to pre-train both the encoders and the knowledge base completion model.</p><p>• The introduced transfer learning technique improves model performance on 4 different benchmarks, obtaining state-of-the-art results on 2 of them. We demonstrate that the introduced pre-training helps especially on smaller uncanonicalized knowledge bases where out-of-the-box knowledge base completion models fail to generalize well.</p><p>• We manually construct a new diagnostic dataset Doge that can be used to evaluate on any models with the ability to perform zero-shot reasoning, in order to measure important properties such as consistency when dealing with inverse relations and synonyms, the ability to perform deductive reasoning, and the presence of gender stereotypes.</p><p>• Using Doge, we show that despite their high performance on popular benchmarks, pre-trained models for knowledge base completion are often inconsistent, unable to utilize background knowledge to its full extent, and tend to exhibit undesired gender stereotypes.</p><p>The rest of this paper is organized as follows.</p><p>We introduce the model for transfer learning in Section 2 and describe the experiments on popular benchmarks in Section 3. We follow by introducing the novel Doge dataset for diagnostics in Section 4 and evaluation in Section 5. Having introduced all models, datasets, and experiments, we report and discuss the results on general benchmarks in Section 6 and results of diagnostics in Section 7, respectively. Finally, we discuss related work and conclusions in Sections 8 and 9.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Model for Transfer Learning</head><p>In this section, we introduce the model architecture and how a pre-trained model is used to initialize the model for fine-tuning. The setup consists of two encoders, one for entities and one for relations, and a KBC model. Given a triplet ⟨h, r, t⟩, the entity encoder is used to map the head h and the tail t into their vector embeddings v h and v t , while the relation encoder is used to map the relation r into its vector embedding v r . These are then used as the input to the KBC algorithm of choice to predict their score (correctness) using the loss function, as defined by the KBC model. The two parts of the model are architecturally independent of each other and will be described in the following paragraphs. An illustration of the approach is given in Figure <ref type="figure">2</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1.">Encoders</head><p>We compare two types of mappings from an entity to a low-dimensional vector space. The first approach is to assign each entity and relation its own embedding, initialized randomly and trained jointly with the model. This is the default approach used by most KBC models, however, to distinguish it from the RNN-based approach, we denote it NoEncoder.</p><p>The second approach that we test is to use an RNN-based mapping from the textual representation of an entity or relation (name) to its embedding. We use the GloVe word embeddings <ref type="bibr" target="#b32">(Pennington et al., 2014)</ref> to map each word into a vector, and then use them as the input to the entity encoder, implemented as a Gru <ref type="bibr" target="#b11">(Cho et al., 2014)</ref>. To separate it from the NoEncoder, we call this the Gru encoder. <ref type="bibr" target="#b7">Broscheit et al. (2020)</ref>  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>KBC Model Score</head><p>Figure <ref type="figure">2</ref>: Diagram of the introduced approach. Green and blue blocks represent data, grey blocks represent models, and arrows represent data flow. Entity and relation encoders are used to map a triplet (h, r, t) from their names (textual representations) to their vector embeddings (v h , v r , v t ). These vectors are then used as the input to a KBC algorithm of choice to compute the score of the triplet.</p><p>encoders as well, but find that RNN-based approaches (Lstms, in their case) perform the most consistently across the experiments.</p><p>The number of the NoEncoder parameters grows linearly with the number of entities, while the number of the parameters of the Gru encoder grows linearly with the vocabulary. For large knowledge bases, the latter can significantly decrease the memory usage, as the size of the vocabulary is often smaller than the number of entities and relations.</p><p>Transfer between datasets. In this work, pre-training is always done using Gru encoders, as the transfer from the NoEncoder to any other encoder requires entity matching, which we would like to avoid.</p><p>When fine-tuning is done with a Gru encoder, its parameters are initialized from the pre-trained Gru parameters. The same applies for the vocabulary, however, if the target vocabulary includes any unknown words, their word embeddings are initialized randomly.</p><p>For the initialization of the NoEncoder setup, the pre-trained Gru is used to generate initial values of all vector embeddings by encoding their textual representations. Any unknown words are omitted, and entities with no known words are initialized randomly.</p><p>An equivalent process is used for relations. During preliminary experiments, we have also tried pre-training the encoders on the next-word-prediction task on English Wikipedia, however, that turned out to have a detrimental effect on the overall performance compared to randomly-initialized Grus (2 -3% MRR drop and slower convergence). That line of experiments was not continued.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2.">Knowledge Base Completion Models</head><p>We use three models for knowledge base completion, ConvE <ref type="bibr" target="#b14">(Dettmers et al., 2018)</ref>, TuckER <ref type="bibr" target="#b2">(Balažević et al., 2019)</ref>, and 5 ⋆ E <ref type="bibr" target="#b31">(Nayyeri et al., 2021)</ref>, chosen for their strong performance on various KBC benchmarks. In this section we briefly introduce the models and discuss how the transfer of knowledge is implemented for each of them.</p><p>TuckER assigns a score to each triplet by multiplying the vectors with a core tensor W ∈ R de×de×dr , where d e is the dimension of entities, and d r is the dimension of relations. Throughout this work, we make the simplifying assumption that d e = d r and use the same dropout rates for all inputs to reduce the number of hyperparameters. During the transfer, W from the pre-trained model is used to initialize W in the fine-tuned model.</p><p>ConvE assigns a score to each triplet by passing v h and v r through a convolutional neural network (CNN) and aims to map it into v t . The output, a d e -dimensional vector, is multiplied with v t and summed with a tail-specific bias term b t to obtain the score of the triplet. Just like with TuckER, it is assumed that all dropout rates in the model are the same to reduce the number of hyperparameters. During transfer, the parameters of the pre-trained CNN are used as the initialization of the CNN in the fine-tuned model. Bias terms of the fine-tuned model are initialized at random, because they are entity-specific.</p><p>5 ⋆ E <ref type="bibr" target="#b31">(Nayyeri et al., 2021)</ref> considers v h and v t to be complex projective lines and v r a vector of 2 × 2 complex matrices. These correspond to a relationspecific Möbius transformation of projective lines. We refer the reader to the work of <ref type="bibr" target="#b31">Nayyeri et al. (2021)</ref> for the details, which are here omitted for brevity. Unlike in ConvE and TuckER, there are no shared parameters between different relations and entities. Pre-training thus only serves to initialize the embeddings.</p><p>At the time of the evaluation, the model is given a triplet with a missing head or tail and is used to rank all the possible entities based on how likely they are to appear in place of the missing entity. Following <ref type="bibr" target="#b14">Dettmers et al. (2018)</ref>, the head-prediction samples are transformed into tail-prediction samples by introducing reciprocal relations r -1 for each relation and transforming ⟨?, r, t⟩ into ⟨t, r -1 , ?⟩. Following <ref type="bibr" target="#b19">Gupta et al. (2019)</ref>, the name of the reciprocal relation is created by adding the prefix "inverse of".</p><p>During preliminary experiments, we have also experimented with BoxE <ref type="bibr" target="#b0">(Abboud et al., 2020)</ref>, however, we have decided not to use it for further experiments, since it was much slower to train and evaluate in comparison to other models. A single round of training of BoxE with Gru encoders on OlpBench takes over 24 days, making it an impractical choice.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Experimental Evaluation of Pre-Training</head><p>This section describes the used datasets, the experimental setup, and the baselines used to evaluate the impact of pre-training.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.">Knowledge Base Completion Datasets</head><p>In this section, the most common datasets for the comparison of KBC and OKBC models are introduced. Their statistics are given in ReVerb45k and ReVerb20k <ref type="bibr" target="#b42">(Vashishth et al., 2018;</ref><ref type="bibr" target="#b19">Gupta et al., 2019)</ref>, are small-scale OKBC datasets, obtained via the ReVerb OIE tool <ref type="bibr" target="#b16">(Fader et al., 2011)</ref>. These two datasets were adapted from knowledge base canonicalization datasets, coming with labeled gold clusters of equivalent entities <ref type="bibr" target="#b17">(Galárraga et al., 2014)</ref>. Information on clusters of entities that refer to the same real-world entity can be used to improve the accuracy of the evaluation. We found that 99.9% of test samples in ReVerb20K and 99.3% of test samples in ReVerb45K contain at least one entity or relation that did not appear in OlpBench, hence requiring out-of-distribution generalization. Two entities or relations were considered different if their textual representations differed after the preprocessing (lower case, removal of redundant whitespace, and non-alphanumeric characters). If two inputs still differ after these normalization steps, the model will not detect them as the same, and potential canonicalization has to be performed by the model.</p><p>OlpBench <ref type="bibr" target="#b7">(Broscheit et al., 2020)</ref>  Fb15k237 and WN18RR <ref type="bibr" target="#b40">(Toutanova et al., 2015;</ref><ref type="bibr" target="#b14">Dettmers et al., 2018)</ref> are subsets of the larger datasets Fb15k and Wn18, respectively. Both Fb15k and Wn18 were filtered to remove the test leakage through inverse relations and test triplets with entities that did not exist in the training set to obtain more difficult, but higher-quality datasets Fb15k237 and Wn18rr. Fb15k237 was constructed from the most densely connected subset of the Freebase knowledge base <ref type="bibr" target="#b4">(Bollacker et al., 2008)</ref>, while Wn18rr was obtained from the WordNet knowledge base <ref type="bibr" target="#b30">(Miller, 1995)</ref>. Fb15k237, like many other datasets in this section, contains general knowledge about geography, sports, and celebrities. On the other hand, Wn18rr contains linguistic information about words and relations between them. In the case of transfer learning, this creates a domain shift between pre-training and fine-tuning, potentially resulting in a worse overall performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.">Experimental Setup</head><p>The performance of the randomly-initialized and pre-trained Gru and NoEncoder variants of each of the three KBC models are observed and compared. Pre-training was done with Gru encoders on OlpBench. In this section, we cover all the details and implementation choices in the experimental setup. Not all choices in the experimental design are optimal relative to performance; instead, they were chosen to obtain a fair comparison between different models. For example, we make several simplifying assumptions to reduce the hyperparameter space, as already noted in the model description. While these simplifications can result in a performance drop, they allow us to run exactly the same grid search of hyperparameters for all models, excluding the human factor or randomness from the search.</p><p>Following <ref type="bibr" target="#b36">Ruffinelli et al. (2020)</ref>, we use 1-N scoring for negative sampling and cross-entropy loss for all models. To put it simply, we compute the loss on a test sample ⟨h, r, ?⟩ by computing cross-entropy over all possible tails, maximizing the likelihood of predicting the correct one. The Adam optimizer <ref type="bibr" target="#b23">(Kingma and Ba, 2015)</ref> was used to train the network. We follow <ref type="bibr" target="#b14">Dettmers et al. (2018)</ref> and <ref type="bibr" target="#b2">Balažević et al. (2019)</ref> with the placement of the batch norm and dropout in ConvE and TuckER, respectively. To find the best hyperparameters, grid search is used for all experiments to exhaustively compare all options. Despite numerous simplifications the re-implementations of the baselines (non-pre-trained NoEncoder models) perform comparable to the original reported values. The experiments were performed on a DGX-1 cluster, using one Nvidia V100 GPU per experiment. The code and data to reproduce all the experiments can be found at https://github.com/vid-koci/KBCtransferlearning.</p><p>Following <ref type="bibr" target="#b7">Broscheit et al. (2020)</ref>, each model was trained for 100 epochs. Testing on the validation set was performed each 20 epochs, and the model with the best overall mean reciprocal rank (MRR) was selected.</p><p>Fine-tuning setup. Fine-tuning is performed in the same way as the pretraining, however, the models were trained for 500 epochs, and a larger hyperparameter space was considered. More specifically, the learning rate was selected from {3 • 10 -5 , 1 • 10 -4 , 3 • 10 -4 }. The dropout rate was selected from {0.2, 0.3} for ConvE and {0.3, 0.4} for TuckER. The weight of N3 regularization for the 5 ⋆ E models was selected from {0.3, 0.1, 0.03}. The batch size was selected from {512, 1024, 2048, 4096}. The same embedding dimensions as for pre-training were considered.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.">Baselines</head><p>We compare this work to a collection of baselines, re-implementing and re-training them where appropriate.</p><p>Models for knowledge base completion. The main three KBC models, ConvE, TuckER, and 5 ⋆ E are evaluated with and without encoders. The results of these models obtained by related work are included and compared to other KBC models from the literature, such as BoxE <ref type="bibr" target="#b0">(Abboud et al., 2020)</ref>, Com-plEx <ref type="bibr" target="#b41">(Trouillon et al., 2017)</ref>, TransH <ref type="bibr" target="#b45">(Wang et al., 2014), and</ref><ref type="bibr">TransE (Bordes et al., 2013)</ref>. We highlight that results from external work were usually obtained with more experiments and a broader hyperparameter search compared to experiments from my work, where we tried to ensure exactly the same environment for a large number of models, for fair comparisons.</p><p>Models for knowledge base canonicalization. <ref type="bibr" target="#b19">Gupta et al. (2019)</ref> use Cesi <ref type="bibr" target="#b42">(Vashishth et al., 2018)</ref> for knowledge base canonicalization to improve the predictions of KBC models, testing multiple methods to incorporate such data into the model. The tested methods include graph convolution neural networks <ref type="bibr" target="#b9">(Bruna et al., 2014)</ref>, graph attention neural networks <ref type="bibr" target="#b43">(Veličković et al., 2017)</ref>, and newly introduced local averaging networks (LANs) <ref type="bibr" target="#b19">(Gupta et al., 2019)</ref>. Since LANs consistently outperform the alternative approaches in all their experiments, they are included here as the only baseline of this type.</p><p>Transfer learning from larger knowledge bases. <ref type="bibr" target="#b26">Lerer et al. (2019)</ref> release pre-trained embeddings for the entire WikiData knowledge graph, computed with their BigGraph mehod. We use them to initialize the TuckER model. We initialize the entity and relation embeddings with their respective embeddings from WikiData. Since pre-trained WikiData embeddings are only available for dimension d = 200, we compare them to the pre-trained and randomly initialized NoEncoder TuckER of dimension d = 200 for a fair comparison. We do not re-train the WikiData embeddings with other dimensions due to the computational resources required. Moreover, we do not use this baseline on KBC datasets, since a potential training and test set cross-contamination could not be avoided. WikiData was constructed from Freebase and is linked to WordNet, the knowledge bases used to construct the Fb15k237 and Wn18rr datasets.</p><p>Transfer learning from language models. Pre-trained language models can be used to answer KB queries <ref type="bibr" target="#b33">(Petroni et al., 2019;</ref><ref type="bibr" target="#b48">Yao et al., 2019)</ref>. We compare the results to KG-Bert on the Fb15k237 and Wn18rr datasets <ref type="bibr" target="#b48">(Yao et al., 2019)</ref>, and to Okgit on ReVerb45K and ReVerb20K datasets (Chandrahas and Talukdar, 2021). Using large transformer-based language models for KBC can be slow. We estimate that a single round of evaluation of KG-Bert on the ReVerb45K test set takes over 14 days on a Tesla V100 GPU, not even accounting for training or validation. <ref type="bibr" target="#b48">Yao et al. (2019)</ref> report in their code repository that the evaluation on Fb15k237 takes over a month.<ref type="foot" target="#foot_1">2</ref> For comparison, the evaluation of any other model in this work takes up to a maximum of a couple of minutes. Not only is it beyond our resources to perform equivalent experiments for KG-Bert as for other models, but we also consider this approach to be impractical for link prediction.</p><p>Chandrahas and Talukdar (2021) combine Bert with the approach introduced by <ref type="bibr" target="#b19">Gupta et al. (2019)</ref>, taking advantage of both knowledge base canonicalization tools and large pre-trained transformers at the same time. Their approach is more computationally efficient, since only the pair ⟨h, r⟩ is encoded with Bert instead of the entire triplet. This reduces the number of required passes through the transformer model by one order of magnitude. At the time of writing, this was the best-performing published approach to OKBC.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Doge Dataset</head><p>The introduced model, when trained, is able to perform zero-shot predictions because its encoders are able to encode any entity or relation, named in English. We leverage the ability to perform zero-shot predictions to investigate the model properties by constructing a novel dataset for diagnostics. The Doge dataset, more precisely, a collection of diagnostic datasets, is aimed for the evaluation of pre-trained models for open knowledge base completion and measures the following properties:</p><p>• Coverage of different areas of general knowledge,</p><p>• Consistency when dealing with synonyms,</p><p>• Consistency when dealing with inverse relations,</p><p>• Deductive reasoning,</p><p>• Gender stereotypes,</p><p>• Impact of gender stereotypes on deductive reasoning.</p><p>There is a lot of diversity in the individual subsets of Doge, some overlap while others are constructed in completely distinct ways. However, several common properties are shared by all of them. Firstly, the evaluated model is always used to rank only a small set of possible answers rather than all entities in the knowledge base. This is to guarantee that only one answer is correct and to avoid noisy results. Secondly, all grammatical clues such as articles are either removed, or used in a way that does not automatically exclude any of the given answers. Finally, English Wikipedia is strictly avoided as a resource because of its common presence in pre-training data or as a resource in dataset construction. More specific design choices and data properties will be presented in their respective sections.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.">Coverage of General Knowledge</head><p>When an individual is constructing a novel dataset for pre-training, they may want to know what type of knowledge the dataset contains and where collecting more data could be beneficial. To test this, we constructed a collection of facts from the online version of Encyclopedia Britannica, 150 per each of its 12 categories:</p><formula xml:id="formula_0">• Entertainment &amp; Pop Culture • Geography &amp; Travel • Health &amp; Medicine • Lifestyles &amp; Social Issues • Literature • Philosophy &amp; Religion • Politics, Law &amp; Government • Science • Sports &amp; Recreation • Technology • Visual Arts • World History</formula><p>Overall, this gives a dataset of 1, 800 examples, designed to be used as a test set. Each example is a triplet ⟨h, r, t⟩ with a head or tail missing, e.g., ⟨Nelson Mandela, first black president of, ?⟩. In exactly half of the examples, the missing entity is head, and half of the time, it is the tail. Ten possible answers are provided, exactly one of them being correct. For the above example, the possible answers are South Africa, United Nations, United Kingdom, United States of America, Japan, Nazi Germany, Vietnam, Cuba, Soviet Union, China, with South Africa being the correct answer. The model should compute the score of each answer independently from alternative answers.</p><p>On Encyclopedia Britannica, each of the 12 above-mentioned categories is further split into more fine-grained subcategories. The Science category, for example, is further split into physics, mathematics, biology, chemistry, etc. When sampling data, all subcategories are represented in a category with a minor difference in the number of examples. To ensure that the collected data are representative of general knowledge and not obscure facts, source articles are always taken from the Featured Articles section of each subcategory. At most one fact is collected from each article to get a greater variety of samples.</p><p>While the manually selected fact is usually extracted directly from the text as if obtained with an open information extraction system, we occasionally had to make minor changes and rewriting to ensure clarity and to remove ambiguity. Moreover, all negative answers are taken strictly from the same article or articles from the same subcategory to ensure their relevancy.</p><p>Results and scores are reported only per-category and not for the entire dataset. This is because the representation of different areas of knowledge can be imbalanced. Due to the above described choices in sampling, the subcategory of Baseball has more representatives than The Middle Ages, for example. Even though we provide the subcategory of each example, we only report results over full categories, as subcategories may have too few examples to make the results conclusive. Note that the dataset has some Western, particularly American bias, as Encyclopedia Britannica more often featured articles about USA and Western Europe. Since pre-training and all experiments are conducted in English and collected from English sources, this does not present a problem. However, it is important to be aware of this if the dataset is used in a different cultural context.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.">Robustness to Synonyms</head><p>Robustness to synonyms is an important feature of any OKBC system because, in principle, handling uncanonicalized data requires a model to recognize which entities in the knowledge base correspond to the same real-world entity. To measure this, we manually find all examples from the general knowledge part of Doge where one of the entities or a relation can be replaced with a synonym. In this way, we obtain 129 instances where one of the entities can be swapped with a synonym, and 735 instances where the relation can be replaced with a synonym. Personal names are never replaced (e.g., Nelson Mandela into Mandela), because the transformations are usually trivial. For each of these examples, a twin example is provided where said relation or entity is swapped for its synonym. The Oxford English Dictionary was used as the source of synonyms.</p><p>Let r a be the rank of the correct answer on some original instance, and r b be the rank on its twin instance. We are interested in the change between the two, r a -r b , which should be 0 if the answer is unchanged. We report the overall mean and variance of the random variable r a -r b . The smaller the variance, the more robust against synonyms the model is. The mean is reported only to control for possible noise introduced by the annotation. If the value of the mean strongly deviates from 0, one may conclude that twin instances are on average more difficult or easier than the originals, making the results inconclusive. As will be seen during the evaluation, the absolute value of the mean was always below 1 and usually close to 0, indicating a high quality of data samples.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3.">Robustness to Inverse Relations</head><p>Consistency in the case of inverse relations is another desirable feature of an OKBC model. More specifically, given two test instances ⟨h, r, ?⟩, ⟨?, r -1 , h⟩ and the same set of possible answers, it is desirable that the model gives the same answer in both cases. To test this, 863 examples from the general knowledge part of Doge were identified where an inverse relation can be easily found. For each of them, a twin instance with an inverse relation was created, as described above. The example ⟨Nelson Mandela, first black president of, ?⟩ has a twin instance ⟨ ?, has the first black president, Nelson Mandela⟩. Note that both the correct answer and the set of alternative answers remains the same.</p><p>Similarly as for the synonym test, we report the mean and standard deviation of r a -r b , where r a is the rank of the correct answer on the original example, and r b is the rank of the same answer in the twin example. The interpretation of the results follows the same logic: The smaller the deviation, the better the model. The mean is reported only for quality control. As demonstrated later at the time of evaluation, the absolute value of the mean is always below 0.5 and often close to 0, indicating that a possible deviation is not caused by poor annotation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4.">Deductive Reasoning</head><p>The ability to apply collected general knowledge to specific instances during fine-tuning is one of the most desirable properties for a system to have. If our target knowledge base contains a fact that ⟨Mary, visited, Broadway⟩ and our pre-trained model can predict that ⟨Broadway, located in, Manhattan⟩, then it should also include ⟨Mary, visited, Manhattan⟩ into the target knowledge base. This is an instance of deductive reasoning, that is, applying general knowledge to specific instances.</p><p>The opposite scenario, inductive reasoning, cannot be easily tested for pre-trained KBC models. It is hard to find out whether the captured general knowledge has been learned explicitly, because it appeared in the training data, or implicitly by generalizing from numerous specific instances.</p><p>For 100 facts ⟨h, r, t⟩ from the general knowledge set of the Doge dataset, we created a deductive variant. Suppose that tail t in the general knowledge triplet ⟨h, r, t⟩ has to be predicted. We additionally create facts ⟨X, p, t⟩ and ⟨X, q, h⟩, where X denotes a personal name and ⟨X, q, h⟩ ∧ ⟨h, r, t⟩ =⇒ ⟨X, p, t⟩. In the example above, the model is tested whether it can predict the tail of the triplet ⟨Mary, visited, Manhattan⟩ after it has been additionally provided with the fact ⟨Mary, visited, Broadway⟩. This prediction can only be done successfully if the model combines the newly given fact with its background knowledge that ⟨Broadway, part of, Manhattan⟩. Personal names were randomly selected from the 100 most common male and female names in the USA in the last 100 years. <ref type="foot" target="#foot_2">3</ref>More specifically, a model is evaluated on three different setups. First, it is evaluated on the relevant subset of the general knowledge dataset (examples ⟨h, r, t⟩), testing whether it contains the relevant background knowledge. The score obtained on this set serves as a soft upper bound on the score that the model can obtain on the deductive reasoning test; a model in principle should not be able to do deductive reasoning without the relevant background knowledge. Second, the model is evaluated on the test ⟨X, p, t⟩ without seeing ⟨X, q, h⟩, an instance that it cannot answer due to the lack of information. Scores obtained here serve as a soft lower bound on the final score, and aim to detect potential noise such as annotation artefacts. Finally, in the third experiment, the model is given facts ⟨X, q, h⟩ and evaluated on ⟨X, p, t⟩. In our experimental setup, the addition of facts to the model was done through fine-tuning; a more detailed description is given in the section that describes the diagnostic experiments.</p><p>For triplets ⟨h, r, t⟩ where the head was missing, the data construction procedure is analogous. The presented setup is not the only way in which deductive reasoning could be tested and more rigorous probings could be made. We leave such analyses to future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.5.">Gender Stereotypes</head><p>It may be undesirable if harmful societal stereotypes are added to the target knowledge base. To detect the presence of potential historical gender bias and stereotypes, we test to what degree the model associates gender-imbalanced occupations with typically feminine and masculine names. Following <ref type="bibr" target="#b35">Rudinger et al. (2018)</ref> and <ref type="bibr" target="#b50">Zhao et al. (2018)</ref>, we collected 50 highly gender-imbalanced jobs based on US occupation statistics,<ref type="foot" target="#foot_3">4</ref> half stereotypically female and half stereotypically male. By randomly sampling from the list of names, already introduced in the previous section, we generated 200 stereotypical and 200 anti-stereotypical examples of type ⟨X, is, Y ⟩, where X is a name, and Y is an occupation. Unlike in datasets from previous sections, where 10 possible answers were given, the model has to select between all 50 occupations.</p><p>It is important to note that while a gold answer does exist, it is impossible to deduce it due to the lack of context. The models are therefore expected to obtain scores similar to ones of a random baseline. Rather than to evaluate correctness, this dataset was created to detect possible associations between gendered names and gender-imbalanced occupations, i.e., detect the presence of conceptual gender. Whether such association is desirable or not wholly depends on the application. One could claim that the detected stereotypes are a reflection of the real world and therefore can improve the accuracy of predictions. In the absence of counter-evidence, connecting a name with an occupation that is often associated with that name's gender is statistically indeed more likely to be correct. On the other hand, the mere presence of such stereotypes in applications that should be stereotype-agnostic (e.g., law) could present a severe problem.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.6.">Impact of Stereotypes on Deductive Reasoning</head><p>It can be statistically acceptable that ⟨Mary, is, ?⟩ is more likely answered as childcare worker than car mechanic when no additional information is given. However, if the target knowledge base contains a triplet ⟨Mary, repairs, cars⟩, labelling Mary to be a childcare worker is not just biased, but also incorrect. To detect how predictions of pre-trained OKBC models on such examples change in the presence of additional background information, we provide 200 facts about occupations, 4 per occupation.<ref type="foot" target="#foot_4">5</ref> These are then used as additional inputs to the model.</p><p>For each test triplet ⟨X, is, Y ⟩, where X is a personal name, and Y is an occupation, two additional examples are constructed. Two true facts about occupation Y are provided, e.g., ⟨car mechanic, repairs, cars⟩ and ⟨car mechanic, diagnoses, malfunctioning cars⟩, with the occupation swapped out for the name (⟨Mary, repairs, cars⟩). One of them is added to the training set, and one to the validation set. Moreover, all 200 general facts about occupations are also stored as a test set for a separate experiment.</p><p>This provides us with a similar setup as in the case of general deductive reasoning. Firstly, we can investigate how a model behaves when it has to guess the profession of an individual, as described in the previous section. Secondly, we can test its general background knowledge about occupations. Finally, we can find out how well the model determines the individuals' occupations when additionally provided with knowledge about what these individuals do. Again, we expect this score to be bound by the first two results. We additionally split this score into the stereotypically feminine, stereotypically masculine, anti-stereotypically feminine, and anti-stereotypically masculine sets to observe the possible difference between genders.</p><p>Testing a model on this dataset allows us to investigate to what degree the gender stereotypes impact the ability of the model to perform deductive reasoning. That is, one can investigate to what degree the model overcomes stereotypes in the presence of counter-evidence.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Diagnostic Experiments</head><p>In this section, we compare various models from Section 3 on the Doge dataset. Since pre-trained models with a larger dimension of embeddings have generally proved to be more successful, We only perform experiments with the largest variant of each model. For the majority of the datasets, the experiments should be conducted in a zero-shot setting.</p><p>All KBC models were tested only with Gru encoders, since the choice of an encoder makes no difference in a zero-shot setting.</p><p>The datasets that test a models' ability to perform deductive reasoning require additional training. On these datasets, each KBC model was evaluated both with a Gru and NoEncoder setup in the same way as in Section 3. When evaluating the model on the Doge gender stereotype dataset, the best hyperparameter setup is found on the training and validation set. The learning rate is taken from {3 • 10 -4 , 10 -4 , 3 • 10 -5 }. The weight of N3 regularization for 5 ⋆ E is taken from {1.0, 0.3}. The same setup was then used for fine-tuning on the train set of the deductive reasoning dataset, where a validation set was not constructed.</p><p>Impact of GloVe Embeddings. When pre-training on the OlpBench dataset, word embeddings were initialized from GloVe vectors <ref type="bibr" target="#b32">(Pennington et al., 2014)</ref>. Unfortunately, such word embeddings are known to contain undesired gender stereotypes <ref type="bibr" target="#b5">(Bolukbasi et al., 2016)</ref>. To understand their impact on potentially biased behaviour of pre-trained KBC models, we additionally pre-train the Gru ConvE and Gru TuckER models with randomly initialized word embeddings. They were pre-trained on OlpBench with the same hyperparameter setup as their GloVe-initialized counterparts. We did not repeat this experiment with a 5 ⋆ E model due to larger computational cost of such an experiment.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.">Transfer Learning Experimental Results</head><p>This section contains the outcome of pre-training and fine-tuning experiments. For fine-tuning, we repeated experiments five times and report their average and standard deviation. In addition, zero-shot transfer is investigated in the later part.</p><p>For each model, its mean rank (MR), mean reciprocal rank (MRR), and Hits at 10 (H@10) metrics on the test set are reported. We selected N = 10 for comparison since it was the most consistently reported Hits@N metric in related work.</p><p>Pre-training results. The performance of the pre-trained models on OlpBench is given in Table <ref type="table" target="#tab_4">2</ref>. The introduced models obtain better scores than the previous best approach based on ComplEx, however, we mainly attribute the improvement to the use of better KBC models. Results denoted with † and ♦ were taken from <ref type="bibr" target="#b19">(Gupta et al., 2019)</ref> and <ref type="bibr" target="#b10">(Chandrahas and Talukdar, 2021)</ref>, respectively.</p><p>▲ Unlike all other models with a yes entry, BigGraph TuckER and Okgit were not pre-trained on OlpBench, but on pre-trained WikiData embeddings and with the masked language modeling objective, respectively. Results denoted with † and ♦ were taken from <ref type="bibr" target="#b19">(Gupta et al., 2019)</ref> and <ref type="bibr" target="#b10">(Chandrahas and Talukdar, 2021)</ref>, respectively.</p><p>▲ Unlike all other models with a yes entry, BigGraph TuckER and Okgit were not pre-trained on OlpBench, but on pre-trained WikiData embeddings and with the masked language modeling objective, respectively.</p><p>OKBC results. The results of experiments on ReVerb20k and ReVerb45k are given in Tables <ref type="table" target="#tab_5">3</ref> and<ref type="table" target="#tab_6">4</ref>. The models strictly improve their performance when pre-trained on OlpBench. This improvement is particularly noticeable for NoEncoder models, which tend to overfit and achieve poor results without pre-training. However, when initialized with a pre-trained model, their ability to generalize improves. 5 ⋆ E seems to be an exception to this, likely because there are no shared parameters between relations and entities, resulting in a weaker regularization. Gru-based models do not seem to suffer as severely from overfitting, but their performance still visibly improves when they are pre-trained on OlpBench.</p><p>Finally, the best introduced model outperforms the state-of-the-art approach by <ref type="bibr" target="#b10">Chandrahas and Talukdar (2021)</ref> on ReVerb20k and ReVerb45k. Even when compared to pre-trained Gru ConvE, which is based on the same KBC model, Okgit(ConvE) and CaRe(ConvE, Lan) lag behind. This is particularly surprising, because the Bert and RoBERTa language models, used by Okgit(ConvE), had received several orders of magnitude more pre-training on unstructured text, making the results of the introduced approach even more significant.</p><p>Similarly, the initialization of models with BigGraph seems to help the performance, however, such an approach is in turn outperformed by a NoEncoder model, initialized with pre-trained encoders instead. This indicates that the suggested pre-training is much more efficient, despite the smaller computational cost.</p><p>KBC results. To evaluate the impact of pre-training on larger canonicalized knowledge bases, we compare the performance of models on Fb15k237 and Wn18rr. For brevity, we treat the choice of an encoder as a hyperparameter and report the better of the two models in Tables <ref type="table" target="#tab_7">5</ref> and<ref type="table" target="#tab_8">6</ref>.</p><p>Pre-trained models outperform their randomly initialized counterparts as well, however, the differences are usually smaller. There are several reasons that can explain the small difference in performance, primarily the difference in dataset size. The best-performing models on Fb15k237 and Wn18rr only made between 3 and 12 times more steps during pre-training than during fine-tuning. For comparison, this ratio was between 250 to 1000 for ReVerb20k. The smaller improvements on Fb15k237 and Wn18rr can also be explained by the domain shift, as already described in Section 3.1.  KBC. The comparison with all these models should be taken with a grain of salt, as other reported models were often trained with a much larger hyperparameter space, as well as additional techniques for regularization (e.g., Dura <ref type="bibr" target="#b49">(Zhang et al., 2020)</ref> or label smoothing <ref type="bibr" target="#b2">(Balažević et al., 2019)</ref>) and sampling (e.g., self-adversarial sampling <ref type="bibr" target="#b0">(Abboud et al., 2020)</ref>). Due to a large number of models and baselines, we could not expand the hyperparameter search without compromising the fair evaluation of all compared models. The pre-trained models usually obtain their best result with a larger dimension compared to their randomly-initialized counterparts. Pre-training thus serves as a type of regularization, allowing us to fine-tune larger models. For this reason, pre-training on even larger datasets and increasing the number of parameters is likely to result in even more significant improvements across many KBC datasets in future work.</p><p>Not only does pre-training allow training of larger models, the pre-trained models also require fewer training steps to obtain a similar performance, as seen in Figure <ref type="figure" target="#fig_0">3</ref>. Even though the pre-trained models were fine-tuned with a smaller learning rate, they converge in fewer steps, which can be attributed to the pre-training. The experiments summarized in the figure were performed with the best hyperparameter setup for both pre-trained and randomly initialized models.</p><p>Finally, we highlight that language modeling as pre-training hardly justifies the enormous computational cost. On the majority of metrics, KG-Bert performs worse than models with fewer parameters and less pre-training, with a notable exception of remarkable MR on the Wn18rr dataset.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1.">Zero-Shot Experiments</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>ReVerb20k</head><p>ReVerb45k Model pre-trained? MR MRR Hits@10 MR MRR Hits@10 Note that the model that was not pre-trained is equivalent to a random baseline.</p><p>To gain a better understanding of what kind of knowledge is transferred between the datasets, we investigate the zero-shot performance of pre-trained models on ReVerb20k and ReVerb45k, where the impact of pre-training was the strongest. That means that we follow the same setup as in Section 5 with all models. If pre-training improvement was mainly due to the direct memorization of facts, the zero-shot performance should already be high without fine-tuning.</p><p>The results of the zero-shot evaluation are given in Table <ref type="table" target="#tab_9">7</ref>. Given is the performance of all models with and without pre-training, the latter being equivalent to a random baseline. Note that since no fine-tuning takes place, the choice of the encoder for evaluation does not matter. We thus chose to only evaluate one of them.</p><p>Observing the results, we see that pre-training the models results in a lower MR, but not necessarily in a much higher MRR. Even when MRR does improve, the difference is much smaller than when comparing fine-tuned models in Tables3 and 4. This implies that the improvement induced by pre-training likely does not happen only due to the memorization of facts from OlpBench. On the other hand, the MR of pre-trained models is comparable or even better than the MR of randomly initialized NoEncoder models, fine-tuned on the ReVerb datasets, as reported in Tables <ref type="table" target="#tab_5">3</ref> and<ref type="table" target="#tab_6">4</ref>. Hence, pre-trained models carry a lot of "approximate knowledge". This means that correct answers tend to not be ranked low, even when the model does not give the correct answer. This is consistent with earlier remarks on pre-training serving as a type of regularization. Table <ref type="table" target="#tab_10">8</ref> shows several corresponding examples of the ConVE model with NoEncoder on the ReVerb20K dataset. It shows that the correct answers are ranked better in the trained model. These are all instances of "general knowledge" that are hard to deduce from the training set alone-e.g., "crude oil" appears only once in the training set of ReVerb20K. On the other hand, we can find the fact ⟨crude oil, is used as, fossil fuel⟩ in OlpBench, from which the first fact can be deduced.</p><p>Knowing that the ReVerb20k and ReVerb45k test sets consist of facts which contain at least one previously unseen entity or relation, this experiment can be viewed as a test of out-of-distribution generalization. Comparing the zero-shot MRR results with the OlpBench results suggests that while OKBC models are capable of out-of-domain generalization to unseen entities and relations, there is still room for improvement.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Data Instance</head><p>Rank (no) Rank (yes)</p><p>Head: fuel, Relation: be make from, Tail: crude oil Wrong Answers: constipation, vegetable, 1831, heaven, hour, high school, original, dmca, version 5 1</p><p>Head: ethanol fuel, Relation: be made of, Tail: ethanol Wrong Answers: population genetic, hannibal, tesla roadste, dvd, identity theft, corey feldman, Clinton, gate, monroe 6 2</p><p>Head: nyx, Relation: be the goddess of, Tail: darkness Wrong Answers: united states, presidency, sale, Russia, bad idea, king, progress, obama, event 9 1 </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.">Results of Diagnostic Experiments</head><p>This chapter contains the results of all evaluated models on all parts of the Doge dataset. Results are reported in MR, MRR, and Hits@1 metrics, except for parts of the dataset that measure consistency, for which the mean and standard deviation are reported instead. metrics for other values of N were not reported due to the small number of possible answers (10 or 50).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.1.">General Knowledge</head><p>All three pre-trained KBC architectures are compared on the general knowledge part of the Doge dataset, with results reported in Table <ref type="table" target="#tab_11">9</ref>. It is evident that the models are fairly consistent with each other relative to how well they do in different categories. This is unsurprising since they were all trained on OlpBench. Nevertheless, it also means that it can be difficult to conclude which of the models handles what type of data better. ConvE seems to often outperform other models in most categories, despite often ranking the lowest of the three models on commonly used KBC benchmarks.</p><p>Inconsistent results between Doge and most other datasets can be explained by the difference in their construction. Unlike other KBC datasets, Doge was not obtained by randomly splitting an existing knowledge base. Models trained on OlpBench and evaluated on Doge face a shift of data distribution, requiring better generalization capabilities. This is the first result of this kind, indicating that existing KBC benchmarks only cover a specific scenario, which may incorrectly reward models with lower generalization capabilities.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.2.">Model Consistency</head><p>All three KBC pre-trained architectures are compared on their ability to make consistent prediction in the presence of synonyms and inverse relations, with results reported in Table <ref type="table" target="#tab_12">10</ref>. None of the models are particularly consistent on either of the tests, with ConvE being worse than 5 ⋆ E, especially in "Relation Synonyms". The discrepancy in consistency may be due to the comparably better performance of 5 ⋆ E on Doge, particularly in "Science" and "World History" topics, where the annotated data points for "Relation Synonyms" account for 19% of total data. Overall, it is safe to conclude that none of the tested models can be called consistent, which is unfortunately common for neural network models. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.3.">Deductive Reasoning</head><p>In this section, we report the results on the test of deductive reasoning. The scores obtained by all three evaluated models are given in Table <ref type="table" target="#tab_2">11</ref>. All models achieve approximately chance performance on the No Added Facts experiments, indicating that the answers of this subset cannot be deduced through undesired clues. Moreover, all models achieve a better-than-random guessing score on the Background Knowledge experiments, indicating that they do contain the relevant background knowledge for many instances. If the results of the models on this set of instances were poor, the results from this whole section would be inconclusive. Finally, the results on With Added Facts lie somewhere in between the two, as expected. This indicates that the models can indeed combine newly obtained facts with their background knowledge, however, a big gap to Background Knowledge results indicates that there is a lot of room for improvement.</p><p>The impact of the encoder varies by KBC model. For ConvE and TuckER, there is no conclusive answer to which encoder is the better choice, as it depends on the choice of metric. NoEncoder versions obtain better MR, while Gru versions obtain better MRR and Hits@1 scores. For 5 ⋆ E, NoEncoder is visibly the superior choice, making the NoEncoder 5 the best model for deductive reasoning out of all the compared setups. The reason behind this likely lies in its shallow architecture. Since there are no shared parameters or stacked layers, training primarily affects the embeddings of entities in the training data while preserving the structure of everything else.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>TuckER</head><p>ConvE 5 ⋆ E MR MRR H@1 MR MRR H@1 MR MRR H@1 Background Knowledge 3. <ref type="bibr">26 .556 .373 3.01 .598 .435 3.24 .574 .408</ref> No Added Facts 5. <ref type="bibr">09 .343 .15 5.07 .334 .13 4.65 .350 .14</ref> With Added Facts Gru 4. <ref type="bibr">16 .457 .28 4.33 .403 .22 4.11 .464 .30 With Added Facts NoEnc. 4.39 .415 .23 4.69 .344 .13 4.25 .416 .22</ref> Table <ref type="table" target="#tab_2">11</ref>: Comparison of the three pre-trained architectures on the deductive reasoning subset of the Doge dataset. Background Knowledge and No Added Facts results serve as soft upper and lower bounds to the With Added Facts results, which can be correctly deduced only by combining newly added facts with the relevant background knowledge. Fine-tuning is done both with Gru and NoEncoder setup to compare the impact of the two.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.4.">Gender Stereotypes</head><p>Finally, all deductive reasoning tests are repeated on the subset of Doge that detects gender stereotypes. The results are given in Table <ref type="table" target="#tab_14">12</ref> and are reported separately for each gender and separately for stereotypical and antistereotypical occupations. Finally, we test whether the model predictions are affected by the stereotypes indicating the presence of historical bias. To see whether the difference in performance is statistically significant, we use the Wilcoxon signed-rank test. More specifically, we test whether swapping the  name of a gender that is not stereotypically associated with an occupation for a name of the opposite gender impacts the rank of the correct answer.</p><p>The gender stereotypes are strongly present, resulting in a model being correct more often when the gender of the name matches the conceptual gender of the occupation. By comparing the results across all examples, both stereotypical and anti-stereotypical, we can see that the masculine names are on average ranked higher, likely due to representation bias in the training data. Moreover, all models obtain decent scores on background knowledge about occupations, making deductive reasoning experiments conclusive.</p><p>The observed patterns persist when additional relevant data are added to the models, regardless of the choice of the encoder. It is worth noting that the improvement from the additional knowledge about entities only moderately helps the models regardless of the gender or stereotypes. Connecting this with the results on deductive reasoning, we can conclude that models contain gender stereotypes and are unable to overcome them in the presence of additional data. The reason why they cannot overcome them lies in their general poor ability to perform deductive reasoning rather than a strong presence of stereotypes. Unfortunately, this means that all analyzed pretrained KBC models can introduce gender-stereotyped facts into the target knowledge base, even in the presence of counter-evidence. To see whether models without GloVe embeddings are less susceptible to gender stereotypes, we evaluate them on the gender stereotype subset of the Doge dataset. The results can be found in Table <ref type="table" target="#tab_17">14</ref>. Despite the slightly lower performance, the general trends in the results of these experiments are very similar to the results with the GloVe embeddings in Table <ref type="table" target="#tab_14">12</ref>. This indicates that GloVe embeddings definitely are not the only source of gender stereotypes, and while their removal results in an undesired performance drop, it does not decrease the biased behavior.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8.">Related Work</head><p>This section discusses the related work in knowledge base completion, transfer learning in NLP, and existing approaches to using external data or  higher-level structures in knowledge base completion. The most attention is put on the discussion of the last part due to its closeness to this work.</p><p>Review of knowledge base completion approaches. Approaches to knowledge base completion can be roughly split into two types, translational models and semantic similarity models. Translational models, such as TransE <ref type="bibr" target="#b28">(Lin et al., 2015)</ref>, BoxE <ref type="bibr" target="#b0">(Abboud et al., 2020)</ref>, 5 ⋆ E <ref type="bibr" target="#b31">(Nayyeri et al., 2021)</ref>, or RotatE <ref type="bibr" target="#b39">(Sun et al., 2019)</ref> usually model triplets as translations or similar geometric operations (e.g., rotations) in space. They are commonly "shallow" in the sense that they do not contain any neural networks with multiple layers. Instead, their design is guided by mathematical intuition. Semantic similarity models usually map the pair (head, relation) into a vector space and measure its semantic similarity (usually dot product) with possible tails. Examples of such models are TuckER <ref type="bibr" target="#b2">(Balažević et al., 2019)</ref>, ConvE <ref type="bibr" target="#b14">(Dettmers et al., 2018)</ref>, and ComplEx <ref type="bibr" target="#b41">(Trouillon et al., 2017)</ref>. Unlike ConvE, which contains a convolutional neural network, TuckER and Com-plEx are examples of bilinear models -a special case of semantic similarity models. In such models, the score of a triplet can be obtained as a multiplication of a relation-specific matrix with vector embeddings of the head and the tail.</p><p>Not all models for knowledge base completion fall strictly into these two categories. KG-Bert <ref type="bibr" target="#b48">(Yao et al., 2019)</ref>, for example, takes the entire triplet as the input and does not compute any intermediate representations.</p><p>We decided not to discuss the performance of the mentioned models on benchmarks as part of the literature review. Their accuracy strongly depends on the training regime, choice of the loss function, and other details, which are not consistent across their respective papers. Surveys of existing KBC methods have repeatedly shown that older models can outperform more recent approaches when trained in the same environment <ref type="bibr" target="#b36">(Ruffinelli et al., 2020;</ref><ref type="bibr" target="#b1">Ali et al., 2020)</ref>.</p><p>Review of transfer learning in natural language processing. Any model claiming the ability to process human language requires an immense amount of background knowledge of words and their meanings. All models operating on human language share vocabulary, prompting the development of common resources such as pre-trained models or word embeddings trained on large unsupervised corpora. Pre-training of models is done by initializing the model weights, word embeddings, or other parts of a model on a separate task with an abundance of data <ref type="bibr" target="#b32">(Pennington et al., 2014;</ref><ref type="bibr" target="#b15">Devlin et al., 2019)</ref>.</p><p>While pre-training on supervised tasks is possible and sometimes even more sample-efficient <ref type="bibr" target="#b13">Conneau et al. (2017)</ref>, the accessibility of raw text makes unsupervised approaches the more scalable option, typically resulting in better performance overall. A common existing approach to pre-training is to train a language model -a computational model that assigns a probability score to the input sequence of words <ref type="bibr" target="#b3">Bengio et al. (2003)</ref> -on a large corpus of raw text <ref type="bibr" target="#b21">Howard and Ruder (2018)</ref>; <ref type="bibr" target="#b8">Brown et al. (2020)</ref>. A conceptually similar but more common approach is masked language modeling <ref type="bibr" target="#b15">Devlin et al. (2019)</ref>; <ref type="bibr" target="#b29">Liu et al. (2019)</ref>, which is not language modelling in the strict sense, because it only assigns probabilities to individual missing (masked) tokens instead of the entire sequence.</p><p>As an example of a pre-training method that is not based on predicting missing pieces of text, we highlight the unsupervised multi-lingual paraphras-ing approach by <ref type="bibr" target="#b27">Lewis et al. (2020)</ref>. They show that one can obtain a model for machine translation in an unsupervised manner by training to paraphrase articles about the same news.</p><p>Further discussion of recent advances in pre-training in NLP is beyond the scope of this paper. For a more exhaustive survey, we direct the readers to <ref type="bibr" target="#b34">Qiu et al. (2020)</ref> Review of uses of external data in knowledge base completion. While largescale transfer learning in KBC is not yet a widely-used method, multiple attempts to incorporate higher-level structures or external knowledge exist. The most common approach is to impose a hierarchy between entities or relations. This information is already available inside the KB, and many approaches just adapt the scoring function to raise its importance. CTransR <ref type="bibr" target="#b22">(Huang et al., 2016)</ref> collects the input data into clusters and learns a separate relation embedding for each cluster. Semantically smooth embedding (SSE) <ref type="bibr" target="#b18">(Guo et al., 2015)</ref> and type-embodied knowledge representation (TKRL) <ref type="bibr">(Xie et al., 2016b)</ref> assign types to entities and require the entities of the same type (determined through the IsA relation) to stay close together.</p><p>A different approach to incorporate additional information is to analyze paths. Unlike regular approaches that only analyze single relations (paths of length 1), models like PTransE <ref type="bibr" target="#b28">(Lin et al., 2015)</ref> additionally incorporate information on the paths of longer lengths. The number of paths increases exponentially with the length, hence all such approaches resort to sampling and approximate methods. Incorporating paths improved the quality of embeddings at the expense of computational complexity. Thus, they do not appear in combination with more complex models.</p><p>The models described so far rely on the information provided by the knowledge base. However, a lot of knowledge is not incorporated in the knowledge bases directly. Various models try to increase the amount of available information by using human-written text. The simplest approach of incorporating natural text is initialization of parameters from precomputed word embeddings based on the textual description of the entities. This approach is used by the NTN model <ref type="bibr" target="#b37">(Socher et al., 2013)</ref>.</p><p>More advanced models, such as DKRL <ref type="bibr">(Xie et al., 2016a)</ref> and TEKE <ref type="bibr" target="#b44">(Wang and Li, 2016)</ref>, train the entity embeddings jointly with the text model and try to align them. <ref type="bibr" target="#b44">Wang and Li (2016)</ref> also define a textual context embedding and try to learn the mapping between the textual and knowledge base embedding. <ref type="bibr">Xie et al. (2016a)</ref>, on the other hand, make use of an en-coder that generates an embedding given a description of the entity. They show that their approach generalizes even to previously unseen entities when a description of these entities is available. Models that additionally incorporate natural text perform better when faced with previously unseen entities. <ref type="bibr" target="#b48">Yao et al. (2019)</ref> make use of the large-scale pre-trained transformer model Bert to classify whether a fact is true. The main drawback of such an approach is its speed -Bert is large, and it can take weeks of GPU runtime to evaluate such a model on a benchmark test set.</p><p>Many of the ideas described in this section thus far have been later used to tackle open knowledge bases. Earlier attempts at open knowledge base completion are tied to existing work on the canonicalization of knowledge bases. To canonicalize open knowledge bases, automatic canonicalization tools cluster entities using manually defined features <ref type="bibr" target="#b17">(Galárraga et al., 2014)</ref> or by finding additional information from external knowledge sources <ref type="bibr" target="#b42">(Vashishth et al., 2018)</ref>. <ref type="bibr" target="#b19">Gupta et al. (2019)</ref> use clusters obtained with these tools to augment entity embeddings for KBC. Note that <ref type="bibr" target="#b19">Gupta et al. (2019)</ref> use RNN-based encoders to encode relations, but not to encode entities. <ref type="bibr" target="#b7">Broscheit et al. (2020)</ref>, on the other hand, introduce a model with RNN-based encoders for both entities and relations. Finally, Chandrahas and Talukdar (2021) use both KB canonicalization tools and the large-scale pre-trained model Bert, combining their predictions to make a more informed decision.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="9.">Conclusion</head><p>In this work, we have introduced a novel approach to transfer learning or domain adaptation between various knowledge base completion datasets and introduced Doge, a novel diagnostic dataset for the analysis of pretrained models for knowledge base completion. The main strength of the introduced pre-trained method is the ability to benefit from pre-training on uncanonicalized knowledge bases, constructed from facts that were collected from unstructured text. Scaling the introduced method up would let us train large-scale pre-trained models, which have already shown to be incredibly successful in NLP. The proposed method was tested on 5 different existing datasets, 1 for pre-training and 4 for fine-tuning, demonstrating that pretraining improves the performance of models. Pre-training turned out to be particularly beneficial on small-scale datasets, where the most significant gains were obtained, i.e., a 6% absolute increase of MRR and a 65% decrease of MR in comparison to the previously best method on ReVerb20k, despite not relying on large pre-trained models like Bert.</p><p>We used the introduced Doge dataset to evaluate pre-trained models introduced in Section 3. The results indicated that the existing pre-trained models lack robustness against synonyms and inverse relations and strongly rely on gender stereotypes. On a more positive note, they seem to cover all major areas of knowledge decently. The main highlighted problem with the obtained pre-trained models is the persistence of harmful stereotypes, which the model cannot remove even with the introduction of counter-evidence. It may thus happen that a pre-trained model includes an incorrect fact ⟨Mary, is, childcare worker⟩ into the target knowledge base even if the knowledge base contains the fact ⟨Mary, repairs, cars⟩.</p><p>While this research rigorously investigated a specific direction of pretraining, i.e., training on an uncanonicalized knowledge base and transferring to smaller closed and open knowledge bases, there is a lot of potential on training on canonicalized knowledge bases as well as transferring to different related tasks, such as named entity recognition and knowledge base canonicalization.</p><p>This work carries important implications for future developments of the field. Pre-training has led to important breakthroughs in other areas where neural networks are applied, and it is reasonable to expect that the same will happen in knowledge base completion. Scaling up the pre-training is expected to improve the performance of KBC models even further, allowing their use on small and scarce knowledge bases. This allows for their use on early-stage knowledge bases, simplifying their construction.</p><p>Results on the Doge dataset demonstrate that existing KBC benchmarks do not test all properties exhaustively. This benchmark allows engineers to diagnose the behavior of their models more precisely, providing insights beyond the theoretical limitation and overall performance.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Comparing convergence of the best randomly initialized (blue) and pre-trained (green) models on ReVerb45k and Fb15k237. Pre-trained models converge in fewer training steps despite a smaller learning rate.</figDesc><graphic coords="26,188.56,125.80,233.13,178.51" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1</head><label>1</label><figDesc></figDesc><table><row><cell>):</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 1 :</head><label>1</label><figDesc>Statistics of the introduced datasets. Only ReVerb45k and ReVerb20k come with gold entity clusters. Fb15k237 and Wn18rr are canonicalized, and OlpBench is too large to allow for a manual annotation of gold clusters.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 2 :</head><label>2</label><figDesc>The dropout rate for ConvE and TuckER is taken from {0.2, 0.3} and {0.3, 0.4}, respectively. Comparison of pre-trained models on OlpBench with the previous best result. The best value in each column is written in bold.</figDesc><table><row><cell></cell><cell>MR</cell><cell cols="2">MRR H@10</cell></row><row><cell>Gru TuckER</cell><cell cols="2">57.2K .053</cell><cell>.097</cell></row><row><cell>Gru ConvE</cell><cell cols="2">57.2K .045</cell><cell>.086</cell></row><row><cell>Gru 5 ⋆ E</cell><cell cols="3">60.1K .055 .101</cell></row><row><cell>(Broscheit et al., 2020)</cell><cell>-</cell><cell>.039</cell><cell>.070</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 3 :</head><label>3</label><figDesc>Comparison of different models with and without pre-training on the OKBC benchmarks ReVerb20K. The scores of each model are reported with and without pretraining, with the better of the two written in italics. Each score is averaged over 5 runs, with their standard deviation given in parentheses. Separated from the rest with two lines are the previous best results on the datasets, and TuckER results with d = 200 for a fair BigGraph comparison. The best overall value in each column is written in bold.</figDesc><table><row><cell>ReVerb20K</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 4 :</head><label>4</label><figDesc>Comparison of different models with and without pre-training on the OKBC benchmark ReVerb45K. The scores of each model are reported with and without pretraining, with the better of the two written in italics. Each score is averaged over 5 runs, with their standard deviation given in parentheses. Separated from the rest with two lines are the previous best results on the datasets, and TuckER results with d = 200 for a fair BigGraph comparison. The best overall value in each column is written in bold.</figDesc><table><row><cell>ReVerb45K</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 5 :</head><label>5</label><figDesc>Table 5 additionally includes multiple recently published implementations of ConvE, 5⋆ E, and TuckER, as well as other well-performing models in Comparison of different models with and without pre-training on the KBC benchmarks Fb15k237. The scores of each model are reported with and without pre-training, with the better of the two written in italics. Separated from the rest with two lines, previous scores obtained with the ConvE, 5 ⋆ E, and TuckER models are listed, followed by other well-performing models in the literature. The best overall result in each column is highlighted in bold.</figDesc><table><row><cell>Fb15k237</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 6 :</head><label>6</label><figDesc>Comparison of different models with and without pre-training on the KBC benchmarks Wn18rr. The scores of each model are reported with and without pre-training, with the better of the two written in italics. Separated from the rest with two lines, previous scores obtained with the ConvE, 5 ⋆ E, and TuckER models are listed, followed by other well-performing models in the literature. The best overall result in each column is highlighted in bold.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 7 :</head><label>7</label><figDesc>Comparison of the zero-shot performance of different models on the OKBC benchmarks ReVerb20k and ReVerb45k. The scores of each model are reported with and without pre-training on OlpBench, with the better of the two written in italics.</figDesc><table><row><cell>NoEncoder TuckER</cell><cell>no yes</cell><cell cols="2">4862 .001 1486 .012 .026 .002</cell><cell>8409 .001 1737 .019 .041 .001</cell></row><row><cell>NoEncoder ConvE</cell><cell>no yes</cell><cell cols="2">4600 .002 .004 1480 .003 .000</cell><cell>8464 .001 .001 1962 .003 .001</cell></row><row><cell>NoEncoder 5⋆E</cell><cell>no yes</cell><cell>4795 .001 1422 .005</cell><cell>.000 .000</cell><cell>8445 .001 1701 .014 .011 .002</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 8 :</head><label>8</label><figDesc>Examples of predictions of ConVE model with NoEncoder on ReVerb20K dataset. yes and no denote whether we used pre-trained model or not. The word underlined is the target answer. Wrong answers are randomly sampled from entities listed in the test set.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_11"><head>Table 9 :</head><label>9</label><figDesc>Politics, Law &amp; Government 3.45 .532 .35 2.92 .563 .36 2.79 .639 .50 Science 3.60 .505 .32 3.94 .450 .23 3.28 .569 .41 Sports &amp; Recreation 3.71 .470 .25 3.63 .472 .27 3.02 .587 .41 Technology 3.45 .532 .35 3.30 .534 .34 3.13 .593 .43 Comparison of the three pre-trained architectures on the general knowledge subset of the Doge dataset. Each column contains scores of a model on different categories, as defined by Encyclopedia Britannica.</figDesc><table><row><cell></cell><cell>TuckER</cell><cell>ConvE</cell><cell>5 ⋆ E</cell></row><row><cell>category</cell><cell cols="3">MR MRR H@1 MR MRR H@1 MR MRR H@1</cell></row><row><cell>Entertain. &amp; Pop Culture</cell><cell cols="3">3.55 .510 .31 3.49 .520 .33 3.40 .559 .39</cell></row><row><cell>Geography &amp; Travel</cell><cell cols="3">3.03 .601 .43 2.87 .620 .46 2.40 .702 .57</cell></row><row><cell>Health &amp; Medicine</cell><cell cols="3">3.95 .461 .27 3.43 .493 .27 3.18 .561 .39</cell></row><row><cell>Lifestyle &amp; Social Issues</cell><cell cols="3">3.35 .535 .36 3.21 .564 .39 3.25 .567 .39</cell></row><row><cell>Literature</cell><cell cols="3">3.69 .509 .33 3.30 .550 .37 3.08 .602 .45</cell></row><row><cell>Philosophy &amp; Religion</cell><cell cols="3">3.22 .545 .37 3.25 .544 .34 3.01 .599 .43</cell></row><row><cell>Visual Arts</cell><cell cols="3">3.77 .480 .28 3.66 .492 .32 3.50 .557 .40</cell></row><row><cell>World History</cell><cell cols="3">3.28 .520 .30 3.19 .580 .42 2.55 .642 .46</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_12"><head>Table 10 :</head><label>10</label><figDesc>A comparison of three pre-trained architectures on subsets of the Doge dataset that probe the consistency of predictions. Mean values are usually close to zero, indicating that the deviation was not caused by poor annotation.</figDesc><table><row><cell>⋆ E</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_14"><head>Table 12 :</head><label>12</label><figDesc>Comparison of three pre-trained architectures on the gender-bias detection subset of Doge. The dataset is split into Stereotypical (St) and Anti-Stereotypical (Anti-St) examples. The first of the three tables contains information on the experiments that do not require fine-tuning: stereotype detection and background knowledge. The second and the third table contain information on deductive reasoning about gender for Gru and NoEncoder encoders, respectively.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_15"><head>Table 13 :</head><label>13</label><figDesc>7.5. The Impact of Word EmbeddingsFinally, we report the results of re-training ConvE and TuckER on OlpBench without the GloVe word embeddings. The results on Olp-Bench are reported in Table13. Evidently, the absence of GloVe vectors significantly decreases the performance of both models. Comparison of GloVe impact on OlpBench. TuckER and ConvE are both trained with GloVe and with randomly-initialized word embeddings. The better of the two in each column is written in italics.</figDesc><table><row><cell></cell><cell>MR</cell><cell cols="2">MRR H@10</cell></row><row><cell>Gru TuckER GloVe</cell><cell cols="2">57 .2K .053</cell><cell>.097</cell></row><row><cell cols="3">Gru TuckER No GloVe 65.1K .042</cell><cell>.077</cell></row><row><cell>Gru ConvE GloVe</cell><cell cols="2">57 .2K .045</cell><cell>.086</cell></row><row><cell>Gru ConvE No GloVe</cell><cell cols="2">69.2K .030</cell><cell>.057</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_17"><head>Table 14 :</head><label>14</label><figDesc>Comparison of pre-trained ConvE and TuckER architectures without GloVe embeddings on the gender-bias detection subset of Doge. The dataset is split into a dataset with Stereotypical (St) and one with Anti-Stereotypical (Anti-St) examples. The first of the two tables contains information on experiments that do not require fine-tuning: stereotype detection and background knowledge. The second of the two tables contains the information on deductive reasoning about gender for Gru encoders. Fine-tuning with the NoEncoder setup was omitted for brevity.</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_0"><p>Pre-training setup. Pre-training was only done with GRU encoders, as discussed in Section 2.1. Not only does this allow transfer to new entities, but assigning a separate vector embedding to each entity in the pre-training set is computationally too costly. Due to a large number of entities in the pretraining set, 1-N negative sampling is performed only with negative examples from the same batch, and batches of size 4096 were used, following<ref type="bibr" target="#b7">Broscheit et al. (2020)</ref>. The learning rate was selected from {1 • 10 -4 , 3 • 10 -4 }, while the dropout rate was selected from {0.2, 0.3} for ConvE and {0.3, 0.4} for TuckER. For 5 ⋆ E, the dropout rate was not used, but N3 regularization was<ref type="bibr" target="#b25">(Lacroix et al., 2018)</ref>, with its weight selected from {0.1,0.03}.For TuckER, models with embedding dimensions 100, 200, and 300 were trained. The best model of each dimension was saved for fine-tuning. For ConvE, models with embedding dimensions 300 and 500 were trained, and the best model for each dimension was saved for fine-tuning. Following<ref type="bibr" target="#b19">Gupta et al. (2019)</ref>, we used a single 2D convolution layer with 32 channels and 3 × 3 kernel size. When the dimension of entities and relations is 300, they are reshaped into 15 × 20 inputs, while the 20 × 25 input shapes are used for 500-dimensional embeddings. For 5 ⋆ E, models with embedding dimensions 200 and 500 were trained, and the best model for each dimension was saved for fine-tuning.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>https://github.com/yao8839836/kg-bert/issues/8</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>Taken from https://www.ssa.gov/OACT/babynames/decades/century.html on 2 March 2021.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_3"><p>Taken from the bureau of labor statistics, 2 March 2021 https://www.bls.gov/cps/ cpsaat11.htm</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_4"><p>Oxford English Dictionary and Career Explorer were used as the source of these facts. https://www.careerexplorer.com/</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_5"><p>(Dettmers et al.,  </p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_6"><p>2018); 2 (Ruffinelli et al., 2020); 3 (Balažević et al., 2019); 4 (Nayyeri et al., 2021); 5 (Yao et al., 2019); 6 (Abboud et al., 2020); 7 (Lacroix et al., 2018); 8 (Zhang et al., 2020); 9 (Clouatre et al., 2021).</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgments</head><p>This is a substantially extended and improved version of a preliminary paper at EMNLP 2021 Kocijan and Lukasiewicz (2021). The authors would like to thank <rs type="person">Ralph Abboud</rs> for his helpful comments on the paper manuscript and <rs type="person">Ana Štuhec</rs> for suggesting the dataset name. This work was supported by the <rs type="funder">Alan Turing Institute</rs> under the <rs type="grantName">EPSRC grant</rs> <rs type="grantNumber">EP/N510129/1</rs>, the <rs type="funder">AXA Research Fund</rs>, the <rs type="funder">ESRC</rs> grant "Unlocking the Potential of AI for English</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_Rw59cf7">
+					<idno type="grant-number">EP/N510129/1</idno>
+					<orgName type="grant-name">EPSRC grant</orgName>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Law", and the EPSRC Studentship OUCS/EPSRC-NPIF/VK/1123106. We also acknowledge the use of the EPSRC-funded Tier 2 facility JADE (EP/P020275/1) and GPU computing support by Scan Computers International Ltd.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Boxe: A box embedding model for knowledge base completion</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Abboud</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">İ</forename><forename type="middle">İ</forename><surname>Ceylan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lukasiewicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Salvatori</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="9649" to="9661" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Bringing light into the dark: A largescale evaluation of knowledge graph embedding models under a unified framework</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ali</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Berrendorf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">T</forename><surname>Hoyt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Vermue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Galkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sharifzadeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Fischer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lehmann</surname></persName>
+		</author>
+		<idno>CoRR abs/2006.13365</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Tensor factorization for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Balažević</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Allen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hospedales</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tucker</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)<address><addrLine>Hong Kong, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="5185" to="5194" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">A neural probabilistic language model</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ducharme</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Vincent</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Janvin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="1137" to="1155" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Freebase: A collaboratively created graph database for structuring human knowledge</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Bollacker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Evans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Paritosh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Sturge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Taylor</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2008 ACM SIGMOD International Conference on Management of Data, SIGMOD &apos;08</title>
+		<meeting>the 2008 ACM SIGMOD International Conference on Management of Data, SIGMOD &apos;08<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="1247" to="1250" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Man is to computer programmer as woman is to homemaker? Debiasing word embeddings</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Bolukbasi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K.-W</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">Y</forename><surname>Zou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Saligrama</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">T</forename><surname>Kalai</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">29</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Yakhnenko</surname></persName>
+		</author>
+		<title level="m">Translating embeddings for modeling multi-relational data</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">26</biblScope>
+		</imprint>
+	</monogr>
+	<note>Advances in Neural Information Processing Systems</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Can we predict new facts with open knowledge graph embeddings? A benchmark for open link prediction</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Broscheit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Gashteovski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gemulla</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Online</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="2296" to="2308" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Language models are few-shot learners</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Mann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Ryder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Subbiah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">D</forename><surname>Kaplan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Dhariwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Neelakantan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Shyam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Sastry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Askell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Agarwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Herbert-Voss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Krueger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Henighan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Child</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ramesh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ziegler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Winter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hesse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Sigler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Litwin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gray</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Chess</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Clark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Berner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mccandlish</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Amodei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Ranzato</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Hadsell</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><forename type="middle">F</forename><surname>Balcan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Lin</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="1877" to="1901" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bruna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zaremba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Szlam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lecun</surname></persName>
+		</author>
+		<title level="m">Proceedings of the 3rd International Conference on Learning Representation ICLR</title>
+		<meeting>the 3rd International Conference on Learning Representation ICLR<address><addrLine>Banff, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note>Spectral networks and locally connected networks on graphs</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">OKGIT: Open knowledge graph link prediction with implicit types</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Chandrahas</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Talukdar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: ACL-IJCNLP 2021</title>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="2546" to="2559" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Learning phrase representations using RNN encoder-decoder for statistical machine translation</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Van Merriënboer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Gulcehre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bahdanau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Bougares</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Schwenk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)<address><addrLine>Doha, Qatar</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1724" to="1734" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">MLMLM: Link prediction with mean likelihood masked language model</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Clouatre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Trempe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zouaq</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chandar</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.findings-acl.378</idno>
+		<ptr target="https://aclanthology.org/2021.findings-acl.378" />
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: ACL-IJCNLP 2021</title>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="4321" to="4331" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Supervised learning of universal sentence representations from natural language inference data</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Conneau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kiela</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Schwenk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Barrault</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bordes</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2017 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Copenhagen, Denmark</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="670" to="680" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Convolutional 2D knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Pasquale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pontus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 32th Association of Advancement of Artificial Intelligence (AAAI) Conference on Artificial Intelligence</title>
+		<meeting>the 32th Association of Advancement of Artificial Intelligence (AAAI) Conference on Artificial Intelligence<address><addrLine>New Orleans, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1811" to="1818" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">BERT: Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M.-W</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Toutanova</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long and Short Papers</title>
+		<meeting>the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Minneapolis, Minnesota</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="4171" to="4186" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Identifying relations for open information extraction</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Fader</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Soderland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Etzioni</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2011 Conference on Empirical Methods in Natural Language Processing, Association for Computational Linguistics</title>
+		<meeting>the 2011 Conference on Empirical Methods in Natural Language Processing, Association for Computational Linguistics<address><addrLine>Edinburgh, Scotland, UK</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="1535" to="1545" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Canonicalizing open knowledge bases</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Galárraga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Heitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">M</forename><surname>Suchanek</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 23rd ACM International Conference on Conference on Information and Knowledge Management, CIKM &apos;14</title>
+		<meeting>the 23rd ACM International Conference on Conference on Information and Knowledge Management, CIKM &apos;14<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1679" to="1688" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Semantically smooth knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 53rd Annual Meeting of the Association for Computational Linguistics and the 7th International Joint Conference on Natural Language Processing</title>
+		<meeting>the 53rd Annual Meeting of the Association for Computational Linguistics and the 7th International Joint Conference on Natural Language Processing<address><addrLine>Beijing, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="84" to="94" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">CaRe: Open knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kenkre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Talukdar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)<address><addrLine>Hong Kong, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="378" to="388" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Systematic comparison of neural architectures and training approaches for open information extraction</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Hohenecker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Mtumbuka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kocijan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lukasiewicz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</meeting>
+		<imprint>
+			<publisher>Online</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="8554" to="8565" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Universal language model fine-tuning for text classification</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Howard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ruder</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 56th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Melbourne, Australia</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="328" to="339" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Improved knowledge base completion by pathaugmented TransR model</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Jin</surname></persName>
+		</author>
+		<idno>CoRR abs/1610.04073</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Adam: A method for stochastic optimization</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">rd International Conference on Learning Representations, ICLR 2015</title>
+		<meeting><address><addrLine>San Diego, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2015">May 7-9, 2015. 2015</date>
+			<biblScope unit="page">3</biblScope>
+		</imprint>
+	</monogr>
+	<note>Conference Track Proceedings</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Knowledge base completion meets transfer learning</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kocijan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lukasiewicz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2021 Conference on Empirical Methods in Natural Language Processing (EMNLP)<address><addrLine>Punta Cana, Dominican Republic</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Canonical tensor decomposition for knowledge base completion</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Obozinski</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 35th International Conference on Machine Learning ICML</title>
+		<meeting>the 35th International Conference on Machine Learning ICML</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">PyTorch-BigGraph: A Large-scale Graph Embedding System</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wehrstedt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bose</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Peysakhovich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2nd SysML Conference</title>
+		<meeting>the 2nd SysML Conference<address><addrLine>Palo Alto, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Pre-training via paraphrasing</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ghazvininejad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Ghosh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Aghajanyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Ranzato</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Hadsell</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><forename type="middle">F</forename><surname>Balcan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Lin</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="18470" to="18481" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Modeling relation paths for representation learning of knowledge bases</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Luan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2015 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2015 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Lisbon, Portugal</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="705" to="714" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Joshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Levy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Stoyanov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roberta</forename></persName>
+		</author>
+		<idno>abs/1907.11692</idno>
+		<title level="m">A robustly optimized BERT pretraining approach</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">WordNet: A lexical database for English</title>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">A</forename><surname>Miller</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1995">1995</date>
+			<publisher>ACM</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">5* knowledge graph embeddings with projective transformations</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Nayyeri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Vahdati</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Aykul</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lehmann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 35th Association of Advancement of Artificial Intelligence (AAAI) Conference on Artificial Intelligence</title>
+		<meeting>the 35th Association of Advancement of Artificial Intelligence (AAAI) Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">GloVe: Global vectors for word representation</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pennington</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Manning</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)<address><addrLine>Doha, Qatar</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1532" to="1543" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Language models as knowledge bases?</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Petroni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Rocktäschel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bakhtin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Miller</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)<address><addrLine>Hong Kong, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2463" to="2473" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Pre-trained models for natural language processing: A survey</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Shao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Huang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Science China of Technological Sciences</title>
+		<imprint>
+			<biblScope unit="page" from="1872" to="1897" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Gender bias in coreference resolution</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Rudinger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Naradowsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Leonard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Van Durme</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>New Orleans, Louisiana</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="8" to="14" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">You CAN teach an old dog new tricks! on training knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Broscheit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gemulla</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">th International Conference on Learning Representations, ICLR 2020</title>
+		<meeting><address><addrLine>Addis Ababa, Ethiopia</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020">April 26-30, 2020, 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Reasoning with neural tensor networks for knowledge base completion</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">D</forename><surname>Manning</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">26</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Supervised open information extraction</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Stanovsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Michael</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Dagan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long Papers</title>
+		<meeting>the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>New Orleans, Louisiana</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="885" to="895" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z.-H</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-Y</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<meeting><address><addrLine>New Orelans, LA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Representing text for joint embedding of text and knowledge bases</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Pantel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Poon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Choudhury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Gamon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2015 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2015 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Lisbon</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="1499" to="1509" />
+		</imprint>
+	</monogr>
+	<note>Portugal</note>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Knowledge graph completion via complex tensor factorization</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">R</forename><surname>Dance</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Mach. Learn. Res</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="page" from="4735" to="4772" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">CESI: Canonicalizing open knowledge bases using embeddings and side information</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Vashishth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Talukdar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 World Wide Web Conference, WWW &apos;18</title>
+		<meeting>the 2018 World Wide Web Conference, WWW &apos;18</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1317" to="1327" />
+		</imprint>
+	</monogr>
+	<note>CHE</note>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Graph attention networks</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Liò</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 6th International Conference on Learning Representation ICLR</title>
+		<meeting>the 6th International Conference on Learning Representation ICLR</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Text-enhanced representation learning for knowledge graph</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-Fifth International Joint Conference on Artificial Intelligence, IJCAI&apos;16</title>
+		<meeting>the Twenty-Fifth International Joint Conference on Artificial Intelligence, IJCAI&apos;16</meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="1293" to="1299" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding by translating on hyperplanes</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th Association of Advancement of Artificial Intelligence (AAAI) Conference on Artificial Intelligence</title>
+		<meeting>the 28th Association of Advancement of Artificial Intelligence (AAAI) Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Representation learning of knowledge graphs with entity descriptions</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Luan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirtieth Association of Advancement of Artificial Intelligence (AAAI) Conference on Artificial Intelligence</title>
+		<meeting>the Thirtieth Association of Advancement of Artificial Intelligence (AAAI) Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Representation learning of knowledge graphs with hierarchical types</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-Fifth International Joint Conference on Artificial Intelligence, IJCAI&apos;16</title>
+		<meeting>the Twenty-Fifth International Joint Conference on Artificial Intelligence, IJCAI&apos;16</meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2965" to="2971" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kg-Bert</forename></persName>
+		</author>
+		<idno>CoRR abs/1909.03193</idno>
+		<title level="m">BERT for knowledge graph completion</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Duality-induced regularizer for tensor factorization based knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="21604" to="21615" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Yatskar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Ordonez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K.-W</forename><surname>Chang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Short Papers</title>
+		<meeting>the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>New Orleans, Louisiana</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="15" to="20" />
+		</imprint>
+	</monogr>
+	<note>Gender bias in coreference resolution: Evaluation and debiasing methods</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

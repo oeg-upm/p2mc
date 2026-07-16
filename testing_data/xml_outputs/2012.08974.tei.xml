@@ -1,0 +1,1342 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Adversarial Permutation Guided Node Representations for Link Prediction</title>
+				<funder ref="#_VatbhTZ">
+					<orgName type="full">IBM</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2021-03-28">28 Mar 2021</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Indradyumna</forename><surname>Roy</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Indian Institute of Technology Bombay</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Abir</forename><surname>De</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Indian Institute of Technology Bombay</orgName>
+							</affiliation>
+						</author>
+						<author role="corresp">
+							<persName><forename type="first">Soumen</forename><surname>Chakrabarti</surname></persName>
+							<email>soumen@cse.iitb.ac.in</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Indian Institute of Technology Bombay</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Adversarial Permutation Guided Node Representations for Link Prediction</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2021-03-28">28 Mar 2021</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">FE04CE441BB83A7501ED6F19B8C62A15</idno>
+					<idno type="arXiv">arXiv:2012.08974v2[cs.SI]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T09:57+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>After observing a snapshot of a social network, a link prediction (LP) algorithm identifies node pairs between which new edges will likely materialize in future. Most LP algorithms estimate a score for currently non-neighboring node pairs, and rank them by this score. Recent LP systems compute this score by comparing dense, low dimensional vector representations of nodes. Graph neural networks (GNNs), in particular graph convolutional networks (GCNs), are popular examples. For two nodes to be meaningfully compared, their embeddings should be indifferent to reordering of their neighbors. GNNs typically use simple, symmetric set aggregators to ensure this property, but this design decision has been shown to produce representations with limited expressive power. Sequence encoders are more expressive, but are permutation sensitive by design. Recent efforts to overcome this dilemma turn out to be unsatisfactory for LP tasks. In response, we propose PERMGNN, which aggregates neighbor features using a recurrent, order-sensitive aggregator and directly minimizes an LP loss while it is 'attacked' by adversarial generator of neighbor permutations. PERMGNN has superior expressive power compared to earlier GNNs. Next, we devise an optimization framework to map PERMGNN's node embeddings to a suitable locality-sensitive hash, which speeds up reporting the top-K most likely edges for the LP task. Our experiments on diverse datasets show that PERM-GNN outperforms several state-of-the-art link predictors, and can predict the most likely edges fast.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>In the link prediction (LP) task, we are given a snapshot of a social network, and asked to predict future links that are most likely to emerge between nodes. LP has a wide variety of applications, e.g., recommending friends in Facebook, followers in Twitter, products in Amazon, or connections on LinkedIn. An LP algorithm typically considers current nonedges as potential edges, and ranks them by decreasing likelihoods of becoming edges in future.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.1">Prior Work and Their Limitations</head><p>LP methods abound in the literature, and predominantly follow two approaches. The first approach relies strongly on hand-engineering node features and edge likelihoods based on the network structure and domain knowledge <ref type="bibr" target="#b16">(Katz 1997;</ref><ref type="bibr" target="#b23">Liben-Nowell and Kleinberg 2007;</ref><ref type="bibr" target="#b2">Backstrom and Leskovec 2011)</ref>. However, such feature engineering often demands significant domain expertise. The second approach learns low dimensional node embeddings which serve as node features in LP tasks. Such embedding models include Node2Vec <ref type="bibr" target="#b11">(Grover and Leskovec 2016)</ref>, Deep-Walk <ref type="bibr" target="#b31">(Perozzi, Al-Rfou, and Skiena 2014)</ref>, etc., and various graph neural networks (GNN), e.g., GCN <ref type="bibr">(Kipf and Welling 2016a)</ref>, GraphSAGE <ref type="bibr" target="#b12">(Hamilton, Ying, and Leskovec 2017)</ref>, GAT <ref type="bibr" target="#b43">(Veličković et al. 2017)</ref>, etc. Limited expressive power of GNNs. While deep graph representations have shown significant potential in capturing complex relationships between nodes and their neighborhoods, they lack representational power useful for LP. A key reason for this weakness is the use of symmetric aggregates over a node u's neighbors, driven by the desideratum that the representation of u should be invariant to a permutation of its neighbor nodes <ref type="bibr" target="#b51">(Zaheer et al. 2017;</ref><ref type="bibr" target="#b33">Ravanbakhsh, Schneider, and Poczos 2016;</ref><ref type="bibr" target="#b32">Qi et al. 2017</ref>). Such networks have recently been established as low-pass filters <ref type="bibr" target="#b47">(Wu et al. 2019;</ref><ref type="bibr" target="#b29">NT and Maehara 2019)</ref>, which attenuate high frequency signals. This prevents LP methods based on such node representations from reaching their full potential. Although recent efforts <ref type="bibr" target="#b20">(Lee et al. 2019;</ref><ref type="bibr" target="#b3">Bloem-Reddy and Teh 2019;</ref><ref type="bibr" target="#b38">Shi, Oliva, and Niethammer 2020;</ref><ref type="bibr" target="#b41">Stelzner, Kersting, and Kosiorek 2020;</ref><ref type="bibr" target="#b40">Skianis et al. 2020;</ref><ref type="bibr" target="#b52">Zhang and Chen 2018)</ref> on modeling inter-item dependencies have substantially improved the expressiveness of set representations in applications like image and text processing, they offer only modest improvement for LP, as we shall see in our experiments. Among these approaches, SEAL <ref type="bibr" target="#b52">(Zhang and Chen 2018)</ref> improves upon GNN performance but does not readily lend itself to efficient top-K predictions via LSH. Limitations of sequence driven embeddings. We could arrange the neighbors of u in some arbitrary canonical order, and combine their features sequentially using, say, a recurrent neural network (RNN). This would capture feature correlations between neighbors. But now, the representation of u will become sensitive to the order in which neighbors are presented to the RNN. In our experiments, we see loss degradation when neighbors are shuffled. We seek to resolve this central dilemma. An obvious attempted fix would be to present many permutations (as Monte Carlo samples) of neighbor nodes but, as we shall see, doing so in a dataoblivious manner is very inefficient in terms of space and time.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.2">Our Proposal: PERMGNN</head><p>In response to the above limitations in prior work, we develop PERMGNN: a novel node embedding method specifically designed for LP. To avoid the low-pass nature of GNNs, we eschew symmetric additive aggregation over neighbors of a node u, instead using a recurrent network to which neighbor node representations are provided sequentially, in some order. The representation of u is computed by an output layer applied on the RNN states.</p><p>To neutralize the order-sensitivity of the RNN, we cast LP as a novel min-max optimization, equivalent to a game between an adversary that generates worst-case neighbor permutations (to maximize LP loss) and a node representation learner that refines node representations (to minimize LP loss) until they become insensitive to neighborhood permutations. To facilitate end-to-end training and thus avoiding exploration of huge permutation spaces, the adversarial permutation generator is implemented as a Gumbel-Sinkhorn neural network <ref type="bibr" target="#b26">(Mena et al. 2018)</ref>.</p><p>Next, we design a hashing method for efficient LP, using the node representation learnt thus far. We propose a smooth optimization to compress the learned embeddings into binary representations, subject to certain hash performance constraints. Then we leverage locality sensitive hashing <ref type="bibr" target="#b10">(Gionis, Indyk, and Motwani 1999)</ref> to assign the bit vectors to buckets, such that nodes likely to become neighbors share buckets. Thus, we can limit the computation of pairwise scores to within buckets. In spite of this additional compression, our hashing mechanism is accurate and fast.</p><p>We evaluate PERMGNN on several real-world datasets, which shows that our embeddings can suitably distill information from node neighborhoods into compact vectors, and offers accuracy boosts beyond several state-of-the-art LP methods 1 , while achieving large speed gains via LSH.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.3">Summary of Contributions</head><p>(1) Adversarial permutation guided embeddings: We propose PERMGNN, a novel node embedding method, which provides high quality node representations for LP. In a sharp contrast to additive information aggregation in GNNs, we start with a permutation-sensitive but highly expressive aggregator of the graph neighbors and then desensitize the permutation-sensitivity by optimizing a min-max ranking loss function with respect to the smooth surrogates of adversarial permutations.</p><p>(2) Hashing method for scalable predictions: We propose an optimized binary transformation to the learnt node representations, that readily admits the use of a locality-sensitive hashing method and shows fast and accurate predictions.</p><p>(3) Comprehensive evaluation: We provide a rigorous evaluation to test both the representational power of PERM-GNN and the proposed hashing method, which show that our proposal usually outperforms classical and recent methods.</p><p>1 Code: https://www.cse.iitb.ac.in/ ∼ abir/codes/permgnn.zip.</p><p>Further probing the experimental results reveal insightful explanations behind the success of PERMGNN.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Preliminaries</head><p>In this section, we describe necessary notation and the components of a typical LP system.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Notation</head><p>We consider a snapshot of an undirected social network G = (V, E). Each node u has a feature vector f u . We use nbr(u) and nbr(u) to indicate the set of neighbors and nonneighbors of u. Our graphs do not have self edges, but we include u in nbr(u) by convention. We define nbr(u) = {u}∪{v | (u, v) ∈ E}, nbr(u) = {v|v = u, (u, v) ∈ E} and also E to be the set of non-edges, i.e., E = ∪ u∈V nbr(u). Finally, we define Π δ to be the set of permutations of the set [δ] = {1, 2, ..., δ} and P δ to be the set of all possible 0/1 permutation matrices of size δ × δ.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Scoring and Ranking</head><p>Given a graph snapshot G = (V, E), the goal of a LP algorithm is to identify node-pairs from the current set of non-edges E (often called potential edges) that are likely to become edges in future. In practice, most LP algorithms compute a score s(u, v) for each potential edge (u, v) ∈ E, which measures their likelihood of becoming connected in future. Recently invented network embedding methods <ref type="bibr">(Kipf and Welling 2016a;</ref><ref type="bibr" target="#b11">Grover and Leskovec 2016;</ref><ref type="bibr" target="#b34">Salha et al. 2019</ref>) first learn a latent representation x u of each node u ∈ V and then compute scores s(u, v) using some similarity or distance measure between the corresponding representations x u and x v . In the test fold, some nodes are designated as query nodes q. Its (current) nonneighbors v are sorted by decreasing s(q, v). We are primarily interested in LP systems that can retrieve a small number of K nodes with largest s(q, v) for all q in o(N 2 ) time.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Proposed Approach</head><p>In this section, we first state the limitations of GNNs. Then, we present our method for obtaining high quality node embeddings, with better representational power than GNNs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">GNNs and Their Limitations</head><p>GNNs start with a graph and per-node features f u to obtain a neighborhood-sensitive node representation x u for u ∈ V . To meaningfully compare x u and x v and compute s(u, v), information from neighbors of u (and v) should be aggregated in such a way that the embeddings become invariant to permutations of the neighbors of u (and v). GNNs ensure permutation invariance by additive aggregation. Given an integer K, for each node u, a GNN aggregates structural information k hops away from u to cast it into x u for k ≤ K. Formally, a GNN first computes intermediate embeddings</p><formula xml:id="formula_0">{z u (k) | k ∈ [K]</formula><p>} in an iterative manner and then computes x u , using the following recurrent propagation rule.</p><formula xml:id="formula_1">z u (k -1) = AGGR {z v (k -1) | v ∈ nbr(u)} ;</formula><p>(1)</p><formula xml:id="formula_2">z u (k) = COMB 1 z u (k -1), z u (k -1) ; (2) x u = COMB 2 (z u (1), . . . , z u (K))<label>(3)</label></formula><p>Here, for each node u with feature vector f u , we initialize z u (0) = f u ; AGGR and COMB 1,2 are neural networks. To ensure permutation invariance of the final embedding x u , AGGR aggregates the intermediate (k -1)-hop information z v (k -1) with an additive (commutative, associative) function, guided by set function principles <ref type="bibr" target="#b51">(Zaheer et al. 2017)</ref>:</p><formula xml:id="formula_3">AGGR {z v (k -1) | v ∈ nbr(u)} = σ 1 v∈nbr(u) σ 2 z v (k -1) .</formula><p>(4) Here σ 1 , σ 2 are nonlinear activations. In theory (Zaheer et al. 2017, Theorem 2), if COMB 1,2 are given 'sufficient' hidden units, this set representation is universal. In practice, however, commutative-associative aggregation suffers from limited expressiveness <ref type="bibr" target="#b30">(Pabbaraju and Jain 2019;</ref><ref type="bibr" target="#b44">Wagstaff et al. 2019;</ref><ref type="bibr" target="#b8">Garg, Jegelka, and Jaakkola 2020;</ref><ref type="bibr" target="#b6">Cohen-Karlik, David, and Globerson 2020)</ref>, which degrades the quality of x u and s(•, •), as described below. Specifically, their expressiveness is constrained from two perspectives. Attenuation of important network signals. GNNs are established to be intrinsically low pass filters (NT and Maehara 2019; <ref type="bibr" target="#b47">Wu et al. 2019</ref>). Consequently, they can attenuate high frequency signals which may contain crucial structural information about the network. To illustrate, assume that the node u in Eqs. ( <ref type="formula">1</ref>)-( <ref type="formula" target="#formula_2">3</ref>) has two neighbors v and w and z v (k-1) = [+1, -1] and z w (k -1) = [-1, +1], which induce high frequency signals around the neighborhood of u. In practice, these two representations may carry important signals about the network structure. However, popular choices of σ 2 often diminish the effect of each of these vectors. In fact, the widely used linear form of σ 2 <ref type="bibr" target="#b12">(Hamilton, Ying, and Leskovec 2017;</ref><ref type="bibr">Kipf and Welling 2016a)</ref> would completely annul their effects (since σ 2 (z v (k-1))+σ 2 (z w (k-1)) = 0) in the final embedding x u , which would consequently lose capacity for encapsulating neighborhood information. Inability to distinguish between correlation structures. In Eq. ( <ref type="formula">4</ref>), the outer nonlinearity σ 1 operates over the sum of all representations of neighbors of u. Therefore, it cannot explicitly model the variations between the joint dependence of these neighbors. Suppose the correlation between z v (k -1) and z w (k -1) is different from that between z v (k -1) and z w (k -1) for {v, v , w, w } ⊆ nbr(u). The additive aggregator in Eq. ( <ref type="formula">4</ref>) cannot capture the distinction.</p><p>Here, we develop a mitigation approach which exploits sequential memory, e.g., LSTMs, even though they are order-sensitive, and then neutralize the order sensitivity by presenting adversarial neighbor orders. An alternative mitigation approach is to increase the capacity of the aggregator (while keeping it order invariant by design) by explicitly modeling dependencies between neighbors, as has been attempted in image or text applications <ref type="bibr" target="#b20">(Lee et al. 2019;</ref><ref type="bibr" target="#b3">Bloem-Reddy and Teh 2019;</ref><ref type="bibr" target="#b38">Shi, Oliva, and Niethammer 2020;</ref><ref type="bibr" target="#b41">Stelzner, Kersting, and Kosiorek 2020)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Our Model: PERMGNN</head><p>Responding to the above limitations of popular GNN models, we design PERMGNN, the proposed adversarial permutation guided node embeddings.</p><p>Overview. Given a node u, we first compute an embedding x u using a sequence encoder, parameterized by θ:</p><formula xml:id="formula_4">x u = ρ θ {f v | v ∈ nbr(u)} ,<label>(5)</label></formula><p>where nbr(u) is presented in some arbitrary order (to be discussed). In contrast to the additive aggregator, ρ is modeled by an LSTM <ref type="bibr" target="#b13">(Hochreiter and Schmidhuber 1997)</ref>, followed by a fully-connected feedforward neural network (See Figure <ref type="figure">1</ref>). Such a formulation captures the presence of high frequency signal in the neighborhood of u and the complex dependencies between the neighbors nbr(u) by combining their influence via the recurrent states of the LSTM.</p><p>However, now the embedding x u is no longer invariant to the permutation of the neighbors nbr(u). As we shall see, we counter this by casting the LP objective as an instance of a min-max optimization problem. Such an adversarial setup refines x u in an iterative manner, to ensure that the resulting trained embeddings are permutation invariant (at least as far as possible in a non-convex optimization setting).</p><formula xml:id="formula_5">PERMGNN architecture. Let us suppose π = [π 1 , ..., π | nbr(u)| ] ∈ Π | nbr(u)</formula><p>| is some arbitrary permutation of the neighbors of node u. We take the features of neighbors of u in the order specified by π, i.e., v π1 , v π2 , . . . , v π | nbr(u)| , and pass them into an LSTM:</p><formula xml:id="formula_6">y u,1 , ..., y u,| nbr(u)| = LSTM θ f vπ 1 , ..., f vπ | nbr(u)| . (6)</formula><p>Here y u,k k∈[| nbr(u)|] is a sequence of intermediate representation of node u, which depends on the permutation π. Such an approach ameliorates the limitations of GNNs in two ways:</p><p>(1) Unlike GNNs, the construction of y • is not limited to symmetric aggregation, and is therefore able to capture crucial network signals including those with high frequency <ref type="bibr" target="#b4">(Borovkova and Tsiamas 2019)</ref>.</p><p>(2) An LSTM (indeed, any RNN variant) is designed to capture the influence of one token of the sequence on the subsequent tokens. In the current context, the state variable h k of the LSTM combines the influence of first k -1 neighbors in the input sequence, i.e., v π1 , . . . v π k-1 on the k-th neighbor v π k . Therefore, these recurrent states allow y • to capture the complex dependence between the features f • . Next, we compute the final embeddings x u by using an additional nonlinearity on the top of the sequence (y u,k ) k∈[| nbr(u)|] output by the LSTM:</p><formula xml:id="formula_7">x u;π = σ θ y u,1 , y u,2 , . . . , y u,| nbr(u)| ∈ R D . (<label>7</label></formula><formula xml:id="formula_8">)</formula><p>Note that the embeddings {x u } computed above depends on π, the permutation of the neighbors nbr(u) given as the input sequence to the LSTM in Eq. ( <ref type="formula">6</ref>).</p><p>Removing the sensitivity to π. One simple way to ensure permutation invariance is to compute the average of </p><formula xml:id="formula_9">f f F v+ T φ LSTM θ σ θ x v+ u . . . f f F u T φ LSTM θ σ θ x u v -. . . f f F v-T φ LSTM θ σ θ x v- edge non-edge sim(u, v + ) sim(u, v -) ReLU loss ∆ C ψ b u</formula><p>Figure fix θ; find next π u at all u for worst LP accuracy 5: until LP performance stabilizes Let π u ∈ Π | nbr(u)| be the permutation used to shuffle the neighbors of u in Eq. ( <ref type="formula">6</ref>). Conditioned on π u , π v , we compute the score for a node-pair (u, v) as</p><formula xml:id="formula_10">s θ (u, v|π u , π v ) = sim(x u;π u , x v;π v ),<label>(8)</label></formula><p>where sim(a, b) denotes the cosine similarity between a and b. To train our LP model to give high quality ranking, we consider the following AUC loss surrogate <ref type="bibr" target="#b14">(Joachims 2005)</ref>:</p><formula xml:id="formula_11">loss(θ; {π w } w∈V ) = (u,v)∈E (r,t)∈E ∆ + s θ (r, t)|π r , π t -s θ (u, v|π u , π v ) + (<label>9</label></formula><formula xml:id="formula_12">)</formula><p>where ∆ is a tunable margin and [a] + = max{0, a}.</p><p>As stated above, we aim to train LP model parameters θ in such a way that the trained embeddings {x u } become invariant to the permutations of nbr(u) for all nodes u ∈ V . This requirement suggests the following min-max loss:</p><formula xml:id="formula_13">min θ max {π w } w∈V loss(θ; {π w } w∈V ).<label>(10)</label></formula><p>Neural permutation surrogate. As stated, the complexity of Eq. ( <ref type="formula" target="#formula_13">10</ref>) seems no better than exhaustive enumeration of permutations. To get past this apparent blocker, just as max is approximated by softmax (a multinomial distribution), a 'hard' permutation (1:1 assignment) π w is approximated by a 'soft' permutation matrix P w -a doubly stochastic matrix -which allows continuous optimization. Suppose F w = f v1 , f v2 , . . . , f v | nbr(w)| is a matrix whose rows are formed by the features of nbr(w) presented in some canonical order. Then P w F w approximates a permuted feature matrix corresponding to some permuted se-quence of neighbor feature vectors. The RHS of Eq. ( <ref type="formula">6</ref>) can be written as LSTM θ (P w F w ), which eventually lets us express loss as a function of P w . We can thus rewrite the minmax optimization (10) as min</p><formula xml:id="formula_14">θ max {P w | w∈V } loss(θ; {P w } w∈V ),<label>(11)</label></formula><p>where the inner maximization is carried out over all 'soft' permutation matrices P w , parameterized as follows.</p><p>In deep network design, a trainable multinomial distribution is readily obtained by applying a softmax to trainable (unconstrained) logits. Analogously, a trainable soft permutation matrix P w can be obtained by applying a Gumbel-Sinkhorn network 'GS' <ref type="bibr" target="#b26">(Mena et al. 2018</ref>) to a trainable (unconstrained) 'seed' square matrix, say, A w :</p><formula xml:id="formula_15">P w = lim n→∞ GS n (A w ), where GS 0 (A w ) = exp(A w ) and GS n (A w ) = COLSCALE ROWSCALE GS n-1 (A w ) .</formula><p>Here, COLSCALE and ROWSCALE represent column and row normalization. GS n (A w ) is the doubly stochastic matrix obtained by consecutive row and column normalizations of A w . It can be shown that lim</p><formula xml:id="formula_16">n→∞ GS n (A w ) = argmax P ∈P | nbr(w)| Tr P A w . (<label>12</label></formula><formula xml:id="formula_17">)</formula><p>GS n thus represents a recursive differentiable operator that permits backpropagation of loss to {A w }. In practice, n is a finite hyperparameter, the larger it is, the closer the output to a 'hard' permutation. Allocating a separate unconstrained seed matrix A w for each node w would lead to an impractically large number of parameters. Therefore, we express A w using a globally shared network T φ with model weights φ, and the per-node feature matrix F w already available. I.e., we define</p><formula xml:id="formula_18">A w := T φ (F w /τ ),<label>(13)</label></formula><p>where τ &gt; 0 is a temperature hyperparameter that encourages GS n (A w ) toward a 'harder' soft permutation. The above steps allow us to rewrite optimization (11) in terms of θ and φ in the form min θ max φ loss(θ; φ). After completing the min-max optimization, the embedding x u of a node u can be computed using some arbitrary neighbor permutation. By design, the impact on sim(u, v) is small when different permutations are used.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Scalable LP by Hashing Representations</head><p>At this point, we have obtained representations x u for each node u using PERMGNN. Our next goal is to infer some number of most likely future edges. Prediction using exhaustive comparisons. Here, we first enumerate the scores for all possible potential edges (the current non-edges) and then report top-K neighbors for each node. Since most real-life social networks are sparse, potential edges can be Θ(|V | 2 ) in number. Scoring all of them in large graphs is impractical; we must limit the number of comparisons between potentially connecting node pairs to be as small as possible.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Data-Oblivious LSH with Random Hyperplanes</head><p>When for two nodes u and v, sim(u, v) is defined as cos(x u , x v ) with x • ∈ R D , the classic random hyperplane LSH can be used to hash the embeddings x • . Specifically, we first draw H uniformly random hyperplanes passing through the origin in the form of their unit normal vectors <ref type="bibr">2002)</ref>. Then we set b u [h] = sign(n h • x u ) ∈ ±1 as a 1-bit hash and b u ∈ ±1 H as the Hbit hash code of node u. Correspondingly, we set up 2 H hash buckets with each node going into one bucket. If the buckets are balanced, we expect each to have N/2 H nodes. Now we limit pairwise comparisons to only node pairs within each bucket, which takes N 2 /2 H pair comparisons. By letting H grow slowly with N , we can thus achieve sub-quadratic time. However, such a hashing method is data obliviousthe hash codes are not learned from the distribution of the original embeddings x • . It performs best when the embeddings are uniformly dispersed in the D-dimensional space, so that the random hyperplanes can evenly distribute the nodes among several hash buckets.</p><formula xml:id="formula_19">n h ∈ R D , h ∈ [H] (<label>Charikar</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Learning Data-Sensitive Hash Codes</head><p>To overcome the above limitation of random hyperplane based hashing, we devise a data-driven learning of hash codes as explored in other applications <ref type="bibr" target="#b46">(Weiss, Torralba, and Fergus 2009)</ref>. Specifically, we aim to design an additional transformation of the vectors {x u } into compressed representations {b u }, with the aim of better balance across hash buckets and reduced prediction time.</p><p>Hashing/compression network. In what follows, we will call the compression network C ψ : R D → [-1, 1] H , with model parameters ψ. We interpret sign C ψ (x u ) as the required binary hash code b u ∈ {-1, +1} H , with the surrogate tanh(C ψ (x u )), to be used in the following smooth optimization:</p><formula xml:id="formula_20">min ψ α |V | u∈V 1 tanh(C ψ (x u )) + β |V | u∈V tanh(C ψ (x u )) -1 1 + γ |E| (u,v)∈E |tanh(C ψ (x u )) • tanh(C ψ (x v ))| (14)</formula><p>Here, E is the set of non-edges and α, β, γ ∈ (0, 1), with α+ β + γ = 1 are tuned hyperparameters. The final binary hash code b u = sign(C ψ (x u )). The salient terms in the objective above seek the following goals. Bit balance: If each bit position has as many -1s as +1s, that bit evenly splits the nodes. The term 1 tanh(C ψ (x u )) tries to bit-balance the hash codes. No sitting on the fence: The optimizer is prevented from setting b = 0 (the easiest way to balance it) by including a term</p><formula xml:id="formula_21">h |b[h]| -1 = |b| -1 1 .</formula><p>Weak supervision: The third term encourages currently unconnected nodes to be assigned dissimilar bit vectors.</p><p>Bucketing and ranking. Note that, we do not expect the dot product between the learned hash codes b u • b v to be a good approximation for cos(x u , x v ), merely that node pairs 1: Input: Graph G = (V, E); binary hash-codes {bu}; query nodes Q; the number (K) of nodes to be recommended per query node 2: Output: Ranked recommendation list Rq for all q ∈ Q 3: initialize LSH buckets 4: for u ∈ V do 5: add u to appropriate hash buckets 6: for q ∈ Q do 7:</p><p>initialize score heap Hq with capacity K 8: for each LSH bucket B do 9:</p><p>for (u, v) ∈ B do 10: with large cos(x u , x v ) will be found in the same hash buckets. We form the buckets using the recipe of <ref type="bibr" target="#b10">Gionis, Indyk, and Motwani (1999)</ref>. We adopt the high-recall policy that node-pair u, v should be scored if u and v share at least one bucket. Algorithm 1 shows how the buckets are traversed to generate and score node pairs, then placed in a heap for retrieving top-K pairs. Details can be found in the Appendix.</p><formula xml:id="formula_22">if u ∈ Q then 11: insert v, s(u, v) in Hu; prune if |Hu| &gt; K 12: if v ∈ Q then 13: insert u, s(u, v)</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Experiments</head><p>We report on a comprehensive evaluation of PERMGNN and its accompanying hashing strategy. Specifically, we address the following research questions. RQ1: How does the LP accuracy of PERMGNN compare with classic and recent link predictors? Where are the gains and losses? RQ2: How does PERMGNN compare with brute-force sampling of neighbor permutations? RQ3: Exactly where in our adversarially trained network is permutation insensitivity getting programmed? RQ4: Does the hashing optimization reduce prediction time, compared to exhaustive computation of pairwise scores?</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Experimental Setup</head><p>Datasets. We consider five real world datasets: (1) Twitter <ref type="bibr" target="#b22">(Leskovec and Mcauley 2012)</ref> on GNNs. We highlight that SEAL <ref type="bibr" target="#b52">(Zhang and Chen 2018)</ref> does not readily lend itself to a hashable LP mechanism and therefore, we do not compare it in this paper.</p><p>Evaluation protocol. Similar to the evaluation protocol of <ref type="bibr" target="#b2">Backstrom and Leskovec (2011)</ref>, we partition the edge (and non-edge) sets into training, validation and test folds as follows. For each dataset, we first build the set of query nodes Q, where each query contains at least one triangle around it. Then, for each q ∈ Q, in the original graph, we partition the neighbors nbr(q) and the non-neighbors nbr(q) which are within 2-hop distance from q into 70% training, 10% validation and 20% test sets, where the node pairs are sampled uniformly at random. We disclose the resulting sampled graph induced by the training and validation sets to the LP model. Then, for each query q ∈ Q, the trained LP model outputs a top-K list of potential neighbors from the test set.</p><p>Using ground truth, we compute the average precision (AP) and reciprocal rank (RR) of each top-K list. Then we average over all query nodes to get mean AP (MAP) and mean RR (MRR).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Comparative Analysis of LP Accuracy</head><p>First, we address the research question RQ1 by comparing LP accuracy of PERMGNN against baselines, in terms of MAP and MRR across the datasets.</p><p>MAP and MRR summary.  Drill-down. Next, we compare ranking performance at individual query nodes. For each query (node) q, we measure the gain (or loss) of PERMGNN in terms of average precision, i.e., AP(PERMGNN) -AP(baseline) for three competitive baselines, across Google+ and Citeseer datasets. From Figure <ref type="figure">2</ref>, we observe that, for Google+ and Citeseer respectively, PERMGNN matches or exceeds the baselines for 60% and 70% of the queries.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">PERMGNN vs. Sampling Permutations</head><p>Next, we address research question RQ2 by establishing the utility of PERMGNN against its natural alternative Multi-Perm, in which a node embedding is computed by averaging permutation-sensitive representations over several sampled permutations. Figure <ref type="figure">3</ref> shows that PERMGNN is &gt;15× and &gt;4.5× faster than the permutation averaging based method for Twitter and Google+ datasets. MultiPerm also occupies significantly larger RAM than PERMGNN. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">Permutation Invariance of PERMGNN</head><p>Here, we answer the research question RQ3. To that end, we first train PERMGNN along with its two immediate alternatives: (i) 1Perm, where a vanilla LSTM is trained with a single canonical permutation π 0 of the nodes; and, (ii) Multiperm, where an LSTM is trained using several sampled permutations of the nodes. Then, given a different permutation π, we compute the node embedding x u;π by feeding the corresponding sequence of neighbors π(nbr(u)) (sorted by node IDs of nbr(u) assigned by π), as an input to the trained models. Finally, we use these embeddings for LP and measure the relative change in training loss. Figure <ref type="figure" target="#fig_2">4</ref> shows a plot of (LOSS(π) -LOSS(π 0 ))/LOSS(π 0 ) against the correlation between π and the canonical order π 0 , measured in terms of Kendall's τ , KTAU(π, π 0 ). It reveals that 1Perm suffers a significant rise in training loss when the input node order π substantially differs from the canonical order π 0 , i.e., KTAU(π, π 0 ) is low. Both Multiperm and PERMGNN turns out to be permutation-insensitive across a wide range of node orderings.</p><p>To probe this phenomenon, we instrument the stability of f , y, x to different permutations. Specifically, we define insensitivity(z; π, π 0 ) = u∈V SIM(z u;π , z u;π0 )/|V | for any vector or sequence z. We compute insensitivity of the input sequence {f v : v ∈ nbr(u)}, the intermediate LSTM output {y} and the final embedding x u with respect to different permutations π. Figure <ref type="figure">5</ref> summarizes the results, and shows that as information flows through PERMGNN stages, from input feature sequence to the final embeddings, the insensitivity of the underlying signals increases. Thus, our adversarial training smoothly turns permutation-sensitive input sequences into permutation invariant node embeddings, without any explicit symmetric aggregator.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.5">Performance of Hashing Methods</head><p>Finally, we address RQ4 by studying the performance of our LSH method (Section 4.2). Specifically, we compare the time spent in similarity computation and heap operations of our hashing method against random hyperplane based hashing (Section 4.1), compared to exhaustive computation of pairwise scores (as a slow but "relatively perfect" baseline). Since vectorized similarity computation inside Torch may be faster than numpy, we provide results on both implementations. Figure <ref type="figure">6</ref> summarizes results in terms of running time.  It shows that: (1) hashing using C ψ leads considerable savings in reporting top-K node-pairs with respect to both random hyperplane based hashing and exhaustive enumeration, and (2) the gains increase with increasing graph sizes (from Google+ to PB). Because LSH-based top-K retrieval may discard relevant nodes after K, it is more appropriate to study ranking degradation in terms of decrease in NDCG (rather than MAP). Suppose we insist that NDCG be at least 85, 90, or 95% of exhaustive NDCG. How selective is a hashing strategy, in terms of the factor of query speedup (because of buckets pruned in Algorithm 1)? Table <ref type="table" target="#tab_4">2</ref> shows that our hashing method provides better pruning than random hyperplane for a given level of NDCG degradation. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>We presented PERMGNN, a novel LP formulation that combines a recurrent, order-sensitive graph neighbor aggregator with an adversarial generator of neighbor permutations. PERMGNN achieves LP accuracy comparable to or better than sampling a number of permutations by brute force, and is faster to train. PERMGNN is also superior to a number of LP baselines. In addition, we formulate an optimization to map PERMGNN's node embeddings to a suitable localitysensitive hash, which greatly speeds up reporting of the most likely edges. It would be interesting to extend PERMGNN to other downstream network analyses, e.g., node classification, community detection, or knowledge graph completion.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>x u;π over all permutations π ∈ Π | nbr(u)| , similar to Murphy et al. (2019a). At a time and space complexity of at least O( u∈V |Π | nbr(u)| |), this is quite impractical for even v + . . .</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :Figure 3 :</head><label>23</label><figDesc>Figure2: Query-wise wins and losses in terms of AP(PERMGNN) -AP(baseline), the gain (above x-axis) or loss (below x-axis) of AP of PERMGNN with respect to competitive baselines. Queries Q are sorted by decreasing gain of PERMGNN along the x-axis.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Effect of neighbor order perturbation on training loss. As we move away from the canonical permutation π 0 , training loss increases steeply for 1Perm, but remains roughly stable for MultiPerm and PERMGNN.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 :Figure 6 :</head><label>56</label><figDesc>Figure 5: Insensitivity of neighborhood features {f v | v ∈ nbr(u)} LSTM output {y} and the resultant node embeddings x u with respect to neighbor order permutations.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>1: PERMGNN min-max loss and hashing schematic. moderate degree nodes. Replacing the exhaustive average by a Monte Carlo sample does improve representation quality, but is still very expensive.Murphy et al. (2019b)  proposed a method called π-SGD, which samples one permutation per epoch. While it is more efficient than sampling multiple permutations, it shows worse robustness in practice.Adversarial permutation-driven LP objective. Instead of brute-force sampling, we setup a two-party game, one being the network for LP, vulnerable to π, and the other being an adversary, which tries to make the LP network perform poorly by choosing a 'bad' π at each node.</figDesc><table /><note><p>1: pick initial π u at each node u 2: repeat 3: fix {π u : u ∈ V }; optimize θ for best LP accuracy 4:</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>in Hv; prune if |Hv| &gt; K</figDesc><table><row><cell cols="2">14: for q ∈ Q do</cell></row><row><cell>15:</cell><cell>sort Hq by decreasing score to get ranked list Rq</cell></row><row><cell cols="2">16: return {Rq|q ∈ Q}</cell></row></table><note><p>Algorithm 1: Reporting ranked list of potential edges fast.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 1 :</head><label>1</label><figDesc>MAP and MRR for all LP algorithms (PERMGNN and baselines) on the ranked list of all potential edges (K = ∞) across all five datasets, with 20% test set. Numbers in bold font indicate the best performer.</figDesc><table><row><cell>, (2) Google+ (Leskovec</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 1</head><label>1</label><figDesc></figDesc><table><row><cell>summarizes LP accu-</cell></row><row><cell>racy across all the methods. We make the following obser-</cell></row><row><cell>vations. (1) PERMGNN outperforms all the competitors in</cell></row><row><cell>terms of MAP, in four datasets, except PB, where it is outper-</cell></row><row><cell>formed by AA. Moreover, in terms of MRR, it outperforms</cell></row><row><cell>all the baselines for Google+ and Citeseer datasets. (2) The</cell></row><row><cell>performance of GNNs are comparable for Cora and Citeseer.</cell></row><row><cell>Due to its weakly supervised training procedure, the overall</cell></row><row><cell>performance of GraphSAGE is poor among the GNN based</cell></row><row><cell>methods. (3) The classic unsupervised predictors, i.e., AA</cell></row><row><cell>and CN often beat some recent embedding models. AA is the</cell></row><row><cell>best performer in terms of MAP in PB and in terms of MRR</cell></row><row><cell>in Twitter. Since AA and CN encourage triad completion,</cell></row><row><cell>which is a key factor for growth of several real life networks,</cell></row><row><cell>they often serve as good link predictors (Sarkar, Chakrabarti,</cell></row><row><cell>and Moore 2011). (4) The random walk based embeddings,</cell></row><row><cell>viz. Node2Vec and DeepWalk, show moderate performance.</cell></row><row><cell>Notably, Node2Vec is the second best performer in Citeseer.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 2 :</head><label>2</label><figDesc>Speedup achieved by different hashing methods under various permitted NDCG degradation limits.</figDesc><table><row><cell></cell><cell cols="6">Minimum NDCG as % of exhaustive NDCG</cell></row><row><cell></cell><cell></cell><cell>85%</cell><cell></cell><cell>90%</cell><cell></cell><cell>95%</cell></row><row><cell></cell><cell cols="6">Twitter Google+ Twitter Google+ Twitter Google+</cell></row><row><cell cols="2">Our Hashing 6.67</cell><cell>12.5</cell><cell>6.67</cell><cell>10</cell><cell>6.25</cell><cell>5.5</cell></row><row><cell>RH</cell><cell>1.78</cell><cell>3.45</cell><cell>1.78</cell><cell>3.45</cell><cell>1.78</cell><cell>3.45</cell></row></table></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgements</head><p>Partly supported by an <rs type="funder">IBM</rs> <rs type="grantName">AI Horizons Grant</rs>. Thanks to <rs type="person">Chitrank Gupta</rs> and <rs type="person">Yash Jain</rs> for helping rectify an error in an earlier evaluation method.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_VatbhTZ">
+					<orgName type="grant-name">AI Horizons Grant</orgName>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Adversarial Permutation Guided Node Representations for Link Prediction (Appendix)</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Contents</head><p>• In Appendix A we provide a more detailed discussion of prior work.</p><p>• In Appendix B we present additional details about our hashing and bucketing methods.</p><p>• In Appendix C we give the specifications of all the network modules used in PERMGNN and complete settings of our experiments, which, together with our code, makes our results reproducible.</p><p>A Detailed commentary on prior work</p><p>Link prediction and GNNs. Unsupervised LP algorithms compute a heuristic confidence score of a potential edge, given a node pair, based solely on local network structures <ref type="bibr" target="#b1">(Adamic and Adar 2003;</ref><ref type="bibr" target="#b23">Liben-Nowell and Kleinberg 2007)</ref>. Adamic-Adar (AA), common-neighbor (CN) and Jaccard coefficient (JC) are examples. Prior to deep learning, conventional supervised learning was successfully used for LP <ref type="bibr" target="#b24">(Lichtenwalter, Lussier, and Chawla 2010;</ref><ref type="bibr" target="#b2">Backstrom and Leskovec 2011;</ref><ref type="bibr" target="#b16">Katz 1997</ref>).</p><p>Recent years have witnessed a surge of interest in modeling and learning latent node features, called node embeddings or representations. These are low dimensional compact vectors, compressed from the high dimensional neighborhood information of the larger graph. In contrast to hand-engineered features, node embeddings are modeled using highly expressive neural networks that are trained using the observable graph structure.</p><p>Node2Vec <ref type="bibr" target="#b11">(Grover and Leskovec 2016)</ref>, DeepWalk <ref type="bibr" target="#b31">(Perozzi, Al-Rfou, and Skiena 2014)</ref> and LINE <ref type="bibr" target="#b42">(Tang et al. 2015)</ref> were among the earliest attempts to fit node embeddings. GCNs <ref type="bibr">(Kipf and Welling 2016a)</ref> and RGCNs <ref type="bibr" target="#b36">(Schlichtkrull et al. 2018)</ref> soon followed. <ref type="bibr" target="#b45">Wang et al. (2019)</ref> exploited multi-level graph coarsening in their proposed system called MGNN, which benefits from naturally hierarhical knowledge graphs (KGs). <ref type="bibr" target="#b34">Salha et al. (2019)</ref> extended the GCN paradigm to directed graphs. <ref type="bibr" target="#b50">Yadati et al. (2018)</ref> extended GCNs to hypergraphs. Other notable enhancements were proposed as GraphSAGE <ref type="bibr" target="#b12">(Hamilton, Ying, and Leskovec 2017)</ref>, GAT <ref type="bibr" target="#b43">(Veličković et al. 2017)</ref>, SEAL <ref type="bibr" target="#b52">(Zhang and Chen 2018)</ref>, GIN <ref type="bibr">(Xu et al. 2018a)</ref>, JKN <ref type="bibr">(Xu et al. 2018b)</ref>, and P-GNN <ref type="bibr" target="#b51">(You, Ying, and Leskovec 2019)</ref>, inter alia. Neural permutation gadgets. <ref type="bibr" target="#b39">Sinkhorn (1967)</ref> used iterative row and column scaling as an effective way to impute matrices, given marginal constraints. <ref type="bibr" target="#b7">Cuturi (2013)</ref> exploited this to solve transportation problems approximately. It was soon realized <ref type="bibr" target="#b26">(Mena et al. 2018;</ref><ref type="bibr" target="#b30">Pabbaraju and Jain 2019)</ref> that row and column scaling transform an arbitrary matrix to a near-permutation matrix, while allowing backpropagation. After the seminal deep sets work of Zaheer et al. ( <ref type="formula">2017</ref>), several efforts <ref type="bibr" target="#b20">(Lee et al. 2019;</ref><ref type="bibr" target="#b3">Bloem-Reddy and Teh 2019;</ref><ref type="bibr" target="#b38">Shi, Oliva, and Niethammer 2020;</ref><ref type="bibr" target="#b41">Stelzner, Kersting, and Kosiorek 2020)</ref> were made to capture dependencies between set elements while retaining order invariance by design <ref type="bibr">(Murphy et al. 2019a</ref>). (Supervised) locality-sensitive hashing. LSH was proposed in path-breaking papers by <ref type="bibr" target="#b10">Gionis, Indyk, and Motwani (1999)</ref> and <ref type="bibr" target="#b5">Charikar (2002)</ref>. These were data-oblivious hashing protocols. Later, data-driven, supervised hashing approaches <ref type="bibr" target="#b19">(Kulis and Darrell 2009;</ref><ref type="bibr" target="#b46">Weiss, Torralba, and Fergus 2009;</ref><ref type="bibr" target="#b25">Liu et al. 2012)</ref> were proposed.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Additional details about proposed hashing method</head><p>We form the buckets using the recipe of <ref type="bibr" target="#b10">Gionis, Indyk, and Motwani (1999)</ref>, summarized here for completeness. Given hash bit positions 1, . . . , H, we select J &lt; H bit positions uniformly at random, L times. (J, L are chosen based on N and performance targets.) Let these bit indices be I 1 , . . . , I , . . . , I L and let g u, = b u ↓ I be the hash code of node u, projected to the bit positions I . We thus obtain L bitvectors from x u , called g u,1 , . . . , g u,L ∈ {-1, +1} J , which represents a number in [0, 2 J -1]. There are L hashtables, each with 2 J buckets. Node u is registered in each hashtable once. In hashtable number , it goes into the bucket numbered g u, . Qualitatively, if nodes u and v occupy the same bucket in many of the L hashtables, they are very similar. We score {u, v} if they share a bucket in any of the L hashtables.</p><p>In practice, we set J=8 and L=10. The hashing/compression network C ψ is devised with a single linear layer of dimension (D, H). We choose the output hashcode dimension (H) to be same as input embedding dimension (D), i.e., 16.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Additional details on experimental setup C.1 Design specifications of PERMGNN</head><p>Excluding the hashing machinery, PERMGNN has three neural modules: 1. The LSTM aggregator LSTM θ in Eq. ( <ref type="formula">6</ref>). 2. The nonlinear component in the outer layer σ θ in Eq. ( <ref type="formula">7</ref>). 3. The permutation generator network T φ in Eq. ( <ref type="formula">13</ref>). In the following, we describe the specifications of these components, beginning with the node features {f u }. Specification of f • . For Cora and Citeseer datasets, node features {f u } are binary vectors indicating presence/absence of corresponding keywords in the document. For the remaining datasets, we define node features as the one-hot representations of the unique node labels. Specification of LSTM θ . Across all experiments we used an LSTM with hidden size 32.</p><p>Specification of σ θ . We design σ θ (Eq. ( <ref type="formula">7</ref>)) with a fully connected single layer feed forward network on top of the LSTM. This outputs the final node embeddings with dim(x • ) = 16. Specification of T φ . We design T φ (Eq. ( <ref type="formula">13</ref>)) using a three layer neural network which consists of one linear, one ReLU and and linear layer, having the latent feature dimension 16. In all cases, we use 10 Sinkhorn Operator iterations, with noise factor 1 and a temperature of 0.5. The output of the permutation network is a doubly stochastic matrix of dimension equal to the maximum node neighborhood size in the input graph.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.2 Dataset details</head><p>We use five datasets for evaluation: 1. Twitter <ref type="bibr" target="#b22">(Leskovec and Mcauley 2012)</ref> is a snapshot of a part of Twitter's social network. 2. Google+ <ref type="bibr" target="#b21">(Leskovec et al. 2010</ref>) is a snapshot of a part of Google-Plus social network. 3. Citeseer <ref type="bibr" target="#b9">(Getoor 2005</ref>) is a snapshot of citation network. 4. Cora <ref type="bibr" target="#b9">(Getoor 2005</ref>) is a snapshot of citation network. 5. PB <ref type="bibr" target="#b0">(Ackland et al. 2005</ref>) is a network of US political blogs. Table <ref type="table">3</ref> shows some characteristics of the data sets we use. They show a diversity of average degree, diameter, and number of node features.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Dataset</head><p>|V </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.3 Discussion of evaluation protocols and metrics</head><p>As discussed in the main paper, we partition edges and non-edges into training, validation and test folds as follows. Each query in the query node set Q is required to be part of at least one triangle. For each q ∈ Q, in the original graph, we partition its neighbors nbr(q) and non-neighbors nbr(q) into training, validation and test folds, where the corresponding node pairs are sampled uniformly at random. In the main paper, these were in the ratio 54:6:40. Here we also present results for the ratio 72:8;20. We disclose the resulting sampled graph induced by the training and validation sets to the LP model. After computing the scores for all potential edges, LP algorithms sort the potential edges in decreasing order of scores. In this context, we note the following differences of our protocol from several prior works <ref type="bibr" target="#b52">(Zhang and Chen 2018;</ref><ref type="bibr" target="#b12">Hamilton, Ying, and Leskovec 2017)</ref>. 1. Some prior LP models, e.g., SEAL (Zhang and Chen 2018) remove a large fraction non-edges in the test set to ensure that the number of edges and non-edges in the test set is roughly equal. In contrast, we do not make any perturbation in the test set, which makes the evaluation more realistic as well as challenging. However, for completeness, we also present a comparative analysis of our method against the competitors by curating the test set to ensure that the number of edges and non-edges is roughly equal. 2. Often in prior works <ref type="bibr" target="#b52">(Zhang and Chen 2018;</ref><ref type="bibr" target="#b12">Hamilton, Ying, and Leskovec 2017)</ref>, the underlying LP algorithm sorts all potential edges E by decreasing scores {s(u, v) | (u, v) ∈ E} to output a single global ranked list R. However, in practical applications, no end-user (node) of the network observes the global ranking. Therefore, we assume that each node q (regarded as a 'query') is provided a local ranking R q of recommended neighbors-to-be. Recommending friends on Facebook, or movies on Netflix, are better served by this protocol. We measure the accuracy of an LP method in terms of Mean Average Precision (MAP) and Mean Reciprocal Rank (MRR), computed on the ranked lists of predicted neighbors across all the queries. In particular, we compute:</p><p>where AP q is the average precision and r q is the rank of the topmost neighbor of the ranked list for the query node q.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.4 Hyperparameters and policy parameters</head><p>For all training, we impose an early stopping criteria based on validation fold AUC and AP scores. We remember the performance from the latest 100 epochs (the so-called 'patience' parameter). If the relative variation in AUC and AP fall before the fraction 10 -4 , we stop training and roll back to the best model in the patience window. We train our LP model using the ranking loss defined in Eqn (9) with choices of optimizer, learning rate and margin as summarized in Table <ref type="table">4</ref> for reproducibility.</p><p>The hashing network C ψ is trained according to the loss defined in Eqn. ( <ref type="formula">14</ref>), with the hyperparameters α and β set to 0.01 for all datasets. In all cases, we train the network C ψ using SGD optimizer with learning rate of 0.05.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Dataset</head><p>Learning </p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Mapping the US political blogosphere: Are conservative bloggers more prominent?</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ackland</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">BlogTalk Downunder 2005 Conference</title>
+		<meeting><address><addrLine>Sydney; Sydney</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+	<note>BlogTalk Downunder 2005 Conference</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Friends and neighbors on the Web</title>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">A</forename><surname>Adamic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Adar</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/S0378-8733</idno>
+		<ptr target="http://pkudlib.org/qmeiCourse/files/FriendsAndNeighbors.pdf" />
+	</analytic>
+	<monogr>
+		<title level="j">Social Networks</title>
+		<idno type="ISSN">0378-8733</idno>
+		<imprint>
+			<biblScope unit="volume">25</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="9" to="10" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Supervised random walks: predicting and recommending links in social networks</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Backstrom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<ptr target="http://cs.stanford.edu/people/jure/pubs/linkpred-wsdm11.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">WSDM Conference</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="635" to="644" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<author>
+			<persName><forename type="first">B</forename><surname>Bloem-Reddy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1901.06082</idno>
+		<title level="m">Probabilistic symmetry and invariant neural networks</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">An ensemble of LSTM neural networks for high-frequency stock market classification</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Borovkova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Tsiamas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Forecasting</title>
+		<imprint>
+			<biblScope unit="volume">38</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="600" to="619" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Similarity estimation techniques from rounding algorithms</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">S</forename><surname>Charikar</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/509907.509965</idno>
+		<ptr target="https://dl.acm.org/doi/pdf/10.1145/509907.509965" />
+	</analytic>
+	<monogr>
+		<title level="m">STOC</title>
+		<imprint>
+			<date type="published" when="2002">2002</date>
+			<biblScope unit="page" from="380" to="388" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Regularizing Towards Permutation Invariance in Recurrent Models</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Cohen-Karlik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">B</forename><surname>David</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Globerson</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2010.13055" />
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Sinkhorn distances: Lightspeed computation of optimal transport</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Cuturi</surname></persName>
+		</author>
+		<ptr target="https://papers.nips.cc/paper/4927-sinkhorn-distances-lightspeed-computation-of-optimal-transport.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="2292" to="2300" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">K</forename><surname>Garg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Jegelka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Jaakkola</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2002.06157</idno>
+		<title level="m">Generalization and representational limits of graph neural networks</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Link-based classification</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Getoor</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advanced methods for knowledge discovery from complex data</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2005">2005</date>
+			<biblScope unit="page" from="189" to="207" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Similarity Search in High Dimensions via Hashing</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gionis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Indyk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Motwani</surname></persName>
+		</author>
+		<ptr target="http://citeseer.nj.nec.com/gionis97similarity.html" />
+	</analytic>
+	<monogr>
+		<title level="m">VLDB Conference</title>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+			<biblScope unit="page" from="518" to="529" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">node2vec: Scalable feature learning for networks</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Grover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SIGKDD</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Inductive representation learning on large graphs</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1024" to="1034" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Long Short-Term Memory</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hochreiter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schmidhuber</surname></persName>
+		</author>
+		<idno type="DOI">10.1162/neco.1997.9.8.1735</idno>
+		<ptr target="https://www.mitpressjournals.org/doi/pdfplus/10.1162/neco.1997.9.8.1735" />
+	</analytic>
+	<monogr>
+		<title level="j">Neural Computation</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page" from="1735" to="1780" />
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">A support vector method for multivariate performance measures</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Joachims</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+			<biblScope unit="page">377</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title/>
+		<idno type="DOI">10.1145/1102351.1102399</idno>
+		<ptr target="http://www.machinelearning.org/proceedings/icml2005/papers/048ASupportJoachims.pdf" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">From Sentence Processing to Information Access on the World Wide Web</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Katz</surname></persName>
+		</author>
+		<ptr target="http://www.ai.mit.edu/people/boris/webaccess/" />
+	</analytic>
+	<monogr>
+		<title level="m">AAAI Spring Symposium on Natural Language Processing for the World Wide Web</title>
+		<meeting><address><addrLine>Stanford CA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Stanford University</publisher>
+			<date type="published" when="1997">1997</date>
+			<biblScope unit="page" from="77" to="94" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1609.02907</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1611.07308</idno>
+		<title level="m">Variational graph autoencoders</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Learning to hash with binary reconstructive embeddings</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Kulis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Darrell</surname></persName>
+		</author>
+		<ptr target="http://papers.nips.cc/paper/3667-learning-to-hash-with-binary-reconstructive-embeddings.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS, 1042-1050</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Set transformer: A framework for attentionbased permutation-invariant neural networks</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kosiorek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Kronecker graphs: An approach to modeling networks</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chakrabarti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kleinberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Faloutsos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ghahramani</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="page" from="985" to="1042" />
+			<date type="published" when="2010-02">2010. Feb</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Learning to discover social circles in ego networks</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">J</forename><surname>Mcauley</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+	<note>In NeuIPS</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">The linkprediction problem for social networks</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Liben-Nowell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kleinberg</surname></persName>
+		</author>
+		<idno type="DOI">10.1002/asi.20591</idno>
+		<ptr target="https://onlinelibrary.wiley.com/doi/full/10.1002/asi.20591" />
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the American Society for Information Science and Technology</title>
+		<idno type="ISSN">1532-2890</idno>
+		<imprint>
+			<biblScope unit="volume">58</biblScope>
+			<biblScope unit="issue">7</biblScope>
+			<biblScope unit="page" from="1019" to="1031" />
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">New perspectives and methods in link prediction</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">N</forename><surname>Lichtenwalter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">T</forename><surname>Lussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">V</forename><surname>Chawla</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/1835804.1835837</idno>
+		<ptr target="http://users.cs.fiu.edu/∼lzhen001/activities/KDDUSBkey2010/docs/p243.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">SIGKDD Conference</title>
+		<meeting><address><addrLine>Washington, DC, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="243" to="252" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Supervised hashing with kernels</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-G</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S.-F</forename><surname>Chang</surname></persName>
+		</author>
+		<ptr target="https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=6247912" />
+	</analytic>
+	<monogr>
+		<title level="m">IEEE CVPR</title>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="2074" to="2081" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Learning latent permutations with gumbel-sinkhorn networks</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Mena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Belanger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Linderman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Snoek</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1802.08665</idno>
+		<ptr target="https://arxiv.org/pdf/1802.08665.pdf" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">L</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Srinivasan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Rao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Ribeiro</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/pdf/1811.01900" />
+		<title level="m">Learning deep permutationinvariant functions for variable-size inputs. ICLR URL</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">L</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Srinivasan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Rao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Ribeiro</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1903.02541</idno>
+		<title level="m">Relational pooling for graph representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<author>
+			<persName><forename type="first">H</forename><surname>Nt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Maehara</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1905.09550</idno>
+		<title level="m">Revisiting graph neural networks: All we have is low-pass filters</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">Learning Functions over Sets via Permutation Adversarial Networks</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Pabbaraju</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Jain</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1907.05638</idno>
+		<ptr target="https://arxiv.org/pdf/1907.05638" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Deepwalk: Online learning of social representations</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Skiena</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">KDD</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="701" to="710" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Pointnet: Deep learning on point sets for 3d classification and segmentation</title>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">R</forename><surname>Qi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Mo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">J</forename><surname>Guibas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE conference on computer vision and pattern recognition</title>
+		<meeting>the IEEE conference on computer vision and pattern recognition</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="652" to="660" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ravanbakhsh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schneider</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Poczos</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1611.04500</idno>
+		<title level="m">Deep learning with sets and point clouds</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Gravity-Inspired Graph Autoencoders for Directed Link Prediction</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Salha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Limnios</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Hennequin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V.-A</forename><surname>Tran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Vazirgiannis</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3357384.3358023</idno>
+		<ptr target="https://doi.org/10.1145/3357384.3358023" />
+	</analytic>
+	<monogr>
+		<title level="m">CIKM</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="589" to="598" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Theoretical justification of popular link prediction heuristics</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sarkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chakrabarti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">W</forename><surname>Moore</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">COLT</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Modeling relational data with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Bloem</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Van Den</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Titov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/pdf/1703.06103" />
+	</analytic>
+	<monogr>
+		<title level="m">European Semantic Web Conference</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="593" to="607" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Collective classification in network data</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Namata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bilgic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Getoor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Galligher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Eliassi-Rad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AI magazine</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="93" to="93" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Deep Message Passing on Sets</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Oliva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Niethammer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="5750" to="5757" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Diagonal equivalence to matrices with prescribed row and column sums</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sinkhorn</surname></persName>
+		</author>
+		<ptr target="https://www.jstor.org/stable/pdf/2314570.pdf" />
+	</analytic>
+	<monogr>
+		<title level="j">The American Mathematical Monthly</title>
+		<imprint>
+			<biblScope unit="volume">74</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="402" to="405" />
+			<date type="published" when="1967">1967</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Rep the set: Neural networks for learning set representations</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Skianis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Nikolentzos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Limnios</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Vazirgiannis</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1410" to="1420" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Generative Adversarial Set Transformers</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Stelzner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kersting</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">R</forename><surname>Kosiorek</surname></persName>
+		</author>
+		<ptr target="https://www.ml.informatik.tu-darmstadt.de/papers/stelzner2020oodgast.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">Workshop on Object-Oriented Learning at ICML 2020</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">LINE: Large-scale information network embedding</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Mei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">WWW Conference</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="1067" to="1077" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">P</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1710.10903</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">Graph attention networks. arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<monogr>
+		<author>
+			<persName><forename type="first">E</forename><surname>Wagstaff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">B</forename><surname>Fuchs</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Engelcke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Posner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Osborne</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1901.09006</idno>
+		<title level="m">On the limitations of representing functions on sets</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Robust Embedding with Multi-Level Structures for Link Prediction</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Hu</surname></persName>
+		</author>
+		<ptr target="https://www.ijcai.org/Proceedings/2019/0728.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">IJCAI</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="5240" to="5246" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Spectral hashing</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Weiss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Torralba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Fergus</surname></persName>
+		</author>
+		<ptr target="https://papers.nips.cc/paper/3383-spectral-hashing.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="1753" to="1760" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<monogr>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">H D</forename><surname>Souza</surname><genName>Jr</genName></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Fifty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">Q</forename><surname>Weinberger</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1902.07153</idno>
+		<title level="m">Simplifying graph convolutional networks</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<author>
+			<persName><forename type="first">K</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Jegelka</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1810.00826</idno>
+		<title level="m">How powerful are graph neural networks? arXiv preprint</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<monogr>
+		<author>
+			<persName><forename type="first">K</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Sonobe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">I</forename><surname>Kawarabayashi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Jegelka</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1806.03536</idno>
+		<title level="m">Representation learning on graphs with jumping knowledge networks</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<monogr>
+		<title level="m" type="main">Link prediction in hypergraphs using graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Yadati</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Nitin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nimishakavi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Yadav</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Louis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Talukdar</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=ryeaZhRqFm" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note>Manuscript</note>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Position-aware graph neural networks</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>You</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zaheer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kottur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ravanbakhsh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Poczos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">J</forename><surname>Smola</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1906.04817</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2017">2019. 2017</date>
+			<biblScope unit="page" from="3391" to="3401" />
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+	<note>Deep sets</note>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<monogr>
+		<title level="m" type="main">Link prediction based on graph neural networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note>In NeurIPS</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

@@ -1,0 +1,1166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Neural graph embeddings as explicit low-rank matrix factorization for link prediction</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2022-08-29">August 29, 2022</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Asan</forename><surname>Agibetov</surname></persName>
+							<email>asan.agibetov@meduniwien.ac.at</email>
+							<affiliation key="aff0">
+								<orgName type="department">Institute of Artificial Intelligence</orgName>
+								<orgName type="institution">Medical University of Vienna</orgName>
+								<address>
+									<settlement>Vienna</settlement>
+									<country key="AT">Austria</country>
+								</address>
+							</affiliation>
+							<affiliation key="aff1">
+								<orgName type="department">Corresponding author</orgName>
+								<address>
+									<addrLine>Währinger Straße 25A</addrLine>
+									<postCode>OG1.06, 1090</postCode>
+									<settlement>Vienna</settlement>
+									<country key="AT">Austria</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Neural graph embeddings as explicit low-rank matrix factorization for link prediction</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2022-08-29">August 29, 2022</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">982F39DE654523E335799B95FE2FE833</idno>
+					<idno type="arXiv">arXiv:2011.09907v3[cs.SI]</idno>
+					<note type="submission">Preprint submitted to Pattern Recognition</note>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T09:50+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>graph embedding</term>
+					<term>random walks</term>
+					<term>matrix factorization</term>
+					<term>information theory</term>
+					<term>link prediction</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Learning good quality neural graph embeddings has long been achieved by minimzing the pointwise mutual information (PMI) for co-occuring nodes in simulated random walks. This design choice has been mostly popularized by the direct application of the highlysuccessful word embedding algorithm word2vec to predicting the formation of new links in social, co-citation, and biological networks. However, such a skeuomorphic design of graph embedding methods entails a truncation of information coming from pairs of nodes with low PMI. To circumvent this issue, we propose an improved approach to learning low-rank factorization embeddings that incorporate information from such unlikely pairs of nodes and show that it can improve the link prediction performance of baseline methods from 1.2% to 24.2%. Based on our results and observations, we outline further steps that could improve the design of next graph embedding algorithms that are based on matrix factorizaion.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Networks are a convenient representation of the relationships of complex system components, such that the interconnectivity of nodes and edges inherently encodes valuable information about the system. It is such a flexible tool that has been used to represent complex emerging patterns in disparate domains, from molecular biology to social sciences <ref type="bibr" target="#b0">[1]</ref>. Perhaps, one reason for the flexibility of this representation, is that the information stored within can be understood through the analysis of its topology. Link prediction <ref type="bibr" target="#b1">[2]</ref> has become a popular pattern recognition problem, where given the current topology of the network we predict the next most likely links to emerge. To address this problem, one common way is to treat the network as a graph G = (V, E) with nodes u ∈ V and edges (u, v) ∈ E; u, v ∈ V . Then, to perform link prediction, one would split the graph edges E into two partitions (not necessarily of the same size) E train , E test , which serve the purpose of positive edges. Next, we sample the non-existent edges (u, v) ∈ E to make Ētrain , Ē test , which serve as negative examples. Habitually, one would then come up with a prediction model that would learn patterns from the training dataset; typically learn to score positive edges higher than negatives. And the prediction performance of such a model would be assessed on the test set with an accuracy metric. As a result, one would hope that through this partitioning the prediction model would generalize enough to predict the future states of the system, i.e., to predict the formation of new links <ref type="bibr" target="#b2">[3]</ref>.</p><p>The conventional way to efficiently process the network structure to analyze the complex system relies on explicit topological descriptors, such as betweenness centrality and triangle count. The accuracy of such ad-hoc descriptors is directly proportionate to the expertise and domain-knowledge put into their design. However, recently, the field of representation learning has proposed a more flexible approach of learning latent representation of networks, which embeds the graph structure into a latent space. More specifically, given a graph G the goal is to learn a dictionary mapping V → R d that embeds each vertex to a d-dimensional vector. The link prediction is then performed by a classifier (V × V → R) that for a pair of input vertices u, v scores the likelihood of them being connected (i.e., likelihood to form a link).</p><p>The roots of this line of work can be traced back to the spectral graph theory <ref type="bibr" target="#b3">[4]</ref> and social dimensional learning <ref type="bibr" target="#b4">[5]</ref>. However, the more recent approaches (e.g., deepwalk <ref type="bibr" target="#b5">[6]</ref>, node2vec <ref type="bibr" target="#b6">[7]</ref>) have been based on word embedding algorithms, in particular the skipgram with negative sampling (SGNS) version of the word2vec model <ref type="bibr" target="#b7">[8]</ref>. The central idea is that the node sequences w 1 , w 2 , . . . , w n generated from random walks simulation on graphs can be treated as a text corpus and inputted into the word2vec model to get the output in a form of latent vector representation for each node (technically a word in the random walks generated text). While deepwalk-inspired approaches have been demonstrated to be effective in link prediction problems, their theoretical mechanisms have been relatively understudied, up until Qiu et al. <ref type="bibr" target="#b8">[9]</ref> have explicitly demonstrated the connection of deepwalk-inspired approaches and matrix factorization methods. The central idea relies on the fact that the horseback of these approaches -word2vec -has been shown to implicitly factorize the matrix containing the collocation of words in the text. Concretely, Levy et al <ref type="bibr" target="#b9">[10]</ref> have formally demonstrated that the word2vec is factorizing the point-wise mutual information (PMI) matrix -a well-known matrix in the information theory. Based on this demonstration, Qiu et al. <ref type="bibr" target="#b8">[9]</ref> have given closed-form expressions for the PMI matrix that deepwalk-inspired methods are factorizing in graphtheoretic terms. This expression of the PMI matrix is dubbed the deepwalk matrix and its closed-form derivation is tightly connected to random walks and graph Laplacians. Finally, the authors proposed the netmf algorithm that learns network embeddings for nodes by performing the singular value decomposition (SVD) of the deepwalk matrix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.1.">Challenges</head><p>An important observation in this general approach to low-rank approximation of the PMI matrix is that this matrix may pose computational issues. The trouble kicks in when we have a pair of words (w, c) which are never observed. These negative pairs lead to the ill-posed task of decomposing PMI(w, c) = log 0 = -∞ entries. As noted in <ref type="bibr" target="#b9">[10]</ref>, solutions to these problems include a Dirichlet prior by adding a small "fake" count to the underlying counts matrix -smoothing thus negative entries, or truncating the PMI matrix, such that PMI(w, c) = 0 for the unobserved pairs. Qiu et al. <ref type="bibr" target="#b8">[9]</ref> use the latter, mainly because they want to leverage the fact that a truncated matrix is very sparse, and thus SVD is accelerated. However, by forcing zeroes into the matrix we ignore the information from most of the entries of the matrix, as PMI scores for low-frequency pairs of nodes will be indistinguishable from pairs of nodes that truly never appear in contexts. We show that this may lead to a drop in performance on link prediction problems.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.2.">Contribution of this work</head><p>In this work, we extend the work of Qiu et al. <ref type="bibr" target="#b8">[9]</ref> and propose a new approach to learning low-rank factorization embeddings that incorporate information from unlikely pairs of nodes. The contributions of our work may be summarized in these three bullet points:</p><p>• We apply smoothing to shifted PMI scores to enable a low-rank factorization of matrix entries that does not penalize low-frequency node pairs. We show that this correction may drastically improve accuracy. • By considering different transformations of the PMI matrix, and by deriving matrix forms of the joint probability matrix, we demonstrate superior link prediction performance. These results lead us to argue that the linguistic collocation metric (PMI) may not be the best metric for link prediction. • Finally, we compare our results with the state-of-the-art accuracy scores from the approach of Abu-El-Haija et al <ref type="bibr" target="#b10">[11]</ref>, and conclude that our approach is on par. Their algorithm is using a stochastic (implicit) matrix factorization using neural networks, while ours is based on explicit SVD.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.3.">Organization of this manuscript</head><p>This manuscript is organized as follows: in Section 2 we will highlight the theoretical notions that are necessary for a fluid reading of our work; Section 3 will present our approach; in Section 4 we will review the specific steps we took to evaluate our approach on link prediction tasks; Section 5 will cover our results; finally, we will close with a discussion section (Section 6).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Theory</head><p>To improve the self-contained reading of this manuscript, we briefly highlight the most salient parts of the required theoretical concepts.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1.">Neural word embeddings with skip-gram negative sampling</head><p>Neural graph embedding research started with the introduction of deepwalk <ref type="bibr" target="#b5">[6]</ref> algorithm, which adapted the famous word representation algorithm word2vec <ref type="bibr" target="#b7">[8]</ref> to latent graph representation learning. Recall that, the goal of word2vec is to learn a dictionary mapping Θ : W → R d , which embeds a word w i ∈ W into a d-dimensional vector. These vectors encode generic linguistic information of words in a text corpus and can be used in downstream tasks, such as document classification.</p><p>Given a word sequence w c1 , w c2 , w t , w c3 , w c4 , a word2vec version based on skip-gram training objective tries to predict context words w ci given the target word w t . Formally, it models the conditional probability P Θ (w ci |w t ) = e Θ(w t ),Θ(wc i ) k e Θ(w t ),Θ(w k ) using inner products, e.g., Euclidean dot product, of word embeddings, e.g. Θ(w t ), and a softmax function in the denominator. The exact computation of the softmax function is computationally infeasible for any real-world text corpus, i.e., k would range over millions of words. To approximate the softmax function, for one target-context pair of words (w t , w c ), Mikolov et al. <ref type="bibr" target="#b11">[12]</ref> proposed to sub-sample k words from a unigram context distribution w k ∼ U , which do not appear in the context of w t , and minimize a negative log-likelihood loss function</p><formula xml:id="formula_0">L (wt,wc) = -   log σ( Θ(w t ), Θ(w c ) ) + k j∼U log [1 -σ( Θ(w t ), Θ(w j ) )]   (1),</formula><p>where a sigmoid function σ(x) = 1 1+e -x squashes everything into a 0, . . . , 1 range. This approximation is called skip-gram with negative sampling (SGNS). In SGNS, model parameters Θ, e.g. word embeddings, are learned implicitly by training a neural network that minimizes an aggregated negative log-likelihood, argmin Θ -(t,c)∈Ω L (wt,wc) , of all target-context pairs Ω in the training corpus. In this model, words that appear in close proximity in the text would tend to get embedded closer to each other in the embedding space.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2.">Connection to neural graph embeddings</head><p>The natural connection between graph and word embeddings relies in the fact, that, given a graph G = V, E , and a starting node w t ∈ V , we could launch a random walk of length l to generate a context node sequence w t , w c1 , . . . , w c l . Performing such random walk simulations for all nodes in the graph would generate many context node sequences, which we could group in a multiset Ω consisting of target-context node pairs (w t , w c ), w t , w c ∈ V . Effectively, we could treat Ω as a training text corpus, and use SGNS word2vec model to learn a dictionary mapping Θ : V → R d , for each node w i ∈ V . Nodes that appear more frequently in the same context node sequence would get embedded closer to each other. This is the central idea of neural graph embedding models, that rely on word2vec, such as deepwalk <ref type="bibr" target="#b5">[6]</ref> and node2vec <ref type="bibr" target="#b6">[7]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3.">Connection to information theory and low-rank matrix approximation</head><p>Levy et al. <ref type="bibr" target="#b9">[10]</ref> have formally demonstrated that for a target-context pair (w t , w c ), Eq. 1 will be minimized when the inner product is equal to Θ(w t ), Θ(w c ) = log P (wt,wc) P (wt)P (wc)log b, where b is the amount of negative words for the target word w t . This can be obtained by setting the gradient of with respect to the inner product to zero, ∂L(wt,wc)  ∂ Θ(wt),Θ(wc) = 0, and simplifying algebraically. In fact, PMI(w t , w c ) = log P (wt,wc) P (wt)P (wc) is point-wise mutual information (PMI), a well-known quantity in the information theory, which measures the discrepancy between the probability of the coincidence of two random variables given their joint distribution and their individual distributions. PMI is used in linguistics to measure the collocation or linguistic association of two words. Good collocation pairs have high PMI because the probability of co-occurrence is only slightly lower than the probabilities of occurrence of each word.</p><p>This theoretical result allows us to interpret the condition for the optimized SGNS word2vec model. Effectively, the best model is obtained, when for each target-context 4 pair (w t , w c ) their inner product approaches the shifted pointwise mutual information statistic</p><formula xml:id="formula_1">∂L(w t , w c ) ∂ Θ(w t ), Θ(w c ) = 0, when Θ(w t ), Θ(w c ) → PMI(w t , w c ) -log b.<label>(2)</label></formula><p>And, by grouping target-context pairs (w t , w c ) as entries in a matrix M wt,wc = PMI(w t , w c ) -log b, we can treat the minimization of the loss function in Eq. 1 as an implicit matrix factorization of a huge matrix M filled with PMI statistics. We can formalize it with</p><formula xml:id="formula_2">argmin Y,R M -Y × R T F ,<label>(3)</label></formula><p>where Y, R are weight matrices of the hidden layer in the word2vec neural network, and • is the Frobenius norm. By optimizing the weights Y, R of the neural network we implicitly find word embeddings, such that their pairwise inner products approach the shifted PMI (see Eq. 2).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3.1.">Connection to random walks on graphs</head><p>Since neural graph embeddings use SGNS word2vec to learn vector representations for nodes, it was a natural step to re-interpret Eq. 2 in terms of intrinsic properties of a graph G. Qiu et al. <ref type="bibr" target="#b8">[9]</ref> have re-expressed the shifted-PMI of a target-context pair of nodes (w t , w c ) in graph-theoretic terms as,</p><formula xml:id="formula_3">PMI(w t , w c )-log b → p log vol(G) 2T 1 d wc T r=1 (P r ) wt,wc + 1 d wt (P r ) wc,wt -log b,<label>(4)</label></formula><p>where d wt is the degree of the node w t , vol(G) = i d(i) is the volume of graph G (sum of all degrees), T size of the context window of a random walk (how far to the left and right we will search for context nodes), and b is the number of negative nodes for a target node w t . The transition probability matrix P = D -1 A is obtained from the adjacency A and degree D matrices of a graph, such that an entry P wt,wc holds a probability of transitioning into w c from w t in 1 step. Power matrices P r = P (P (. . . (P ) . . .) give us conditional probabilities of transitioning from one node to others in r steps, i.e., P r wt,wc = P (x r = w c |x 1 = w t ) for a random walk x 1 = w t , . . . , x r = w c . Effectively, Qiu et al. have shown that deepwalk is optimized when the inner product of a target-context node pair (w t , w c ) is approaching PMI(w t , w c ) -log b. After a series of derivations, they finally propose the closed form of the shifted PMI matrix in terms of graph theory terminologies</p><formula xml:id="formula_4">M = PMI -log b = log vol(G) 2T 1 d wc T r=1 (P r ) wt,wc + 1 d wt (P r ) wc,wt -log b = log vol(G) T T r=1 (P r ) D -1 -log b = log vol(G) bT T r=1 (P r ) D -1 rename argument of log as Q = log Q. (<label>5</label></formula><formula xml:id="formula_5">)</formula><p>Throughout this manuscript, we will refer to log Q as the deepwalk matrix. As mentioned previously, the matrix M is ill-imposed, since pairs of nodes that never occur in Ω lead to log 0 = -∞. To circumvent this computational trouble, Qiu et al <ref type="bibr" target="#b8">[9]</ref> consider the truncated version M = log(max(Q, 1)) leading to a highly sparse representation. Consequently, they only consider pairs of nodes that occur in Ω during the decomposition process, or even more dramatically, they ignore the information from most of the entries of M . To obtain a d-rank approximation of M ≈ L × R T , Qiu et al. <ref type="bibr" target="#b8">[9]</ref> apply singular value decomposition (SVD) directly on M , instead of implicitly learning them by minimizing Eq. 3 with a neural network. By explicitly factorizing the closed-form of the deepwalk matrix with SVD via M = U d Σ d V T d , NetMF finally returns the matrix of node embeddings</p><formula xml:id="formula_6">Y = U d Σ d .<label>(6)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Proposed approach</head><p>The skip-gram powered neural graph embedding approaches relied on word2vec to learn latent vector representation by implicitly factorizing the shifted PMI matrix. Driven by the goal of theoretically explaining deepwalk-like neural graph embedding algorithms, Qiu et al. <ref type="bibr" target="#b8">[9]</ref> settled for the PMI matrix, and especially its closed-form expression in graph-theoretic terms. However, the choice of the PMI matrix for learning graph embeddings was implicitly imposed by the design of word2vec. In developing our approach, we ponder whether the matrix factorization of PMI matrix is the best way to obtain node representations suitable for link prediction of real-world networks? To test our hypothesis, we first show why PMI matrix might be a bad option, and then use this rationale to derive our method.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.">Contribution of low-frequency pairs to learning good graph embeddings</head><p>We start our incursion into the effect of truncating or smoothing negatives on link prediction by visually investigating the reconstruction of the PMI matrix. First, we apply the original NetMF (log[max(Q, 1)]) algorithm on the karate club network <ref type="bibr" target="#b12">[13]</ref>, consisting of 34 nodes, to obtain graph embeddings Y (Eq. 6). Then, we compare the ground truth PMI matrix (Figure <ref type="figure" target="#fig_0">1</ref>, left) and the reconstruction with Y • Y T (Figure <ref type="figure" target="#fig_0">1</ref>, right). We can see that Y • Y T ignores the contribution of low-frequency pairs (u, v), where Q uv &lt; 1. While NetMF (log[max(Q, 1)]) reconstruction is fairly good for highly frequent pairs of nodes, there is little variation between the non-occurring pairs and the pairs that occur with a low PMI. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.">Matrix form for random walk context window co-occurrence probability</head><p>To test our hypothesis, we propose two ways to include the contribution of truncated PMI entries. The first is a straightforward transformation of the original deepwalkmatrix, where instead of truncating we are smoothing the negatives by applying σ(•) to the entries of Q (Eq. 5). In doing so, we lose the semantics of the shifted pointwise mutual information metric, because we are skipping the log transformation, however, we do include the contribution of low-occurrence pairs. Our second approach is to consider the joint probability of two nodes to appear in the same random walk context. For this, we need to derive the matrix form of the joint distribution, as shown below</p><formula xml:id="formula_7">J = 1 2T T r=1 d w vol(G) (P r ) w,c + d c vol(G) (P r ) c,w = 1 2T • vol(G) T r=1 D(P r ) + T r=1 (P r ) T D = 1 2T • vol(G)   T r=1 DD -1 I A × D -1 A × . . . × D -1 r-1 times A + + T r=1 AD -1 × . . . AD -1 r-1 times ×A D -1 D I   = 1 T • vol(G) T r=1 AD -1 × . . . AD -1 r-1 times ×A = 1 T • vol(G) T -1 r=1 (P r ) T A.<label>(7)</label></formula><p>This matrix form of J gives us a closed-form solution for random walk co-occurrence probability computation, without the need for generating random walk sentences and sampling context pairs. Table <ref type="table" target="#tab_0">1</ref> gives an overview of the considered matrices, derived from the original NetMF algorithm, and details what one entry in each matrix means. Entries in these matrices represent statistic quantity that can be computed from the original graph structure. </p><formula xml:id="formula_8">(σ(Q)) σ(x) =<label>1</label></formula><p>1+e -x applied to each entry of Q (smoothened negatives) J P (i, j) -probability p(i, j) that nodes i, j co-occur within the same context in all simulated random walks 4. Methods</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.">Datasets</head><p>To perform unbiased comparison of link prediction performance using different graph embedding models, we used exactly the same train and test splits as the ones used in Abu-El-Haija et al. <ref type="bibr" target="#b10">[11]</ref>. In <ref type="bibr" target="#b10">[11]</ref>, 5 networks from<ref type="foot" target="#foot_0">1</ref> SNAP (Stanford Large Network Dataset Collection) were considered, which we summarize in Table <ref type="table">2</ref>.</p><p>Table <ref type="table">2</ref>: Datasets used in all experiments. Note that the PPI dataset is no longer available from the SNAP website (Last checked: May 27, 2020). To use the same dataset that was tested in this work you would have to download the version available in <ref type="bibr" target="#b10">[11]</ref>. PPI dataset was originally published in <ref type="bibr" target="#b13">[14]</ref>. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.">Graph embedding models</head><p>We compared the link prediction performance of our approach to the original NetMF algorithm and to the following state-of-the-art graph embedding models: BigClam <ref type="bibr" target="#b14">[15]</ref>, NNSED <ref type="bibr" target="#b15">[16]</ref>, SocioDim <ref type="bibr" target="#b16">[17]</ref>, RandNE <ref type="bibr" target="#b17">[18]</ref>, NFMADMM <ref type="bibr" target="#b15">[16]</ref>, GLEE <ref type="bibr" target="#b18">[19]</ref>, and NodeSketch <ref type="bibr" target="#b19">[20]</ref>. All of our experiments were primarily implemented in Python (version 3.8). We used the usual packages from the scientific Python stack, such as numpy, scipy, and scikitlearn. To compare our approach with NetMF, we used the<ref type="foot" target="#foot_1">2</ref> official implementation available on GitHub. For other models, we used karateclub <ref type="bibr" target="#b20">[21]</ref>, a Python library for unsupervized learning on graph-structured data.</p><p>Furthermore, we used link prediction scores in <ref type="bibr" target="#b10">[11]</ref> to directly compare neural networkbased graph embedding models to the proposed method. Specifically, the link prediction performance of the following models was considered: DGNR <ref type="bibr" target="#b21">[22]</ref>, Node2Vec <ref type="bibr" target="#b6">[7]</ref>, Assym Proj <ref type="bibr" target="#b22">[23]</ref>, and WatchYourStep <ref type="bibr" target="#b10">[11]</ref>. Note that we have not performed hyperparameter optimization for these models, but we took the best scores from <ref type="bibr" target="#b10">[11]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3.">Link prediction, evaluation, and Bayesian hyperparameter optimization</head><p>To make sure that all graph embedding models were compared head-to-head in a fair manner, we performed the model selection, where we optimized for the best hyperparameters for each model on every considered graph. Since all considered graph embeddings models are sensitive to the specific choice of the associated hyperparameters, model selection was performed using a computationally intensive Bayesian hyperparameter optimization pipeline summarized in Figure <ref type="figure" target="#fig_1">2</ref>. For example, our proposed approach has only one parameter to optimize the deep walk length, i.e., the highest power of the transition matrix. NetMF adds another parameter, the number of negative samples in the computation of the pointwise mutual information metric. Graph embedding models based on non-negative matrix factorization have other hyperparameters, such as the number of iterations to solve the NMF optimization problem. We provide the full list of sampled hyperparameter configurations and the underlying distributions for each graph embedding approach in Supplementary Material. Our hyperparameter optimization pipeline was implemented using<ref type="foot" target="#foot_2">3</ref> optuna, a Python hyperparameter optimization library.</p><p>We took train and test splits provided in Abu-El-Haija et al. <ref type="bibr" target="#b10">[11]</ref>. The original train set was used to learn graph embeddings Y and perform hyperparameter tuning, and the original test set was only used for the final link prediction evaluation of the best selected model. For classifying positive and negatives links using graph embeddings Y , obtained with a graph embedding model M , we used a classifier g M (Y ) = σ(Y • Y T ), where σ(x) = 1 1+e -x . The performance of the classifier g M was measured with the area under the receiver-operating curve (ROC AUC). To report a signed difference in ROC AUC scores for two classifiers g M , g M , we used the following metric φ(g M , g M ) =</p><p>ROC AUC score(g M )-ROC AUC score(g M ) ROC AUC score(g M )</p><p>. Overall, we made sure that there was no double-dipping into the data, and that no information leakage from the test set took place. For each graph embedding model, to determine the best model parameters, we let the Bayesian hyperparameter optimization pipeline run for 50 trials on the fraction of the original training set (80%). Model selection was performed by optimizing the ROC AUC score on the other fraction (20%) of the original training set, commonly referred as the validation set. Best selected model parameters were then used in the final link prediction evaluation on the holdout test set. Before the evaluation, each graph embedding model was retrained on the full training set using the optimized parameters from the optimization pipeline. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Results</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1.">Link prediction</head><p>Our approach outperformed all the considered models on all graphs, as documented by the highest ROC AUC scores on the holdout test set (Table <ref type="table" target="#tab_2">3</ref>, Figure <ref type="figure" target="#fig_2">3</ref>). Compared to NetMF (log[max(Q, 1)]) the proposed approach, J, increased the ROC AUC score by 24.2% and 15.6% on the graphs wiki-vote and ppi. The improvement of link prediction performance on ca-AstroPh, ca-HepTh, and soc-facebook were 1.2%, 1.4%, and 2.8%, respectively. BigClam, NNSED, and NMFADMM models had better ROC AUC scores than NetMF (log[max(Q, 1)]) on wiki-vote and ppi. On the remaining graphs, the baseline version of NetMF outperformed all other state-of-the-art link prediction models (except ours).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1.1.">Truncating or smoothing low co-occurrence random walk pairs?</head><p>The original version of NetMF, log[max(Q, 1)] truncates the contribution of lowoccurence pairs due to the log[max(•, 1)] transformation of the matrix Q. Instead, we   <ref type="figure">--------------------------------</ref>  considered a version of NetMF, σ(Q), that smoothens these entries, instead of truncating them, and compared its best-optimized model to the best optimized log[max(Q, 1)] model. To smoothen entries in the Q matrix, we used the sigmoid function, σ(x) = 1 1+e -x , which squishes inputs from the [-∞, ∞] into the [0, 1] range. Due to this transformation the information from unobserved pairs, or the pairs with very low joint probability, is not lost. However, this comes at the cost of decomposing a dense matrix to get the graph embeddings Y . Note that we cannot decompose the original shifted PMI matrix log Q, since it leads to decomposing ill-defined log 0 = -∞ entries. The NetMF version that smoothens low-occurrence pairs outperformed the baseline on wiki-vote and ppi, had the same performance on soc-facebook, and obtained a slightly worse performance on ca-AstroPh and ca-HepTh graphs. Table <ref type="table" target="#tab_5">4</ref> shows head two head comparison of two versions' ROC AUC scores. </p><formula xml:id="formula_9">-------- ----- ----- ----- ----- ----- proposed J 98.</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2.">Generalization gap</head><p>We looked into the generalization capability of J and baseline NetMF models, NetMF(log[max(Q, 1)]) and NetMF(σ(Q)). In the statistical learning theory, under the bias-variance tradeoff paradigm, we expect the test score to be slightly worse than the training score. Moreover, really big negative differences may point to the overfitting phenomenon, where a prediction model has learned the training dataset but failed to generalize on the test set. Figure <ref type="figure" target="#fig_3">4</ref> plots train, validation, and test ROC AUC scores for the proposed approach and two versions of NetMF. Compared to the baseline, the proposed approach had better absolute scores on all graphs, and specifically on the graphs wiki-vote and ppi. On these two graphs, the test ROC AUC score with respect to the train ROC AUC score for the approach of Qiu et al. <ref type="bibr" target="#b8">[9]</ref> dropped 6% and 32%, respectively. For comparison, it only dropped 1% and 9% for the proposed approach. For these three approaches, it is interesting to note that the graph soc-facebook had the best generalization gap, as differences between the ROC AUC scores were less than 1%. The graph ca-HepTh had the biggest difference between the validation and the train ROC AUC score, dropping ˜36% for all three models, however, the gaps between the train and test scores were much smaller (5-9%). </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3.">Optimization duration and parameter sensitivity analysis</head><p>Table <ref type="table" target="#tab_6">5</ref> documents the optimization duration for all the considered models. NodeSketch was the most computationally intensive model to optimize, RandNE was the fastest model to optimize. Two NetMF versions and the proposed approach took more time to optimize than the median optimization duration. Notably, the sigmoid version of NetMF (σ(Q)) took less time to optimize than the original version that used the truncated log transformation (log[max(Q, 1)]). The optimization duration for the proposed approach J and the original NetMF was comparable. Figure <ref type="figure" target="#fig_4">5</ref> shows the best hyperparameters for the proposed approach and two NetMF versions. While J required more dimensions, i.e., bigger representation capacity, it required a smaller random walk length. It is interesting to see that the best ROC AUC scores were obtained when only 1 negative sample was taken into account for the two versions of the NetMF algorithm.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4.">Comparison with graph embedding models based on neural networks</head><p>We compared our approach with graph embedding models based on neural networks, using published results in Abu-El-Haija et al. <ref type="bibr" target="#b10">[11]</ref> (Table <ref type="table">6</ref>). In their work, the authors used a neural graph embedding model WatchYourStep that was implicitly factorizing the expected values of the matrix of co-occurrence counts E[C], where each entry E[C] wc represents the expected amount of times that nodes w, c will co-occur in all random walks <ref type="bibr" target="#b10">[11]</ref>. In addition, it was reported that WatchYourStep largely outperformed other graph embedding models, including DNGR <ref type="bibr" target="#b21">[22]</ref>, node2vec <ref type="bibr" target="#b6">[7]</ref>, and Assym Proj <ref type="bibr" target="#b22">[23]</ref>. We have used exactly the same training and test splits as in <ref type="bibr" target="#b10">[11]</ref> and found that our approach also outperformed DNGR, node2vec and Assym Proj. Compared to WatchYourStep headto-head, our proposed method, J, obtained comparable scores (within ˜3% ROC AUC scores), and on the graph wiki-vote even outperformed it by &gt;3%. Table <ref type="table">6</ref>: Comparison of test ROC AUC scores of the proposed approach and the scores obtained with state-of-the-art neural graph embedding algorithms as reported in <ref type="bibr" target="#b10">[11]</ref>; † best scores per model. Train and test splits are exactly those from <ref type="bibr" target="#b10">[11]</ref>. Overall best ROC AUC scores in bold, second best in italic. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.">Discussion</head><p>In the last decade, the research on learning neural graph embeddings has been deeply influenced by the success of the word2vec algorithm. This word embedding algorithm used neural networks to perform low-rank factorization of the shifted pointwise mutual information matrix, where each entry represents a linguistic collocation of two words. In this work, we put under question whether the collocation metric is the right fit in the realm of real-world networks. Instead, we proposed a graph embedding approach that relies on factorizing the joint probability matrix J, where each entry encodes the probability of two nodes to co-occur in the same context in one random walk. Benchmarked on link prediction tasks, our approach improved the performance of baseline graph embeddings obtained by factorizing the shifted pointwise mutual information matrix. Depending on the network topology, the improvement ranged from 1.2% to 24.2%. In the following, we discuss a few insights from our work that could be important in designing graph embedding algorithms.</p><p>6.1. Explicit modeling of negative samples has little effect on the quality of graph embeddings</p><p>Our work ponders the importance of explicit modeling of negative samples for link prediction problems on graphs. Qiu et al. <ref type="bibr" target="#b8">[9]</ref> have shown that deepwalk is optimized when the inner product of a target-context node pair (w t , w c ) is approaching PMI(w t , w c )log b. In fact, the shifted PMI approach, which stems from natural language processing, requires the explicit term log b, where b is the amount of sampled negative examples during stochastic training. However, in our experiments, we saw that the role of the negative term in the shifted PMI formula plays a limited role. The best-optimized models for all graphs consistently chose b = 1, such that the term log[b = 1] = 0 did not contribute any new information.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2.">Smoothing low-frequency pairs yields better link prediction performance than truncating</head><p>The original NetMF algorithm truncates the contribution of node pairs with a low shifted PMI score using a log[max(1, •)] transformation. This technical choice has been done to avoid the ill-imposed decomposition of lim x→0 log x = -∞ entries in the matrix for pairs of nodes that never appear together in a random walk. However, due to the log[max(1, •)] transformation the contribution of low-frequency pairs to learning graph embeddings is undermined. In fact, applying the sigmoid function σ(•) to the argument of log, i.e., σ(log[•]), yields a comparable (&lt;1% difference in ROC AUC score), or in some cases much better link prediction performance (7.8% -15.5% improvement). We believe that this happens because all the variance of the low-frequency pairs -most entries in the graph co-occurrence statistics matrix -is taken into account during the matrix factorization with SVD. Therefore, we believe that smoothening low-frequency pairs should be favored over truncating them for link prediction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.3.">Pointwise mutual information metric and scale-free property of real-world networks</head><p>Interestingly, the joint probability matrix J and shifted PMI matrix are extremely related, both encode co-occurrence information from the same graph and for the same simulated random walks, so why do we see the difference in performance? We believe that to explain this, we need to analyze under which circumstances a relatively high joint probability of i and j appearing together encodes more useful information for the link prediction problem. Point-wise mutual information of a pair of outcomes x, y from discrete random variables X and Y quantifies the discrepancy between the probability of their coincidence (co-occurrence) given their joint and individual distributions. In computational linguistics, PMI is used for finding collocations and associations between words. Good collocation pairs have high PMI because the probability of co-occurrence p(i, j) is only slightly lower than the probabilities of occurrence of each word (p(i) and p(j)). On the other hand, PMI(i, j) is zero when these two outcomes are independent, i.e., p(i, j) = p(i)p(j)); PMI(i, j) = log p(i,j) p(i)p(j)</p><p>= log 1 = 0. And it is undefined when i, j do not co-occur at all, i.e., log PMI(i, j) = log p(i,j) p(i)p(j) = log 0 = -∞, when p(i, j) = 0. On the other hand, PMI is maximized when two outcomes are perfectly associated, i.e., p(i|j) = 1 or p(j|i) = 1. For instance, a pair of words puerto rico has a very high PMI, since they are rarely used individually in the<ref type="foot" target="#foot_3">4</ref> Wikipedia articles. From the same source, a pair of words it the, despite having the same joint probability value as puerto rico, will have a very low PMI score because their joint probability is small in comparison with their individual probabilities.</p><p>Translating to the graph domain, consider two connected nodes i, j, such that both i and j are extremely frequent (very high centrality). If we compute the PMI of this pair it will give us a very low score because the numerator (joint probability) is dominated by the denominator (big individual probabilities), therefore the dot product of embeddings for these two nodes will give us a low score, which might be interpreted that the two nodes are not connected (while they are). This can seriously undermine the link predictor. It is very well known that many real-world networks, such as protein interaction, social, and citation, networks exhibit scale-free nature, where the degree distribution follows the power law, which results in networks that have few hubs to which all other nodes tend to attach <ref type="bibr" target="#b23">[24]</ref>, <ref type="bibr" target="#b24">[25]</ref>, <ref type="bibr" target="#b25">[26]</ref>. Therefore, we believe that a high joint probability for two highly frequent nodes should not be penalized, as it might be very indicative of a very plausible link between the two nodes. Hence, we would recommend J, the joint probability matrix, as the main choice for the computation of node embeddings for link prediction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.4.">The importance of non-linear feature extraction in link prediction</head><p>Improving the capacity of neural graph embedding models to extract non-linear features from graph data is an active area of pattern recognition research <ref type="bibr" target="#b26">[27]</ref>. The insights from our work may help train non-linear feature extraction link predictors more efficiently, in particular, when it comes to hyperparameter optimization. Indeed, non-linear neural embeddings approaches require extensive computational costs to find an optimal choice of hyperparameters, e.g., embedding dimension. Neural graph embedding algorithms based on explicit matrix factorization with SVD, such as the one presented in this work, can be used as a baseline model to determine the best embedding dimension. In particular, the Eckart-Young-Mirsky theorem guarantees the decomposed vectors of rank d (i.e., embedding dimension) are the best linear approximation.</p><p>However, we should also be aware that some real-world networks may benefit only marginally from complex non-linear feature extraction. Our proposed linear approach obtained a similar performance as the non-linear WatchYourStep approach by Abu-El-Haija et al. <ref type="bibr" target="#b10">[11]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.5.">Related work</head><p>Our work is based on the tremendous previous efforts to connect neural embeddings for symbolic data and the solid theory of matrix factorization <ref type="bibr" target="#b9">[10,</ref><ref type="bibr" target="#b8">9]</ref>. Perhaps, the most similar work to ours, to the best of our knowledge, comes from the NLP domain <ref type="bibr" target="#b27">[28]</ref>, where they showed that the SVD decomposition of the truncated PMI matrix, as in <ref type="bibr" target="#b9">[10]</ref>, may worsen the quality of word embeddings.</p><p>Among the most popular approaches to learning node embeddings and applying them to link prediction, we can outline three main classes:</p><p>• Methods that are not based on neural networks. For instance, BigClam <ref type="bibr" target="#b14">[15]</ref>, NNSED <ref type="bibr" target="#b28">[29]</ref> use community detection algorithms to learn node embeddings. SocioDim <ref type="bibr" target="#b16">[17]</ref>, RandNE <ref type="bibr" target="#b17">[18]</ref>, NMFADMM <ref type="bibr" target="#b15">[16]</ref>, NodeSketch <ref type="bibr" target="#b19">[20]</ref>, and GLEE <ref type="bibr" target="#b18">[19]</ref> exploit neighborhood information. In our comparison, we found out our approach outperforms these baselines. Other methods that rely on feature engineering for individual nodes <ref type="bibr" target="#b29">[30]</ref>, <ref type="bibr" target="#b30">[31]</ref>, <ref type="bibr" target="#b31">[32]</ref>, <ref type="bibr" target="#b32">[33]</ref> have been also popular for link prediction problems. We have not included these methods in our comparison. • Methods that are based on neural networks. Deepwalk <ref type="bibr" target="#b5">[6]</ref> inspired approaches include node2vec <ref type="bibr" target="#b6">[7]</ref>, NetMF <ref type="bibr" target="#b8">[9]</ref>, DGNR <ref type="bibr" target="#b21">[22]</ref>, Assym Proj <ref type="bibr" target="#b22">[23]</ref>, and WatchYourStep <ref type="bibr" target="#b10">[11]</ref>. We showed that the performance of our approach compares favorably. • Methods that require per-node feature information. Some algorithms require not only graph structure information, but also per-node feature information, e.g., gene expression values in protein interaction networks. Prominent examples include graph convolution methods for semi-supervized node classification <ref type="bibr" target="#b33">[34]</ref>, <ref type="bibr" target="#b34">[35]</ref>, <ref type="bibr" target="#b35">[36]</ref> and graph representational learning using variational autoencoders <ref type="bibr" target="#b36">[37]</ref>. We have not included these algorithms in the comparison since they require additional per-node feature information. It is worth mentioning that the predictive performance of graph convolutional neural networks can be significantly improved by incorporating the structural information about the input graph into the training process <ref type="bibr" target="#b37">[38]</ref>, <ref type="bibr" target="#b38">[39]</ref>, <ref type="bibr" target="#b26">[27]</ref>. Similarly, findings from our work may also be used to optimize the training process of graph convolutional neural networks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.6.">Limitations</head><p>Our analysis is conditioned on the linear low-rank decomposition assumption of the SVD algorithm. Another matrix factorization algorithm could have decomposed the truncated log[max(Q, 1)] matrix in such a way as to learn better node embeddings for link prediction. However, it would be surprising that the information from only highfrequency pairs would be sufficient for link prediction. On another note, the original NetMF <ref type="bibr" target="#b8">[9]</ref> was not tested on link prediction problems, i.e., the matrix factorization of the truncated PMI (log[max(Q, 1)]) was benchmarked on node classification problems. Lastly, our proposition of smoothening the information from low-frequency pairs might yield a highly dense matrix, which might not scale for big graphs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.7.">Conclusion and future work</head><p>Our work contributes to a better understanding of the interplay between the skipgram powered neural graph embedding algorithms and matrix factorization. Neural graph embeddings implicitly decompose matrices that represent quantities derived from the co-occurrence frequencies in simulated random walks. We showed that the link prediction accuracy of graph embeddings strongly depends on the transformations of the original graph co-occurrence matrix that they decompose. In particular, smoothening entries corresponding to low-frequency pairs, as opposed to truncating them, may lead to better performance in link prediction.</p><p>Future work will be focused on addressing the limitations and devising workaround strategies to make sure that our approach can scale to very big graphs. In particular, we would like to incorporate spectral graph sparsification <ref type="bibr" target="#b39">[40]</ref> into our algorithm.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Left: ground truth shifted PMI matrix for the Karate graph; Right: NetMF (log[max(Q, 1)]) approximation. Low-rank factorization was computed with dim 5, neg size 1, window size 5. Changing hyperparameter values does not change the fact that NetMF (log[max(Q, 1)]) ignores low frequency pairs.</figDesc><graphic coords="7,106.36,188.76,382.58,191.29" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Bayesian optimization overview.</figDesc><graphic coords="10,106.36,334.51,382.57,119.58" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: ROC AUC scores on the final holdout test set.</figDesc><graphic coords="11,106.36,414.17,382.56,76.47" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Generalization gap between the train, validation, and test ROC AUC scores.</figDesc><graphic coords="12,106.36,499.84,382.56,125.77" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Optimized hyperparameters that lead to the best ROC AUC scores.</figDesc><graphic coords="14,106.36,140.99,382.56,158.64" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Matrices whose SVD low-rank factorization is considered in our link prediction experiments. An entry M ij in a considered matrix M records a statistic of co-occurrence of two nodes i, j; graph statistics are derived from random walks.</figDesc><table /><note><p><p>matrix M meaning of entry Mij</p>NetMF(log[max(Q, 1))) truncated shifted point-wise mutual information log[max(Qi,j , 1)) for nodes i, j NetMF</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 :</head><label>3</label><figDesc>Link prediction performance comparison between the proposed approach and baselines. Following a Bayesian hyperparameter optimization consisting of 50 trials on the training set, the best performing model was selected and its ROC AUC score on the holdout test is reported; the best ROC AUC scores in bold.</figDesc><table><row><cell>Model M</cell><cell>ca-AstroPh</cell><cell>ca-HepTh</cell><cell>ppi</cell><cell>soc-facebook</cell><cell>wiki-vote</cell></row><row><cell>baseline</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>NetMF</cell><cell>97.0 (0.0%)</cell><cell>89.4 (0.0%)</cell><cell>73.0 (0.0%)</cell><cell>96.6 (0.0%)</cell><cell>83.9 (0.0%)</cell></row><row><cell>(log[max(Q, 1)])</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 4 :</head><label>4</label><figDesc>Comparison of test ROC AUC scores for two versions of NetMF algorithm: original version NetMF (log[max(Q, 1)]) that truncates node pairs with low PMI, and NetMF (σ(Q)) that smoothens low PMI pairs. Best scores are in bold.</figDesc><table><row><cell>NetMF version</cell><cell>ca-AstroPh</cell><cell>ca-HepTh</cell><cell>ppi</cell><cell>soc-facebook</cell><cell>wiki-vote</cell></row><row><cell>truncate</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>NetMF</cell><cell>97.0 (0.0%)</cell><cell>89.4 (0.0%)</cell><cell>73.0 (0.0%)</cell><cell>96.6 (0.0%)</cell><cell>83.9 (0.0%)</cell></row><row><cell>(log[max(Q, 1)])</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>smoothen</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>NetMF (σ(Q))</cell><cell>96.9 (-0.2%)</cell><cell>88.7 (-0.9%)</cell><cell>84.3</cell><cell>96.6 (0.0%)</cell><cell>90.4 (7.8%)</cell></row><row><cell></cell><cell></cell><cell></cell><cell>(15.5%)</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 5 :</head><label>5</label><figDesc>Total optimization duration for 50 trials in minutes, average trial optimization duration in seconds (in parenthesis).</figDesc><table><row><cell>Graph embedding</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>model</cell><cell>ca-AstroPh</cell><cell>ca-HepTh</cell><cell>ppi</cell><cell>soc-facebook</cell><cell>wiki-vote</cell></row><row><cell>baseline</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>NetMF</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>(log[max(Q, 1)])</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>https://snap.stanford.edu/data/</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>https://github.com/xptree/NetMF</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>https://github.com/optuna/optuna</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_3"><p>https://en.wikipedia.org/wiki/Pointwise_mutual_information</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head n="6.8.">Acknowledgements</head><p>The computational results presented have been achieved in part using the <rs type="institution">Vienna Scientific Cluster (VSC)</rs>.</p></div>
+			</div>			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Statistical mechanics of complex networks</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Albert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A.-L</forename><surname>Barabási</surname></persName>
+		</author>
+		<idno type="DOI">10.1103/RevModPhys.74.47</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Rev. Mod. Phys</title>
+		<imprint>
+			<biblScope unit="volume">74</biblScope>
+			<biblScope unit="page" from="47" to="97" />
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">The link prediction problem for social networks</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Liben-Nowell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kleinberg</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/956863.956972</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the twelfth international conference on Information and knowledge management -CIKM &apos;03</title>
+		<meeting>the twelfth international conference on Information and knowledge management -CIKM &apos;03<address><addrLine>New York, New York, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM Press</publisher>
+			<date type="published" when="2003">2003</date>
+			<biblScope unit="page">556</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Joint multi-label learning and feature extraction for temporal link prediction</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Deng</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.patcog.2021.108216</idno>
+		<ptr target="https://doi.org/10.1016/j.patcog.2021.108216" />
+	</analytic>
+	<monogr>
+		<title level="j">Pattern Recognition</title>
+		<imprint>
+			<biblScope unit="volume">121</biblScope>
+			<biblScope unit="page">108216</biblScope>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">R K</forename><surname>Chung</surname></persName>
+		</author>
+		<title level="m">Spectral Graph Theory</title>
+		<imprint>
+			<publisher>American Mathematical Society</publisher>
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Relational learning via latent social dimensions</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 15th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</title>
+		<meeting>the 15th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="817" to="826" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Online learning of social representations</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Skiena</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Deepwalk</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2623330.2623732</idno>
+		<ptr target="http://dl.acm.org/citation.cfm?doid=2623330.2623732" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th ACM SIGKDD international conference on Knowledge discovery and data mining -KDD &apos;14</title>
+		<meeting>the 20th ACM SIGKDD international conference on Knowledge discovery and data mining -KDD &apos;14<address><addrLine>New York, New York, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM Press</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="701" to="710" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Node2vec: Scalable feature learning for networks</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Grover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2939672.2939754</idno>
+		<idno>doi:10.1145/2939672.2939754</idno>
+		<ptr target="https://doi.org/10.1145/2939672.2939754" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</title>
+		<meeting>the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="855" to="864" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Distributed representations of words and phrases and their compositionality</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Corrado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Dean</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th International Conference on Neural Information Processing Systems</title>
+		<meeting>the 26th International Conference on Neural Information Processing Systems<address><addrLine>Red Hook, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Curran Associates Inc</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="3111" to="3119" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Network embedding as matrix factorization: Unifying deepwalk, line, pte, and node2vec</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. WSDM</title>
+		<meeting>WSDM</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="459" to="467" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Neural word embedding as implicit matrix factorization</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Levy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Goldberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. NIPS</title>
+		<meeting>NIPS</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="2177" to="2185" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Watch your step: Learning node embeddings via graph attention</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Abu-El-Haija</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">A</forename><surname>Alemi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Bengio</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Grauman</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">N</forename><surname>Cesa-Bianchi</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Garnett</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">31</biblScope>
+			<biblScope unit="page" from="9180" to="9190" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Efficient estimation of word representations in vector space</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Corrado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Dean</surname></persName>
+		</author>
+		<ptr target="http://arxiv.org/abs/1301.3781" />
+	</analytic>
+	<monogr>
+		<title level="m">st International Conference on Learning Representations, ICLR 2013</title>
+		<meeting><address><addrLine>Scottsdale, Arizona, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2013">May 2-4, 2013. 2013</date>
+		</imprint>
+	</monogr>
+	<note>Workshop Track Proceedings</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">An information flow model for conflict and fission in small groups</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">W</forename><surname>Zachary</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of anthropological research</title>
+		<imprint>
+			<biblScope unit="page" from="452" to="473" />
+			<date type="published" when="1977">1977</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">BioGRID: a general repository for interaction datasets</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Stark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B.-J</forename><surname>Breitkreutz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Reguly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Boucher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Breitkreutz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Tyers</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nucleic Acids Research</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="535" to="D539" />
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Overlapping community detection at scale: A nonnegative matrix factorization approach, WSDM &apos;13</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2433396.2433471</idno>
+		<idno>doi:10.1145/2433396.2433471</idno>
+		<ptr target="https://doi.org/10.1145/2433396.2433471" />
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<publisher>Association for Computing Machinery</publisher>
+			<biblScope unit="page" from="587" to="596" />
+			<pubPlace>New York, NY, USA</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Alternating direction method of multipliers for non-negative matrix factorization with the beta-divergence</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">L</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Févotte</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/ICASSP.2014.6854796</idno>
+	</analytic>
+	<monogr>
+		<title level="m">2014 IEEE International Conference on Acoustics, Speech and Signal Processing</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="6201" to="6205" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Relational learning via latent social dimensions</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Liu</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/1557019.1557109</idno>
+		<idno>doi:10.1145/1557019.1557109</idno>
+		<ptr target="https://doi.org/10.1145/1557019.1557109" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 15th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, KDD &apos;09</title>
+		<meeting>the 15th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, KDD &apos;09<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="817" to="826" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Billion-scale network embedding with iterative random projection, in: Data Mining (ICDM)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2018">2018. 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">GLEE: Geometric Laplacian Eigenmap Embedding</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Torres</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">S</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Eliassi-Rad</surname></persName>
+		</author>
+		<idno type="DOI">10.1093/comnet/cnaa007</idno>
+		<idno>doi:10.1093/ comnet/cnaa007</idno>
+		<ptr target="https://doi.org/10.1093/comnet/cnaa007" />
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Complex Networks</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Nodesketch: Highly-efficient graph embeddings via recursive sketching</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Rosso</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Cudre-Mauroux</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3292500.3330951</idno>
+		<idno>doi:10. 1145/3292500.3330951</idno>
+		<ptr target="https://doi.org/10.1145/3292500.3330951" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, KDD &apos;19</title>
+		<meeting>the 25th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, KDD &apos;19<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="1162" to="1172" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Karate Club: An API Oriented Open-source Python Framework for Unsupervised Learning on Graphs</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Rozemberczki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Kiss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sarkar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 29th ACM International Conference on Information and Knowledge Management (CIKM &apos;20)</title>
+		<meeting>the 29th ACM International Conference on Information and Knowledge Management (CIKM &apos;20)</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="3125" to="3132" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Deep neural networks for learning graph representations</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Xu</surname></persName>
+		</author>
+		<ptr target="https://ojs.aaai.org/index.php/AAAI/article/view/10179" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">30</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Learning edge representations via low-rank asymmetric projections</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Abu-El-Haija</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Al-Rfou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM Conference on Information and Knowledge Management</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Scale-free networks: A decade and beyond</title>
+		<author>
+			<persName><forename type="first">A.-L</forename><surname>Barabási</surname></persName>
+		</author>
+		<idno type="DOI">10.1126/science.1173299</idno>
+		<idno>doi:10.1126/science.1173299</idno>
+		<ptr target="http://dx.doi.org/10.1126/science.1173299" />
+	</analytic>
+	<monogr>
+		<title level="j">Science</title>
+		<imprint>
+			<biblScope unit="volume">325</biblScope>
+			<biblScope unit="page" from="412" to="413" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Evolution of networks</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">N</forename><surname>Dorogovtsev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">F F</forename><surname>Mendes</surname></persName>
+		</author>
+		<idno type="DOI">10.1080/00018730110112519</idno>
+		<idno>doi:10.1080/ 00018730110112519</idno>
+		<ptr target="http://dx.doi.org/10.1080/00018730110112519" />
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Physics</title>
+		<imprint>
+			<biblScope unit="volume">51</biblScope>
+			<biblScope unit="page" from="1079" to="1187" />
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Emergence of scaling in random networks</title>
+		<author>
+			<persName><forename type="first">A.-L</forename><surname>Barabási</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Albert</surname></persName>
+		</author>
+		<idno type="DOI">10.1126/science.286.5439.509</idno>
+		<idno>doi:10.1126/science.286.5439.509</idno>
+		<ptr target="http://dx.doi.org/10.1126/science.286.5439.509" />
+	</analytic>
+	<monogr>
+		<title level="j">Science</title>
+		<imprint>
+			<biblScope unit="volume">286</biblScope>
+			<biblScope unit="page" from="509" to="512" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Graphair: Graph representation learning with neighborhood aggregation and interaction</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Tan</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.patcog.2020.107745</idno>
+		<ptr target="https://doi.org/10.1016/j.patcog.2020.107745" />
+	</analytic>
+	<monogr>
+		<title level="j">Pattern Recognition</title>
+		<imprint>
+			<biblScope unit="volume">112</biblScope>
+			<biblScope unit="page">107745</biblScope>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">Word embedding algorithms as generalized low rank models and their canonical form</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kenyon-Dean</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1911.02639</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">A non-negative symmetric encoder-decoder approach for community detection</title>
+		<author>
+			<persName><forename type="first">B.-J</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Ouyang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Cheng</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3132847.3132902</idno>
+		<idno>doi:10.1145/3132847.3132902</idno>
+		<ptr target="https://doi.org/10.1145/3132847.3132902" />
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<publisher>Association for Computing Machinery</publisher>
+			<pubPlace>New York, NY, USA</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">A scalable similarity-popularity link prediction method</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kerrache</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Alharbi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Benhidour</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41598-020-62636-1</idno>
+		<ptr target="https://doi.org/10.1038%2Fs41598-020-62636-1" />
+	</analytic>
+	<monogr>
+		<title level="j">Scientific Reports</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Toward link predictability of complex networks</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Lü</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-C</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">E</forename><surname>Stanley</surname></persName>
+		</author>
+		<idno type="DOI">10.1073/pnas.1424644112</idno>
+		<ptr target="https://doi.org/10.1073%2Fpnas.1424644112" />
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the National Academy of Sciences</title>
+		<imprint>
+			<biblScope unit="volume">112</biblScope>
+			<biblScope unit="page" from="2325" to="2330" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Link prediction in complex networks via matrix perturbation and decomposition</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Jiao</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41598-017-14847-2</idno>
+		<ptr target="https://doi.org/10.1038%2Fs41598-017-14847-2" />
+	</analytic>
+	<monogr>
+		<title level="j">Scientific Reports</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Kernel framework based on non-negative matrix factorization for networks reconstruction and link prediction</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Jiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Yu</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.knosys.2017.09.020</idno>
+		<idno>doi:10.1016/j.knosys.2017.09.020</idno>
+		<ptr target="https://doi.org/10.1016/j.knosys.2017.09.020" />
+	</analytic>
+	<monogr>
+		<title level="j">Know.-Based Syst</title>
+		<imprint>
+			<biblScope unit="volume">137</biblScope>
+			<biblScope unit="page" from="104" to="114" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bruna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zaremba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Szlam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lecun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR2014)</title>
+		<imprint>
+			<date type="published" when="2014-04">April 2014. 2014</date>
+		</imprint>
+	</monogr>
+	<note>Spectral networks and locally connected networks on graphs</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<author>
+			<persName><forename type="first">J</forename><surname>Atwood</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Towsley</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2016/file/390" />
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">D</forename><surname>Lee</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Sugiyama</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">U</forename><surname>Luxburg</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">I</forename><surname>Guyon</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Garnett</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">29</biblScope>
+		</imprint>
+	</monogr>
+	<note>Diffusion-convolutional neural networks. e982518a50e280d8e2b535462ec1f-Paper.pdf</note>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Semi-Supervised Classification with Graph Convolutional Networks</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=SJU4ayYgl" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 5th International Conference on Learning Representations, ICLR &apos;17</title>
+		<meeting>the 5th International Conference on Learning Representations, ICLR &apos;17</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Graph convolutional autoencoders with co-learning of graph structure and node attributes</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wang</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.patcog.2021.108215</idno>
+		<ptr target="https://doi.org/10.1016/j.patcog.2021.108215" />
+	</analytic>
+	<monogr>
+		<title level="j">Pattern Recognition</title>
+		<imprint>
+			<biblScope unit="volume">121</biblScope>
+			<biblScope unit="page">108215</biblScope>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Learning graph structure via graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Xiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Pan</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.patcog.2019.06.012</idno>
+		<ptr target="https://doi.org/10.1016/j.patcog.2019.06.012" />
+	</analytic>
+	<monogr>
+		<title level="j">Pattern Recognition</title>
+		<imprint>
+			<biblScope unit="volume">95</biblScope>
+			<biblScope unit="page" from="308" to="318" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Structured self-attention architecture for graphlevel representation learning</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Gong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Li</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.patcog.2019.107084</idno>
+		<ptr target="https://doi.org/10.1016/j.patcog" />
+	</analytic>
+	<monogr>
+		<title level="j">Pattern Recognition</title>
+		<imprint>
+			<biblScope unit="volume">100</biblScope>
+			<biblScope unit="page">107084</biblScope>
+			<date type="published" when="2019">2020. 2019.107084</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Spectral sparsification of graphs: Theory and algorithms</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Batson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Spielman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S.-H</forename><surname>Teng</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2492007.2492029</idno>
+		<idno>doi:10.1145/2492007.2492029</idno>
+		<ptr target="https://doi.org/10.1145/2492007.2492029" />
+	</analytic>
+	<monogr>
+		<title level="j">Commun. ACM</title>
+		<imprint>
+			<biblScope unit="volume">56</biblScope>
+			<biblScope unit="page" from="87" to="94" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

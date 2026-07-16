@@ -1,0 +1,558 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">PathE: Leveraging Entity-Agnostic Paths for Parameter-Efficient Knowledge Graph Embeddings</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2025-01-31">31 Jan 2025</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Ioannis</forename><surname>Reklos</surname></persName>
+							<email>ioannis.reklos@kcl.ac.uk</email>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Liverpool</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Jacopo</forename><surname>De Berardinis</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Liverpool</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Elena</forename><surname>Simperl</surname></persName>
+							<email>elena.simperl@kcl.ac.uk</email>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Liverpool</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Albert</forename><surname>Mero Ño-Pe Ñuela</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Liverpool</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">College</forename><surname>London</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Liverpool</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">PathE: Leveraging Entity-Agnostic Paths for Parameter-Efficient Knowledge Graph Embeddings</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2025-01-31">31 Jan 2025</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">8A8AFDAFD44FBECBD8A8FC17620930E3</idno>
+					<idno type="arXiv">arXiv:2501.19095v1[cs.AI]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:23+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Knowledge Graphs (KGs) store human knowledge in the form of entities (nodes) and relations, and are used extensively in various applications. KG embeddings are an effective approach to addressing tasks like knowledge discovery, link prediction, and reasoning. This is often done by allocating and learning embedding tables for all or a subset of the entities. As this scales linearly with the number of entities, learning embedding models in real-world KGs with millions of nodes can be computationally intractable. To address this scalability problem, our model, PathE, only allocates embedding tables for relations (which are typically orders of magnitude fewer than the entities) and requires less than 25% of the parameters of previous parameter efficient methods. Rather than storing entity embeddings, we learn to compute them by leveraging multiple entity-relation paths to contextualise individual entities within triples. Evaluated on four benchmarks, PathE achieves state-of-the-art performance in relation prediction, and remains competitive in link prediction on path-rich KGs while training on consumer-grade hardware. We perform ablation experiments to test our design choices and analyse the sensitivity of the model to key hyperparameters. PathE is efficient and cost-effective for relationally diverse and well-connected KGs commonly found in real-world applications.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Knowledge Graphs (KGs) such as Wikidata and Freebase serve as a structured embodiment of human knowledge in machine readable format. They consist of a large number of (subject, relation, predicate) triples, where subject and predicate (alias head and tail) are nodes in the KG and the relation is the edge connecting them. Each triple denotes an atomic fact, such as <ref type="bibr">(London, capital Of, England)</ref>. KGs are ubiquitous and are used in question answering, information retrieval <ref type="bibr" target="#b20">[Zou, 2020]</ref>, recommendation systems <ref type="bibr" target="#b4">[Guo et al., 2022]</ref> and autonomous agents <ref type="bibr" target="#b6">[Kattepur and P, 2019]</ref>, and they can augment Large Language Models (LLMs) with facts and common sense knowledge <ref type="bibr">[Moi-seev et al., 2022]</ref> from authoritative sources. However, KGs are usually incomplete, which means that information (nodes and edges) is missing from the graph, and new triples are added. An effective method for KG completion is learning Knowledge Graph Embeddings (KGE), either by storing the learned representations in embedding tables <ref type="bibr" target="#b13">[Sun et al., 2019;</ref><ref type="bibr" target="#b1">Bordes et al., 2013]</ref> or by utilising more complex Graph Neural Network (GNN) architectures to leverage their inherent structure <ref type="bibr">[Vashishth et al., 2020;</ref><ref type="bibr">Zhang and Yao, 2022]</ref>. Embeddings provide good performance in KG completion tasks <ref type="bibr" target="#b0">[Abboud et al., 2020;</ref><ref type="bibr">Dettmers et al., 2018a]</ref> but suffer from significant drawbacks: their computation may become intractable on large web-scale KGs (10 6-9 nodes); and they struggle to embed unseen nodes, called inductive embedding, without being retrained from scratch. Furthermore, state of the art methods based on GNNs, such as <ref type="bibr">CompGCN [Vashishth et al., 2020]</ref>, require storing the whole adjacency matrix which limits their applicability to larger KGs <ref type="bibr">[Zhang and Yao, 2022]</ref>. Specialised architectures <ref type="bibr">[Zhang and Yao, 2022;</ref><ref type="bibr" target="#b19">Zhu et al., 2021]</ref> have attempted to address these issues by producing entangled representations of node pairs, thereby removing the need for storing the adjacency matrix at the expense of producing node-level representations.</p><p>Recent work has also explored reducing the memory requirements of KGE by focusing on the relations between entities. Galkin et al. achieve scalability by allocating embedding tables only for a subset of entities (alias anchors) and encode the others based on their distance from the anchors.</p><p>Chen et al. leverage a fixed vocabulary of embedded nodes (alias reserved entities) and relational context similarity, in conjunction with a GNN model, to improve performance and retain inductive capabilities. Nonetheless, these efforts still require storing embedding tables for reserved nodes.</p><p>To overcome these limitations, we introduce PathE, a parameter-efficient KGE method that departs from traditional approaches by storing only relation representations and dynamically computing entity embeddings. PathE leverages path information to contextualise nodes and their connectivity patterns, generating structure-aware entity representations without the computational overhead of message passing in GNNs, nor utilising any stored node representations.</p><p>Specifically, paths are drawn from unique random walks starting or ending from/at each entity.</p><p>Entities are encoded via their relational context, which is defined as the number and type of the relations they appear with (either as head or tail, for outgoing and incoming contexts respectively). A node projector learns to project entityspecific relational contexts by forwarding this information through a series of fully connected layers; which yields an entity representation that has the same dimension of the relation embeddings. Entity-relation paths are then constructed by combining node projections and embeddings, respectively. Given a triple (h, r, t), multiple incoming and outgoing paths for each entity (h, t) are processed by a sequence model, and an aggregation strategy is applied across all the entity representations in each path. This yields separate embedding vectors for head, tail, and relation -which are trained using a learning objective for link prediction or relation prediction.</p><p>Overall, this provides a more scalable and inductive solution, as it allows the model to embed new/unseen entities without retraining.</p><p>Through extensive empirical evaluation on various KG benchmarks, we demonstrate PathE's effectiveness as a novel parameter-efficient KGE method. It achieves state of the art performance in relation prediction and remains competitive in link prediction on path-rich KGs, all while utilising significantly fewer parameters and training on consumer-grade hardware. Our contributions are threefold:</p><p>• We introduce PathE, a fully entity-agnostic, path-based KGE method requiring &lt; 25% of the parameters of current parameter-efficient methods.</p><p>• We conduct comprehensive experiments, demonstrating PathE's efficiency and competitive performance, in pathrich graphs (FB15k-237, CodeX-Large).</p><p>• We provide ablation studies, validating our modelling choices and analysing PathE's behaviour with varying path quantities and lengths.</p><p>2 Related Work</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Knowledge Graph Embeddings</head><p>Several methods have been developed to perform link prediction and other KG related tasks. These can be divided into logical rule mining <ref type="bibr" target="#b6">[Lajus et al., 2020;</ref><ref type="bibr" target="#b11">Ott et al., 2021;</ref><ref type="bibr" target="#b9">Meilicke et al., 2018;</ref><ref type="bibr" target="#b9">Meilicke et al., 2019]</ref>, path-based reasoning <ref type="bibr" target="#b2">[Das et al., 2018;</ref><ref type="bibr" target="#b12">Shen et al., 2018;</ref><ref type="bibr" target="#b16">Xiong et al., 2017]</ref>, meta-relational learning <ref type="bibr" target="#b17">[Xiong et al., 2018;</ref><ref type="bibr" target="#b8">Lv et al., 2019;</ref><ref type="bibr" target="#b1">Chen et al., 2019] and</ref><ref type="bibr">KGE methods [Bordes et al., 2013;</ref><ref type="bibr" target="#b13">Sun et al., 2019;</ref><ref type="bibr">Nickel et al., 2016;</ref><ref type="bibr">Trouillon et al., 2016;</ref><ref type="bibr">Dettmers et al., 2018a]</ref>. Rule mining and path-based reasoning methods suffer from poor scalability, given that the number of rules and paths increases exponentially with the size of the graph; while meta-relational methods focus on the task of performing predictions on previously unseen nodes. KGE methods have become the most prominent, as they produce the best performance and are often used as input to other ML models <ref type="bibr" target="#b5">[Ji et al., 2022;</ref><ref type="bibr" target="#b9">Moiseev et al., 2022]</ref> The main limitation of KGE methods lies in their reliance on entity embedding tables, leading to two major drawbacks: embedding table size increases with KG growth, making these methods impractical for large-scale, real-world KGs (e.g. Wikidata currently counts 11K+ relation types and 108M+ entities); and new entities require full model retraining, hindering dynamic adaptation (inductiveness).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Parameter Efficient Representations</head><p>Recent work <ref type="bibr" target="#b3">[Galkin et al., 2022;</ref><ref type="bibr" target="#b2">Chen et al., 2023]</ref> has focused on reducing the amount of stored information by encoding a subset of entities, thus finding a balance between memory requirement and performance. Nodepiece <ref type="bibr" target="#b3">[Galkin et al., 2022]</ref> embeds entities as a function of their shortest path distance to the (pre-stored) anchor embeddings and their relational context. Although this method is more efficient than traditional embedding methods and is inductive, it still allocates and learns an embedding table of anchors which increases in proportion to the size of the KG. Instead, EARL <ref type="bibr" target="#b2">[Chen et al., 2023]</ref> uses relations along with a fixed vocabulary of entity embeddings, called reserved entities, and the similarity between relational contexts of reserved entities and every other entity to compute entity representations using a GNN model. This approach has the ability to inductively embed unseen nodes, achieves better parameter efficiency and outperforms Nodepiece.</p><p>Methods based on GNNs typically require storing the whole adjacency matrix, which limits their applicability to larger KGs. Recently, methods like RED-GNN <ref type="bibr">[Zhang and Yao, 2022]</ref> have improved over traditional GNN for parameter efficiency. However, the authors acknowledge computational issues, such as increasing the number of layers in the GNN, which has been observed to limit the scalability of the model <ref type="bibr" target="#b12">[Shang et al., 2024]</ref>. The scalability of <ref type="bibr">GraIL [Teru et al., 2020]</ref> for link prediction in standard datasets and its sole evaluation on the inductive setting have also been observed in <ref type="bibr">[Zhang and Yao, 2022;</ref><ref type="bibr" target="#b19">Zhu et al., 2021]</ref>. Similarly, SNRI <ref type="bibr" target="#b17">[Xu et al., 2022]</ref> faces computational issues due to mining of subgraphs between the head and tail of triples, and is thus limited to the inductive setting <ref type="bibr" target="#b12">[Shang et al., 2024]</ref>. Additionally, NBFNet <ref type="bibr" target="#b19">[Zhu et al., 2021]</ref> and A*Net <ref type="bibr" target="#b19">[Zhu et al., 2024]</ref> achieve very good performance in link prediction by limiting the propagation of messages only between paths connecting the head and tail nodes in a triple. Despite their performance, the latter methods do not produce individual node representations. Instead, they only perform link prediction, as the representations of nodes are conditioned on the source node where the message passing begins and they cannot be easily disentangled.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3">Path-based Embedding Methods</head><p>Significant work has focused on using KG-mined paths to leverage their multi-step semantics for link and relation prediction.</p><p>These include <ref type="bibr">PTransE [Lin et al., 2015]</ref> which leverages paths up to length 3 and introduces the path constrained resource allocation algorithm to measure their reliability; PaSKoGE <ref type="bibr" target="#b6">[Jia et al., 2018]</ref> which builds upon PTransE and proposes an automated way of calculating the margin hyperparameter for the loss function; DPTransE <ref type="bibr" target="#b18">[Zhang et al., 2018]</ref> which extends PTransE by using clustering to group relation types and calculate the weights of paths, while using relation-group specific classifiers to score triples. Furthermore, <ref type="bibr" target="#b14">[Toutanova et al., 2016]</ref>, <ref type="bibr" target="#b8">[Lin et al., 2019]</ref>  [ <ref type="bibr" target="#b19">Zhou et al., 2021]</ref> all use composition operators to combine path elements into a single representation, <ref type="bibr">[Bai and Wu, 2021;</ref><ref type="bibr" target="#b10">Niu et al., 2020]</ref> and <ref type="bibr" target="#b7">[Li et al., 2022]</ref> first mine logical rules which they convert to paths and use them in conjunction with traditional embeddings to perform link prediction; while <ref type="bibr">[Neelakantan et al., 2015]</ref> and <ref type="bibr" target="#b17">[Zeng et al., 2018]</ref> use recurrent models to combine path elements into a single representation. Finally, <ref type="bibr" target="#b16">[Wang et al., 2021]</ref> developed PathCon which utilises relational paths combined with a GNN to perform relation prediction and achieves stateof-the-art performance on the task. Overall, all of those methods either use paths in conjunction with non-scalable embedding methods <ref type="bibr">[Lin et al., 2015;</ref><ref type="bibr" target="#b18">Zhang et al., 2018;</ref><ref type="bibr" target="#b19">Zhou et al., 2021]</ref>, or mine paths between the head and the tail of each triple <ref type="bibr">[Lin et al., 2015;</ref><ref type="bibr" target="#b16">Wang et al., 2021]</ref>.</p><p>This path mining process is inherently complex and can become intractable in larger KGs due to the sheer number of potential paths. Additionally, the resulting entity embeddings are contextualised to specific triples, necessitating the computation of all possible representations for entities across triples. This poses a challenge when, for example, discovering new triples.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Learning Entity-Agnostic KG embeddings</head><p>Given a set E of entities and a set R of relations, a Knowledge Graph K ⊆ (E × R × E) is a directed multi-relational graph that stores domain knowledge in the form of triples, which are also called facts <ref type="bibr" target="#b5">[Ji et al., 2022]</ref>. Each triple (h, r, t) consists of a head entity h ∈ E, a tail entity t ∈ E and the relationship r ∈ R between those entities. We denote the number of triples in a batch as Z, the number of paths used to describe an entity as ppe = ppt/2 (where ppt stands for paths-per-triple), and the size of the longest path in the batch as plen.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Path Generation and Representation</head><p>Training paths are created by mining random walks from each entity in the KG. For each entity, we attempt to mine N unique entity-relation paths with no loops (no nodes in the path appearing more than once). These paths are either outgoing (starting from the node) or incoming (ending at the node) with equal probability.</p><p>Mining paths for each entity in isolation allows for parallelisation, and can easily scale to large KGs.</p><p>These paths provide information about the neighbourhoods of the entities and are expected to localise them within the KG. Moreover, batching together multiple paths for each entity allows the model to extract information related to the different semantics of an entity occurring in the various paths. For example, the path &lt;Arnold Schwarzenegger, actor in, the Terminator, directed by, James Cameron&gt; and the path &lt;Arnold Schwarzenegger, winner of, Mister Olympia, year, 1980&gt; provide very different information for the entity Arnold Schwarzenegger, with each possibly being less or more useful depending on the task at hand.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Model Architecture</head><p>PathE consists of four modules which are trainable end-toend: the node projector, which maps entities into a continuous space based on their relational context; the path sequence model, which processes batches of entity-relation path sequences and produces contextual representations of entities; the aggregator, which aggregates the node representations from different paths into a single contextualised representation; and, finally, the prediction heads, which produce a score for each triple or relation depending on the task (we provide separate heads for relation and link prediction). Our model is illustrated in Figure <ref type="figure">1</ref> and described as follows.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Node Projector</head><p>For the node projector, we utilise a two-layer MLP which takes as input the local adjacency matrix of the node-edge graph. The node-edge graph is a weighted graph created by converting the edges to nodes and adding a directed relation from each edge to a node with weight equal to the number of times this edge appears in the relational context of the node.</p><p>We utilise a separate projector for the incoming and outgoing contexts. The input of the MLP is the adjacency matrix A er and the output is a matrix P ∈ R |E|×d resulting from an affine transformation with non-linear activation:</p><formula xml:id="formula_0">P = W 2 Relu(W 1 A er + b 1 ) + b 2 .</formula><p>(1)</p><p>The representations produced for the incoming P in and outgoing P out contexts are then fused together through a twolayer MLP and projected to P ∈ R |E|×d as follows:</p><formula xml:id="formula_1">P = W 2 Relu(W 1 (P in |P out ) + b 1 ) + b 2 , (<label>2</label></formula><formula xml:id="formula_2">)</formula><p>where | denotes the concatenation operator among tensors, and d is the embedding dimension.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4">Path Modelling</head><p>Path modelling is operated via a self-attention layer (specifically, a Transformer encoder) on a batch of projected paths B ∈ R paths×plen×d , where paths = Z × ppe × 2. At this stage, each path consists of nodes and edges which are projected into a continuous space R d using the node projector and an embedding layer for relations, respectively.</p><p>To help the model localising the head and tail entities within the paths, a learned positional encoding is added to each embedding vector in the path, based on its position in the sequence. For instance, for an entity path e 0 , . . . , e 9 where e i ∈ E where the head appears as the 5th element, we consider the following positional encodings for this path e 0 , e 1 , e 2 , e 3 , e 4 , e 5 , e 6 , e 7 , e 8 , e 9 <ref type="bibr">[5,</ref><ref type="bibr">4,</ref><ref type="bibr">3,</ref><ref type="bibr">2,</ref><ref type="bibr">1,</ref><ref type="bibr">2,</ref><ref type="bibr">3,</ref><ref type="bibr">4,</ref><ref type="bibr">5,</ref><ref type="bibr">6]</ref> and add the corresponding embedding of each position (instead of using traditional positionals [1, 2, . . . , 10]). These entity-focused positional encodings can be seen as a pathlevel contextualisation of <ref type="bibr">[Devlin et al., 2018]</ref>, which in turn improves the cyclical positional encoding of <ref type="bibr" target="#b15">[Vaswani et al., 2017]</ref>. This also comes with the advantage of potentially learning to discount the contribution/relevance of entities that are far from the head or tail. Paths are then passed through the Transformer encoder, which attends to all the elements of each sequence and produces the path-contextualised projections (no masking is necessary).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.5">Path Aggregator</head><p>As shown in Figure <ref type="figure">1</ref>, after paths are passed through the Transformer encoder, the output representations are a tensor of shape B out ∈ R paths×plen×d , where, for each path, every entity and relation has an embedding vector of size d. From the output, the entity representations of the head and tail are selected from B out , resulting in two tensors denoted as B head , B tail ∈ R Z×ppe×d . Each tensor thus contains all the embeddings of the same entity from its ppe paths. These representations are then aggregated into a single ddimensional representation for each entity. For this, we experiment with three aggregation strategies: (i) averaging all  entity vectors; (ii) using a bidirectional recurrent encoder with LSTM units <ref type="bibr" target="#b4">[Hochreiter and Schmidhuber, 1997]</ref>; or (iii) using a Transformer encoder. Of the three approaches, the averaging baseline is the simplest and uses no learned weights to perform the aggregation, while the others learn to aggregate the entity vectors and use separate encoders for head and tail entities.</p><p>In contrast, the Transformer aggregator takes as input the sequence of the head embeddings concatenated with the sequence of the tail embeddings, in addition to an aggregation token (denoted as a il in Figure <ref type="figure">1</ref>) which is randomly initialised. This is expected to aggregate and contextualise the entity embeddings. The output of the aggregator is a tensor of shape R Z×d for head and tail entities respectively.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.6">Training Objective</head><p>The ability to make the aggregated representation expressive, and capable to be used in KG completion tasks, depends on the training objective. This is designed on top of the path aggregator, and its formulation currently depends on the type of invariance that representations are expected to have. In our case, as the goal is to find missing links in the KG, we focus on relation prediction and true triple classification as a surrogate task for link prediction. Relation prediction aims at predicting the relation(s) that may exist between head and tail entities -hence completing the triple (h, ?, t). Link prediction is of more general scope, as it aims at predicting either the head entity h given the incomplete triple (?, r, t); or analogously, the tail entity t from (h, r, ?).</p><p>To accomplish this, we implemented two distinct heads atop the path aggregator as separate training objectives. Currently, PathE is trained using either of these heads, contingent upon the downstream task. We leave the investigation of both heads for multi-task learning as future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Relation Prediction Head</head><p>Once the path contextualised representations of the head and tail entities have been obtained, they are concatenated and the resulting matrix F ∈ R Z×2d is passed through a linear layer which outputs a score matrix S ∈ R Z×|R| with the score of each (head, tail) for each relation. This yields a probability distribution over all the possible relations in |E|, given the head and tail embeddings. As this is a multi-class classification task, the relation prediction head uses the Cross Entropy loss between the model's prediction and the true relation.</p><formula xml:id="formula_3">ℓ(x, y) = L = {l 1 , . . . , l N } ⊤ , (3) s.t. l n = -w yn log exp(x n,yn ) C c=1 exp(x n,c )<label>(4)</label></formula><p>Cross Entropy has already been demonstrated to be effective for this task <ref type="bibr">[Ruffinelli et al., 2020]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Link Prediction Head</head><p>For link prediction, we train for true triple classification as a surrogate task. This is done by concatenating the head, relation, and tail embeddings in a single tensor of dimension d × 3 representing the whole triple (h, r, t); and stacking a fully connected layer for binary classification. In other words, the head predicts whether the triple is in the training set (positive triple) or not (negative triple). Negative triples are constructed by head and tail corruption: the former creates new (negative) triples by replacing h with other entities while keeping relation r and tail t unchanged<ref type="foot" target="#foot_0">1</ref> ; whereas tail corruptions are created analogously by fixing h, r while changing t. Figure <ref type="figure" target="#fig_1">2</ref> illustrates an example partition of a training batch.</p><p>After sampling N head and N tail corruptions, the model is trained to classify each triple as positive or negative. To balance the classification task, the Binary Cross Entropy loss equally weighs the contribution of positive and negatives. This is done by dividing the sum of the negative losses by N × 2 as per <ref type="bibr" target="#b19">[Zhu et al., 2021]</ref>. In line with the literature, we also experiment with Cross Entropy and the self-adversarial negative sampling loss proposed in <ref type="bibr" target="#b13">[Sun et al., 2019]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiments</head><p>To evaluate our method while addressing the challenges outlined in the introduction, we focus on the following research questions: (RQ1, Encodings) To what extent can we learn parameter efficient KG embeddings by only encoding relationships and paths? (RQ2, Path Learning) How can we best leverage entity-relation paths to encode the KG structure and learn informative representations for link prediction tasks? and (RQ3, Path Setup) How does the path length and the number of paths per triple influences model performance?</p><p>To address RQ1, we train a grid of models on common KG benchmarks and compare performances with baselines and state-of-the-art KGE methods for transductive link prediction, inductive link prediction and relation prediction.</p><p>Multiple configurations of PathE with different number of paths and entity aggregation strategies are also tested to trace the contribution of each component related to the use of paths (RQ2). Finally, we experiment with varying number of paths per entity and visualise the custom positional embeddings to study the influence of the path number and length (RQ3).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Experimental Setup</head><p>In line with the literature <ref type="bibr" target="#b3">[Galkin et al., 2022]</ref>, we chose four benchmark datasets, FB15k-237, YAGO3-10, CoDEx-Large and WN18RR to evaluate our model on KGs of various sizes and characteristics (c.f. Table <ref type="table" target="#tab_6">4</ref>). FB15k-237 <ref type="bibr" target="#b14">[Toutanova et al., 2015]</ref> and <ref type="bibr">CoDEx-Large [Safavi and Koutra, 2020]</ref> are derived from Freebase and Wikidata respectively, while WN18RR (from WordNet) and YAGO3-10 focus on more specific domains like lexical relations and person attributes.</p><p>We compare our model with both state-of-the-art and parameter efficient KG embedding models, including RotatE <ref type="bibr" target="#b13">[Sun et al., 2019]</ref>, NodePiece <ref type="bibr" target="#b3">[Galkin et al., 2022]</ref> and EARL <ref type="bibr" target="#b2">[Chen et al., 2023]</ref>. We also include a NodePiece model without anchors as it is the only method that, like PathE, is fully entity agnostic (it does not encode any anchors/reserved entities) and maintains parameter efficiency and inductiveness.</p><p>Evaluation. All models are evaluated on link and relation prediction, using the original train, validation, and test splits. We report Mean Reciprocal Rank (MRR) and Hits@K in the filtered setting <ref type="bibr" target="#b1">[Bordes et al., 2013]</ref>. Both these metrics are computed using the scores of the triples produced by the model and evaluated by the ranking induced from those scores. Hits@K measures the ratio of true triples that are ranked among the top K, whereas the MRR averages the reciprocal ranks of true triples and drops rapidly as the ranks grow. These measures are computed by sampling N × 2 corruptions (negative triples) for each positive: N negatives for head corruptions, by replacing the head with other entities in |E|; and N negatives for tail corruptions, which is analogous to the former case. In our experiments, we use the full set of entities |E| to produce corruption for the evaluation of our model. Furthermore, we reuse the Effi metric proposed in <ref type="bibr" target="#b2">[Chen et al., 2023]</ref> to quantify the efficiency of models as performance cost. This is calculated as M RR/M (P ), where M (P ) denotes the number of trainable parameters. For all the compared models, we report parameter count and prediction metrics from their corresponding articles.</p><p>Implementation. Our model is implemented in PyTorch v2. <ref type="bibr">1 [Paszke et al., 2019]</ref> using PyTorch Lightning 2.1 and PyKEEN v1.1 <ref type="bibr" target="#b1">[Ali et al., 2021]</ref>. Experiments were run on an Intel Core i9-13900 with 128GB RAM and an NVIDIA RTX 3090 GPU. All models are trained with an early stopping criterion (patience at 10, min delta at 0) and use 99 negative triples for validation. The code can be found at https://github.com/IReklos/PathE.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Transductive Link Prediction</head><p>We trained a grid of PathE models with the Link Prediction head, computing MRR and Hits@K by ranking each true (test) triple against all its head and tail corruptions. Optimal models were found via random search, sampling 50 configurations from a search space for FB15k-237 and WN18RR due to their size. The best hyper-parameters for CoDEx-Large and YAGO3-10 were derived from these results.</p><p>Results are given in Table <ref type="table" target="#tab_1">1</ref> for all benchmarks. Overall, our model outperforms Nodepiece w/o anchors on all benchmarks and achieves competitive performance to Nodepiece (with anchors) on FB15k-237 and CoDEx-Large, while requiring less 25% of the parameters. More precisely, the MRR on FB15k-237 is only 0.04 less than Nodepiece with anchors and 0.012 more than Nodepiece w/o anchors while using less than 10% and less than 25% of the parameters re-</p><formula xml:id="formula_4">FB15k-237 WN18RR</formula><p>YAGO3-10 CoDEx-Large #P(M) MRR Hits@10 #P(M) MRR Hits@10 #P(M) MRR Hits@10 #P(M) MRR Hits@10 RotatE , with an efficiency of 0.10 compared to 0.04, and more than 2× the performance on YAGO3-10, reaching an Ef f i of 0.25 compared to 0.05. Despite the size of CoDEx-Large (2× more training triples and 5× more entities than FB15k-237) we recall that the parameter budget of our model scales linearly with the number of relations (69 for CoDEx, 237 for FB15k). The nearly tripling of the parameter count of the model trained on CoDEx-Large is due to the use of embeddings of dimensionality d = 128 instead of d = 64 for FB15k-237 and the use of two encoder layers in the path modelling transformer and the aggregator module. Instead, Nodepiece and EARL are affected by the number of entities, as they both allocate embedding tables for a subset of them.</p><p>Details on the hyper-parameter settings and best configurations are provided in Appendix B. The results of the inductive link prediction experiments are presented in Appendix C.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Relation Prediction</head><p>To evaluate the representations of our model for relation prediction, we train and evaluate with the associated head. This is only done for FB15k-237 and WN18RR, as these are the only benchmarks where a parameter-efficient method has been evaluated and reported in <ref type="bibr" target="#b3">[Galkin et al., 2022]</ref>.</p><p>Relation prediction results are outlined in Table <ref type="table" target="#tab_2">2</ref>. Our model significantly outperforms both parameter-efficient (Nodepiece) and state-of-the-art (RotatE) models on relation prediction, while requiring less than a million parameters for FB15k-237. Notably, the PathE model for WN18RR only has 40K parameters. For this dataset, we found that an embedding dimension of 32 is sufficient for relation prediction; as increasing the embedding dimension did not bring about any increases in performance. This is substantially lower compared to the other models (2-3 orders of magnitude). Details on the hyper-parameter settings are given in Appendix D.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Ablation Study</head><p>To quantify the contribution of each component in the model, we carried out ablation studies on the best performing benchmarks for link prediction: FB15k-237 and CoDEx-Large. The ablation dimensions are summarised as follows.</p><p>• w/o Aggregator, by replacing the Transformer Encoder with a simple averaging operation over the entity embeddings of different paths.</p><p>• w/o Multiple paths, where we use only 1 path per entity in each triple (1 for the head, 1 for the tail), sampled randomly. Hence, no aggregation is necessary.</p><p>• w/o Entity-focused positional encodings, where positional information is injected by adding the relative position of each element in the path, regardless of where the head/tail occurs within the path.</p><p>The ablation results are summarised in Table <ref type="table" target="#tab_3">3</ref>. Overall, we found the averaging operator to perform slightly worse than the transformer aggregator (M RR = 0.215 instead of M RR = 0.216 for FB15K-237, and M RR = 0.132 instead of M RR = 0.144 for CoDEx-Large); although the difference is very small on FB15k-237 where the averaging produces better performance in Hits@5 and Hits@10.</p><p>On both datasets, our results confirm the contribution of using multiple paths per head and tail, rather than a single sequence per entity (M RR = 0.216 to M RR = 0.184 for FB15k-237; and M RR = 0.144 to M RR = 0.105 for CoDEx-Large).</p><p>Finally, entity-focused positional encodings improve performance by 13% on FB15k-237, while achieving a 22% gain on CoDEx-Large.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>FB15k-237</head><p>CoDEx-Large #P(M) MRR Hits@1 Hits@3 Hits@5 Hits@10 #P(M) MRR Hits@1 Hits@3 Hits@5 Hits@10 PathE (base model) 0   </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.5">Path Number and Length</head><p>We investigated the effect of varying the number of paths per triple (ppt) on model performance. Using the best-performing model on FB15k-237 and CoDEx-Large, we tested with 2, 4, 8, and 16 paths per triple (equivalent to 1, 2, 4, 8 paths per entity). Figure <ref type="figure">3</ref> shows that increasing the number of paths generally improves MRR, but gains plateau. For CoDEx-Large, performance leveled off after 8 paths per entity, with a minimal MRR increase of 0.0026 from 4 to 8 paths. For FB15k-237, performance plateaued after 4 paths per entity, with a decrease of 0.0017 beyond that point.</p><p>While experiments used paths of length 20, entity-focused positionals were found to improve performance and help the model discount entities further from the head or tail. Figure <ref type="figure">4</ref> shows a PCA visualisation of embedding activations, revealing a separation between lower (closer to head/tail) and higher positions.</p><p>From a manual inspection, we can see that the embeddings of lower positions (those that are closer to the head or tail en-tity) appear separated from embeddings of higher positions, with a reversal in the magnitude of the activations. In CoDEx-Large the separation happens at position 2, hence the model focuses on paths of length 7, while in FB15k-237 the separation happens in position 4 which shows that the model focuses on paths of length 11.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.6">Scope and Applicability of PathE</head><p>PathE demonstrates its effectiveness as a path-based KGE method, particularly on densely connected KGs with high relational diversity. As detailed in Appendix E, PathE leverages rich relational contexts to generate discriminative entity embeddings, making it well-suited for tasks such as link prediction and relation prediction. Its scalability and parameter efficiency further enhance its reuse as a lightweight model.</p><p>PathE's performance still depends on certain KG properties. It is less effective on sparser KGs with lower relational diversity, average entity degree, and unique relational contexts, such as WN18RR and YAGO3-10. We posit these characteristics constrain the model's ability to differentiate between entities and learn expressive embeddings. In such cases, alternative methods like <ref type="bibr" target="#b3">[Galkin et al., 2022]</ref> or <ref type="bibr" target="#b2">[Chen et al., 2023]</ref>, which rely on anchors or reserved entities, may be more suitable. Despite this, PathE remains a state-of-theart solution for relation prediction, and its ability to capitalise on relational richness and path diversity underscores its value for large-scale KGs, where these characteristics are prevalent.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusion</head><p>This work introduces PathE, an entity-agnostic KG embedding method that dynamically computes entity embeddings by aggregating path information. PathE eliminates the need for pre-allocated embedding tables, requiring less than 25% of the parameters used by existing lightweight methods, with memory usage scaling linearly with the relation vocabulary.</p><p>Experiments on link prediction demonstrate PathE's effectiveness on datasets like FB15k-237 and CoDEx-Large, characterized by high relational diversity and rich path information. Ablation studies also highlight the added value of multiple paths in achieving robust performance. While less competitive on sparser datasets like WN18RR and YAGO3-10, where relational diversity and contextual richness are limited, PathE achieves state-of-the-art performance in relation prediction, surpassing other parameter-efficient methods.</p><p>Our primary contribution is in exploring the capacity of path-based contextualisation to learn entity-agnostic embeddings using only relational contexts. PathE offers a competitive and scalable solution, particularly suited for densely con-nected KGs with diverse relational vocabularies, where parameter efficiency and a lightweight model are essential for reuse in both link and relation prediction tasks. Future work will focus on evaluating PathE on larger datasets like Wiki-data5M and incorporating multi-task learning to further enhance its adaptability and scalability for web-scale KGs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A KG Embedding Datasets</head><p>We provide additional information on the benchmark datasets chosen to evaluate the performance of our model, while Table 4 overviews of the number of relations, entities, and train/validation/test splits for each dataset. These datasets vary in size, domain, and relational structure, offering a comprehensive assessment of our model's performance.</p><p>• FB15k-237 <ref type="bibr" target="#b14">[Toutanova et al., 2015]</ref>  • CoDEx-Large [Safavi and Koutra, 2020] is a subset of Wikidata that was designed to cover more diverse content, and provide a more difficult benchmark for link prediction. It has 78K entities and uses 69 relations.</p><p>• WN18RR <ref type="bibr">[Dettmers et al., 2018b]</ref> is a subset of Word-Net <ref type="bibr" target="#b9">[Miller, 1995]</ref>, a lexical taxonomy linking words to their synonyms, hyponyms, and meronyms. It counts 40K+ entities and uses a vocabulary of 11 relations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Transductive Link Prediction</head><p>We provide more details on the experimental setup and the hyper-parameter configuration of the models reported in our link prediction experiments (c.f. Section 4.2). Table <ref type="table" target="#tab_7">5</ref> documents the search space we defined for the random search of hyper-parameters; whereas Table <ref type="table" target="#tab_9">7</ref> reports the configuration of the best performing models on each benchmark dataset. Due to the size of CoDEx-Large and YAGO 3-10, and the availability of computational resources for our experiments, we remark that random search (with N=50 trials) was carried out only on FB15k-237 and WN18RR -with the best performing models originating from such experiments.</p><p>We remark that all Python code is openly available at https://anonymous.4open.science/r/kg embeddings/ README.md, together with the main instructions to reproduce the experiments reported in this article.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Inductive Link Prediction</head><p>To further assess PathE's capabilities, we evaluate its performance on the inductive link prediction task, following the    PathE on all four versions of the FB15k-237 and WN18RR inductive benchmarks. We sample 50 negative triples for each positive triple in the test set and report the Hits@10 metric, consistent with prior work <ref type="bibr" target="#b3">[Galkin et al., 2022;</ref><ref type="bibr" target="#b13">Teru et al., 2020]</ref>. The hyperparameter configurations used for each dataset are identical to those found optimal in the transductive experiments, allowing us to directly compare the model's performance across both settings.</p><formula xml:id="formula_5">Dataset #Ent #Rel #Train #Valid #Test FB15k-</formula><p>The results of the inductive experiments are reported in Table <ref type="table" target="#tab_11">9</ref>. PathE outperforms all other path-based methods in FB15k-237 V1 and V2 and is marginally outperformed by RuleN <ref type="bibr" target="#b9">[Meilicke et al., 2018]</ref> on V3 an V4. At the same time, PathE outperforms GraIL <ref type="bibr" target="#b13">[Teru et al., 2020]</ref> (a GNN based method) in V1, V2 and V3 and manages to match the performance of <ref type="bibr">NBFNet [Zhu et al., 2021]</ref> (which is the best performing GNN method overall) on V1.  <ref type="bibr" target="#b9">[Meilicke et al., 2018]</ref> achieves slightly better results on V3 and V4, PathE's strong performance across multiple versions of FB15k-237 underscores its potential for inductive link prediction in KGs with rich relational structure.</p><p>WN18RR. On its inductive benchmark, PathE's performance, while lower than some other methods, reveals valuable insights. As observed in the transductive experiments (Table <ref type="table" target="#tab_1">1</ref>), WN18RR's high sparsity and limited relational diversity (only 11 unique relations) pose significant challenges for models like PathE that rely heavily on relational contexts. Despite this, the model exhibits consistent performance across V1, V2, V3, and V4, unlike other path-based methods that show considerable performance variability. Notably, PathE outperforms all other path-based methods on V3, the version with the highest number of unique relations among the WN18RR subsets. This supports our hypothesis that increased relational diversity allows PathE to better differentiate between nodes, even in inductive settings. These findings corroborate the observations made by Galkin et al. regarding the limitations of relationally-impoverished datasets for methods that depend primarily on relations and their contexts.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D Relation Prediction</head><p>Similarly to the transductive link prediction experiments, Tables 6 and 8 report the hyper-parameter search space and the configuration of the best performing models for relation prediction, respectively. Results are reported for FB15k-237 and WN18RR to ensure comparability (c.f. Section 4.3).  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Class</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E Analysis of KGs Properties and their Influence on PathE Performance</head><p>PathE's performance is intrinsically linked to the structural properties of the underlying KGs. Specifically, the model relies on encoding entities based on their relational contexts and the paths traversing those relations. The richness and diversity of these contexts are thus central for generating discriminative entity representations that are effective for link prediction. This section examines the relationship between the structural characteristics of KGs and the efficacy of PathE. The experiments detailed in Section 4 demonstrate that PathE performs well on FB15k-237 and CoDEx-Large but yields less competitive results on WN18RR and YAGO3-10. We posit that these performance differences are primarily attributable to variations in relational diversity, entity degree, and the uniqueness of relational contexts.</p><p>1. Relational Diversity. A greater number of distinct relation types provides a more expressive vocabulary for characterising entities and their interconnections. This potentially facilitates the model's ability to capture more nuanced relationships and distinguish between entities with greater accuracy.</p><p>2. Average Entity Degree. A higher average degree generally signifies a denser graph with more connections per entity. This translates to a greater number of paths traversing each entity, providing the model with more contextual information for learning entity embedding. 3. Uniqueness of Relational Contexts. The extent to which entities can be uniquely identified based solely on their relational contexts is also crucial. A higher proportion of unique contexts indicates that the relational structure provides strong discriminatory signals for differentiating between entities. Tables 4, 11 and 12 provide insights into the structural differences between the benchmark datasets. We analyse these differences in relation to PathE's performance.</p><p>• WN18RR and YAGO3-10 (sparser KGs). These datasets are characterized by limited relational diversity, possessing only 11 and 37 distinct relation types, respectively. Furthermore, they exhibit a highly skewed distribution of relations. In WN18RR, the two most frequent relations account for over 74% of all triples, while in YAGO3-10, they constitute over 64%. This combination of limited relational diversity, low average entity degree (4.28 for WN18RR and 17.52 for YAGO3-10), and a paucity of unique relational contexts (8% for WN18RR and 19.8% for YAGO3-10) significantly hinders PathE's ability to learn discriminative entity embeddings. The relational contexts are simply too homogeneous to effectively distinguish between entities. poorly on WN18RR V1, V2, and V4, further corroborate this observation. These particular datasets have the lowest number of unique relations (9, 10, and 9, respectively), which constrains the model's capacity to learn the underlying semantics of the relations.</p><p>• FB15k-237 and CoDEx-Large (path-rich KGs): In contrast, these KGs exhibit considerably higher relational diversity, with 237 and 69 distinct relation types, respectively, and a more balanced distribution of rela-tions (see Table <ref type="table" target="#tab_15">12</ref>). Their higher average entity degrees (37.5 for FB15k-237 and 14.14 for CoDEx-Large) contribute to a richer set of paths for each entity. Crucially, they also have a much larger proportion of unique relational contexts (92% for FB15k-237 and 46.4% for CoDEx-Large). These factors enable the model to effectively capture the diverse relationships and generate more discriminative entity representations, resulting in superior link prediction performance. The inductive experiments, where PathE outperforms other path-based methods on FB15K-237 V1 and V2, further support this claim. Additionally, PathE matches the performance of the best-performing method on FB15K-237 V1.</p><p>This analysis underscores that PathE performs better in KGs characterized by high relational diversity, as well as rich and unique relational contexts. These characteristics are frequently observed in large, real-world KGs. For instance, Wikidata counts 12,353 unique relations (called properties), more than 115 million entities (items), and contains 1.6+ billion statements to date<ref type="foot" target="#foot_1">1</ref> . As reported in Table <ref type="table" target="#tab_16">13</ref>, Wikidata has a balanced distribution of relations and an average node degree of 29. While more experiments are needed to assess PathE's applicability to Wikidata, here we remark that these characteristics are better represented by the FB15k-237 and CoDEx-Large benchmarks, which are indeed derived from Freebase and Wikidata, respectively.</p><p>In conclusion, while parameter-efficient methods such as NodePiece <ref type="bibr" target="#b3">[Galkin et al., 2022]</ref> and <ref type="bibr">EARL [Chen et al., 2023]</ref>, which depend on anchors or reserved entities, are preferable for KGs with limited relational diversity and low uniqueness of relational contexts, PathE emerges as a highly competitive and scalable solution for large, densely connected KGs with diverse relational vocabularies. This is especially relevant when a lightweight model is required for link prediction. Nonetheless, and irrespective of the efficiency requirements, PathE achieves state-of-the-art performance in relation prediction, surpassing other parameterefficient methods and making it a particularly compelling choice when relation prediction is the primary objective.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Example portion of a training batch highlighting a positive triple and its stack of head and tail corruptions (negative triples) for training the link prediction (LP) head.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :Figure 4 :</head><label>34</label><figDesc>Figure 3: Link prediction performance of PathE (MRR and Hits@K), in relation to the number of paths per triple.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>and</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">relational contexts</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>in</cell><cell>out</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>lookup</cell><cell cols="3">Path modelling</cell><cell></cell><cell cols="2">Path aggregation</cell></row><row><cell>paths paths</cell><cell>... ...</cell><cell>... ... ... ...</cell><cell>... ... ppt = 6 ... ...</cell><cell>... ...</cell><cell cols="2">(shared) projector Node</cell><cell>Relation Embedding</cell><cell>Entity-focused positional</cell><cell>Transformer Encoder</cell><cell>d</cell><cell>Transformer Transformer</cell><cell>Tail Encoder Head Encoder</cell><cell>LP head RP head</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="3">Relation Embedding</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="14">Figure 1: Schematic overview of a PathE architecture, using an example triple (hi, rj, t l ) with a set of 6 paths (ppt = 6). The node projector is</cell></row><row><cell cols="14">shared by both head and tail paths, and the relation embedding layer is shared for path modelling and relation rj encoding. Entity embeddings</cell></row><row><cell cols="11">are aggregated and passed to either the link prediction (LP) or relation prediction (RP) head.</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>Transductive link prediction results. Parameter count (in millions of parameters), MRR, and Hits@10 for the other models are taken from<ref type="bibr" target="#b2">[Chen et al., 2023]</ref>,<ref type="bibr" target="#b3">[Galkin et al., 2022]</ref>. Results are highlighted for fully entity-agnostic models (no anchors/ reserved entities).</figDesc><table><row><cell></cell><cell></cell><cell>29 .3</cell><cell>0.336</cell><cell>0.532</cell><cell cols="2">40.6</cell><cell>0.508</cell><cell>0.612</cell><cell cols="2">123.2 0.495</cell><cell>0.670</cell><cell>78.0</cell><cell>0.258</cell><cell>0.387</cell></row><row><cell>EARL</cell><cell></cell><cell>1.8</cell><cell>0.310</cell><cell>0.501</cell><cell cols="2">3.8</cell><cell>0.440</cell><cell>0.527</cell><cell>3.0</cell><cell>0.302</cell><cell>0.498</cell><cell>2.1</cell><cell>0.238</cell><cell>0.390</cell></row><row><cell>Nodepiece + Rotate</cell><cell></cell><cell>3.2</cell><cell>0.256</cell><cell>0.420</cell><cell cols="2">4.4</cell><cell>0.403</cell><cell>0.515</cell><cell>4.1</cell><cell>0.247</cell><cell>0.488</cell><cell>3.6</cell><cell>0.190</cell><cell>0.313</cell></row><row><cell cols="2">Nodepiece w/o anchors</cell><cell>1.4</cell><cell>0.204</cell><cell>0.355</cell><cell cols="2">0.3</cell><cell>0.011</cell><cell>0.019</cell><cell>0.5</cell><cell>0.025</cell><cell>0.041</cell><cell>0.6</cell><cell>0.063</cell><cell>0.121</cell></row><row><cell>PathE</cell><cell></cell><cell>0.21</cell><cell>0.216</cell><cell>0.350</cell><cell cols="2">0.67</cell><cell>0.069</cell><cell>0.124</cell><cell>0.24</cell><cell>0.060</cell><cell>0.093</cell><cell>0.68</cell><cell>0.144</cell><cell>0.240</cell></row><row><cell></cell><cell></cell><cell>FB15k-237</cell><cell></cell><cell cols="2">WN18RR</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="8">#P(M) MRR Hits@10 #P(M) MRR Hits@10</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>RotatE</cell><cell>29</cell><cell>0.905</cell><cell>0.979</cell><cell>41</cell><cell>0.774</cell><cell cols="2">0.897</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Nodepiece + Rotate</cell><cell>3.2</cell><cell>0.874</cell><cell>0.971</cell><cell>4.4</cell><cell>0.761</cell><cell cols="2">0.985</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>PathE</cell><cell>0.86</cell><cell>0.972</cell><cell>0.998</cell><cell>0.05</cell><cell>0.874</cell><cell cols="2">0.999</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Relation prediction results. FB15K-237 and WN18RR results for NodePiece and RotatE are taken from [Galkin et al., 2022].</figDesc><table /><note><p><p><p>spectively; which confirm PathE as the most efficient model (Ef f i = 1.03) compared to EARL (Ef f i = 0.17) and NodePiece without anchors (Ef f i = 0.15). On CoDEx-Large, our model outperforms Nodepiece w/o anchors in MRR by 0.081 and only has a deficit of 0.046 compared to Nodepiece with anchors; thus recording Ef f i = 0.21 compared to Ef f i = 0.10 for EARL and Ef f i = 0.105 for Nodepiece w/o anchors. On WN18RR and YAGO3-10, PathE's performance lags behind Nodepiece and EARL. We hypothesise this is attributed to the datasets' characteristics, specifically the limited number of distinct relations</p>(11 and  37, respectively)</p>. This scarcity hinders the unique encoding of KG nodes, affecting the model's ability to differentiate between them. Despite this limitation, PathE demonstrates superior performance to Nodepiece w/o anchors on MRR across both datasets. Notably, PathE achieves over 6 times the performance on WN18RR</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 :</head><label>3</label><figDesc>Ablation results of PathE on link prediction on FB15K-237 and CoDEx-Large (the best performing datasets for our model), with parameter count, MRR, and detailed Hits@N metrics (N={1, 3, 5, 10}).</figDesc><table><row><cell></cell><cell>.21</cell><cell>0.216</cell><cell>0.146</cell><cell>0.236</cell><cell>0.282</cell><cell>0.350</cell><cell>0.68</cell><cell>0.144</cell><cell>0.100</cell><cell>0.159</cell><cell>0.193</cell><cell>0.240</cell></row><row><cell>-no aggregator</cell><cell>0.19</cell><cell>0.215</cell><cell>0.141</cell><cell>0.235</cell><cell>0.284</cell><cell>0.358</cell><cell>0.48</cell><cell>0.132</cell><cell>0.083</cell><cell>0.145</cell><cell>0.179</cell><cell>0.231</cell></row><row><cell>-no multiple paths</cell><cell>0.21</cell><cell>0.184</cell><cell>0.115</cell><cell>0.198</cell><cell>0.248</cell><cell>0.327</cell><cell>0.68</cell><cell>0.105</cell><cell>0.063</cell><cell>0.111</cell><cell>0.139</cell><cell>0.190</cell></row><row><cell>-no entity-focused positionals</cell><cell>0.21</cell><cell>0.191</cell><cell>0.122</cell><cell>0.209</cell><cell>0.256</cell><cell>0.327</cell><cell>0.68</cell><cell>0.118</cell><cell>0.071</cell><cell>0.129</cell><cell>0.161</cell><cell>0.210</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 4 :</head><label>4</label><figDesc>No. of entities, relations, and triples in each dataset.</figDesc><table><row><cell>Hyper-parameter</cell><cell>Range</cell></row><row><cell>Embedding dimension</cell><cell>{64, 128, 256}</cell></row><row><cell># paths per entity</cell><cell>{1, 2, 4, 8}</cell></row><row><cell>Path Transformer</cell><cell></cell></row><row><cell>Dim feedforward</cell><cell>{64, 128, 256}</cell></row><row><cell># attention heads</cell><cell>{2, 3, 4}</cell></row><row><cell># layers</cell><cell>{2, 3}</cell></row><row><cell>Dropout</cell><cell>{0.1, 0.2}</cell></row><row><cell>Entity aggregation strategy</cell><cell>{avg, trf, LSTM}</cell></row><row><cell>Loss function</cell><cell>{CE, BCE, NSSA}</cell></row><row><cell>Label smoothing</cell><cell>{0, 0.1, 0.01}</cell></row><row><cell># Negative samples</cell><cell>{16, 32, 64, 128}</cell></row><row><cell>Optimiser</cell><cell>{Adam}</cell></row><row><cell>Learning rate</cell><cell>{0.01, 0.001, 0.005}</cell></row><row><cell>Batch size</cell><cell>{64, 128, 256, 512, 1024}</cell></row><row><cell>Accumulated batches</cell><cell>{16, 32, 64, 128}</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 5 :</head><label>5</label><figDesc>Hyper-parameter search space for link prediction.</figDesc><table><row><cell>Hyper-parameter</cell><cell>Range</cell></row><row><cell>Embedding dimension</cell><cell>{32, 64, 128}</cell></row><row><cell># paths per entity</cell><cell>{4, 8}</cell></row><row><cell>Path Transformer</cell><cell></cell></row><row><cell>Dim feedforward</cell><cell>{64, 128, 256}</cell></row><row><cell># attention heads</cell><cell>{2, 3, 4}</cell></row><row><cell># layers</cell><cell>{2, 3}</cell></row><row><cell>Dropout</cell><cell>{0.1, 0.2}</cell></row><row><cell>Entity aggregation strategy</cell><cell>{avg}</cell></row><row><cell>Loss function</cell><cell>{CE}</cell></row><row><cell>Label smoothing</cell><cell>{0, 0.1, 0.01}</cell></row><row><cell>Optimiser</cell><cell>{Adam}</cell></row><row><cell>Learning rate</cell><cell>{0.01, 0.001, 0.005}</cell></row><row><cell>Batch size</cell><cell>{512, 1024, 2048}</cell></row><row><cell>Accumulated batches</cell><cell>{8, 16}</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 6 :</head><label>6</label><figDesc>Hyper-parameter search space for relation prediction. , as shown in Table10, exhibiting varying graph properties and difficulty levels. These versions differ in terms of entity and interaction counts, offering diverse scenarios to examine PathE's adaptability. For our experiments, we evaluate</figDesc><table><row><cell>benchmark setup proposed by Teru et al.. Unlike the trans-</cell></row><row><cell>ductive setting where the model sees all entities during train-</cell></row><row><cell>ing (c.f. Section 4.2), inductive link prediction requires the</cell></row><row><cell>model to generalize to entirely unseen entities during infer-</cell></row><row><cell>ence. In this setup, the training and inference graphs are com-</cell></row><row><cell>pletely disjoint: validation and testing are performed on a sep-</cell></row><row><cell>arate graph containing novel entities. Consequently, the paths</cell></row><row><cell>used during inference are composed of entity sequences never</cell></row><row><cell>encountered during training. The only commonality between</cell></row><row><cell>the training and inference graphs lies in the shared set of rela-</cell></row><row><cell>tion types. This necessitates the model to learn the underlying</cell></row><row><cell>semantics of relations rather than simply memorising entity-</cell></row><row><cell>specific patterns, which is crucial for real-world applications</cell></row><row><cell>where new entities are constantly introduced.</cell></row><row><cell>The inductive link prediction benchmarks derived from</cell></row><row><cell>FB15k-237 and WN18RR each consist of four versions (V1-</cell></row><row><cell>V4)</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 7 :</head><label>7</label><figDesc>PathE best hyper-parameter configurations for the transductive link prediction experiments.</figDesc><table><row><cell>Hyper-parameter</cell><cell>FB15K-237</cell><cell>WN18RR</cell></row><row><cell>Embedding dim</cell><cell>64</cell><cell>32</cell></row><row><cell>Paths per entity</cell><cell>2</cell><cell>2</cell></row><row><cell>Path Transformer dim</cell><cell>128</cell><cell>128</cell></row><row><cell>Path Transformer heads</cell><cell>4</cell><cell>4</cell></row><row><cell>Path Transformer layers</cell><cell>1</cell><cell>2</cell></row><row><cell>Path Transformer dropout</cell><cell>0.2</cell><cell>0.1</cell></row><row><cell>Entity aggregation</cell><cell>Average</cell><cell>Transformer Enc</cell></row><row><cell>Aggregation layers</cell><cell>-</cell><cell>1</cell></row><row><cell>Loss function</cell><cell>CE</cell><cell>CE</cell></row><row><cell>Learning rate</cell><cell>1e-3</cell><cell>1e-3</cell></row><row><cell>Batch size</cell><cell>512</cell><cell>512</cell></row><row><cell>Accumulated batches</cell><cell>8</cell><cell>8</cell></row><row><cell>Label smoothing</cell><cell>0.1</cell><cell>0.01</cell></row><row><cell>Parameter count</cell><cell>0.86</cell><cell>0.05</cell></row><row><cell>Effi = M RR/P (M )</cell><cell>1.13</cell><cell>17.48</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 8 :</head><label>8</label><figDesc>PathE hyper-parameters for relation prediction.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_11"><head>Table 9</head><label>9</label><figDesc>reports the results of the inductive experiments. FB15k-237. PathE demonstrates promising generalisation capabilities on the FB15k-237 inductive benchmark. It outperforms all other path-based methods on versions V1 and V2, highlighting its ability to effectively leverage relational paths for reasoning about unseen entities. Moreover, PathE surpasses the performance of the GNN-based method GraIL [Teru et al., 2020] on V1, V2, and V3, and achieves performance on par with NBFNet [Zhu et al., 2021] on V1. While RuleN</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_12"><head>Table 9 :</head><label>9</label><figDesc>PathE inductive link prediction results. We report the Hits@10 with the best results in bold and PathE's results underlined. Results of other models are taken from<ref type="bibr" target="#b3">[Galkin et al., 2022]</ref> </figDesc><table><row><cell></cell><cell></cell><cell cols="2">Method</cell><cell></cell><cell cols="2">FB15k-237</cell><cell></cell><cell></cell><cell cols="2">WN18RR</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell>V1</cell><cell>V2</cell><cell>V3</cell><cell>V4</cell><cell>V1</cell><cell>V2</cell><cell>V3</cell><cell>V4</cell></row><row><cell></cell><cell></cell><cell>Neural LP</cell><cell></cell><cell cols="8">0.529 0.589 0.529 0.559 0.744 0.689 0.462 0.671</cell></row><row><cell></cell><cell>Path</cell><cell>DRUM RuleN</cell><cell></cell><cell cols="8">0.529 0.587 0.529 0.559 0.744 0.689 0.462 0.671 0.498 0.778 0.877 0.856 0.809 0.783 0.534 0.716</cell></row><row><cell></cell><cell></cell><cell>PathE</cell><cell></cell><cell cols="8">0.834 0.872 0.868 0.850 0.530 0.551 0.540 0.537</cell></row><row><cell></cell><cell></cell><cell>GraIL</cell><cell></cell><cell cols="8">0.642 0.818 0.828 0.893 0.825 0.787 0.584 0.734</cell></row><row><cell></cell><cell>GNN</cell><cell>NBFNet</cell><cell></cell><cell cols="8">0.834 0.949 0.951 0.960 0.948 0.905 0.893 0.890</cell></row><row><cell></cell><cell></cell><cell cols="10">NP+CompGCN 0.873 0.939 0.944 0.949 0.830 0.886 0.785 0.807</cell></row><row><cell>Dataset</cell><cell></cell><cell>Relations</cell><cell cols="9">Train Entity Query Triples Entity Query Triples Entity Query Triples Validation Test</cell></row><row><cell></cell><cell>v1</cell><cell>183</cell><cell>2,000</cell><cell>4,245</cell><cell></cell><cell>4,245</cell><cell>1,500</cell><cell>206</cell><cell>1,993</cell><cell>1,500</cell><cell>205</cell><cell>1,993</cell></row><row><cell>FB15k-237</cell><cell>v2 v3</cell><cell>203 218</cell><cell cols="5">3,000 4,000 17,986 17,986 3,000 9,739 9,739 2,000</cell><cell>469 866</cell><cell>4,145 7,406</cell><cell>2,000 3,000</cell><cell>478 865</cell><cell>4,145 7,406</cell></row><row><cell></cell><cell>v4</cell><cell>222</cell><cell cols="9">5,000 27,203 27,203 3,500 1,416 11,714 3,500 1,424 11,714</cell></row><row><cell></cell><cell>v1</cell><cell>9</cell><cell>2,746</cell><cell>5,410</cell><cell></cell><cell>5,410</cell><cell>922</cell><cell>185</cell><cell>1,618</cell><cell>922</cell><cell>188</cell><cell>1,618</cell></row><row><cell>WN18RR</cell><cell>v2 v3</cell><cell>10 11</cell><cell cols="5">6,954 15,262 15,262 2,923 12,078 25,901 25,901 5,084</cell><cell>411 538</cell><cell>4,011 6,327</cell><cell>2,923 5,084</cell><cell>441 605</cell><cell>4,011 6,327</cell></row><row><cell></cell><cell>v4</cell><cell>9</cell><cell>3,861</cell><cell>7,940</cell><cell></cell><cell>7,940</cell><cell cols="5">7,208 1,394 12,334 7,208 1,429 12,334</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_13"><head>Table 10 :</head><label>10</label><figDesc>Dataset statistics for inductive link prediction. The term "triples" refers to the size of the input graph, while "queries" represent the triples to be predicted. In the training phase, all queries are included as triples. It is important to note that during validation and testing, a new graph, disjoint from the training graph, is provided, and queries are evaluated against this new inference graph. Consequently, the number of entities and triples remains identical for the validation and test sets as they both refer to the inference graph.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_14"><head>Table 11 :</head><label>11</label><figDesc>The results of the inductive experiments (Section C), where PathE performs Absolute and relative counts of relation occurrences in WN18RR and YAGO 3-10.</figDesc><table><row><cell></cell><cell>WN18RR</cell><cell></cell><cell></cell><cell>YAGO 3-10</cell><cell></cell></row><row><cell cols="3">Edge ID Frequency % of Total</cell><cell cols="3">Edge ID Frequency % of Total</cell></row><row><cell>3</cell><cell>34796</cell><cell>40.1</cell><cell>21</cell><cell>373783</cell><cell>34.64</cell></row><row><cell>1</cell><cell>29715</cell><cell>34.2</cell><cell>33</cell><cell>321024</cell><cell>29.75</cell></row><row><cell>5</cell><cell>7402</cell><cell>8.5</cell><cell>27</cell><cell>88672</cell><cell>8.21</cell></row><row><cell>2</cell><cell>4816</cell><cell>5.5</cell><cell>13</cell><cell>66163</cell><cell>6.13</cell></row><row><cell>9</cell><cell>3116</cell><cell>3.6</cell><cell>34</cell><cell>44978</cell><cell>4.16</cell></row><row><cell>4</cell><cell>2921</cell><cell>3.4</cell><cell>0</cell><cell>32155</cell><cell>2.98</cell></row><row><cell>0</cell><cell>1299</cell><cell>1.5</cell><cell>23</cell><cell>32055</cell><cell>2.97</cell></row><row><cell>10</cell><cell>1138</cell><cell>1.3</cell><cell>18</cell><cell>24068</cell><cell>2.23</cell></row><row><cell>6</cell><cell>923</cell><cell>1.1</cell><cell>20</cell><cell>10710</cell><cell>0.99</cell></row><row><cell>7</cell><cell>629</cell><cell>0.7</cell><cell>3</cell><cell>9248</cell><cell>0.85</cell></row><row><cell>8</cell><cell>80</cell><cell>0.1</cell><cell>14</cell><cell>7754</cell><cell>0.71</cell></row><row><cell></cell><cell>CoDEx-Large</cell><cell></cell><cell></cell><cell>FB15k-237</cell><cell></cell></row><row><cell cols="3">Edge ID Frequency % of Total</cell><cell cols="3">Edge ID Frequency % of Total</cell></row><row><cell>4</cell><cell>169091</cell><cell>30.7</cell><cell>10</cell><cell>15989</cell><cell>5.9</cell></row><row><cell>36</cell><cell>60262</cell><cell>10.9</cell><cell>96</cell><cell>12893</cell><cell>4.7</cell></row><row><cell>26</cell><cell>35979</cell><cell>6.5</cell><cell>9</cell><cell>12157</cell><cell>4.5</cell></row><row><cell>17</cell><cell>34372</cell><cell>6.2</cell><cell>191</cell><cell>10945</cell><cell>4.0</cell></row><row><cell>62</cell><cell>30318</cell><cell>5.5</cell><cell>68</cell><cell>9494</cell><cell>3.5</cell></row><row><cell>14</cell><cell>24352</cell><cell>4.4</cell><cell>3</cell><cell>9465</cell><cell>3.5</cell></row><row><cell>21</cell><cell>23171</cell><cell>4.2</cell><cell>12</cell><cell>8423</cell><cell>3.1</cell></row><row><cell>29</cell><cell>22132</cell><cell>4.0</cell><cell>85</cell><cell>7268</cell><cell>2.7</cell></row><row><cell>50</cell><cell>17057</cell><cell>3.1</cell><cell>11</cell><cell>6277</cell><cell>2.3</cell></row><row><cell>5</cell><cell>11999</cell><cell>2.2</cell><cell>149</cell><cell>5880</cell><cell>2.2</cell></row><row><cell>1</cell><cell>11453</cell><cell>2.1</cell><cell>4</cell><cell>5673</cell><cell>2.1</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_15"><head>Table 12 :</head><label>12</label><figDesc>Absolute and relative counts of the most frequent relation occurrences in CoDEx-Large and FB15k-237.</figDesc><table><row><cell></cell><cell>Wikidata</cell><cell></cell></row><row><cell cols="3">Edge ID Frequency % of Total</cell></row><row><cell>P2860</cell><cell>304466243</cell><cell>18.6</cell></row><row><cell>P1545</cell><cell>199991550</cell><cell>12.2</cell></row><row><cell>P2093</cell><cell>149677775</cell><cell></cell></row><row><cell>P31</cell><cell>121504159</cell><cell>7.4</cell></row><row><cell>P813</cell><cell>109489889</cell><cell>6.7</cell></row><row><cell>P248</cell><cell>108457782</cell><cell>6.6</cell></row><row><cell>P854</cell><cell>82353706</cell><cell>5.0</cell></row><row><cell>P698</cell><cell>68122905</cell><cell>4.2</cell></row><row><cell>P1476</cell><cell>55678742</cell><cell>3.4</cell></row><row><cell>P577</cell><cell>55247544</cell><cell>3.4</cell></row><row><cell>P1433</cell><cell>45803735</cell><cell>2.8</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_16"><head>Table 13 :</head><label>13</label><figDesc>Absolute and relative counts of the most frequent relation occurrences in Wikidata. Data from 1 and 2 .</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>As more triples sharing the same relation and tail may exist in the training set, we always filter the entities in order not to create false negatives (which would also affect the evaluation otherwise).</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_1"><p>Wikidata Datamodel Statements. Online: Grafana Dashboard. Accessed on</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_2"><p>2025-01-20. URL: https://grafana.wikimedia.org/d/ 000000175/wikidata-datamodel-statements?orgId=1&amp;refresh=30m2 Wikidata:Database reports/List of properties/Top100. Online: Wikidata. Accessed on 2025-01-20. URL: https://www.wikidata. org/wiki/Wikidata:Database reports/List of properties/Top100</p></note>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Boxe: A box embedding model for knowledge base completion</title>
+		<author>
+			<persName><surname>Abboud</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2020">2020. 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">PyKEEN 1.0: A Python Library for Training and Evaluating Knowledge Graph Embeddings</title>
+		<author>
+			<persName><surname>Ali</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<editor>
+			<persName><forename type="first">Nicolas</forename><surname>Bordes</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Alberto</forename><surname>Usunier</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jason</forename><surname>García-Durán</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Oksana</forename><surname>Weston</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Yakhnenko</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2008">2021. 2021. 2021. 2008. 2008. 2013. 2013. 2019. 2019</date>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="page" from="1" to="6" />
+		</imprint>
+	</monogr>
+	<note>EMNLP</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Go for a walk and arrive at the answer: Reasoning over paths in knowledge bases using reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Chen</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2018">2023. 2023. 2018. 2018</date>
+		</imprint>
+	</monogr>
+	<note>ICLR</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Nodepiece: Com-positional and parameter-efficient representations of large knowledge graphs</title>
+		<author>
+			<persName><surname>Dettmers</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1810.04805</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Pre-training of deep bidirectional transformers for language understanding</title>
+		<editor>
+			<persName><surname>Devlin</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2018">2018. 2018. 2018. 2018. 2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+	<note>ICLR</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">A survey on knowledge graph-based recommender systems</title>
+		<author>
+			<persName><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Trans. Knowl. Data Eng</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page" from="1735" to="1780" />
+			<date type="published" when="1997">2022. 2022. 1997</date>
+		</imprint>
+	</monogr>
+	<note>Neural Comput.</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">A survey on knowledge graphs: Representation, acquisition, and applications</title>
+		<author>
+			<persName><forename type="first">Ji</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Trans. Neural Networks Learn. Syst</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="494" to="514" />
+			<date type="published" when="2022">2022. 2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Roboplanner: autonomous robotic action planning via knowledge graph queries</title>
+		<author>
+			<persName><surname>Jia</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM/SIGAPP SAC</title>
+		<imprint>
+			<date type="published" when="2018">2018. 2018. 2019. 2019. 2020</date>
+			<biblScope unit="volume">151</biblScope>
+			<biblScope unit="page" from="37" to="44" />
+		</imprint>
+	</monogr>
+	<note>Path-specific knowledge graph embedding. Lajus et al., 2020. Fast and exact rule mining with AMIE 3. In ESWC</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Improving knowledge graph completion via increasing embedding interactions</title>
+		<author>
+			<persName><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">EMNLP</title>
+		<imprint>
+			<date type="published" when="2015">2022. 2022. 2015. 2015</date>
+			<biblScope unit="volume">52</biblScope>
+			<biblScope unit="page" from="9289" to="9307" />
+		</imprint>
+	</monogr>
+	<note>Modeling relation paths for representation learning of knowledge bases</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Adapting meta knowledge graph information for multi-hop reasoning over few-shot relations</title>
+		<author>
+			<persName><forename type="first">Lin</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">EMNLP</title>
+		<imprint>
+			<date type="published" when="2019">2019. 2019. 2019. 2019</date>
+			<biblScope unit="volume">31</biblScope>
+			<biblScope unit="page" from="5629" to="5639" />
+		</imprint>
+	</monogr>
+	<note>Relation path embedding in knowledge graphs</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Fine-grained evaluation of ruleand embedding-based systems for knowledge graph completion</title>
+		<author>
+			<persName><surname>Meilicke</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IJCAI</title>
+		<editor>
+			<persName><forename type="first">Arvind</forename><surname>Neelakantan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Benjamin</forename><surname>Roth</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Andrew</forename><surname>Mccallum</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Lorenzo Rosasco</addrLine></address></meeting>
+		<imprint>
+			<publisher>Maximilian Nickel</publisher>
+			<date type="published" when="1995">2018. 2018. 2019. 2019. 1995. 1995. 2022. 2015. 2016. 2016</date>
+			<biblScope unit="volume">38</biblScope>
+			<biblScope unit="page" from="39" to="41" />
+		</imprint>
+	</monogr>
+	<note>AAAI</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Ruleguided compositional representation learning on knowledge graphs</title>
+		<author>
+			<persName><surname>Niu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2020">2020. 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">SAFRAN: an interpretable, rulebased link prediction method outperforming embedding models</title>
+		<author>
+			<persName><surname>Ott</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2009.07810</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Codex: A comprehensive knowledge graph completion benchmark</title>
+		<editor>
+			<persName><forename type="first">Tara</forename><surname>Safavi</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Danai</forename><surname>Koutra</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2019">2021. 2021. 2019. 2019. 2020. 2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+	<note>NeurIPS</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Learning multi-granularity and adaptive representation for knowledge graph reasoning</title>
+		<author>
+			<persName><surname>Shang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2018">2024. 2024. 2018. 2018</date>
+		</imprint>
+	</monogr>
+	<note>IJCAI</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2019">2019. 2019. 2020</date>
+		</imprint>
+	</monogr>
+	<note>Inductive relation prediction by subgraph reasoning</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Compositional learning of embeddings for relation paths in knowledge base and text</title>
+		<author>
+			<persName><surname>Toutanova</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">EMNLP</title>
+		<editor>
+			<persName><forename type="first">Soumya</forename><surname>Vashishth</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Sanyal</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Nitin</forename><surname>Vikram</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Partha</forename><forename type="middle">P</forename><surname>Talukdar</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2015">2015. 2015. 2016. 2016. 2016. 2020</date>
+		</imprint>
+	</monogr>
+	<note>ICLR</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Attention is all you need</title>
+		<author>
+			<persName><surname>Vaswani</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2017">2017. 2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Deeppath: A reinforcement learning method for knowledge graph reasoning</title>
+		<author>
+			<persName><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SIGKDD</title>
+		<imprint>
+			<date type="published" when="2017">2021. 2021. 2017. 2017</date>
+		</imprint>
+	</monogr>
+	<note>EMNLP</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Subgraph neighboring relations infomax for inductive link prediction on knowledge graphs</title>
+		<author>
+			<persName><surname>Xiong</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">EMNLP</title>
+		<imprint>
+			<publisher>WWW</publisher>
+			<date type="published" when="2018">2018. 2018. 2022. 2018. 2018. 2022</date>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="page" from="1393" to="1400" />
+		</imprint>
+	</monogr>
+	<note>Knowledge graph reasoning with relational digraph</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Discriminative path-based knowledge graph embedding for precise link prediction</title>
+		<author>
+			<persName><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ECIR</title>
+		<imprint>
+			<date type="published" when="2018">2018. 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Neural bellmanford networks: A general graph neural network framework for link prediction</title>
+		<author>
+			<persName><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE/CIC ICCC</title>
+		<editor>
+			<persName><forename type="first">Xinyu</forename><surname>Zhu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Mikhail</forename><surname>Yuan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sophie</forename><surname>Galkin</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Ming</forename><surname>Xhonneux</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Maxime</forename><surname>Zhang</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jian</forename><surname>Gazeau</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Tang</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2021">2021. 2021. 2021. 2021. 2024</date>
+		</imprint>
+	</monogr>
+	<note>NeurIPS</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">A survey on application of knowledge graph</title>
+		<author>
+			<persName><forename type="first">Xiaohan</forename><surname>Zou</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Journal of Physics: Conference Series</title>
+		<imprint>
+			<publisher>IOP Publishing</publisher>
+			<date type="published" when="2020">2020. 2020</date>
+			<biblScope unit="page">12016</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

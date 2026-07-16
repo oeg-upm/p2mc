@@ -1,0 +1,1115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Investigating Robustness and Interpretability of Link Prediction via Adversarial Modifications</title>
+				<funder ref="#_bVdwGR5">
+					<orgName type="full">Allen Institute for Artificial Intelligence</orgName>
+				</funder>
+				<funder ref="#_WU5YhS4 #_GpsPU5M">
+					<orgName type="full">National Science Foundation</orgName>
+					<orgName type="abbreviated">NSF</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2019-05-02">2 May 2019</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Pouya</forename><surname>Pezeshkpour</surname></persName>
+							<email>pezeshkp@uci.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">University of California Irvine</orgName>
+								<address>
+									<region>CA</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Yifan</forename><surname>Tian</surname></persName>
+							<email>yifant@uci.edu</email>
+							<affiliation key="aff1">
+								<orgName type="institution">University of California Irvine</orgName>
+								<address>
+									<region>CA</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Sameer</forename><surname>Singh</surname></persName>
+							<email>sameer@uci.edu</email>
+							<affiliation key="aff2">
+								<orgName type="institution">University of California Irvine</orgName>
+								<address>
+									<region>CA</region>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Investigating Robustness and Interpretability of Link Prediction via Adversarial Modifications</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2019-05-02">2 May 2019</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">4249C734071921513C13E84002D8FB07</idno>
+					<idno type="arXiv">arXiv:1905.00563v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T09:20+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Representing entities and relations in an embedding space is a well-studied approach for machine learning on relational data. Existing approaches, however, primarily focus on improving accuracy and overlook other aspects such as robustness and interpretability. In this paper, we propose adversarial modifications for link prediction models: identifying the fact to add into or remove from the knowledge graph that changes the prediction for a target fact after the model is retrained. Using these single modifications of the graph, we identify the most influential fact for a predicted link and evaluate the sensitivity of the model to the addition of fake facts. We introduce an efficient approach to estimate the effect of such modifications by approximating the change in the embeddings when the knowledge graph changes. To avoid the combinatorial search over all possible facts, we train a network to decode embeddings to their corresponding graph components, allowing the use of gradient-based optimization to identify the adversarial modification. We use these techniques to evaluate the robustness of link prediction models (by measuring sensitivity to additional facts), study interpretability through the facts most responsible for predictions (by identifying the most influential neighbors), and detect incorrect facts in the knowledge base.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Knowledge graphs (KG) play a critical role in many real-world applications such as search, structured data management, recommendations, and question answering. Since KGs often suffer from incompleteness and noise in their facts (links), a number of recent techniques have proposed models that embed each entity and relation into a vector space, and use these embeddings to predict facts. These dense representation models for link prediction include tensor factorization <ref type="bibr" target="#b23">[Nickel et al., 2011</ref><ref type="bibr" target="#b29">, Socher et al., 2013</ref><ref type="bibr">, Yang et al., 2015]</ref>, algebraic operations <ref type="bibr" target="#b2">[Bordes et al., 2011</ref><ref type="bibr">, 2013b</ref><ref type="bibr" target="#b9">, Dasgupta et al., 2018]</ref>, multiple embeddings <ref type="bibr" target="#b35">[Wang et al., 2014</ref><ref type="bibr" target="#b19">, Lin et al., 2015</ref><ref type="bibr" target="#b15">, Ji et al., 2015</ref><ref type="bibr" target="#b37">, Zhang et al., 2018]</ref>, and complex neural models <ref type="bibr" target="#b10">[Dettmers et al., 2018</ref><ref type="bibr" target="#b21">, Nguyen et al., 2018]</ref>. However, there are only a few studies <ref type="bibr" target="#b16">[Kadlec et al., 2017</ref><ref type="bibr" target="#b27">, Sharma et al., 2018]</ref> that investigate the quality of the different KG models. There is a need to go beyond just the accuracy on link prediction, and instead focus on whether these representations are robust and stable, and what facts they make use of for their predictions.</p><p>In this paper, our goal is to design approaches that minimally change the graph structure such that the prediction of a target fact changes the most after the embeddings are relearned, which we collectively call Completion Robustness and Interpretability via Adversarial Graph Edits (CRIAGE). First, we consider perturbations that remove a neighboring link for the target fact, thus identifying the most influential related fact, providing an explanation for the model's prediction. As an example, consider the excerpt from a KG in Figure <ref type="figure" target="#fig_0">1a</ref> with two observed facts, and a target predicted fact that Princes Henriette is the parent of Violante Bavaria. Our proposed graph perturbation, shown in Figure <ref type="figure" target="#fig_0">1b</ref>, identifies the existing fact that Ferdinal Maria is the father of Violante Bavaria as the one when removed and model retrained, will change the prediction of Princes Henriette's child. We also study attacks that add a new, fake fact into the KG to evaluate the robustness and sensitivity of link prediction models to small additions to the graph. An example attack for the original graph in Figure <ref type="figure" target="#fig_0">1a</ref>, is depicted in Figure <ref type="figure" target="#fig_0">1c</ref>. Such perturbations to the the training data are from a family of adversarial modifications that have been applied to other machine learning tasks, known as poisoning <ref type="bibr" target="#b0">[Biggio et al., 2012</ref><ref type="bibr">, Corona et al., 2013, Biggio</ref>   <ref type="bibr">et al., 2014</ref><ref type="bibr" target="#b40">et al., , Zügner et al., 2018]]</ref>.</p><p>Since the setting is quite different from traditional adversarial attacks, search for link prediction adversaries brings up unique challenges. To find these minimal changes for a target link, we need to identify the fact that, when added into or removed from the graph, will have the biggest impact on the predicted score of the target fact. Unfortunately, computing this change in the score is expensive since it involves retraining the model to recompute the embeddings. We propose an efficient estimate of this score change by approximating the change in the embeddings using Taylor expansion. The other challenge in identifying adversarial modifications for link prediction, especially when considering addition of fake facts, is the combinatorial search space over possible facts, which is intractable to enumerate. We introduce an inverter of the original embedding model, to decode the embeddings to their corresponding graph components, making the search of facts tractable by performing efficient gradient-based continuous optimization.</p><p>We evaluate our proposed methods through following experiments. First, on relatively small KGs, we show that our approximations are accurate compared to the true change in the score. Second, we show that our additive attacks can effectively reduce the performance of state of the art models <ref type="bibr" target="#b36">[Yang et al., 2015</ref><ref type="bibr" target="#b10">, Dettmers et al., 2018]</ref> up to 27.3% and 50.7% in Hits@1 for two large KGs: WN18 and YAGO3-10. We also explore the utility of adversarial modifications in explaining the model predictions by presenting rule-like descriptions of the most influential neighbors. Finally, we use adversaries to detect errors in the KG, obtaining up to 55% accuracy in detecting errors.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Background and Notation</head><p>In this section, we briefly introduce some notations, and existing relational embedding approaches that model knowledge graph completion using dense vectors. In KGs, facts are represented using triples of subject, relation, and object, s, r, o , where s, o ∈ ξ, the set of entities, and r ∈ R, the set of relations. To model the KG, a scoring function ψ : ξ × R × ξ → R is learned to evaluate whether any given fact is true. In this work, we focus on multiplicative models of link prediction<ref type="foot" target="#foot_0">1</ref> , specifically DistMult <ref type="bibr" target="#b36">[Yang et al., 2015]</ref> because of its simplicity and popularity, and ConvE <ref type="bibr" target="#b10">[Dettmers et al., 2018]</ref> because of its high accuracy. We can represent the scoring function of such methods as ψ(s, r, o) = f (e s , e r ) • e o , where e s , e r , e o ∈ R d are embeddings of the subject, relation, and object respectively. In DistMult, f (e s , e r ) = e s e r , where is element-wise multiplication operator. Similarly, in ConvE, f (e s , e r ) is computed by a convolution on the concatenation of e s and e r .</p><p>We use the same setup as <ref type="bibr" target="#b10">Dettmers et al. [2018]</ref> for training, i.e., incorporate binary cross-entropy loss over the triple scores. In particular, for subjectrelation pairs (s, r) in the training data G, we use binary y s,r o to represent negative and positive facts. Using the model's probability of truth as σ(ψ(s, r, o)) for s, r, o , the loss is defined as:</p><formula xml:id="formula_0">L(G) = (s,r) o y s,r o log(σ(ψ(s, r, o))) + (1 -y s,r o ) log(1 -σ(ψ(s, r, o))).</formula><p>(1) Gradient descent is used to learn the embeddings e s , e r , e o , and the parameters of f , if any.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Completion Robustness and Interpretability via Adversarial Graph Edits (CRIAGE)</head><p>For adversarial modifications on KGs, we first define the space of possible modifications. For a target triple s, r, o , we constrain the possible triples that we can remove (or inject) to be in the form of s , r , o i.e s and r may be different from the target, but the object is not. We analyze other forms of modifications such as s, r , o and s, r , o in appendices A.1 and A.2, and leave empirical evaluation of these modifications for future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Removing a fact (CRIAGE-Remove)</head><p>For explaining a target prediction, we are interested in identifying the observed fact that has the most influence (according to the model) on the prediction. We define influence of an observed fact on the prediction as the change in the prediction score if the observed fact was not present when the embeddings were learned. Previous work have used this concept of influence similarly for several different tasks <ref type="bibr">[Kononenko et al., 2010, Koh and</ref><ref type="bibr" target="#b17">Liang, 2017]</ref> </p><formula xml:id="formula_1">∆ (s ,r ) (s, r, o)<label>(2)</label></formula><p>where ∆ (s ,r ) (s, r, o) = ψ(s, r, o)-ψ(s, r, o), and Nei(o) = {(s , r )| s , r , o ∈ G}.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Adding a new fact (CRIAGE-Add)</head><p>We are also interested in investigating the robustness of models, i.e., how sensitive are the predictions to small additions to the knowledge graph. Specifically, for a target prediction s, r, o , we are interested in identifying a single fake fact s , r , o that, when added to the knowledge graph G, changes the prediction score ψ(s, r, o) the most. Using ψ(s, r, o) as the score after training on G ∪ { s , r , o }, we define the adversary as:</p><formula xml:id="formula_2">argmax (s ,r ) ∆ (s ,r ) (s, r, o)<label>(3)</label></formula><p>where</p><formula xml:id="formula_3">∆ (s ,r ) (s, r, o) = ψ(s, r, o) -ψ(s, r, o).</formula><p>The search here is over any possible s ∈ ξ, which is often in the millions for most real-world KGs, and r ∈ R. We also identify adversaries that increase the prediction score for specific false triple, i.e., for a target fake fact s, r, o , the adversary is argmax (s ,r ) -∆ (s ,r ) (s, r, o), where ∆ (s ,r ) (s, r, o) is defined as before.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Challenges</head><p>There are a number of crucial challenges when conducting such adversarial attack on KGs. First, evaluating the effect of changing the KG on the score of the target fact (ψ(s, r, o)) is expensive since we need to update the embeddings by retraining the model on the new graph; a very time-consuming process that is at least linear in the size of G. Second, since there are many candidate facts that can be added to the knowledge graph, identifying the most promising adversary through search-based methods is also expensive. Specifically, the search size for unobserved facts is |ξ| × |R|, which, for example in YAGO3-10 KG, can be as many as 4.5M possible facts for a single target prediction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Efficiently Identifying the Modification</head><p>In this section, we propose algorithms to address mentioned challenges by ( <ref type="formula">1</ref>) approximating the effect of changing the graph on a target prediction, and (2) using continuous optimization for the discrete search over potential modifications.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">First-order Approximation of Influence</head><p>We first study the addition of a fact to the graph, and then extend it to cover removal as well.</p><p>To capture the effect of an adversarial modification on the score of a target triple, we need to study the effect of the change on the vector representations of the target triple. We use e s , e r , and e o to denote the embeddings of s, r, o at the solution of argmin L(G), and when considering the adversarial triple s , r , o , we use e s , e r , and e o for the new embeddings of s, r, o, respectively. Thus e s , e r , e o is a solution to argmin L(G ∪ { s , r , o }), which can also be written as argmin L(G) + L( s , r , o ). Similarly, f (e s , e r ) changes to f (e s , e r ) after retraining. Since we only consider adversaries in the form of s , r , o , we only consider the effect of the attack on e o and neglect its effect on e s and e r . This assumption is reasonable since the adversary is connected with o and directly affects its embedding when added, but it will only have a secondary, negligible effect on e s and e r , in comparison to its effect on e o . Further, calculating the effect of the attack on e s and e r requires a third order derivative of the loss, which is not practical (O(n 3 ) in the number of parameters). In other words, we assume that e s e s and e r e r . As a result, to calculate the effect of the attack, ψ(s, r, o) -ψ(s, r, o), we need to compute e o -e o , followed by:</p><formula xml:id="formula_4">ψ(s, r, o) -ψ(s, r, o) = z s,r (e o -e o )<label>(4)</label></formula><p>where z s,r = f (e s , e r ). We now derive an efficient computation for e o -e o . First, the derivative of the loss</p><formula xml:id="formula_5">L(G) = L(G) + L( s , r , o</formula><p>) over e o is:</p><formula xml:id="formula_6">∇ eo L(G) = ∇ eo L(G) -(1 -ϕ)z s ,r<label>(5)</label></formula><p>where z s ,r = f (e s , e r ), and ϕ = σ(ψ(s , r , o)).</p><p>At convergence, after retraining, we expect ∇ eo L(G) = 0. We perform first order Taylor approximation of ∇ eo L(G) to get: (</p><formula xml:id="formula_7">0 -(1 -ϕ)z s ,r + (H o + ϕ(1 -ϕ)z s ,r z s ,r )(e o -e o )<label>(6)</label></formula><formula xml:id="formula_8">1 -ϕ)(H o + ϕ(1 -ϕ)z s ,r z s ,r ) -1 z s ,r .</formula><p>In practice, H o is positive definite, making H o + ϕ(1 -ϕ)z s ,r z s ,r positive definite as well, and invertible. Then, we compute the score change as:</p><formula xml:id="formula_9">ψ(s, r, o) -ψ(s, r, o) = z s,r (e o -e o ) (7) = z s,r ((1 -ϕ)(H o + ϕ(1 -ϕ)z s ,r z s ,r ) -1 z s ,r ).</formula><p>Calculating this expression is efficient since H o is a d × d matrix (d is the embedding dimension), and z s,r , z s ,r ∈ R d . Similarly, we estimate the score change of s, r, o after removing s , r , o as:</p><formula xml:id="formula_10">-z s,r ((1 -ϕ)(H o + ϕ(1 -ϕ)z s ,r z s ,r ) -1 z s ,r ).</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Continuous Optimization for Search</head><p>Using the approximations provided in the previous section, Eq. ( <ref type="formula">7</ref>) and (4.1), we can use brute force enumeration to find the adversary s , r , o . This approach is feasible when removing an observed triple since the search space of such modifications is usually small; it is the number of observed facts that share the object with the target. On the other hand, finding the most influential unobserved fact to add requires search over a much larger space of all possible unobserved facts (that share the object). Instead, we identify the most influential unobserved fact s , r , o by using a gradient-based algorithm on vector z s ,r in the embedding space (reminder, z s ,r = f (e s , e r )), solving the following continuous optimization problem in R d :</p><formula xml:id="formula_11">argmax z s ,r ∆ (s ,r ) (s, r, o).<label>(8)</label></formula><p>After identifying the optimal z s ,r , we still need to generate the pair (s , r ). We design a network, shown in Figure <ref type="figure" target="#fig_2">2</ref>, that maps the vector z s ,r to the entity-relation space, i.e., translating it into (s , r ).</p><p>In particular, we train an auto-encoder where the encoder is fixed to receive the s and r as one-hot inputs, and calculates z s,r in the same way as the DistMult and ConvE encoders respectively (using trained embeddings). The decoder is trained to take z s,r as input and produce s and r, essentially inverting f and the embedding layers. As our decoder, for DistMult, we pass z s,r through a linear layer and then use two other linear layers for the subject and the relation separately, providing one-hot vectors as s and r. For ConvE, we pass z s,r through a deconvolutional layer, and then use the same architecture as the DistMult decoder. Although we could use maximum inner-product search <ref type="bibr" target="#b28">[Shrivastava and Li, 2014]</ref> for DistMult instead of our defined inverter function, we are looking for a general approach that works across multiple models.</p><p>We evaluate the performance of our inverter networks (one for each model/dataset) on correctly recovering the pairs of subject and relation from the test set of our benchmarks, given the z s,r . The accuracy of recovered pairs (and of each argument) is given in Table <ref type="table" target="#tab_1">1</ref>. As shown, our networks achieve a very high accuracy, demonstrating their ability to invert vectors z s,r to {s, r} pairs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Experiment Setup</head><p>Datasets To evaluate our method, we conduct several experiments on four widely used KGs. To validate the accuracy of the approximations, we use smaller sized Kinship and Nations KGs for which we can make comparisons against more expensive but less approximate approaches. For the remaining experiments, we use YAGO3-10 and WN18 KGs, which are closer to real-world KGs in their size and characteristics (see Table <ref type="table" target="#tab_2">2</ref>).</p><p>Models We implement all methods using the same loss and optimization for training, i.e., Ada-Grad and the binary cross-entropy loss. We use validation data to tune the hyperparameters and use a grid search to find the best hyperparameters, such as regularization parameter, and learning rate of the gradient-based method. To capture the effect of our method on link prediction task, we study the change in commonly-used metrics for evaluation in this task: mean reciprocal rank (MRR) and Hits@K. Further, we use the same hyperparameters as in <ref type="bibr" target="#b10">Dettmers et al. [2018]</ref> for training link prediction models for these knowledge graphs. change in the loss after removing a triple as:</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Influence Function</head><formula xml:id="formula_12">I up,loss ( s , r , o , s, r, o ) = -∇ θ L( s, r, o , θ) H -1 θ ∇ θ L( s , r , o , θ) (9)</formula><p>where s , r , o and s, r, o are training and test samples respectively, θ represents the optimum parameters and L( s, r, o , θ) represents the loss function for the test sample s, r, o . Influence function does not scale well, so we only compare our method with IF on the smaller size KGs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Experiments</head><p>We evaluate CRIAGE by (6.1) comparing CRIAGE estimate with the actual effect of the attacks, (6.2) studying the effect of adversarial attacks on evaluation metrics, (6.3) exploring its application to the interpretability of KG representations, and (6.4) detecting incorrect triples.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1">Influence Function vs CRIAGE</head><p>To evaluate the quality of our approximations and compare with influence function (IF), we conduct leave one out experiments. In this setup, we take all the neighbors of a random target triple as candidate modifications, remove them one at a time, retrain the model each time, and compute the exact change in the score of the target triple. We can use the magnitude of this change in score to rank the candidate triples, and compare this exact ranking with ranking as predicted by: CRIAGE-Remove, influence function with and without Hessian matrix, and the original model score (with the intuition that facts that the model is most confident of will have  <ref type="table">3</ref>: Ranking modifications by their impact on the target. We compare the true ranking of candidate triples with a number of approximations using ranking correlation coefficients. We compare our method with influence function (IF) with and without Hessian, and ranking the candidates based on their score, on two KGs (d = 10, averaged over 10 random targets). For the sake of brevity, we represent the Spearman's ρ and Kendall's τ rank correlation coefficients simply as ρ and τ .</p><p>the largest impact when removed). Similarly, we evaluate CRIAGE-Add by considering 200 random triples that share the object entity with the target sample as candidates, and rank them as above.</p><p>The average results of Spearman's ρ and Kendall's τ rank correlation coefficients over 10 random target samples is provided in Table <ref type="table">3</ref>. CRIAGE performs comparably to the influence function, confirming that our approximation is accurate. Influence function is slightly more accurate because they use the complete Hessian matrix over all the parameters, while we only approximate the change by calculating the Hessian over e o . The effect of this difference on scalability is dramatic, constraining IF to very small graphs and small embedding dimensionality (d ≤ 10) before we run out of memory. In Figure <ref type="figure" target="#fig_3">3</ref>, we show the time to compute a single adversary by IF compared to CRIAGE, as we steadily grow the number of entities (randomly chosen subgraphs), averaged over 10 random triples. As it shows, CRIAGE is mostly unaffected by the number of entities while IF increases quadratically. Considering that real-world KGs have tens of thousands of times more entities, making IF unfeasible for them.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2">Robustness of Link Prediction Models</head><p>Now we evaluate the effectiveness of CRIAGE to successfully attack link prediction by adding false facts. The goal here is to identify the attacks for triples in the test data, and measuring their effect on MRR and Hits@ metrics (ranking evaluations) after conducting the attack and retraining the model.</p><p>Since this is the first work on adversarial attacks for link prediction, we introduce several baselines to compare against our method. For finding the adversarial fact to add for the target triple s, r, o , we consider two baselines: 1) choosing a random fake fact s , r , o (Random Attack); 2) finding (s , r ) by first calculating f (e s , e r ) and then feeding -f (e s , e r ) to the decoder of the inverter function (Opposite Attack). In addition to CRIAGE-Add, we introduce two other alternatives of our method: (1) CRIAGE-FT, that uses CRIAGE to increase the score of fake fact over a test triple, i.e., we find the fake fact the model ranks second after the test triple, and identify the adversary for them, and (2) CRIAGE-Best that selects between CRIAGE-Add and CRIAGE-FT attacks based on which has a higher estimated change in score.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>All-Test</head><p>The result of the attack on all test facts as targets is provided in the Table <ref type="table" target="#tab_5">4</ref>. CRIAGE-Add outperforms the baselines, demonstrating its ability to effectively attack the KG representations. It seems DistMult is more robust against random attacks, while ConvE is more robust against designed attacks. CRIAGE-FT is more effective than CRIAGE-Add since changing the score of a fake fact is easier than of actual facts; there is no existing evidence to support fake facts. We also see that YAGO3-10 models are more robust than those for WN18. Looking at sample attacks (provided in Appendix A.4), CRIAGE mostly tries to change the type of the target object by associating it with a subject and a relation for a different entity type.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Uncertain-Test</head><p>To better understand the effect of attacks, we consider a subset of test triples that 1) the model predicts correctly, 2) difference between their scores and the negative sample with the highest score is minimum. This "Uncertain-Test" subset contains 100 triples from each of the original   test sets, and we provide results of attacks on this data in Table <ref type="table" target="#tab_5">4</ref>. The attacks are much more effective in this scenario, causing a considerable drop in the metrics. Further, in addition to CRIAGE significantly outperforming other baselines, they indicate that ConvE's confidence is much more robust.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Relation Breakdown</head><p>We perform additional analysis on the YAGO3-10 dataset to gain a deeper understanding of the performance of our model. As shown in Figure <ref type="figure" target="#fig_4">4</ref>, both DistMult and ConvE provide a more robust representation for isAffili-atedTo and isConnectedTo relations, demonstrating the confidence of models in identifying them. Moreover, the CRIAGE affects DistMult more in playsFor and isMarriedTo relations while affecting ConvE more in isConnectedTo relations. Extractions from DistMult <ref type="bibr" target="#b36">[Yang et al., 2015]</ref> isLocatedIn(a, c)</p><formula xml:id="formula_13">∧ isLocatedIn(c, b) isLocatedIn isAffiliatedTo(a, c) ∧ isLocatedIn(c, b) wasBornIn playsFor(a, c) ∧ isLocatedIn(c, b) wasBornIn isAffiliatedTo(a, c) ∧ isLocatedIn(c, b) diedIn</formula><p>Table <ref type="table">5</ref>: Extracted Rules for identifying the most influential link. We extract the patterns that appear more than 90% times in the neighborhood of the target triple.</p><p>The output of CRIAGE-Remove is presented in red.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.3">Interpretability of Models</head><p>To be able to understand and interpret why a link is predicted using the opaque, dense embeddings, we need to find out which part of the graph was most influential on the prediction. To provide such explanations for each predictions, we identify the most influential fact using CRIAGE-Remove. Instead of focusing on individual predictions, we aggregate the explanations over the whole dataset for each relation using a simple rule extraction technique: we Table <ref type="table">6</ref>: Error Detection Accuracy in the neighborhood of 100 chosen samples. We choose the neighbor with the least value of ∆ (s ,r ) (s, r, o) as the incorrect fact. This experiment assumes we know each target fact has exactly one error.</p><p>find simple patterns on subgraphs that surround the target triple and the removed fact from CRIAGE-Remove, and appear more than 90% of the time.</p><p>We only focus on extracting length-2 horn rules, i.e., R</p><formula xml:id="formula_14">1 (a, c) ∧ R 2 (c, b) ⇒ R(a, b), where R(a, b)</formula><p>is the target and R 2 (c, b) is the removed fact.</p><p>Table <ref type="table">5</ref> shows extracted YAGO3-10 rules that are common to both models, and ones that are not. The rules show several interesting inferences, such that hasChild is often inferred via married parents, and isLocatedIn via transitivity. There are several differences in how the models reason as well; Dist-Mult often uses the hasCapital as an intermediate step for isLocatedIn, while ConvE incorrectly uses isNeighbor. We also compare against rules extracted by <ref type="bibr" target="#b36">Yang et al. [2015]</ref> for YAGO3-10 that utilizes the structure of DistMult: they require domain knowledge on types and cannot be applied to ConvE. Interestingly, the extracted rules contain all the rules provided by CRIAGE, demonstrating that CRIAGE can be used to accurately interpret models, including ones that are not interpretable, such as ConvE. These are preliminary steps toward interpretability of link prediction models, and we leave more analysis of interpretability to future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.4">Finding Errors in Knowledge Graphs</head><p>Here, we demonstrate another potential use of adversarial modifications: finding erroneous triples in the knowledge graph. Intuitively, if there is an error in the graph, the triple is likely to be inconsistent with its neighborhood, and thus the model should put least trust on this triple. In other words, the error triple should have the least influence on the model's prediction of the training data. Formally, to find the incorrect triple s , r , o in the neighborhood of the train triple s, r, o , we need to find the triple s , r , o that results in the least change ∆ (s ,r ) (s, r, o) when removed from the graph.</p><p>To evaluate this application, we inject random triples into the graph, and measure the ability of CRIAGE to detect the errors using our optimization. We consider two types of incorrect triples: 1) incorrect triples in the form of s , r, o where s is chosen randomly from all of the entities, and 2) incorrect triples in the form of s , r , o where s and r are chosen randomly. We choose 100 random triples from the observed graph, and for each of them, add an incorrect triple (in each of the two scenarios) to its neighborhood. Then, after retraining DistMult on this noisy training data, we identify error triples through a search over the neighbors of the 100 facts. The result of choosing the neighbor with the least influence on the target is provided in the Table <ref type="table">6</ref>. When compared with baselines that randomly choose one of the neighbors, or assume that the fact with the lowest score is incorrect, we see that CRIAGE outperforms both of these with a considerable gap, obtaining an accuracy of 42% and 55% in detecting errors.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Related Work</head><p>Learning relational knowledge representations has been a focus of active research in the past few years, but to the best of our knowledge, this is the first work on conducting adversarial modifications on the link prediction task.</p><p>Knowledge graph embedding There is a rich literature on representing knowledge graphs in vector spaces that differ in their scoring functions <ref type="bibr" target="#b34">[Wang et al., 2017</ref><ref type="bibr" target="#b14">, Goyal and Ferrara, 2018</ref><ref type="bibr" target="#b12">, Fooshee et al., 2018]</ref>. Although CRIAGE is primarily applicable to multiplicative scoring functions <ref type="bibr" target="#b23">[Nickel et al., 2011</ref><ref type="bibr" target="#b29">, Socher et al., 2013</ref><ref type="bibr">, Yang et al., 2015</ref><ref type="bibr" target="#b32">, Trouillon et al., 2016]</ref>, these ideas apply to additive scoring functions <ref type="bibr">[Bordes et al., 2013a</ref><ref type="bibr" target="#b35">, Wang et al., 2014</ref><ref type="bibr" target="#b19">, Lin et al., 2015</ref><ref type="bibr" target="#b22">, Nguyen et al., 2016]</ref> as well, as we show in Appendix A.3. Furthermore, there is a growing body of literature that incorporates an extra types of evidence for more informed embeddings such as numerical values <ref type="bibr" target="#b13">[Garcia-Duran and Niepert, 2017]</ref>, images <ref type="bibr" target="#b24">[Oñoro-Rubio et al., 2017]</ref>, text <ref type="bibr" target="#b30">[Toutanova et al., 2015</ref><ref type="bibr">, 2016</ref><ref type="bibr" target="#b33">, Tu et al., 2017]</ref>, and their combinations <ref type="bibr" target="#b26">[Pezeshkpour et al., 2018]</ref>. Using CRIAGE, we can gain a deeper understanding of these methods, especially those that build their embeddings wit hmultiplicative scoring functions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Interpretability and Adversarial Modification</head><p>There has been a significant recent interest in conducting an adversarial attacks on different machine learning models <ref type="bibr" target="#b1">[Biggio et al., 2014</ref><ref type="bibr" target="#b25">, Papernot et al., 2016</ref><ref type="bibr" target="#b11">, Dong et al., 2017</ref><ref type="bibr">, Zhao et al., 2018a</ref><ref type="bibr">,b, Brunet et al., 2018]</ref> to attain the interpretability, and further, evaluate the robustness of those models. <ref type="bibr" target="#b17">Koh and Liang [2017]</ref> uses influence function to provide an approach to understanding black-box models by studying the changes in the loss occurring as a result of changes in the training data. In addition to incorporating their established method on KGs, we derive a novel approach that differs from their procedure in two ways: (1) instead of changes in the loss, we consider the changes in the scoring function, which is more appropriate for KG representations, and (2) in addition to searching for an attack, we introduce a gradient-based method that is much faster, especially for "adding an attack triple" (the size of search space make the influence function method infeasible). Previous work has also considered adversaries for KGs, but as part of training to improve their representation of the graph <ref type="bibr">[Minervini et al., 2017, Cai and</ref><ref type="bibr">Wang, 2018]</ref>.</p><p>Adversarial Attack on KG Although this is the first work on adversarial attacks for link prediction, there are two approaches <ref type="bibr" target="#b21">[Dai et al., 2018</ref><ref type="bibr" target="#b40">, Zügner et al., 2018]</ref> that consider the task of adversarial attack on graphs. There are a few fundamental differences from our work: (1) they build their method on top of a path-based representations while we focus on embeddings, (2) they consider node classification as the target of their attacks while we attack link prediction, and (3) they conduct the attack on small graphs due to restricted scalability, while the complexity of our method does not depend on the size of the graph, but only the neighborhood, allowing us to attack real-world graphs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8">Conclusions</head><p>Motivated by the need to analyze the robustness and interpretability of link prediction models, we present a novel approach for conducting adversarial modifications to knowledge graphs. We introduce CRIAGE, completion robustness and interpretability via adversarial graph edits: identifying the fact to add into or remove from the KG that changes the prediction for a target fact. CRIAGE uses (1) an estimate of the score change for any target triple after adding or removing another fact, and (2) a gradientbased algorithm for identifying the most influential modification. We show that CRIAGE can effectively reduce ranking metrics on link prediction models upon applying the attack triples. Further, we incorporate the CRIAGE to study the interpretability of KG representations by summarizing the most influential facts for each relation. Finally, using CRIAGE, we introduce a novel automated error detection method for knowledge graphs. We have release the open-source implementation of our models at: https://pouyapez.github.io/criage.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Appendix</head><p>We approximate the change on the score of the target triple upon applying attacks other than the s , r , o ones. Since each relation appears many times in the training triples, we can assume that applying a single attack will not considerably affect the relations embeddings. As a result, we just need to study the attacks in the form of s, r We now derive an efficient computation for (e se s ). First, the derivative of the loss L(G) = L(G)+ L( s, r , o ) over e s is:</p><formula xml:id="formula_15">∇ es L(G) = ∇ es L(G) -(1 -ϕ)x r ,o<label>(11)</label></formula><p>where x r ,o = g(e r , e o ), and ϕ = σ(ψ(s, r , o )).</p><p>At convergence, after retraining, we expect ∇ es L(G) = 0. We perform first order Taylor approximation of ∇ es L(G) to get:</p><formula xml:id="formula_16">0 -(1 -ϕ)x r ,o + (H s + ϕ(1 -ϕ)x r ,o x r ,o )(e s -e s )<label>(12)</label></formula><p>where H s is the d × d Hessian matrix for s, i.e. second order derivative of the loss w.r.t. e s , computed sparsely. Solving for e s -e s gives us:  </p><p>where H s is the Hessian matrix over e s . Then using these approximations: </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.4 Sample Adversarial Attacks</head><p>In this section, we provide the output of the CRIAGE-Add for some target triples. Sample adversarial attacks are provided in Table <ref type="table" target="#tab_7">7</ref>. As it shows, CRIAGE-Add attacks mostly try to change the type of the target triple's object by associating it with a subject and a relation that require a different entity types.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Completion Robustness and Interpretability via Adversarial Graph Edits (CRIAGE): Change in the graph structure that changes the prediction of the retrained model, where (a) is the original sub-graph of the KG, (b) removes a neighboring link of the target, resulting in a change in the prediction, and (c) shows the effect of adding an attack triple on the target. These modifications were identified by our proposed approach.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head></head><label></label><figDesc>where H o is the d×d Hessian matrix for o, i.e., second order derivative of the loss w.r.t. e o , computed sparsely. Solving for e o -e o gives us, e o -e o =:</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Inverter Network The architecture of our inverter function that translate z s,r to its respective (s, r). The encoder component is fixed to be the encoder network of DistMult and ConvE respectively.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Influence function vs CRIAGE. We plot the average time (over 10 facts) of influence function (IF) and CRIAGE to identify an adversary as the number of entities in the Kinship KG is varied (by randomly sampling subgraphs of the KG). Even with small graphs and dimensionality, IF quickly becomes impractical.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Per-Relation Breakdown showing the effect of CRIAGE-Add on different relations in YAGO3-10.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head></head><label></label><figDesc>Rule Body, R1(a, c) ∧ R2(c, b) ⇒ Target, R(a, b)Common to both isConnectedTo(a, c)∧ isConnectedTo(c, b) isConnectedTo isLocatedIn(a, c)∧ isLocatedIn(c, b) isLocatedIn isAffiliatedTo(a, c)∧ isLocatedIn(c, b) wasBornIn isMarriedTo(a, c)∧ hasChild(c, b) hasChildonly in DistMult playsFor(a, c)∧ isLocatedIn(c, b) wasBornIn dealsWith(a, c)∧ participatedIn(c, b) participatedIn isAffiliatedTo(a, c)∧ isLocatedIn(c, b) diedIn isLocatedIn(a, c)∧ hasCapital(c, b) isLocatedIn only in ConvE influences(a, c)∧ influences(c, b) influences isLocatedIn(a, c)∧ hasNeighbor(c, b) isLocatedIn hasCapital(a, c)∧ isLocatedIn(c, b) exports hasAdvisor(a, c)∧ graduatedFrom(c, b) graduatedFrom</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head></head><label></label><figDesc>, o and s, r , o . Defining the scoring function as ψ(s, r, o) = f (e s , e r ) • e o = z s,r • e o , we further assume that ψ(s, r, o) = e s • g(e r , e o ) = e s • x r,o . A.1 Modifications of the Form s, r , o Using similar argument as the attacks in the form of s , r , o , we can calculate the effect of the attack, ψ(s, r, o) -ψ(s, r, o) as: ψ(s, r, o) -ψ(s, r, o) = (e s -e s )x s,r (10) where x s,r = g(e r , e o ).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head></head><label></label><figDesc>e s -e s =(1 -ϕ)(H s + ϕ(1 -ϕ)x r ,o x r ,o ) -1 x r ,oIn practice, H s is positive definite, making H s + ϕ(1 -ϕ)x r ,o x r ,o positive definite as well, and invertible. Then, we compute the score change as:ψ(s, r, o) -ψ(s, r, o) = x r,o (e s -e s ) = ((1 -ϕ)(H s + ϕ(1 -ϕ)x r ,o x r ,o ) -1 x r ,o )x r,o .(13)A.2 Modifications of the Form s, r , oIn this section we approximate the effect of attack in the form of s, r , o . In contrast to s , r , o attacks, for this scenario we need to consider the change in the e s , upon applying the attack, in approximation of the change in the score as well.Using previous results, we can approximate the e o -e o as:e o -e o =(1 -ϕ)(H o + ϕ(1 -ϕ)z s,r z s,r ) -1 z s,r</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head></head><label></label><figDesc>z s,r (e o -e o ) = z s,r ((1 -ϕ)(H o + ϕ(1 -ϕ)z s,r z s,r ) -1 z s,r )and:(e s -e s )x r,ō = ((1 -ϕ)(H s + ϕ(1 -ϕ)x r ,o x r ,o ) -1 x r ,o )x r,ō and then calculate the change in the score as:ψ(s, r, o) -ψ(s, r, o) = z s,r .(e o -e o ) + (e s -e s ).x r,ō = z s,r ((1 -ϕ)(H o + ϕ(1 -ϕ)z s,r z s,r ) -1 z s,r )+ ((1 -ϕ)(H s + ϕ(1 -ϕ)x r ,o x r ,o ) -1 x r ,o )x r,ō(16)A.3 First-order Approximation of the Change For TransEIn here we derive the approximation of the change in the score upon applying an adversarial modification for TransE[Bordes et al., 2013a]. Using similar assumptions and parameters as before, to calculate the effect of the attack, ψ(s, r, o) (where ψ(s, r, o) = |e s + e r -e o |), we need to compute e o . To do so, we need to derive an efficient computation for e o . First, the derivative of the lossL(G) = L(G) + L( s , r , o) over e o is:∇ eo L(G) = ∇ eo L(G) + (1 -ϕ) z s ,r -e o ψ(s , r , o)(17)where z s ,r = e s + e r , and ϕ = σ(ψ(s , r , o)).At convergence, after retraining, we expect ∇ eo L(G) = 0. We perform first order Taylor approximation of ∇ eo L(G) to get:0 (1 -ϕ) (z s ,r -e o ) ψ(s , r , o) + (H o -H s ,r ,o )(e o -e o )(18)H s ,r ,o = (1 -ϕ)ϕ (z s ,r -e o ) (z s ,r -e o ) ψ(s , r , o) 2 + 1 -ϕ ψ(s , r , o) -(1 -ϕ) (z s ,r -e o ) (z s ,r -e o ) ψ(s , r , o) 3(19)where H o is the d×d Hessian matrix for o, i.e., second order derivative of the loss w.r.t. e o , computed sparsely. Solving for e o gives us:e o = -(1 -ϕ)(H o -H s ,r ,o ) -1 (z s ,r -e o ) ψ(s , r , o) + e o(20) Then, we compute the score change as: ψ(s, r, o) = |e s + e r -e o | = |e s + e r + (1 -ϕ)(H o -H s ,r ,o ) -1 (z s ,r -e o ) ψ(s , r , o) -e o | (21) Calculating this expression is efficient since H o is a d × d matrix.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>Inverter Functions Accuracy, we calculate the accuracy of our inverter networks in correctly recovering the pairs of subject and relation from the test set of our benchmarks.</figDesc><table><row><cell></cell><cell cols="2">WordNet</cell><cell>YAGO</cell><cell></cell></row><row><cell></cell><cell cols="4">DistMult ConvE DistMult ConvE</cell></row><row><cell>Recover s</cell><cell>93.4</cell><cell>96.1</cell><cell>97.2</cell><cell>98.1</cell></row><row><cell>Recover r</cell><cell>91.3</cell><cell>95.3</cell><cell>99.0</cell><cell>99.6</cell></row><row><cell>Recover {s, r}</cell><cell>89.5</cell><cell>94.2</cell><cell>96.4</cell><cell>98.0</cell></row><row><cell></cell><cell cols="2"># Rels #Entities</cell><cell cols="2"># Train #Test</cell></row><row><cell>Nations</cell><cell>56</cell><cell>14</cell><cell>1592</cell><cell>200</cell></row><row><cell>Kinship</cell><cell>26</cell><cell>104</cell><cell>4,006</cell><cell>155</cell></row><row><cell>WN18</cell><cell>18</cell><cell>40,943</cell><cell>141,442</cell><cell>5000</cell></row><row><cell>YAGO3-10</cell><cell>37</cell><cell cols="2">123,170 1,079,040</cell><cell>5000</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Data Statistics of the benchmarks.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 4 :</head><label>4</label><figDesc>Robustness of Representation Models, the effect of adversarial attack on link prediction task. We consider two scenario for the target triples, 1) choosing the whole test dataset as the targets (All-Test) and 2) choosing a subset of test data that models are uncertain about them (Uncertain-Test).</figDesc><table><row><cell cols="8">Hits@1 Change in Per-Relation Breakdown</cell></row><row><cell>isAffiliatedTo</cell><cell></cell><cell></cell><cell>3.30</cell><cell>4.50</cell><cell></cell><cell cols="2">DistMult ConvE</cell></row><row><cell>playsFor</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>5.80</cell><cell></cell><cell>7.20</cell></row><row><cell>isConnectedTo</cell><cell>0.70</cell><cell></cell><cell></cell><cell>4.60</cell><cell></cell><cell></cell></row><row><cell>isMarriedTo</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>6.40</cell><cell>6.90</cell></row><row><cell>0</cell><cell>1</cell><cell>2</cell><cell cols="2">3 Change in Hits@1 4 5</cell><cell>6</cell><cell cols="2">7</cell><cell>8</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 7 :</head><label>7</label><figDesc>Top adversarial triples for target samples. and similarly, we can approximate e s -e s as:e s -e s = (1 -ϕ)(H s + ϕ(1 -ϕ)x r ,o x r ,o ) -1 x r ,o</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>As opposed to additive models, such as TransE[Bordes  et al.,  </p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_1"><p>2013a], as categorized in<ref type="bibr" target="#b27">Sharma et al. [2018]</ref>.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgements</head><p>We would like to thank <rs type="person">Matt Gardner</rs>, <rs type="person">Marco Tulio Ribeiro</rs>, <rs type="person">Zhengli Zhao</rs>, <rs type="person">Robert L. Logan IV</rs>, <rs type="person">Dheeru Dua</rs> and the anonymous reviewers for their detailed feedback and suggestions. This work is supported in part by <rs type="funder">Allen Institute for Artificial Intelligence</rs> (<rs type="grantNumber">AI2</rs>) and in part by <rs type="funder">NSF</rs> awards #<rs type="grantNumber">IIS-1817183</rs> and #<rs type="grantNumber">IIS-1756023</rs>. The views expressed are those of the authors and do not reflect the official policy or position of the funding agencies.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_bVdwGR5">
+					<idno type="grant-number">AI2</idno>
+				</org>
+				<org type="funding" xml:id="_WU5YhS4">
+					<idno type="grant-number">IIS-1817183</idno>
+				</org>
+				<org type="funding" xml:id="_GpsPU5M">
+					<idno type="grant-number">IIS-1756023</idno>
+				</org>
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Poisoning attacks against support vector machines</title>
+		<author>
+			<persName><forename type="first">Battista</forename><surname>Biggio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Blaine</forename><surname>Nelson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pavel</forename><surname>Laskov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Security evaluation of pattern classifiers under attack</title>
+		<author>
+			<persName><forename type="first">Battista</forename><surname>Biggio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giorgio</forename><surname>Fumera</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabio</forename><surname>Roli</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Learning structured embeddings of knowledge bases</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronan</forename><surname>Collobert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multirelational data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Neural Information Processing Systems (NeurIPS)</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+	<note>a</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multirelational data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Neural Information Processing Systems (NeurIPS)</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+	<note>b</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<author>
+			<persName><forename type="first">Marc-Etienne</forename><surname>Brunet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Colleen</forename><surname>Alkalay-Houlihan</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1810.03611</idno>
+		<title level="m">Ashton Anderson, and Richard Zemel. Understanding the origins of bias in word embeddings</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Kbgan: Adversarial learning for knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Liwei</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wang</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Annual Conference of the North American Chapter of the Association for Computational Linguistics (NAACL-HLT)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Adversarial attacks against intrusion detection systems: Taxonomy, solutions and open issues</title>
+		<author>
+			<persName><forename type="first">Igino</forename><surname>Corona</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giorgio</forename><surname>Giacinto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabio</forename><surname>Roli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Information Sciences</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Adversarial attack on graph structured data</title>
+		<author>
+			<persName><forename type="first">Hanjun</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hui</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tian</forename><surname>Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Le</forename><surname>Song</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Hyte: Hyperplane-based temporally aware knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">Swayambhu</forename><surname>Shib Sankar Dasgupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Partha</forename><surname>Nath Ray</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Talukdar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Empirical Methods in Natural Language Processing</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pontus</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<title level="m">Convolutional 2d knowledge graph embeddings. AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Towards interpretable deep neural networks by leveraging adversarial examples</title>
+		<author>
+			<persName><forename type="first">Yinpeng</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hang</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fan</forename><surname>Bao</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1708.05493</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Deep learning for chemical reaction prediction</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Fooshee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Mood</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eugene</forename><surname>Gutman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohammadamin</forename><surname>Tavakoli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregor</forename><surname>Urban</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Frances</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nancy</forename><surname>Huynh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Van Vranken</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pierre</forename><surname>Baldi</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<publisher>Molecular Systems Design &amp; Engineering</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Kblrn: End-to-end learning of knowledge base representations with latent, relational, and numerical features</title>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mathias</forename><surname>Niepert</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1709.04676</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Graph embedding techniques, applications, and performance: A survey</title>
+		<author>
+			<persName><forename type="first">Palash</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emilio</forename><surname>Ferrara</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<publisher>Knowledge-Based Systems</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding via dynamic mapping matrix</title>
+		<author>
+			<persName><forename type="first">Guoliang</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shizhu</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liheng</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Zhao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Annual Meeting of the Association for Computational Linguistics and the 7th International Joint Conference on Natural Language Processing</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Knowledge base completion: Baselines strike back</title>
+		<author>
+			<persName><forename type="first">Rudolf</forename><surname>Kadlec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ondrej</forename><surname>Bajgar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>Kleindienst</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Annual Meeting of the Association for Computational Linguistics (ACL)</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Understanding blackbox predictions via influence functions</title>
+		<author>
+			<persName><forename type="first">Pang</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Koh</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Percy</forename><surname>Liang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">An efficient explanation of individual classifications using game theory</title>
+		<author>
+			<persName><forename type="first">Igor</forename><surname>Kononenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Learning entity and relation embeddings for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Yankai</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuan</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Adversarial sets for regularising neural link predictors</title>
+		<author>
+			<persName><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Demeester</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Rocktäschel</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Riedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Uncertainty in Artificial Intelligence (UAI)</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">A novel embedding model for knowledge base completion based on convolutional neural network</title>
+		<author>
+			<persName><forename type="first">Tu</forename><surname>Dai Quoc Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dat</forename><surname>Dinh Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dinh</forename><surname>Quoc Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Phung</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Annual Conference of the North American Chapter of the Association for Computational Linguistics (NAACL-HLT)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Stranse: a novel embedding model of entities and relationships in knowledge bases</title>
+		<author>
+			<persName><forename type="first">Kairit</forename><surname>Dat Quoc Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lizhen</forename><surname>Sirts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Johnson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Annual Conference of the North American Chapter of the Association for Computational Linguistics</title>
+		<imprint>
+			<publisher>NAACL-HLT</publisher>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">A three-way model for collective learning on multi-relational data</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hans-Peter</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kriegel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Oñoro-Rubio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mathias</forename><surname>Niepert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>García-Durán</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roberto</forename><surname>González-Sánchez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roberto</forename><forename type="middle">J</forename><surname>López-Sastre</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1709.02314</idno>
+		<title level="m">Representation learning for visualrelational knowledge graphs</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">The limitations of deep learning in adversarial settings</title>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Papernot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Mcdaniel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Somesh</forename><surname>Jha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matt</forename><surname>Fredrikson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Berkay Celik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ananthram</forename><surname>Swami</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE European Symposium on Security and Privacy</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Embedding multimodal relational data for knowledge base completion</title>
+		<author>
+			<persName><forename type="first">Pouya</forename><surname>Pezeshkpour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liyan</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sameer</forename><surname>Singh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Empirical Methods in Natural Language Processing</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Towards understanding the geometry of knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Aditya</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Partha</forename><surname>Talukdar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Annual Meeting of the Association for Computational Linguistics (ACL)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Asymmetric lsh (alsh) for sublinear time maximum inner product search (mips)</title>
+		<author>
+			<persName><forename type="first">Anshumali</forename><surname>Shrivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ping</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Neural Information Processing Systems (NeurIPS)</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Reasoning with neural tensor networks for knowledge base completion</title>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">D</forename><surname>Manning</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Ng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Neural Information Processing Systems (NeurIPS)</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Representing text for joint embedding of text and knowledge bases</title>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Pantel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hoifung</forename><surname>Poon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pallavi</forename><surname>Choudhury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Gamon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Empirical Methods in Natural Language Processing</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Compositional learning of embeddings for relation paths in knowledge base and text</title>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Victoria</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hoifung</forename><surname>Poon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Quirk</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Annual Meeting of the Association for Computational Linguistics (ACL)</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Complex embeddings for simple link prediction</title>
+		<author>
+			<persName><forename type="first">Théo</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Éric</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Cane: Context-aware network embedding for relation modeling</title>
+		<author>
+			<persName><forename type="first">Cunchao</forename><surname>Tu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Han</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Annual Meeting of the Association for Computational Linguistics (ACL)</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding: A survey of approaches and applications</title>
+		<author>
+			<persName><forename type="first">Quan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhendong</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Knowledge and Data Engineering</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding by translating on hyperplanes</title>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianwen</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianlin</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">Bishan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Deng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding with hierarchical relation structure</title>
+		<author>
+			<persName><forename type="first">Zhao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fuzhen</forename><surname>Zhuang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fen</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qing</forename><surname>He</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Empirical Methods in Natural Language Processing</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Data poisoning attacks on multitask relationship learning</title>
+		<author>
+			<persName><forename type="first">Mengchen</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>An</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaodong</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sulin</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sinno</forename><surname>Jialin Pan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Generating natural adversarial examples</title>
+		<author>
+			<persName><forename type="first">Zhengli</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dheeru</forename><surname>Dua</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sameer</forename><surname>Singh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note>b</note>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Adversarial attacks on neural networks for graph data</title>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Zügner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amir</forename><surname>Akbarnejad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Günnemann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

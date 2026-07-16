@@ -1,0 +1,838 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Local2Global: Scaling global representation learning on graphs via local training</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2021-07-26">26 Jul 2021</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Lucas</forename><forename type="middle">G S</forename><surname>Jeub</surname></persName>
+							<email>lucasjeub@gmail.com</email>
+						</author>
+						<author>
+							<persName><forename type="first">Giovanni</forename><surname>Colavizza</surname></persName>
+							<email>g.colavizza@uva.nl</email>
+						</author>
+						<author>
+							<persName><forename type="first">Xiaowen</forename><surname>Dong</surname></persName>
+							<email>xdong@robots.ox.ac.uk</email>
+						</author>
+						<author>
+							<persName><forename type="first">Marya</forename><surname>Bazzi</surname></persName>
+							<email>marya.bazzi@warwick.ac.uk</email>
+						</author>
+						<author>
+							<persName><forename type="first">Mihai</forename><surname>Cucuringu</surname></persName>
+							<email>mihai.cucuringu@stats.ox.ac.uk</email>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution">The Alan Turing Institute</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">University of Amsterdam</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff2">
+								<orgName type="institution">University of Oxford</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff3">
+								<orgName type="institution">University of Warwick</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff4">
+								<orgName type="institution">The Alan Turing Institute</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff5">
+								<orgName type="institution">University of Oxford</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff6">
+								<orgName type="institution">The Alan Turing Institute</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Local2Global: Scaling global representation learning on graphs via local training</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2021-07-26">26 Jul 2021</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">001A725A3B05CAC52E0D182F93B455B7</idno>
+					<idno type="arXiv">arXiv:2107.12224v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:13+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>scalable graph embedding</term>
+					<term>distributed training</term>
+					<term>group synchronization</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We propose a decentralised "local2global" approach to graph representation learning, that one can a-priori use to scale any embedding technique. Our local2global approach proceeds by first dividing the input graph into overlapping subgraphs (or "patches") and training local representations for each patch independently. In a second step, we combine the local representations into a globally consistent representation by estimating the set of rigid motions that best align the local representations using information from the patch overlaps, via group synchronization. A key distinguishing feature of local2global relative to existing work is that patches are trained independently without the need for the often costly parameter synchronisation during distributed training. This allows local2global to scale to large-scale industrial applications, where the input graph may not even fit into memory and may be stored in a distributed manner. Preliminary results on medium-scale data sets (up to ∼7K nodes and ∼200K edges) are promising, with a graph reconstruction performance for local2global that is comparable to that of globally trained embeddings. A thorough evaluation of local2global on large scale data and applications to downstream tasks, such as node classification and link prediction, constitutes ongoing work.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>The application of deep learning on graphs, or Graph Neural Networks (GNNs), has recently gained considerable attention. Among the significant open challenges in this area of research is the question of scalability. Cornerstone techniques such as Graph Convolutional Networks (GCNs) <ref type="bibr" target="#b16">[17]</ref> make the training dependent on the neighborhood of any given node. Since in many real-world graphs the number of neighbors grows exponentially with the number of hops taken, the scalability of such methods is a significant challenge. In recent years, several techniques have been proposed to make GCNs more scalable, including layer-wise sampling <ref type="bibr" target="#b10">[11]</ref> and subgraph sampling <ref type="bibr" target="#b5">[6]</ref> approaches (see section 2).</p><p>We contribute to this line of work by proposing a decentralised divide-and-conquer approach to improve the scalability of network embedding techniques. Our "local2global" approach proceeds by first dividing the network into overlapping subgraphs (or "patches") and training separate local node embeddings for each patch (local in the sense that each patch is embedded into its own local coordinate system). The resulting local patch node embeddings are then transformed into a global node embedding (i.e. all nodes embedded into a single global coordinate system) by estimating a rigid motion applied to each patch using the As-Synchronized-As-Possible (ASAP) algorithm <ref type="bibr" target="#b6">[7,</ref><ref type="bibr" target="#b7">8]</ref>. A key distinguishing feature of this "decentralised" approach is that we can train the different patch embeddings separately, without the need to keep parameters synchronised. The benefit of local2global is threefold: (1) it is highly parallelisable as each patch is trained independently; <ref type="bibr" target="#b1">(2)</ref> it can be used in privacy-preserving applications and federated learning setups, where frequent communication between devices is often a limiting factor <ref type="bibr" target="#b12">[13]</ref>, or "decentralized" organizations, where one needs to simultaneously consider data sets from different departments; (3) it can reflect varying structure across a graph through asynchronous parameter learning. Another important advantage of our local2global approach is that it can be directly applied to improve the scalability of a large variety of network embedding techniques <ref type="bibr" target="#b9">[10]</ref>, unlike most of the existing approaches reviewed in section 2 which are restricted to GCNs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">RELATED WORK</head><p>The key scalability problems for GCNs only concern deep architectures where we have 𝑙 nested GCN layers. In particular, a singlelayer GCN is easy to train in a scalable manner using mini-batch stochastic gradient descent (SGD). For simplicity, assume that we have a fixed feature dimension 𝑑, i.e., 𝑑 in = 𝑑 out = 𝑑 for all layers. The original GCN paper <ref type="bibr" target="#b16">[17]</ref> uses full-batch gradient descent to train the model which entails the computation of the gradient for all nodes before updating the model parameters. This is efficient in terms of time complexity per epoch (𝑂 (𝑙𝑚𝑑 + 𝑙𝑛𝑑 2 )) where 𝑛 is the number of nodes and 𝑚 is the number of edges. However, it requires storing all the intermediate embeddings and thus has memory complexity 𝑂 (𝑙𝑛𝑑 + 𝑙𝑑 2 ). Further, as there is only a single parameter update per epoch, convergence tends to be slow.</p><p>The problem with applying vanilla mini-batch SGD (where we only compute the gradient for a sample of nodes, i.e., the batch) to a deep GCN model is that the embedding of the nodes in the final layer depends on the embedding of all the neighbours of the nodes in the previous layer and so on iteratively. Therefore the time complexity for a single mini-batch update approaches that for a fullbatch update as the number of layers increases, unless the network has disconnected components. There are mainly three families of methods <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b5">6]</ref> that have been proposed to make mini-batch SGD training more efficient for GCNs.</p><p>Layer-wise sampling. The idea behind layer-wise sampling is to sample a set of nodes for each layer of the nested GCN model and compute the embedding for sampled nodes in a given layer only based on embeddings of sampled nodes in the previous layer rather than considering all the neighbours as would be the case for vanilla SGD. This seems to have first been used by GraphSAGE <ref type="bibr" target="#b10">[11]</ref>, where a fixed number of neighbours is sampled for each node at each layer. However, this results in a computational complexity that is exponential in the number of layers and also redundant computations as the same intermediate nodes may be sampled starting from different nodes in the batch. Later methods avoid the exponential complexity by first sampling a fixed number of nodes for each layer either independently (FastGCN <ref type="bibr" target="#b2">[3]</ref>) or conditional on being connected to sampled nodes in the previous layer (LADIES <ref type="bibr" target="#b26">[27]</ref>) and reusing embeddings. Both methods use importance sampling to correct for bias introduced by non-uniform node-sampling distributions. Also notable is <ref type="bibr" target="#b3">[4]</ref>, which uses variance reduction techniques to effectively train a GCN model using neighbourhood sampling as in GraphSAGE with only 2 neighbours per node. However, this is achieved by storing hidden embeddings for all nodes in all layers and thus has the same memory complexity as full-batch training.</p><p>Linear model. Linear models remove the non-linearities between the different GCN layers which means that the model can be expressed as a single-layer GCN with a more complicated convolution operator and hence trained efficiently using mini-batch SGD. Common choices for the convolution operator are powers of the normalised adjacency matrix <ref type="bibr" target="#b22">[23]</ref> and variants of personalised Page-Rank (PPR) matrices <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b1">2,</ref><ref type="bibr" target="#b4">5,</ref><ref type="bibr" target="#b17">18]</ref>. Another variant of this approach is <ref type="bibr" target="#b8">[9]</ref>, which proposes combining different convolution operators in a wide rather than deep architecture. There are different variants of the linear model architecture, depending on whether the non-linear feature transformation is applied before or after the propagation (see <ref type="bibr" target="#b1">[2]</ref> for a discussion), leading to predict-propagate and propagate-predict architectures respectively. The advantage of the propagate-predict architecture is that one can pre-compute the propagated node features (e.g., using an efficient push-based algorithm <ref type="bibr" target="#b4">[5]</ref>) which can make training highly scalable. The disadvantage is that this will densify sparse features which can make training harder <ref type="bibr" target="#b0">[1]</ref>. However, the results from <ref type="bibr" target="#b1">[2]</ref> suggest that there is usually not much difference in prediction performance between these options (or the combined architecture where trainable transformations are applied before and after propagation).</p><p>Subgraph sampling. Subgraph sampling techniques <ref type="bibr" target="#b5">[6,</ref><ref type="bibr" target="#b24">25,</ref><ref type="bibr" target="#b25">26]</ref> construct batches by sampling an induced subgraph of the full graph. In particular, for subgraph sampling methods, the sampled nodes in each layer of the model in a batch are the same. In practice, subgraph sampling seems to outperform layer-wise sampling <ref type="bibr" target="#b4">[5]</ref>. GraphSAINT <ref type="bibr" target="#b25">[26]</ref>, which uses a random-walk sampler with an importance sampling correction similar to <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b26">27]</ref>, seems to have the best performance so far. Our local2global approach shares similarities with subgraph sampling, most notably ClusterGCN <ref type="bibr" target="#b5">[6]</ref>, which uses graph clustering techniques to sample the batches. The key distinguishing feature of our approach is that we train independent models for each patch whereas for ClusterGCN, model parameters have to be kept in sync for different batches, which hinders fully distributed training and its associated key benefits (see section 1).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">LOCAL2GLOBAL ALGORITHM</head><p>The key idea behind the local2global approach to graph embedding is to embed different parts of a graph independently by splitting the graph into overlapping "patches" and then stitching the patch node embeddings together to obtain a global node embedding. The stitching of the patch node embeddings proceeds by estimating the rotations/reflections and translations for the embedding patches that best aligns them based on the overlapping nodes.</p><p>Consider a graph 𝐺 (𝑉 , 𝐸) with node set 𝑉 and edge set 𝐸. The input for the local2global algorithm is a patch graph 𝐺 𝑝 (P, 𝐸 𝑝 ), where each node (i.e., a "patch") of the patch graph is a subset of 𝑉 and each patch 𝑃 𝑘 ∈ P is associated with an embedding 𝑿 (𝑘) ∈ R |𝑃 𝑘 |×𝑑 . We require that the set of patches</p><formula xml:id="formula_0">P = {𝑃 𝑘 } 𝑝 𝑘=1</formula><p>is a cover of the node set 𝑉 (i.e., 𝑝 𝑘=1 𝑃 𝑘 = 𝑉 ), and that the patch embeddings all have the same dimension 𝑑. We further assume that the patch graph is connected and that the patch edges satisfy the minimum overlap condition</p><formula xml:id="formula_1">{𝑃 𝑖 , 𝑃 𝑗 } ∈ 𝐸 𝑝 =⇒ |𝑃 𝑖 ∩ 𝑃 𝑗 | ≥ 𝑑 + 1.</formula><p>Note that a pair of patches that satisfies the minimum overlap condition is not necessarily connected in the patch graph.</p><p>The local2global algorithm for aligning the patch embeddings proceeds in two stages and is an evolution of the approach in <ref type="bibr" target="#b6">[7,</ref><ref type="bibr" target="#b7">8]</ref>. We assume that each patch embedding 𝑿 (𝑘) is a perturbed part of an underlying global node embedding 𝑿 , where the perturbation is composed of reflection (𝑍 2 ), rotation (SO(𝑑)), translation (R 𝑑 ), and noise. The goal is to estimate the transformation applied to each patch using only pairwise noisy measurements of the relative transformation for pairs of connected patches. In the first stage, we estimate the orthogonal transformation to apply to each patch embedding, using a variant of the eigenvector synchronisation method <ref type="bibr" target="#b6">[7,</ref><ref type="bibr" target="#b7">8,</ref><ref type="bibr" target="#b19">20]</ref>. In the second stage, we estimate the patch translations by solving a least-squares problem. Note that unlike <ref type="bibr" target="#b6">[7,</ref><ref type="bibr" target="#b7">8]</ref>, we solve for translations at the patch level rather than solving a least squares problem for the node coordinates. This means that the computational cost for computing the patch alignment is independent of the size of the original network and depends only on the amount of patch overlap, the number of patches and the embedding dimension.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Eigenvector synchronisation over orthogonal transformations</head><p>We assume that to each patch 𝑃 𝑖 , there corresponds an unknown group element 𝑆 𝑖 ∈ 𝑂 (𝑑) ≃ 𝑍 2 × 𝑆𝑂 (𝑑) (represented by a 𝑑 × 𝑑 orthogonal matrix), and for each pair of connected patches (𝑃 𝑖 , 𝑃 𝑗 ) ∈ 𝐸 𝑝 we have a noisy proxy for 𝑆 𝑖 𝑆 -<ref type="foot" target="#foot_0">1</ref> 𝑗 , which is precisely the setup of the group synchronization problem.</p><p>For a pair of connected patches 𝑃 𝑖 , 𝑃 𝑗 ∈ P such that {𝑃 𝑖 , 𝑃 𝑗 } ∈ 𝐸 𝑝 we can estimate the relative rotation/reflection by applying the method from <ref type="bibr" target="#b11">[12]</ref> 1 to their overlap as |𝑃 𝑖 ∩ 𝑃 𝑗 | ≥ 𝑑 + 1. Thus, we can construct a block matrix 𝑹 where 𝑹 𝑖 𝑗 is the 𝑑 × 𝑑 orthogonal matrix representing the estimated relative transformation from patch 𝑃 𝑗 to patch 𝑃 𝑖 if {𝑃 𝑖 , 𝑃 𝑗 } ∈ 𝐸 𝑝 and 𝑹 𝑖 𝑗 = 0 otherwise, such that 𝑹 𝑖 𝑗 ≈ 𝑺 𝑖 𝑺 𝑇 𝑗 for connected patches. In the noise-free case, we have the consistency equations 𝑺 𝑖 = 𝑹 𝑖 𝑗 𝑺 𝑗 for all 𝑖, 𝑗 such that {𝑃 𝑖 , 𝑃 𝑗 } ∈ 𝐸 𝑝 . We can combine the consistency equations for all neighbours of a patch to get</p><formula xml:id="formula_2">𝑺 𝑖 = 𝑴 𝑖 𝑗 𝑺 𝑗 , 𝑴 𝑖 𝑗 = 𝑗 𝑤 𝑖 𝑗 𝑹 𝑖 𝑗 𝑗 𝑤 𝑖 𝑗 ,<label>(1)</label></formula><p>where we use 𝑤 𝑖 𝑗 = |𝑃 𝑖 ∩ 𝑃 𝑗 | to weight the contributions as we expect a larger overlap to give a more robust estimate of the relative transformation. We can write eq. ( <ref type="formula" target="#formula_2">1</ref>) as 𝑺 = 𝑴𝑺, where 𝑺 = (𝑺 1 , . . . , 𝑺 𝑝 ) 𝑇 is a 𝑝𝑑 × 𝑑 block-matrix and 𝑴 is a 𝑝𝑑 × 𝑝𝑑 block-matrix. Thus, in the noise-free case, the columns of 𝑺 are eigenvectors of 𝑴 with eigenvalue 1. Thus, following <ref type="bibr" target="#b6">[7,</ref><ref type="bibr" target="#b7">8]</ref>, we can use the 𝑑 leading eigenvectors<ref type="foot" target="#foot_1">2</ref> of 𝑴 as the basis for estimating the transformations. Let 𝑼 = (𝑼 1 , . . . , 𝑼 𝑝 ) 𝑇 be the 𝑝𝑑 × 𝑑 matrix whose columns are the 𝑑 leading eigenvectors of 𝑴, where 𝑼 𝑖 is the 𝑑 × 𝑑 block of 𝑼 corresponding to patch 𝑃 𝑖 . We obtain the estimate Ŝ𝑖 of 𝑺 𝑖 by finding the nearest orthogonal transformation to 𝑼 𝑖 using an SVD <ref type="bibr" target="#b11">[12]</ref>, and hence the estimated rotation-synchronised embedding of patch 𝑃 𝑖 is X (𝑖) = 𝑿 (𝑖) Ŝ𝑇 𝑖 .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Synchronisation over translations</head><p>After synchronising the rotation of the patches, we can estimate the translations by solving a least squares problem.</p><formula xml:id="formula_3">X (𝑘) 𝑖 ∈ R 𝑑 be the (rotation-synchronised) embedding of node 𝑖 in patch 𝑃 𝑘 ( X (𝑘)</formula><p>𝑖 is only defined if 𝑖 ∈ 𝑃 𝑘 ). Let 𝑻 𝑘 ∈ R 𝑑 be the translation of patch 𝑘, then in the noise-free case we have the consistency equations</p><formula xml:id="formula_4">X (𝑘) 𝑖 + 𝑻 𝑘 = X (𝑙) 𝑖 + 𝑻 𝑙 , 𝑖 ∈ 𝑃 𝑘 ∩ 𝑃 𝑙 .<label>(2)</label></formula><p>We can combine the conditions in eq. ( <ref type="formula" target="#formula_4">2</ref>) for each edge in the patch graph to obtain</p><formula xml:id="formula_5">𝑩𝑻 = 𝑪, 𝑪 (𝑃 𝑘 ,𝑃 𝑙 ) = 𝑖 ∈𝑃 𝑘 ∩𝑃 𝑙 X (𝑘) 𝑖 - X (𝑙) 𝑖 |𝑃 𝑘 ∩ 𝑃 𝑙 | ,<label>(3)</label></formula><p>where 𝑻 ∈ R | P |×𝑑 is the matrix such that the 𝑘th row of 𝑻 is the translation 𝑻 𝑘 of patch 𝑃 𝑘 and 𝑩 ∈ {-1, 1} |𝐸 𝑝 |× | P | is the incidence matrix of the patch graph with entries 𝑩 (𝑃 𝑘 ,𝑃 𝑙 ),𝑗 = 𝛿 𝑙 𝑗 -𝛿 𝑘 𝑗 , where 𝛿 𝑖 𝑗 denotes the Kronecker delta. Equation ( <ref type="formula" target="#formula_5">3</ref>) defines an overdetermined linear system that has the true patch translations as a solution in the noise-free case. In the practical case of noisy patch embeddings, we can instead solve eq. ( <ref type="formula" target="#formula_5">3</ref>) in the least-squares sense</p><formula xml:id="formula_6">T = arg min 𝑻 ∈R 𝑝×𝑑 ∥𝑩𝑻 -𝑪 ∥ 2 2 .<label>(4)</label></formula><p>We estimate the aligned node embedding X in a final step using the centroid of the aligned patch embeddings of a node, i.e.,</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>X𝑖 =</head><p>{𝑃 𝑘 ∈ P : 𝑖 ∈𝑃 𝑘 } X (𝑘)</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>𝑖</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>+ T𝑘</head><p>|{𝑃 𝑘 ∈ P : 𝑖 ∈ 𝑃 𝑘 }| .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Scalability of the local2global algorithm</head><p>The patch alignment step of local2global is highly scalable and does not directly depend on the size of the input data. The preprocessing to divide the network into patches scales as 𝑂 (𝑚). The speed-up attainable due to training patches in parallel depends on the oversampling ratio (i.e., the total number of edges in all patches divided by the number of edges in the original graph). As seen in section 4.4, we achieve good results with moderate oversampling ratios.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">EXPERIMENTS 4.1 Data sets</head><p>We consider two data sets to test the viability of the local2global approach to graph embeddings, the Cora citation data set from <ref type="bibr" target="#b23">[24]</ref> and the Amazon photo data set from <ref type="bibr" target="#b18">[19]</ref>. We consider only nodes and edges in the largest connected component (LCC). We show some statistics of the data sets in table <ref type="table" target="#tab_1">1</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Patch graph construction</head><p>The first step in the local2global embedding pipeline is to divide the network 𝐺 (𝑉 , 𝐸) into overlapping patches. In some federatedlearning applications, the network may already be partitioned and some or all of the following steps may be skipped provided the resulting patch graph is connected and satisfies the minimum overlap condition for the desired embedding dimension. Otherwise, we proceed by first partitioning the network into non-overlapping clusters and then enlarging clusters to create overlapping patches. This two-step process makes it easier to ensure that patch overlaps satisfy the conditions for the local2global algorithm without introducing excessive overlaps than if we were to use a clustering algorithm that produces overlapping clusters directly. We use the following pipeline to create the patches:</p><p>• For Cora, we split the network into 10 patches and sparsify the patch graph to a target mean degree 𝑘 = 4. We set the lower bound for the overlap to 𝑙 = 129 and upper bound to 𝑢 = 256. For Amazon   photo, we split the network into 20 patches and sparsify the patch graph to a target mean degree of 𝑘 = 5. We set the lower bound for the overlap to 𝑙 = 256 and the upper bound to 𝑢 = 512.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Embedding model</head><p>As embedding method we consider the variational graph autoencoder (VGAE) architecture of <ref type="bibr" target="#b15">[16]</ref>. We use the Adam optimizer <ref type="bibr" target="#b14">[15]</ref> for training with learning rate set to 0.01 for Cora and 0.001 for Amazon photo and train all models for 200 epochs. We set the hidden dimension of the models to 2 × 𝑑 for Cora and to 4 × 𝑑 for Amazon photo where 𝑑 is the embedding dimension.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Results</head><p>As a first test case for the viability of the local2global approach, we consider a network reconstruction task. We train the models using all edges in the largest connected component and compare three training scenarios full: Model trained on the full data. l2g: Separate models trained on the subgraph induced by each patch and stitched using the local2global algorithm.</p><p>no-trans: Same training as l2g but node embeddings are obtained by taking the centroid over patch embeddings that contain the node without applying the alignment transformations.</p><p>We evaluate the network reconstruction error using the AUC scores based on all edges in the largest connected component as positive examples and the same number of randomly sampled non-edges as negative examples. We train the models for 200 epochs using full-batch gradient descent. We show the results in fig. <ref type="figure" target="#fig_2">1</ref>. For 'full', we report the best result out of 10 training runs. For 'l2g' and 'notrans', we first identify the best model out of 10 training runs on each patch and report the results for stitching the best models.</p><p>Overall, the gap between the results for 'l2g' and 'full' is small and essentially vanishes for higher embedding dimensions. The aligned 'l2g' embeddings consistently outperform the unaligned 'no-trans' baseline.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">CONCLUSION</head><p>In this work, we introduced a framework that can significantly improve the computational scalability of generic graph embedding methods, rendering them scalable to real-world applications that involve massive graphs, potentially with millions or even billions of nodes. At the heart of our pipeline is the local2global algorithm, a divide-and-conquer approach that first decomposes the input graph into overlapping clusters (using one's method of choice), computes entirely local embeddings via the preferred embedding method, for each resulting cluster (exclusively using information available at the nodes within the cluster), and finally stitches the resulting local embeddings into a globally consistent embedding, using established machinery from the group synchronization literature.</p><p>Our preliminary results on medium-scale data sets are promising and achieve comparable accuracy on graph reconstruction as globally trained VGAE embeddings. Our ongoing work consists of two keys steps. A first is to further demonstrate the scalability benefits of local2global on large-scale data sets using a variety of embedding techniques and downstream tasks by comparing with state-of-the-art synchronised subgraph sampling methods, as well as exploring the trade-off between parallelisability and embedding quality as a function of patch size and overlap. A second is to demonstrate particular benefits of locality and asynchronous parameter learning. These have clear advantages for privacy preserving and federated learning setups. It would also be particularly interesting to assess the extent to which this local2global approach can outperform global methods. The intuition and hope in this direction stems from the fact that asynchronous locality can be construed as a regularizer (much like sub-sampling, and similar to dropout) and could potentially lead to better generalization and alleviate the oversmoothing issues of deep GCNs, as observed in <ref type="bibr" target="#b5">[6]</ref>.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: AUC network reconstruction score as function of embedding dimension using full data or stitched patch embeddings for (a) Cora and (b) Amazon photo.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>The cost for computing the matrix 𝑀 is 𝑂 (|𝐸 𝑝 |𝑜𝑑 2 ) where 𝑜 is the average overlap between connected patches (typically 𝑜 ∼ 𝑑) and the cost for computing the vector 𝑏 is 𝑂 (|𝐸 𝑝 |𝑜𝑑). Both operations are trivially parallelisable over patch edges. The translation problem can be solved with an iterative least-squares solver with a per-iteration complexity of 𝑂 (|𝐸 𝑝 |𝑑). The limiting step for local2global is usually the synchronisation over orthogonal transformations which requires finding 𝑑 eigenvectors of a 𝑑 |P | × 𝑑 |P | sparse matrix with |𝐸 𝑝 |𝑑 2 non-zero entries for a per-iteration complexity of 𝑂 (|𝐸 𝑝 |𝑑 3 ). This means that in the typical scenario where we want to keep the patch size constant, the patch alignment scales almost linearly with the number of nodes in the dataset, as we can ensure that the patch graph remains sparse, such that |𝐸 𝑝 | scales almost linearly with the number of patches. The 𝑂 (|𝐸 𝑝 |𝑑 3 ) scaling puts some limitations on the embedding dimension attainable with the local2global approach, though, as we can see from the experiments in section 4.4, it remains feasible for reasonably high embedding dimension.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>Data sets</figDesc><table><row><cell></cell><cell></cell><cell>.</cell><cell></cell></row><row><cell></cell><cell cols="3">nodes in LCC edges in LCC features</cell></row><row><cell>Cora</cell><cell>2485</cell><cell>10 138</cell><cell>1433</cell></row><row><cell>Amazon photo</cell><cell>7487</cell><cell>238 086</cell><cell>745</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head></head><label></label><figDesc>Sparsify patch graph Input: 𝐺 𝑝 (P, 𝐸 𝑝 ), 𝐺 (𝑉 , 𝐸), target patch degree 𝑘 Result: sparsified patch graph 𝐺 𝑝 (P, Ẽ𝑝 ) foreach {𝑃 𝑖 , 𝑃 𝑗 } ∈ 𝐸 𝑝 do Compute conductance weight 𝑐 𝑖 𝑗 = | { (𝑢,𝑣) ∈𝐸 : 𝑢 ∈𝑃 𝑖 ,𝑣 ∈𝑃 𝑗 } | min( | { (𝑢,𝑣) ∈𝐸 : 𝑢 ∈𝑃 𝑖 } |, | { (𝑢,𝑣) ∈𝐸 : 𝑢 ∈𝑃 𝑗 } |) ; foreach {𝑃 𝑖 , 𝑃 𝑗 } ∈ 𝐸 𝑝 do Compute effective resistance 𝑟 𝑖 𝑗 between 𝑃 𝑖 and 𝑃 𝑗 in 𝐺 𝑝 (P, 𝐸 𝑝 , 𝑐) using the algorithm of [21]; Let 𝑤 𝑖 𝑗 = 𝑟 𝑖 𝑗 𝑐 𝑖 𝑗 ; Initialize Ẽ𝑝 with a maximum spanning tree of 𝐺 𝑝 (P, 𝐸 𝑝 , 𝑤); Sample the remaining (𝑘 -1)𝑝 + 1 edges from 𝐸 𝑝 \ Ẽ𝑝 without replacement and add them to Ẽ𝑝 , where edge {𝑃 𝑖 , 𝑃 𝑗 } is sampled with probability 𝑤 𝑖 𝑗 ; return 𝐺 𝑝 (P, Ẽ𝑝 ) Algorithm 2: Create overlapping patches Input: C, 𝐸 𝑝 , 𝐺 (𝑉 , 𝐸), min overlap 𝑙, max overlap 𝑢 Result: Overlapping patches P Initialise P = C; Define the neighbourhood of a set of nodes 𝑈 as 𝑁 (𝑈 ) = { 𝑗 : 𝑖 ∈ 𝑈 , (𝑖, 𝑗) ∈ 𝐸, 𝑗 ∉ 𝑈 }; foreach 𝑃 𝑖 ∈ P do foreach 𝑃 𝑗 s.t. {𝑃 𝑖 , 𝑃 𝑗 } ∈ 𝐸 𝑝 do Let 𝐹 = 𝑁 (𝐶 𝑖 ) ∩ 𝐶 𝑗 ; while |𝑃 𝑖 ∩ 𝐶 𝑗 | &lt; 𝑙/2 do if |𝐹 | + |𝑃 𝑖 ∩ 𝐶 𝑗 | &gt; 𝑢/2 then reduce 𝐹 by sampling uniformly at random such that |𝐹 | = 𝑢/2 -|𝑃 𝑖 ∩ 𝐶 𝑗 |; Let 𝑃 𝑖 = 𝑃 𝑖 ∪ 𝐹 ; Let 𝐹 = (𝑁 (𝐹 ) ∩ 𝐶 𝑗 ) \ 𝑃 𝑖 ; Initialize the patches to P = C and define the patch graph 𝐺 𝑝 (P, 𝐸 𝑝 ), where {𝑃 𝑖 , 𝑃 𝑗 } ∈ 𝐸 𝑝 iff there exist nodes 𝑖 ∈ 𝑃 𝑖 and 𝑗 ∈ 𝑃 𝑗 such that {𝑖, 𝑗 } ∈ 𝐸. (Note that if 𝐺 is connected, 𝐺 𝑝 is also connected.) • Sparsify the patch graph 𝐺 𝑝 to have mean degree 𝑘 using algorithm 1 adapted from the effective-resistance sampling algorithm of [21]. • Expand the patches to create the desired patch overlaps. We define a lower bound 𝑙 ≥ 𝑑 + 1 and upper bound 𝑢 for the desired patch overlaps and use algorithm 2 to expand the patches such that |𝑃 𝑖 ∩ 𝑃 𝑗 | ≥ 𝑙 for all {𝑃 𝑖 , 𝑃 𝑗 } ∈ 𝐸 𝑝 .</figDesc><table><row><cell>return P</cell></row><row><cell>to cluster the networks for the experiments in section 4.4.</cell></row><row><cell>However, for very large networks, more scalable clustering</cell></row><row><cell>algorithms such as FENNEL [22] could be used.</cell></row><row><cell>•</cell></row></table><note><p><p><p><p>Partition the network into 𝑝 non-overlapping clusters C = {𝐶 𝑘 } 𝑝 𝑘=1 such that |𝐶 𝑘 | ≥ 𝑑+1</p>2 for all 𝑘. We use METIS</p><ref type="bibr" target="#b13">[14]</ref> </p>Algorithm 1:</p></note></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>Note that the roation/reflection can be estimated without knowing the relative translation.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>While 𝑴 is not symmetric, it is similar to a symmetric matrix and thus admits a basis of real, orthogonal eigenvectors.</p></note>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Scaling Graph Neural Networks with Approximate PageRank</title>
+		<author>
+			<persName><forename type="first">Aleksandar</forename><surname>Bojchevski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Klicpera</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amol</forename><surname>Kapoor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Blais</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benedek</forename><surname>Rózemberczki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michal</forename><surname>Lukasik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Günnemann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining (KDD &apos;20)</title>
+		<meeting>the 26th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining (KDD &apos;20)<address><addrLine>USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="2464" to="2473" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">PushNet: Efficient and Adaptive Neural Message Passing</title>
+		<author>
+			<persName><forename type="first">Julian</forename><surname>Busch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiaxing</forename><surname>Pi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Seidl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 24th European Conference on Artificial Intelligence (ECAI 2020)</title>
+		<meeting>the 24th European Conference on Artificial Intelligence (ECAI 2020)<address><addrLine>The Netherlands</addrLine></address></meeting>
+		<imprint>
+			<publisher>IOS Press</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1039" to="1046" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">FastGCN: Fast Learning with Graph Convolutional Networks via Importance Sampling</title>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tengfei</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cao</forename><surname>Xiao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 6th International Conference on Learning Representations</title>
+		<meeting>the 6th International Conference on Learning Representations</meeting>
+		<imprint>
+			<date type="published" when="2018">2018. 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Stochastic Training of Graph Convolutional Networks with Variance Reduction</title>
+		<author>
+			<persName><forename type="first">Jianfei</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Le</forename><surname>Song</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 35th International Conference on Machine Learning</title>
+		<meeting>the 35th International Conference on Machine Learning</meeting>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">80</biblScope>
+			<biblScope unit="page" from="942" to="950" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Scalable Graph Neural Networks via Bidirectional Propagation</title>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhewei</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bolin</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaliang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ye</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoyong</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ji-Rong</forename><surname>Wen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems (NeurIPS 2020</title>
+		<imprint>
+			<publisher>Curran Associates, Inc., USA</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="14556" to="14566" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Cluster-GCN: An Efficient Algorithm for Training Deep and Large Graph Convolutional Networks</title>
+		<author>
+			<persName><forename type="first">Wei-Lin</forename><surname>Chiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuanqing</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Si</forename><surname>Si</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samy</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cho-Jui</forename><surname>Hsieh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th ACM SIGKDD Intl. Conference on Knowledge Discovery &amp; Data Mining (KDD &apos;19)</title>
+		<meeting>the 25th ACM SIGKDD Intl. Conference on Knowledge Discovery &amp; Data Mining (KDD &apos;19)<address><addrLine>USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="257" to="266" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Sensor network localization by eigenvector synchronization over the euclidean group</title>
+		<author>
+			<persName><forename type="first">Mihai</forename><surname>Cucuringu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaron</forename><surname>Lipman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amit</forename><surname>Singer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Sensor Networks</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page" from="1" to="42" />
+			<date type="published" when="2012">2012. 2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Eigenvector synchronization, graph rigidity and the molecule problem</title>
+		<author>
+			<persName><forename type="first">Mihai</forename><surname>Cucuringu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amit</forename><surname>Singer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Cowburn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Information and Inference</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="21" to="67" />
+			<date type="published" when="2012">2012. 2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<author>
+			<persName><forename type="first">Emanuele</forename><surname>Fabrizio Frasca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Davide</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Eynard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Federico</forename><surname>Bronstein</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Monti</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2004.11198[cs.LG]</idno>
+		<title level="m">SIGN: Scalable Inception Graph Neural Networks</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Graph embedding techniques, applications, and performance: A survey</title>
+		<author>
+			<persName><forename type="first">Palash</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emilio</forename><surname>Ferrara</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Knowledge-Based Systems</title>
+		<imprint>
+			<biblScope unit="volume">151</biblScope>
+			<biblScope unit="page" from="78" to="94" />
+			<date type="published" when="2018">2018. 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Inductive Representation Learning on Large Graphs</title>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rex</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems (NIPS &apos;17</title>
+		<meeting><address><addrLine>USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">31</biblScope>
+			<biblScope unit="page" from="1025" to="1035" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Closedform solution of absolute orientation using orthonormal matrices</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">P</forename><surname>Berthold</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hugh</forename><forename type="middle">M</forename><surname>Horn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shahriar</forename><surname>Hilden</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Negahdaripour</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the Optical Society of America A</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="page" from="1127" to="1135" />
+			<date type="published" when="1988">1988. 1988</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Advances and Open Problems in Federated Learning</title>
+	</analytic>
+	<monogr>
+		<title level="j">Foundations and Trends in Machine Learning</title>
+		<editor>
+			<persName><forename type="first">Peter</forename><surname>Kairouz</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">H</forename></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Brendan</forename><surname>Mcmahan</surname></persName>
+		</editor>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="page">1</biblScope>
+			<date type="published" when="2021">2021. 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">A Fast and High Quality Multilevel Scheme for Partitioning Irregular Graphs</title>
+		<author>
+			<persName><forename type="first">George</forename><surname>Karypis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vipin</forename><surname>Kumar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">SIAM Journal on Scientific Computing</title>
+		<imprint>
+			<biblScope unit="volume">20</biblScope>
+			<biblScope unit="page" from="359" to="392" />
+			<date type="published" when="1998">1998. 1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Adam: A Method for Stochastic Optimization</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><forename type="middle">Lei</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ba</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6980[cs.LG]</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 3rd International Conference on Learning Representations (ICLR 2015)</title>
+		<meeting>the 3rd International Conference on Learning Representations (ICLR 2015)</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Variational Graph Auto-Encoders</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1611.07308</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Bayesian Deep Learning Workshop</title>
+		<imprint>
+			<date type="published" when="2016">2016. 2016</date>
+		</imprint>
+	</monogr>
+	<note>stat.ML</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Semi-Supervised Classification with Graph Convolutional Networks</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1609.02907[cs.LG]</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 5th International Conference on Learning Representations</title>
+		<meeting>the 5th International Conference on Learning Representations</meeting>
+		<imprint>
+			<date type="published" when="2017">2017. 2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Predict then Propagate: Graph Neural Networks meet Personalized PageRank</title>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Klicpera</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aleksandar</forename><surname>Bojchevski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Günnemann</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1810.05997[cs.LG]</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 7th International Conference on Learning Representations (ICLR 2019)</title>
+		<meeting>the 7th International Conference on Learning Representations (ICLR 2019)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Pitfalls of Graph Neural Network Evaluation</title>
+		<author>
+			<persName><forename type="first">Oleksandr</forename><surname>Shchur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Mumme</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aleksandar</forename><surname>Bojchevski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Günnemann</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1811.05868[cs.LG]</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Angular synchronization by eigenvectors and semidefinite programming</title>
+		<author>
+			<persName><forename type="first">Amit</forename><surname>Singer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Applied and Computational Harmonic Analysis</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="20" to="36" />
+			<date type="published" when="2011">2011. 2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Graph sparsification by effective resistances</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Daniel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nikhil</forename><surname>Spielman</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Srivastava</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">SIAM J. Comput</title>
+		<imprint>
+			<biblScope unit="volume">40</biblScope>
+			<biblScope unit="page" from="1913" to="1926" />
+			<date type="published" when="2011">2011. 2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">FENNEL: Streaming Graph Partitioning for Massive Scale Graphs</title>
+		<author>
+			<persName><forename type="first">Charalampos</forename><surname>Tsourakakis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christos</forename><surname>Gkantsidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bozidar</forename><surname>Radunovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Milan</forename><surname>Vojnovic</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 7th ACM international conference on Web search and data mining (WSDM &apos;14)</title>
+		<meeting>the 7th ACM international conference on Web search and data mining (WSDM &apos;14)<address><addrLine>USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="333" to="342" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Simplifying Graph Convolutional Networks</title>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amauri</forename><surname>Holanda De</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Souza</surname><genName>Jr</genName></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Fifty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kilian</forename><forename type="middle">Q</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Weinberger</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 36th International Conference on Machine Learning</title>
+		<meeting>the 36th International Conference on Machine Learning</meeting>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="6861" to="6871" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Revisiting Semi-Supervised Learning with Graph Embeddings</title>
+		<author>
+			<persName><forename type="first">Zhilin</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">W</forename><surname>Cohen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruslan</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 33rd International Conference on Machine Learning</title>
+		<meeting>the 33rd International Conference on Machine Learning</meeting>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">48</biblScope>
+			<biblScope unit="page" from="40" to="48" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Accurate, Efficient and Scalable Graph Embedding</title>
+		<author>
+			<persName><forename type="first">Hanqing</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongkuan</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ajitesh</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rajgopal</forename><surname>Kannan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Viktor</forename><surname>Prasanna</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2019 IEEE International Parallel and Distributed Processing Symposium (IPDPS)</title>
+		<meeting><address><addrLine>USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="462" to="471" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">GraphSAINT: Graph Sampling Based Inductive Learning Method</title>
+		<author>
+			<persName><forename type="first">Hanqing</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongkuan</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ajitesh</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rajgopal</forename><surname>Kannan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Viktor</forename><surname>Prasanna</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 8th Intl. Conference on Learning Representations</title>
+		<meeting>the 8th Intl. Conference on Learning Representations</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note>ICLR 2020</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Layer-Dependent Importance Sampling for Training Deep and Large Graph Convolutional Networks</title>
+		<author>
+			<persName><forename type="first">Difan</forename><surname>Zou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ziniu</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yewen</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Song</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yizhou</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quanquan</forename><surname>Gu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<meeting><address><addrLine>NeurIPS; USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2019">2019. 2019</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>
