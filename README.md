@@ -1,63 +1,56 @@
-# ML4KGE ModelCard Extraction Pipeline
+![P2MC Logo](https://github.com/oeg-upm/p2mc/blob/main/resources/figures/p2mc_logo.png)
 
-Pipeline automatizado para la extracción de metadatos, tablas y narrativas de artículos científicos (PDFs) orientados a Knowledge Graph Embeddings (KGE). El sistema procesa los documentos y genera representaciones estructuradas en formato JSON-LD listas para ser publicadas como ModelCards.
+Automated pipeline for extracting metadata, tables, and narratives from scientific papers (PDFs) oriented towards Knowledge Graph Embeddings (KGE). The system processes documents and generates structured representations in JSON-LD format, ready to be published as ModelCards.
 
-## Arquitectura del pipeline
+# Pipeline Architecture
+![P2MC Workflow](https://github.com/oeg-upm/p2mc/blob/main/resources/figures/workflow.png)
+The pipeline architecture, as showin in the figure, consists of the following steps:
+1. The PDF file is located and downloaded into the data/raw folder. Two tools are employed: LightOnOCR and SciPDF. Both use PDFs to extract "raw" data. In this step, they access the PDF downloaded in step 1 and return a file each, both stored in data/interim. LightOnOCR returns a JSON, while SciPDF returns an XML.
+2. Receiving those two files as input (or specific parts extracted from them), a variety of models, including LLMs, extract "clean" data. The ModelCardGenerator class coordinates these models and builds the finished JSON-LD ModelCard using their results.
+3. The URIs of the different elements contained in the ModelCard, when possible, are extracted from existing Knowledge Graphs, namely, from [LPWC](https://linkedpaperswithcode.com/resource/LPWC) and [SemOpenAlex](https://semopenalex.org/resource/semopenalex:UniversalSearch)
 
-La arquitectura del pipeline consta de los siguientes pasos:
-El input el sistema es una URL a un PDF de un paper y su output un JSON-LD con todos los campos extraídos de ese paper.
+# Dependencies
+Besides the required packages specified in requirements.txt, the following dependencies are needed to execute the pipeline:
+1. Ollama running locally (Required models: qwen2.5, llama3.1, gemma4).
+2. A Docker container running Grobid (docker pull lfoppiano/grobid:${latest_grobid_version}-full) .
 
+# Project Structure
 
-1. Se descarga el PDF en la carpeta data/raw.
-2. Entran en acción dos herramientas: LightOnOCR y SciPDF. Ambas utilizan PDFs para extraer datos "brutos". En este paso acceden al PDF descargado en el paso 1 y devuelven un fichero cada una, ambos almacenados en data/interim. LightOnOCR devuelve un JSON mientras que SciPDF devuelve un XML.
-3. Recibiendo esos dos archivos como input (o partes específicas extraídas de estos) una varidedad de modelos incluidas llms extraen datos "limpios".
-4. La clase ModelCardGenerator se encarga de coordinar estos modelos y construir con sus resultados un JSON-LD que es la modelcard terminada.
-
-## Dependencias
-
-
-  * [Ollama](https://ollama.ai/) ejecutándose en local (Modelos requeridos: `qwen2.5`, `llama3.1`, `gemma4`).
-  * Un contenedor corriendo Grobid
-  * Se pueden encontrar las librarías necesarias en el requirements.txt
-
-## Estructura del Proyecto
-
-El proyecto sigue la convención estándar de Data Science para separar el código de los datos:
-
-```text
+The project follows the standard Data Science convention for separating code from data:
+<code>
 final_pipeline/
-├── extractors/              # Todos los extractores del paso 3
-├── resources/               # tasks.json y el .joblib encargado de la clasificación de modelos
-├── templates/               # Plantillas que sigue el JSON-LD
-├── utils/                   # Funciones auxiliares genéricas
-├── parsers/                 # Wrappers para SciPDF y LightOCR
-├── pdf_handler.py           # Orquestador principal
-├── model_card_generation_pipeline.py # Ensamblador del JSON-LD
+├── extractors/              # All extractors from step 3
+├── resources/               # tasks.json and the .joblib file for model classification
+├── templates/               # Templates followed by the JSON-LD
+├── utils/                   # Generic helper functions
+├── parsers/                 # Wrappers for SciPDF and LightOCR
+├── pdf_handler.py           # Main orchestrator
+├── model_card_generation_pipeline.py # JSON-LD assembler
 ├── data/
-│   ├── raw/                 # PDFs originales sin procesar
-│   ├── interim/             # Archivos intermedios (XML de Grobid, JSON de tablas)
-│   └── processed/           # ModelCards finales generadas (.json)
-└── testing_data/            # Datasets de prueba iniciales
-```
+│   ├── raw/                 # Original, unprocessed PDFs
+│   ├── interim/             # Intermediate files (Grobid XML, table JSONs)
+│   └── processed/           # Final generated ModelCards (.json)
+└── testing_data/            # Initial test datasets
+</code>
 
+# Usage and Execution
 
-## Uso y ejecución
-
-La forma principal de ejecutar el pipeline es instanciando el orquestador y pasándole la URL de un artículo de arXiv:
+The primary way to run the pipeline is by instantiating the orchestrator and passing it the arXiv URL of a paper:
 
 ```python
 from pdf_handler import PDFHandler
 
-# 1. Instanciar el orquestador
+# 1. Instantiate the orchestrator
 handler = PDFHandler()
 
-# 2. Ejecutar el pipeline para un paper
-# El sistema se saltará los pasos intermedios si los archivos ya existen.
+# 2. Run the pipeline for a paper
+# The system will skip intermediate steps if the files already exist.
 modelcard = pdf_handler.test_handle_pdf("http://arxiv.org/pdf/1802.09691v3.pdf")
-
 ```
 
-## ⚠️ Notas sobre Resiliencia
+# ⚠️ Notes on Resilience
 
-* El pipeline es **idempotente**. Si el proceso falla en el paso 4 (LLMs) tras varios minutos de procesamiento, reiniciar la ejecución NO volverá a procesar el PDF ni el OCR si los archivos ya existen en la carpeta `data/interim/`.
-* Los modelos LLM están configurados con un sistema de reintentos automáticos para mitigar caídas de red o timeouts locales con Ollama.
+The pipeline is idempotent. If the process fails at step 4 (LLMs) after several minutes of processing, restarting the execution will NOT re-process the PDF or the OCR if the files already exist in the data/interim/ folder.
+
+The LLM models are configured with an automatic retry system to mitigate network issues or local timeouts with Ollama.
+
