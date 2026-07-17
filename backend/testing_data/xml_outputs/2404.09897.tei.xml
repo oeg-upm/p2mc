@@ -1,0 +1,1267 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Progressive Knowledge Graph Completion</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-04-15">15 Apr 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Jiayi</forename><surname>Li</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Ruilin</forename><surname>Luo</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Tsinghua University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Jiaqi</forename><surname>Sun</surname></persName>
+							<affiliation key="aff2">
+								<orgName type="institution">Carnegie Mellon University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Jing</forename><surname>Xiao</surname></persName>
+							<affiliation key="aff3">
+								<orgName type="department">Ping An Technology (Shenzhen) Co</orgName>
+								<address>
+									<settlement>Ltd</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<author role="corresp">
+							<persName><forename type="first">Yujiu</forename><surname>Yang</surname></persName>
+							<email>yang.yujiu@sz.tsinghua.edu.cn</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Tsinghua University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="department">Baidu Inc</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Progressive Knowledge Graph Completion</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-04-15">15 Apr 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">6D647C738A5EF58953FDFBA73B62CB8F</idno>
+					<idno type="arXiv">arXiv:2404.09897v1[cs.AI]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:09+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Knowledge Graph Completion (KGC) has emerged as a promising solution to address the issue of incompleteness within Knowledge Graphs (KGs). Traditional KGC research primarily centers on triple classification and link prediction. Nevertheless, we contend that these tasks do not align well with real-world scenarios and merely serve as surrogate benchmarks. In this paper, we investigate three crucial processes relevant to real-world construction scenarios: (a) the verification process, which arises from the necessity and limitations of human verifiers; (b) the mining process, which identifies the most promising candidates for verification; and (c) the training process, which harnesses verified data for subsequent utilization; in order to achieve a transition toward more realistic challenges. By integrating these three processes, we introduce the Progressive Knowledge Graph Completion (PKGC) task, which simulates the gradual completion of KGs in real-world scenarios. Furthermore, to expedite PKGC processing, we propose two acceleration modules: Optimized Top-k algorithm and Semantic Validity Filter. These modules significantly enhance the efficiency of the mining procedure. Our experiments demonstrate that performance in link prediction does not accurately reflect performance in PKGC. A more in-depth analysis reveals the key factors influencing the results and provides potential directions for future research. Codes are available at https://github.com/hyleepp/Continue-KGC.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Knowledge Graphs (KGs) have wide-ranging applications across diverse domains, including question answering <ref type="bibr" target="#b18">(Mohammed et al., 2018)</ref>, information extraction <ref type="bibr" target="#b9">(Han et al., 2018)</ref>, and recommender systems <ref type="bibr" target="#b38">(Zhang et al., 2016)</ref>. Nevertheless, KGs frequently grapple with incompleteness, resulting in the absence of critical factual links <ref type="bibr" target="#b7">(Galárraga et al., 2017)</ref>. Consequently, Knowledge Graph Completion (KGC) assumes a pivotal role in automating the enhancement of KGs <ref type="bibr">(Sun et al., 2019b)</ref>.</p><p>In the past, tasks such as link prediction and triple classification required predicting the tail entity of a query and judging the correctness of the proposed triples, respectively. However, where do these effective queries come from in real-world scenarios? No previous work has explored this issue. Furthermore, the performance of models in these tasks falls short of the high accuracy requirements of KG, as confirmed by prominent companies like Google <ref type="bibr" target="#b22">(Pan et al., 2023)</ref>. Therefore, we advocate for simulating a more realistic scenario in KGC. To meet the requirements for stringent knowledge precision, it is necessary to incorporate a verification process to simulate human-machine collaboration. Additionally, human verifiers face inherent limitations in their daily data processing capacity, underscoring the need for a mining process. Within this process, KGC models curate a specific quota of the most promising facts. These freshly acquired facts, in turn, facilitate the iterative refinement of KGC models through a training process. Finally, we iteratively implement these three processes to form a progressive completion.</p><p>Drawing from the above reasons, we introduce the Progressive Knowledge Graph Completion (PKGC) task. PKGC emulates the gradual process of KG completion, as depicted in Figure <ref type="figure" target="#fig_0">1</ref>. It commences by training a model using a KG and subsequently invokes the model to identify the most promising facts. Thereafter, a limited verifier selects the true facts, integrating them into the KG.Furthermore, we have made substantial strides in expediting the mining process, particularly vital given the exponential growth in potential facts as KGs expand in size. To address this, we introduce two modules: Optimized Top-k and Semantic Validity Filter (SVF), both of which bring about a significant reduction in both space and time complexity. The former implements root filtering within a heap structure and incorporates a batch warm-up strategy, while the latter capitalizes on the semantic properties inherent to KGs.</p><p>In the realm of PKGC, we propose two novel metrics specifically tailored to provide a more realistic evaluation of the model's performance. It becomes apparent that relying on metrics derived from previous Surrogate Knowledge Graph Completion (SKGC) tasks inadequately guides the model's performance in PKGC. Therefore, they are not suitable for selecting models in real scenarios. In light of this observation, we initiate a discussion to delve into the underlying factors influencing model performance in PKGC. We also explore opportunities to leverage verified knowledge in PKGC, as opposed to SKGC, which models entities and relations in a one-off manner. We leverage two simple incremental learning approaches and throw light on them for future research.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>Knowledge Graph Embedding KGC encompasses a diverse array of methods <ref type="bibr" target="#b12">(Ji et al., 2021)</ref>, including embedding-based <ref type="bibr" target="#b2">(Bordes et al., 2013;</ref><ref type="bibr">Wang et al., 2014b;</ref><ref type="bibr">Sun et al., 2019a;</ref><ref type="bibr" target="#b40">Zhang et al., 2022)</ref>, rule-based <ref type="bibr" target="#b8">(Galárraga et al., 2013;</ref><ref type="bibr" target="#b21">Omran et al., 2021)</ref>, and reinforcement learningbased <ref type="bibr" target="#b36">(Xiong et al., 2017;</ref><ref type="bibr">Lin et al., 2018)</ref>. Given the prevalence of the embedding-based approach, often referred to as Knowledge Graph Embedding (KGE), this article primarily centers its focus on this methodology. Notably, KGE methods have consistently dominated the leaderboards of competitions like ogb-wiki2 <ref type="bibr" target="#b11">(Hu et al., 2020)</ref>, a prominent fixture in the field of KGC. To streamline the scope, this paper confines its inquiry to the realm of structural information, excluding description-based approaches <ref type="bibr" target="#b35">(Xie et al., 2016;</ref><ref type="bibr">Wang et al., 2014a;</ref><ref type="bibr" target="#b0">An et al., 2018;</ref><ref type="bibr" target="#b32">Wang et al., 2021;</ref><ref type="bibr" target="#b37">Yao et al., 2019)</ref> within KGE.</p><p>The pioneering distance-based model in KGE, TransE <ref type="bibr" target="#b2">(Bordes et al., 2013)</ref>, conceptualizes each relation as a translation operation. TransR <ref type="bibr" target="#b16">(Lin et al., 2015)</ref> and TransH <ref type="bibr">(Wang et al., 2014b)</ref> employ projections to handle complex relations, while MuRP <ref type="bibr" target="#b1">(Balazevic et al., 2019)</ref> extends the modeling space to hyperbolic geometry to capture hierarchical structures within KGs. In addition to translation, RotatE <ref type="bibr">(Sun et al., 2019a)</ref> introduces rotation as a means to represent relations. RotH <ref type="bibr" target="#b3">(Chami et al., 2020)</ref> further amalgamates these two operations into hyperbolic space. RESCAL <ref type="bibr" target="#b20">(Nickel et al., 2011)</ref> stands as the inaugural bilinear-based model, while CP <ref type="bibr" target="#b10">(Hitchcock, 1927)</ref> simplifies relation matrices to diagonal representations. Deep learningbased models harness convolutional neural networks <ref type="bibr" target="#b6">(Dettmers et al., 2018;</ref><ref type="bibr" target="#b19">Nguyen et al., 2018)</ref>, Transformers <ref type="bibr" target="#b4">(Chen et al., 2021;</ref><ref type="bibr" target="#b30">Vaswani et al., 2017)</ref>, and graph neural networks <ref type="bibr" target="#b24">(Schlichtkrull et al., 2018;</ref><ref type="bibr" target="#b31">Wang et al., 2020;</ref><ref type="bibr" target="#b17">Liu et al., 2021;</ref><ref type="bibr" target="#b27">Tan et al., 2023)</ref> as encoders, synergizing them with the aforementioned decoder models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Methodology</head><p>This section begins with an in-depth exploration of the progressive completion task, further detailed in Section 3.1. Following the introduction of our proposed task formulation, we present two acceleration techniques in Section 3.2: the optimized top-k filtering algorithm and the semantic validity filtering module, both of which render PKGC feasible.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Progressive Knowledge Graph Completion</head><p>To commence, PKGC initiates by partitioning a KG, denoted as F, into two components: the known portion, refered to as F known , and the unknown portion, labeled F un , based on a predefined ratio ρ. </p><formula xml:id="formula_0">F new ← V erif ication 8: F visited ← F visited ∪ F c 9:</formula><p>F known ← F known ∪ F new 10: end for 11: M ← CalculateM etrics Within the training phase, we train a model denoted as s(•) using F known , mirroring the methodology employed in Surrogate Knowledge Graph Completion (SKGC). Given that the Knowledge Graph undergoes alterations following each step, s(•) can be subject to a range of update techniques to adapt to these modifications.</p><p>The mining phase entails s(•) generating a set of n c candidate facts, F c , derived from the entire spectrum of conceivable facts, excluding those present in F known or validated within F visited .</p><p>In the verification phase, the verifier ψ systematically scrutinizes the authenticity of the candidate facts within F c and subsequently incorporates the verified facts into the established KG, F known . In the context of our experiments, this process is emulated by verifying the existence of facts within F un .</p><p>To assess the performance of PKGC, we establish a predefined maximum number of steps, denoted as n s , and subsequently evaluate the metrics detailed in Section 4.1 upon the completion of these steps.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Acceleration for Mining Process</head><p>Given that the mining process can be fundamentally likened to a top-k procedure, executing it without optimization proves to be exceedingly impractical due to the sheer volume of potential facts involved.</p><p>To illustrate the magnitude of this issue, consider a KG housing |E| entities and |R| relations. Such a KG spawns an astronomical |E| 2 |R| potential facts, rendering the storage and effective sorting of these facts unviable through conventional means. In response to this formidable challenge, we introduce two purpose-built modules: Optimized Top-k and SVF. These modules are meticulously crafted to achieve substantial reductions in the time and space resources necessary for mining while preserving efficiency and effectiveness.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.1">Optimized Top-k algorithm</head><p>In order to obviate the necessity of retaining scores for every conceivable triple, we have elected to implement a heap structure, which entails only a modest additional space of O(k). Nevertheless, the unrefined heap-based top-k algorithm endeavors to establish a min-heap and proceeds to insert each potential triple into the heap contingent upon its respective score. Notably, despite the algorithm's time complexity of O(n log(k)) <ref type="bibr" target="#b5">(Cormen et al., 2022)</ref>, its practicality is hampered by the vast scale of |E| 2 |R|.</p><p>To address this issue, we introduce an optimized top-k algorithm that builds upon the fundamental approach. This algorithm comprises two intricately interconnected components: the root filter and the warm-up.</p><p>Root Filter In light of the impracticality of acquiring scores for all conceivable facts in a single sweep, we adopt a strategy of segregating them into a sequence of incremental batches. This sequential approach offers us a unique opportunity to refine the filtration process within each batch by leveraging insights gleaned from previous batches.</p><p>(1, 𝑓 𝑎 )  In this process, the data from the initial batch undergoes decomposition, and its size gradually increases until it reaches a predetermined limit. And subsequent batches maintain a consistent size.</p><formula xml:id="formula_1">(4, 𝑓 𝑐 ) (2, 𝑓 𝑏 ) Root Filter 𝑓 1 𝑓 2 𝑓 3 𝑓 4 ℱ 𝑐 2 0 -1 3 𝑓 1 𝑓 2 𝑓 3 𝑓 4 ℱ 𝑐 ′ 2 0 -1 3</formula><p>As depicted in Figure <ref type="figure" target="#fig_2">2a</ref>, we possess the capability to exclude facts with scores inferior to that of the root element within the heap. This filtration procedure can be executed in parallel, resulting in a substantial acceleration in processing speed without overlooking any candidate facts.</p><p>warm-up While the root filter significantly expedites the processing of subsequent batches, its effectiveness does not extend to the initial batch. We have observed that when dealing with a sizable batch size, the execution of the first batch experiences notable delays. To address this challenge and to maximize the utility of the root filter, we have introduced a warm-up schedule for the batch size within each mining process. Specifically, we initiate with a batch size of 1 and systematically increase it exponentially until it aligns with the intended batch size, as illustrated in Figure <ref type="figure" target="#fig_2">2b</ref>. This approach is designed to mitigate the performance issues associated with larger batch sizes during the initial stages of the mining process.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.2">Semantic Validity Filter</head><p>In addition to delving into the mining process, we tackle the aspect of "what to mine" by introducing a pivotal component, the Semantic Validity Filter (SVF), which efficiently trims down the search space. Our inspiration for this derives from the recognition that not all combinations of entities and relations are valid <ref type="bibr" target="#b14">(Li and Yang, 2022)</ref>. For instance, the head entity of the relation 'isCityOf' can only be the name of a 'city', and not a 'human'.</p><p>The SVF implementation entails acquiring class information for each entity and maintaining a set that documents each pairing of class and relation initially present in the initial known KG F known .</p><p>Algorithm 2 Optimized Top-k with SVF</p><formula xml:id="formula_2">Input: Known Facts F known , Visited Facts F visited , model s(•), mining maximum batch size b max m , class dict D, number of candidate n c Output: Mined candidate knowledge F mined 1: Initialization: Batch begin index b b ← 0, Batch size b m ← 1, min-heap H with n c dummy elements f d that s(f d ) ← -∞ 2: ψ ← GetSV F (F known , D) // SVF 3: Q ← GetV alidQueries(F known , ψ) 4: while b b ≤ Q.size do 5: q ← Q[b b : b b + b m ] 6: F c ← GetCandidateF acts(q) 7: F ′ c ← {f |f ∈ F c , s(f ) &gt; s(H.root)} // Root Filter 8: for triple f ∈ F ′ c do 9: if f / ∈ F visited and s(f ) &gt; s(H.root) then 10: H.replace(f ) 11: end if 12: end for 13: b m ← max(b max m , 2 * b m ) // warm-up 14: b b ← b b + b m 15: end while 16: F mined ← Set(H)</formula><p>Throughout the mining process, we exclusively entertain queries that align with the SVF criteria, effectively eliminating invalid queries and significantly reducing the search space. It's worth noting that in cases where certain entities lack class information during data collection, we abstain from imposing constraints on queries for these entities. We present the operational details of these modules within Algorithm 2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiment</head><p>In this section, our discussion unfolds in a structured manner. We initiate by introducing the experimental setup, elaborated upon in Section 4.1. Subsequently, we unveil the key findings in Section 4.2, culminating in a thorough analysis of the observed phenomena in Section 5.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Experiment Setting</head><p>Datasets Our datasets are meticulously crafted, rooted in FB15k and WN18 <ref type="bibr" target="#b20">(Nickel et al., 2011)</ref>.</p><p>To maintain a consistent initial completion ratio, denoted as ρ, we partition the dataset into two distinct categories: the initial triples, K known , and the unexplored triples, K un . During this data partitioning process, we impose stringent constraints to ensure that undetermined entities and relations do not appear in F un . Comprehensive dataset statistics are thoughtfully presented in Table <ref type="table" target="#tab_1">1</ref>. It's noteworthy that we consciously opted against utilizing the FB15k-237 <ref type="bibr" target="#b28">(Toutanova and Chen, 2015)</ref> and WN18RR <ref type="bibr" target="#b6">(Dettmers et al., 2018)</ref> datasets, favoring a pursuit of more lifelike scenarios. Our primary research focus pivots not on the dataset's inherent complexity, but rather on the nuanced exploration of basic model performance within the context of real-world scenarios.</p><p>Partition In the process of partitioning the dataset, our primary objective is to ensure the comprehensive inclusion of all entities and relations within K known . This goal guides a meticulous procedure, during which we thoroughly scrutinize each triple, diligently recording the entities and relations that make an appearance. In the event that a triple is encountered, containing components that have not yet found a place in our records, it is promptly added to the scaffold set. The remaining triples undergo a division into two distinct segments, this division hinging on the predetermined ratio ρ. One segment becomes K un , while the other segment is integrated into the scaffold set to form K known . For an exhaustive and step-by-step eluci-dation of this partitioning process, we direct your attention to Algorithm 3. </p><formula xml:id="formula_3">F un ← S remain [: len(F total ) -n] 13: F known ← S remain [len(F total ) -n :] + S</formula><p>Baselines Our study encompasses a comprehensive comparative analysis between our task and the well-established traditional structure-based models, which can be categorized into two primary groups: distance-based models and bilinear models. The distance-based models considered in this study are TransE <ref type="bibr" target="#b2">(Bordes et al., 2013)</ref>, Ro-tatE <ref type="bibr">(Sun et al., 2019a)</ref>, and RotE <ref type="bibr" target="#b3">(Chami et al., 2020)</ref>. On the other hand, the bilinear models comprise RESCAL <ref type="bibr" target="#b20">(Nickel et al., 2011)</ref>, CP <ref type="bibr" target="#b10">(Hitchcock, 1927)</ref>, ComplEx <ref type="bibr" target="#b29">(Trouillon et al., 2016)</ref>, QuatE <ref type="bibr" target="#b39">(Zhang et al., 2019)</ref>, and UniBi <ref type="bibr" target="#b13">(Li et al., 2023)</ref>. UniBi stands out for its unique approach of normalizing both the modulus of the entity vector and the spectral radius of the relational matrix to 1.</p><p>Training The PKGC training process consists of three phases: (1) Hyperparameter optimization, (2) Model training, and (3) Model update. During the initial phase, we partition the set of known facts, F known , into training and validation subsets to perform hyperparameter optimization, following the approach established in prior SKGC research. In the second phase, the model is trained using the complete dataset of F known . In the final phase, the model is updated based on verified facts. This paper primarily focuses on the first two phases, with the  third phase introduced in Section 5.3. In these first two phases, we adopt a reciprocal setting wherein we generate a new reciprocal triple (t, r ′ , h) for every (h, r, t) in F known . To enhance the model's expressiveness, we introduce the DURA and Frobenius norm as regularization terms with a positive weight parameter, denoted as λ &gt; 0. Descriptions about hyperparameters are in Appendix C.</p><formula xml:id="formula_4">L = - (h,r,t)∈F train log( exp(s(h, r, t)) t ′ ∈E exp(s(h, r, t ′ )) )+λ•Reg(h, r, t)<label>(1)</label></formula><p>In Equation <ref type="formula" target="#formula_4">1</ref>, we include an additional scalar parameter γ &gt; 0 after s(•) to inherit the setting from UniBi. We give details of the hyperparameter settings in Section C.</p><p>During the mining and verification phases, a scatter chart is constructed to depict the relationship between the completion ratio and the number of steps, guided by K un . We designate the ultimate completion ratio achieved at step k as the critical metric CR@k. Furthermore, we employ the Area Under the Curve (AUC) of the ideal and practical completion curves to quantify an additional indicator, the Model-to-Oracle Area Ratio (MOAR), as illustrated in Figure <ref type="figure" target="#fig_3">3</ref> and computed using Equa-tion 2.</p><formula xml:id="formula_5">M OAR = S1 S1 + S2 (2)</formula><p>We fix k at 200 for the FB15k dataset and at 50 for the WN18 dataset, accounting for variations in the performance of the foundational models on these datasets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Main Result</head><p>The performance of the models on WN18 and FB15k is presented in Table <ref type="table" target="#tab_3">2</ref>. Additionally, we provide a detailed illustration of the dynamics of the models on these datasets through Figure <ref type="figure">4a</ref> and Figure <ref type="figure">4b</ref> to enhance our understanding of the PKGC process.</p><p>Initially, we conduct separate analyses of the models' performance on SKGC and PKGC. Our findings indicate that most models exhibit strong performance on both datasets within the realm of SKGC, whereas this extends to only one dataset within PKGC. Notably, UniBi stands out as the sole model demonstrating commendable performance across all metrics and datasets.</p><p>Furthermore, we note that the performance of models in link prediction does not consistently align with their performance in PKGC. On one hand, the models' performance in link prediction and PKGC sometimes diverges. For instance, RESCAL exhibits the lowest Mean Reciprocal Rank (MRR) on FB15k but secures the third-best result in Completion Ratio (CR). On the other hand, models that perform similarly in link prediction may exhibit differences in PKGC performance. A case in point is the closeness in MRR between UniBi-O(3) and ComplEx (0.548 vs. 0.547), yet they demonstrate disparities in CR (0.995 vs. 0.986). Notably, QuatE and UniBi are the only models performing well across all metrics in both datasets.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Analysis</head><p>In this section, we mainly discuss: 1) What are the key factors in PKGC, for which we have conducted a discussion related to the normalization (RQ1);</p><p>2) The effectiveness of the acceleration module we proposed (RQ2); 3) Improving this task from the perspective of incremental learning, providing a feasible path for future research (RQ3); 4) Whether PKGC can execute in low-resource situation (RQ4).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">RQ1: How Normalization Work in PKGC?</head><p>Given UniBi's remarkable performance over other models, we delve into an investigation to uncover the factors contributing to its strength. UniBi's unique feature lies in its normalization of both entities and relations, which is unusual among bilinearbased models. We argue that UniBi's performance enhancement primarily stems from its ability to make triples comparable. To illustrate, consider two triples: f 1 = (h, r 1 , t) and f 2 = (h, r 2 , t), with corresponding scores s(f 1 ) = a and s(f 2 ) = b, where a &gt; b. Without normalization, determining the relative plausibility of f 1 and f 2 is challenging due to the unaccounted score range. For instance, consider the case where |e| ≤ 1 and s</p><formula xml:id="formula_6">(•) = ρ r • h ⊤ t, confined within [-ρ r , ρ r ],</formula><p>with ρ r 1 = 2a and ρ r 2 = b. Here, s(f 2 ) = b achieves the highest score under relation r 2 , while s(f 1 ) &lt; 2a still has potential for improvement. Thus, f 2 appears more plausible than f 1 . UniBi distinguishes itself from other bilinear-based models by ensuring that s(•) falls within [-1, 1] for any triple, enabling more rational comparisons between relations. We present CP and ComplEx as case studies, showing that both models improve their performance with relation normalization, as shown in Figure <ref type="figure" target="#fig_4">5</ref>. We suggest that this advantage becomes more apparent when the number of triples per relation is limited, shedding light on why UniBi outperforms on FB15k but not on WN18.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">RQ2: Ablation on Acceleration Modules w.r.t. Time cost</head><p>We commence by demonstrating the efficacy of two acceleration modules proposed for knowledge mining. Results in Table <ref type="table" target="#tab_6">3</ref> reveal that all three modules contribute significantly to expediting the mining process, with the root filter exhibiting the most substantial speedup, exceeding 2,000 times. More discussion are in Appendix D.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">RQ3: Incremental Aspect on PKGC</head><p>In order to harness freshly validated knowledge, we employ the approach of incremental learning through retraining and fine-tuning, incorporating both existing and recently confirmed facts into the ongoing training process. We conduct incremental model training at a specified frequency denoted as ∆s (∆s = 5 in our setting). During retraining, our training data encompasses F known , which comprises the verified facts from the most recent ∆s steps denoted as F new . Conversely, during finetuning, our training is exclusively focused on the facts in F new from the recent ∆s steps. Additionally, we introduce an additional term to ensure that the previously acquired entity representations undergo moderate alterations (Formulated expression in Appendix B).</p><p>The outcomes, as depicted in Table <ref type="table" target="#tab_7">4</ref>, pertaining to the WN18 dataset, reveal that retraining often proves effective in bolstering performance, whereas fine-tuning may have adverse consequences. During progressive mining, at every stage, the recently acquired facts consistently receive high rankings. This implies that the model inherently possesses confidence in accurately identifying these factual triplets. Consequently, the impact of incorporating these new data into incremental learning is relatively modest. As emphasized in the context of active learning <ref type="bibr" target="#b23">(Ren et al., 2022)</ref>, it is crucial to emphasize samples near the decision boundary, particularly those involving low-ranking factual triplets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>WN18</head><p>FB15K Model ρ = 0.3 ρ = 0.5 ρ = 0.7 ρ = 0.5 ρ = 0.7 ρ = 0.9 </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">RQ4: Low-resource PKGC</head><p>In this section, we explore low-resource PKGC to showcase its extensive practical applications.</p><p>To achieve this, we reduce ρ, resulting in training the model on a smaller K known while exploring the knowledge within a larger F un . </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>In this paper, we introduce a novel task called PKGC, which offers increased realism and a fundamental distinction by incorporating a finite verifier, and shifts the status of the model to that of a candidate knowledge proposer.In order to make the task more cost-effective, we have devised an optimized top-k algorithm that integrates with the semantic validity filter to significantly expedite the mining process in PKGC. Furthermore, We conduct a comprehensive series of experiments to demonstrate the performance of baseline models and to analyze factors that distinguish them. Our findings indicate that previous metrics and knowledge are insufficient for accurately predicting and explaining phenomena within PKGC. Additionally, We have preliminarily explored the effectiveness of some incremental learning methods within the context of PKGC, highlighting the potential for further development of the task. Hence, we conclude that PKGC not only serves as a novel benchmark but also represents a valuable avenue for investigating models' behavior in a more direct reflection of real-world scenarios. Future research directions include the pursuit of a more effective model and the exploration of methods to adaptively integrate incremental learning into the PKGC framework. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Comparison between PKGC and SKGC A.1 Connectivity Perspecitve</head><p>In this section, we delve into an examination of the task disparities with a specific focus on their connectivity attributes. This analysis involves treating each fact as a vertex and each comparison between facts as an edge, thereby evaluating the connectivity of the resultant graph. As elucidated in Figure <ref type="figure" target="#fig_5">6a</ref>, our findings reveal the following distinctions: (a) triple classification fails to establish any form of graph due to its exclusive reliance on comparisons between facts and a predefined threshold, (b) link prediction yields outcomes for distinct connected components associated with different queries, and (c) mining leads to the creation of a connected graph.</p><p>It is essential to note that in cases where a Knowledge Graph regresses into a homogenous graph characterized by a single relation, there is inevitably only one connected component, which ensures the graph's connectedness. This observation reinforces our belief that, link prediction emerges as a more suitable task in the context of Graph Neural Networks (GNN) instead of KGE.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 Comparison Perspective</head><p>Within this section, our objective is to elucidate the disparities inherent in the evaluation tasks of SKGC and PKGC. We focus on the scope of comparison, in addition to recognizing the apparent distinction in progressiveness.</p><p>SKGC encompasses two fundamental tasks: triple classification and link prediction. As depicted in Figure <ref type="figure" target="#fig_5">6b</ref>, triple classification entails the comparison of each fact with a predefined thresh-old, while link prediction involves juxtaposing facts within the same query (h, r). However, what distinguishes these tasks is the absence of a mechanism for comparing facts between different queries. Consequently, in these tasks, facts remain isolated and segmented in terms of comparison.</p><p>Conversely, the mining process within PKGC mandates a global scope of comparison, permitting the evaluation of any two facts during the process of identifying the top-k facts. This expansive scope is not an inherent feature of SKGC tasks but rather arises as a necessity due to the involvement of realistic verifiers. Given the constraints imposed by limited verifiers<ref type="foot" target="#foot_0">1</ref> , a mining process becomes a vital component, serving to deliver the most valuable candidates.</p><p>In light of these considerations, we contend that the scope represents another pivotal distinction between SKGC and PKGC, complementing the aspect of progressiveness. It is crucial to recognize that this distinction cannot be overcome merely by expanding the number of test samples in SKGC tasks. Even in scenarios where these tasks undergo exhaustive testing, encompassing all possible facts, their comparisons would continue to be confined to individual or partial assessments, failing to adopt a holistic perspective.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Supplementary Details in Incremental Training</head><p>It is noteworthy that we do not apply a uniform regularization term for relation representations, as</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: PKGC consists of training, mining and verification procedures. The knowledge proposed by the KGE model will be added to the knowledge base after verification.</figDesc><graphic coords="2,93.55,70.86,408.16,140.87" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Figure (a) depicts the Root filter process, where lower-scoring triplets are directly filtered out. On the right, Figure (b) demonstrates Batch warm-up.In this process, the data from the initial batch undergoes decomposition, and its size gradually increases until it reaches a predetermined limit. And subsequent batches maintain a consistent size.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Illustration of how to calculate MOAR, which is the ratio of the area enclosed by the actual curve and the ideal curve, respectively.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Ablation studies of relation normalization (RelNorm) on (a) WN18 and (b) FB15k. We utilize CP and ComplEx as examples.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: Two perspectives are used to explain the differences between PKGC and SKGC. Figure (a) provides clarification from the perspective of connectivity. Figure (b) presents it based on the scope of comparison. We use columns to denote all possible facts, and mark facts to be compared with green.</figDesc><graphic coords="11,363.63,70.87,158.40,122.45" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>Statistics of Two Benchmark Datasets.</figDesc><table><row><cell>Dataset</cell><cell>|E|</cell><cell>|R|</cell><cell>|K known | |K un |</cell><cell>ρ</cell></row><row><cell cols="5">FB15k 14,951 1,345 532,989 59,221 0.9</cell></row><row><cell cols="2">WN18 40,943</cell><cell>18</cell><cell cols="2">106,009 45,433 0.7</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head></head><label></label><figDesc>Algorithm 3 Dataset Partition Input: Total Facts F total , initial ratio ρ Output: Known Facts F known , Unexplored Facts F un 1: Initialization: Scaffold triples set S ← ϕ, visited entity set S e ← ϕ, visited relation set S r ← ϕ 2: for (h, r, t) ∈ F total do ← len(F total ) * ρ 11: S remain ← F total -S 12:</figDesc><table><row><cell>3:</cell><cell>if h / ∈ S e or t / ∈ S e or r / ∈ S r then</cell></row><row><cell>4:</cell><cell>S e .add(h)</cell></row><row><cell>5:</cell><cell>S e .add(t)</cell></row><row><cell>6:</cell><cell>S r .add(r)</cell></row><row><cell>7:</cell><cell>S.add((h, r, t))</cell></row><row><cell>8:</cell><cell>end if</cell></row><row><cell cols="2">9: end for</cell></row><row><cell>10: n</cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 2 :</head><label>2</label><figDesc>Results of different models on both previous and progressive metrics. Best results are bold, second ones are underlined.</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>WN18</cell><cell></cell><cell></cell><cell></cell><cell>FB15K</cell></row><row><cell></cell><cell></cell><cell>Model</cell><cell cols="7">MRR Hits@10 MOAR CR@50 MRR Hits@10 MOAR CR@200</cell></row><row><cell></cell><cell></cell><cell>TransE</cell><cell>0.399</cell><cell>0.590</cell><cell>0.223</cell><cell>0.803</cell><cell>0.487</cell><cell>0.731</cell><cell>0.083</cell><cell>0.913</cell></row><row><cell></cell><cell></cell><cell>CP</cell><cell>0.563</cell><cell>0.687</cell><cell>0.515</cell><cell>0.920</cell><cell>0.529</cell><cell>0.749</cell><cell>0.588</cell><cell>0.987</cell></row><row><cell></cell><cell></cell><cell>RotatE</cell><cell>0.595</cell><cell>0.699</cell><cell>0.768</cell><cell>0.935</cell><cell>0.543</cell><cell>0.756</cell><cell>0.621</cell><cell>0.987</cell></row><row><cell></cell><cell></cell><cell>RotE</cell><cell>0.596</cell><cell>0.705</cell><cell>0.765</cell><cell>0.935</cell><cell>0.540</cell><cell>0.761</cell><cell>0.317</cell><cell>0.945</cell></row><row><cell></cell><cell></cell><cell>ComplEx</cell><cell>0.561</cell><cell>0.692</cell><cell>0.630</cell><cell>0.927</cell><cell>0.547</cell><cell>0.765</cell><cell>0.623</cell><cell>0.986</cell></row><row><cell></cell><cell></cell><cell>QuatE</cell><cell>0.596</cell><cell>0.704</cell><cell>0.759</cell><cell>0.933</cell><cell>0.547</cell><cell>0.767</cell><cell>0.637</cell><cell>0.984</cell></row><row><cell></cell><cell></cell><cell>RESCAL</cell><cell>0.548</cell><cell>0.661</cell><cell>0.545</cell><cell>0.892</cell><cell>0.450</cell><cell>0.684</cell><cell>0.668</cell><cell>0.988</cell></row><row><cell></cell><cell></cell><cell cols="2">UniBi-O(2) 0.598</cell><cell>0.712</cell><cell>0.761</cell><cell>0.934</cell><cell>0.550</cell><cell>0.771</cell><cell>0.841</cell><cell>0.994</cell></row><row><cell></cell><cell></cell><cell cols="2">UniBi-O(3) 0.599</cell><cell>0.716</cell><cell>0.762</cell><cell>0.934</cell><cell>0.548</cell><cell>0.768</cell><cell>0.846</cell><cell>0.995</cell></row><row><cell></cell><cell>0.8 1.0</cell><cell>Ideal Curve Actual Curve</cell><cell>S2</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Completion Rate</cell><cell>0.4 0.6</cell><cell></cell><cell>S1</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>0.2</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>0.0</cell><cell></cell><cell>Steps</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head></head><label></label><figDesc>Figures illustrating the dynamic completion process for various models on the WN18 and FB15k datasets. The closer the trend of the curve is to the upper left, the more efficient the model is in performing the dynamic completion. It is evident that UniBi-O(2) and UniBi-O(3) maintain a significant advantage on both datasets, while TransE performs poorly on both.</figDesc><table><row><cell></cell><cell>0.90</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>0.98</cell></row><row><cell>Completion Ratio</cell><cell>0.70 0.75 0.80 0.85</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">QuatE ComplEx RESCAL UniBi_2 TransE RotE CP RotatE UniBi_3</cell><cell>Completion Ratio</cell><cell>0.90 0.92 0.94 0.96</cell><cell>QuatE ComplEx RESCAL UniBi_2 TransE RotE CP RotatE UniBi_3</cell></row><row><cell></cell><cell>0</cell><cell></cell><cell>10</cell><cell>20</cell><cell>Step</cell><cell>30</cell><cell></cell><cell>40</cell><cell></cell><cell>50</cell><cell></cell><cell>0</cell><cell>25</cell><cell>50</cell><cell>75</cell><cell>100 125 150 175 200 Step</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="3">(a) WN18.</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>(b) FB15k.</cell></row><row><cell cols="2">0.91 Figure 4: 0.90 Unibi ComplEx CP</cell><cell>0.92 CR@50</cell><cell>0.93</cell><cell>0.94 w/o RelNorm w/ RelNorm</cell><cell>0.90 Unibi ComplEx CP</cell><cell>0.92</cell><cell>0.94</cell><cell>0.96 CR@200</cell><cell>0.98</cell><cell>1.00 w/o RelNorm 1.02 w/ RelNorm</cell><cell></cell></row><row><cell></cell><cell></cell><cell>(a)</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>(b)</cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 3 :</head><label>3</label><figDesc>Ablation studies on proposed acceleration modules. The results of first two rows are estimated.</figDesc><table><row><cell></cell><cell cols="2">Origin</cell><cell cols="2">Retraining</cell><cell cols="2">Fine-tuning</cell></row><row><cell>Model</cell><cell cols="6">MOAR CR@50 MOAR CR@50 MOAR CR@50</cell></row><row><cell>CP</cell><cell>0.515</cell><cell>0.920</cell><cell>0.570</cell><cell>0.921</cell><cell>0.570</cell><cell>0.920</cell></row><row><cell>RotatE</cell><cell>0.768</cell><cell>0.935</cell><cell>0.766</cell><cell>0.935</cell><cell>0.753</cell><cell>0.928</cell></row><row><cell>ComplEx</cell><cell>0.630</cell><cell>0.927</cell><cell>0.631</cell><cell>0.927</cell><cell>0.637</cell><cell>0.928</cell></row><row><cell>QuatE</cell><cell>0.759</cell><cell>0.933</cell><cell>0.765</cell><cell>0.935</cell><cell>0.764</cell><cell>0.933</cell></row><row><cell cols="2">UniBi-O(2) 0.761</cell><cell>0.934</cell><cell>0.766</cell><cell>0.936</cell><cell>0.758</cell><cell>0.931</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 4 :</head><label>4</label><figDesc>Results of different strategies on WN18 dataset.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 5</head><label>5</label><figDesc></figDesc><table><row><cell>demon-</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>In cases where verifiers are limitless, they could exhaustively enumerate all possible facts, rendering the need for any model obsolete.</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>(3) In this context, e new denotes the updated entity embedding, whereas e old signifies the entity embedding prior to the update.We have detailed the exact loss equations for retraining and fine-tuning in Equations 4 and 5.</p><p>Lretrain = -(h,r,t)∈F known log( exp(s(h, r, t))</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Hyperparameters in Training</head><p>To fully demonstrate the model's potential, we systematically explore hyperparameters, as listed in Table <ref type="table">7</ref>, utilizing the verification data. Of particular significance are the hyperparameters related to regularization, where weights are chosen from a range of values, specifically 0.0, 0.001, 0.003, 0.005, 0.01. The ultimate selection of certain hyperparameters is documented in Table <ref type="table">8</ref>.    </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D Supplementary Details of Proposed Modules Ablation Study D.1 Ablation on Hyperparameters in Mining</head><p>In this section, we examine the influence of hyperparameters on the mining process, with a particular focus on the maximum batch size for mining, denoted as b max m , and the number of candidates, represented as n c . Our results, as depicted in Figure <ref type="figure">7a</ref>, demonstrate that an increase in b max m leads to accelerated completion. Nevertheless, we also note that this acceleration effect saturates as the batch size reaches a specific threshold. We attribute this saturation to the interplay between CPU computations and communication with the GPU.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.2 Detailed Ablation Studies w.r.t Time Cost</head><p>we observe that the root filter alone does not suffice to optimize the process. Furthermore, we have discovered that the SVF module fails to yield significant improvements in the absence of the warm-up module. This limitation is attributed to the fact that the naive root filter consumes the majority of time in the initial batch, as depicted in Figure <ref type="figure">8a</ref>. To address this, Figure <ref type="figure">8b</ref> illustrates how the warm-up module effectively mitigates congestion in the first batch, thus highlighting its importance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.3 Efficiency of Optimized Top-k</head><p>Due to the accumulation of visited facts suggested by Algorithm 1 line 6, the speed of the algorithm decreases with the number of steps. Specifically, as the number of steps increases, the amount of known knowledge increases correspondingly, while the heap decreases its update frequency. Consequently, the efficiency of our algorithm decreases with the number of steps.</p><p>As depicted in Figure <ref type="figure">9a</ref>, the pass rate, representing the percentage of triples retained and sorted, exhibits two distinct trends. On one hand, the pass rate declines with the progression of mining in each step, influenced by the growing heap root that filters more triples. Conversely, the pass rate increases with the number of steps, as a substantial number of triples have been visited in prior steps, resulting in less frequent heap updates. Notably, the algorithm's effectiveness persists despite the declining pass rate.</p><p>Despite a decrease in the quantity of filtered triples with increasing steps, the algorithm's execution time demonstrates a linear growth, maintaining an acceptable range of performance, as depicted in Figure <ref type="figure">9b</ref>. Furthermore, our algorithm exhibits superior performance compared to the naive and incomplete implementation reliant on torch.topk.</p><p>In summary, our experiments provide compelling evidence for the algorithm's effectiveness. It is crucial to acknowledge that the observed variations with the number of steps are contingent upon the assumption that the number of candidates n c is considerably larger than the size of the knowledge graphs. In the context of a larger knowledge graph with the same n c , these variations would be less pronounced.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.4 Performance after SVF</head><p>Initially, we establish a theoretical basis to affirm the feasibility of SVF. Figure <ref type="figure">10a</ref> illustrates the coverage of SVF at various proportions represented by ρ. We examine two scenarios: the conservative case, where entities lacking class information are excluded from the coverage rate calculation, and the actual case, which includes these entities in the calculation. Both curves exhibit relatively minor variations across different values of ρ. In the actual case, the coverage rate is notably high, with an average of 0.99, a level of accuracy suitable for realworld applications. As an example, at ρ = 0.8, the data missed amounts to only 0.08%, a negligible fraction.</p><p>In preceding sections, we have established the effectiveness of SVF in terms of time efficiency. In this section, we assess SVF's effectiveness with regard to performance, focusing on the ComplEx and TransE models. Figure <ref type="figure">10b</ref> demonstrates a significant enhancement in the models' performance resulting from the application of SVF. By using the ComplEx and TransE models for testing, we observe a significant improvement in both filtering efficiency and final completion rates following the integration of SVF. Clearly, without semantic fil-   </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E Supplementary Results of Low-resource PKGC</head><p>In addition to the CR@k results presented in Table 5, we show the results for the MOAR metric in Table <ref type="table">9</ref>.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Accurate text-enhanced knowledge graph representation learning</title>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>An</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xianpei</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Le</forename><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NAACL-HLT</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="745" to="755" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Multi-relational poincaré graph embeddings</title>
+		<author>
+			<persName><forename type="first">Ivana</forename><surname>Balazevic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carl</forename><surname>Allen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothy</forename><forename type="middle">M</forename><surname>Hospedales</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="4465" to="4475" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multirelational data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>García-Durán</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="2787" to="2795" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Lowdimensional hyperbolic knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Ines</forename><surname>Chami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adva</forename><surname>Wolf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Da-Cheng</forename><surname>Juan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Frederic</forename><surname>Sala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sujith</forename><surname>Ravi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Ré</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACL</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="6901" to="6914" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Hitter: Hierarchical transformers for knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Sanxing</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Jiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruofei</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yangfeng</forename><surname>Ji</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.emnlp-main.812</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing, EMNLP 2021, Virtual Event / Punta Cana</title>
+		<meeting>the 2021 Conference on Empirical Methods in Natural Language Processing, EMNLP 2021, Virtual Event / Punta Cana</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2021-07-11">2021. 7-11 November, 2021</date>
+			<biblScope unit="page" from="10395" to="10407" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<author>
+			<persName><forename type="first">Charles</forename><forename type="middle">E</forename><surname>Thomas H Cormen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronald</forename><forename type="middle">L</forename><surname>Leiserson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clifford</forename><surname>Rivest</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Stein</surname></persName>
+		</author>
+		<title level="m">Introduction to algorithms</title>
+		<imprint>
+			<publisher>MIT press</publisher>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pontus</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1811" to="1818" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Predicting completeness in knowledge bases</title>
+		<author>
+			<persName><forename type="first">Luis</forename><surname>Galárraga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Razniewski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Amarilli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabian</forename><forename type="middle">M</forename><surname>Suchanek</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">WSDM</title>
+		<meeting><address><addrLine>Cambridge, UK.</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="375" to="383" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">AMIE: association rule mining under incomplete evidence in ontological knowledge bases</title>
+		<author>
+			<persName><forename type="first">Luis</forename><surname>Antonio Galárraga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christina</forename><surname>Teflioudi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katja</forename><surname>Hose</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabian</forename><forename type="middle">M</forename><surname>Suchanek</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<publisher>WWW</publisher>
+			<biblScope unit="page" from="413" to="422" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Neural knowledge acquisition via mutual attention between knowledge graph and text</title>
+		<author>
+			<persName><forename type="first">Xu</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="4832" to="4839" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">The expression of a tensor or a polyadic as a sum of products</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Frank</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hitchcock</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Mathematics and Physics</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="issue">1-4</biblScope>
+			<biblScope unit="page" from="164" to="189" />
+			<date type="published" when="1927">1927</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Open graph benchmark: Datasets for machine learning on graphs</title>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marinka</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michele</forename><surname>Catasta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">A survey on knowledge graphs: Representation, acquisition, and applications</title>
+		<author>
+			<persName><forename type="first">Shaoxiong</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shirui</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Erik</forename><surname>Cambria</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pekka</forename><surname>Marttinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philip</forename><forename type="middle">S</forename><surname>Yu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Trans Neural Netw Learn Syst</title>
+		<imprint>
+			<biblScope unit="page" from="1" to="21" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Prior bilinear based models for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Jiayi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruilin</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiaqi</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jing</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yujiu</forename><surname>Yang</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2309.13834</idno>
+		<idno>CoRR, abs/2309.13834</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Star: Knowledge graph embedding by scaling, translation and rotation</title>
+		<author>
+			<persName><forename type="first">Jiayi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yujiu</forename><surname>Yang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2202.07130</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Multi-hop knowledge graph reasoning with reward shaping</title>
+		<author>
+			<persName><forename type="first">Victoria</forename><surname>Xi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Caiming</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Xiong</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">EMNLP</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="3243" to="3253" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Learning entity and relation embeddings for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Yankai</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuan</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="2181" to="2187" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">RAGAT: relation aware graph attention network for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Xiyang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huobin</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qinghong</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guangyan</forename><surname>Lin</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/ACCESS.2021.3055529</idno>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Access</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="20840" to="20849" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Strong baselines for simple question answering over knowledge graphs with and without neural networks</title>
+		<author>
+			<persName><forename type="first">Salman</forename><surname>Mohammed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Lin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NAACL-HLT</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="291" to="296" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">A novel embedding model for knowledge base completion based on convolutional neural network</title>
+		<author>
+			<persName><forename type="first">Tu</forename><surname>Dai Quoc Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dat</forename><surname>Dinh Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dinh</forename><forename type="middle">Q</forename><surname>Quoc Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Phung</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NAACL-HLT</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="327" to="333" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">A three-way model for collective learning on multi-relational data</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hans-Peter</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kriegel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="809" to="816" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">An embedding-based approach to rule learning in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Pouya</forename><surname>Ghiasnezhad Omran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kewen</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhe</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Trans. Knowl. Data Eng</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="1348" to="1359" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Large language models and knowledge graphs: Opportunities and challenges</title>
+		<author>
+			<persName><forename type="first">Jeff</forename><forename type="middle">Z</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Razniewski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan-Christoph</forename><surname>Kalo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sneha</forename><surname>Singhania</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiaoyan</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefan</forename><surname>Dietze</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hajira</forename><surname>Jabeen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Janna</forename><surname>Omeliyanenko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matteo</forename><surname>Lissandrini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Russa</forename><surname>Biswas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gerard</forename><surname>De Melo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Angela</forename><surname>Bonifati</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edlira</forename><surname>Vakaj</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mauro</forename><surname>Dragoni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Damien</forename><surname>Graux</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2308.06374</idno>
+		<idno>CoRR, abs/2308.06374</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">A survey of deep active learning</title>
+		<author>
+			<persName><forename type="first">Pengzhen</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yun</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaojun</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Po-Yao</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhihui</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Brij</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaojiang</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Wang</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3472291</idno>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Comput. Surv</title>
+		<imprint>
+			<biblScope unit="volume">54</biblScope>
+			<biblScope unit="issue">9</biblScope>
+			<biblScope unit="page">40</biblScope>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Modeling relational data with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Sejr</forename><surname>Michael</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rianne</forename><surname>Bloem</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Van Den</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><surname>Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Titov</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ESWC</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">10843</biblScope>
+			<biblScope unit="page" from="593" to="607" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">2019a. Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Zhiqing</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhi-Hong</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian-Yun</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<author>
+			<persName><forename type="first">Zhiqing</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shikhar</forename><surname>Vashishth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soumya</forename><surname>Sanyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Partha</forename><surname>Talukdar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yiming</forename><surname>Yang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1911.03903</idno>
+		<title level="m">A re-evaluation of knowledge graph completion methods</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">KRACL: contrastive learning with graph context modeling for sparse knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Zhaoxuan</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zilong</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shangbin</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qingyue</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qinghua</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jundong</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minnan</forename><surname>Luo</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3543507.3583412</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the ACM Web Conference 2023</title>
+		<meeting>the ACM Web Conference 2023<address><addrLine>Austin, TX, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2023-04-30">2023. 30 April 2023 -4 May 2023</date>
+			<biblScope unit="volume">2023</biblScope>
+			<biblScope unit="page" from="2548" to="2559" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Observed versus latent features for knowledge base and text inference</title>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 3rd Workshop on Continuous Vector Space Models and their Compositionality</title>
+		<meeting>the 3rd Workshop on Continuous Vector Space Models and their Compositionality<address><addrLine>Beijing, China</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="57" to="66" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Complex embeddings for simple link prediction</title>
+		<author>
+			<persName><forename type="first">Théo</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Éric</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">48</biblScope>
+			<biblScope unit="page" from="2071" to="2080" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">Ashish</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niki</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Llion</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aidan</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lukasz</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Illia</forename><surname>Polosukhin</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="5998" to="6008" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding via graph attenuated attention networks</title>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bicheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shengwei</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenqian</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Min</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/ACCESS.2019.2963367</idno>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Access</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page" from="5212" to="5224" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">KEPLER: A unified model for knowledge embedding and pre-trained language representation</title>
+		<author>
+			<persName><forename type="first">Xiaozhi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyu</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhaocheng</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhengyan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juanzi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="DOI">10.1162/tacl_a_00360</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Trans. Assoc. Comput. Linguistics</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="176" to="194" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">2014a. Knowledge graph and text jointly embedding</title>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianwen</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianlin</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">EMNLP</title>
+		<imprint>
+			<biblScope unit="page" from="1591" to="1601" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding by translating on hyperplanes</title>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianwen</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianlin</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1112" to="1119" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Representation learning of knowledge graphs with entity descriptions</title>
+		<author>
+			<persName><forename type="first">Ruobing</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jia</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huanbo</forename><surname>Luan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2659" to="2665" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Deeppath: A reinforcement learning method for knowledge graph reasoning</title>
+		<author>
+			<persName><forename type="first">Wenhan</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thien</forename><surname>Hoang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wang</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">EMNLP</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="564" to="573" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<title level="m" type="main">KG-BERT: BERT for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Liang</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengsheng</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Luo</surname></persName>
+		</author>
+		<idno>CoRR, abs/1909.03193</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Collaborative knowledge base embedding for recommender systems</title>
+		<author>
+			<persName><forename type="first">Fuzheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicholas</forename><surname>Jing Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Defu</forename><surname>Lian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xing</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei-Ying</forename><surname>Ma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">KDD</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="353" to="362" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Quaternion knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Shuai</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Tay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lina</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2731" to="2741" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Trans: Transition-based knowledge graph embedding with synthetic relation representation</title>
+		<author>
+			<persName><forename type="first">Xuanyu</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qing</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongliang</forename><surname>Xu</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.findings-emnlp.86</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: EMNLP 2022</title>
+		<meeting><address><addrLine>Abu Dhabi, United Arab Emirates, De</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2022">2022. cember 7-11, 2022</date>
+			<biblScope unit="page" from="1202" to="1208" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

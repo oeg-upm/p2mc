@@ -1,0 +1,1266 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Graph Coarsening via Convolution Matching for Scalable Graph Neural Network Training</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Charles</forename><surname>Dickens</surname></persName>
+							<email>cadicken@ucsc.edu</email>
+						</author>
+						<author>
+							<persName><forename type="first">Eddie</forename><surname>Huang</surname></persName>
+							<email>ewhuang@amazon.com</email>
+						</author>
+						<author>
+							<persName><forename type="first">Aishwarya</forename><surname>Reganti</surname></persName>
+							<email>areganti@amazon.com</email>
+						</author>
+						<author>
+							<persName><forename type="first">Jiong</forename><surname>Zhu</surname></persName>
+							<email>jiongzhu@umich.edu</email>
+						</author>
+						<author>
+							<persName><forename type="first">Karthik</forename><surname>Subbian</surname></persName>
+							<email>ksubbian@amazon.com</email>
+						</author>
+						<author>
+							<persName><forename type="first">Danai</forename><surname>Koutra</surname></persName>
+							<email>dkoutra@amazon.com</email>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution">University of California</orgName>
+								<address>
+									<settlement>Santa Cruz</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">University of Michigan</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Graph Coarsening via Convolution Matching for Scalable Graph Neural Network Training</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="MD5">7C37675C4F28065F72293E8E03CB795C</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:02+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Graph summarization as a preprocessing step is an effective and complementary technique for scalable graph neural network (GNN) training. In this work, we propose the Coarsening Via Convolution Matching (CONVMATCH) algorithm and a highly scalable variant, A-CONVMATCH, for creating summarized graphs that preserve the output of graph convolution. We evaluate CONVMATCH on six realworld link prediction and node classification graph datasets, and show it is efficient and preserves prediction performance while significantly reducing the graph size. Notably, CONVMATCH achieves up to 95% of the prediction performance of GNNs on node classification while trained on graphs summarized down to 1% the size of the original graph. Furthermore, on link prediction tasks, CONVMATCH consistently outperforms all baselines, achieving up to a 2× improvement.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Graph neural networks (GNNs) have achieved state-of-the-art performance on various tasks ranging from recommendation to predicting drug interactions <ref type="bibr" target="#b0">[1]</ref>. However, a drawback of a GNN's modeling capacity is a computationally expensive inference process with a complexity that scales with the size of the graph. Modern techniques for scaling the training of deep models, such as leveraging the parallel structure of GPUs for processing large blocks of data, have been successfully adopted by the GNN community <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b2">3]</ref>. However, graph datasets encountered in real-world applications are on the order of tens of billions of edges <ref type="bibr" target="#b3">[4]</ref> and quickly exceed the costly and limited memory capacity of today's GPUs. Techniques for partitioning and distributing the training graph across computational resources and integrating graph sampling into the training pipeline have been proposed <ref type="bibr" target="#b4">[5]</ref><ref type="bibr" target="#b5">[6]</ref><ref type="bibr" target="#b6">[7]</ref><ref type="bibr" target="#b7">[8]</ref>. Nonetheless, training GNNs is still a highly expensive process, which limits applicability and prohibits large-scale architecture searches. Furthermore, distributed training and sampling techniques introduce their own difficulties. For example, distributed training faces communication overhead across machines <ref type="bibr" target="#b8">[9]</ref>, while sampling techniques bring additional hyperparameters that affect model performance <ref type="bibr" target="#b6">[7,</ref><ref type="bibr" target="#b7">8]</ref>.</p><p>A promising new direction of scalable GNN training is to perform graph summarization, i.e., create a smaller graph with fewer nodes and edges, as a preprocessing step. These methods either sample nodes and edges from the original training graph <ref type="bibr" target="#b9">[10]</ref><ref type="bibr" target="#b10">[11]</ref><ref type="bibr" target="#b11">[12]</ref><ref type="bibr" target="#b12">[13]</ref><ref type="bibr" target="#b13">[14]</ref>, coarsen the original graph by clustering nodes into supernodes <ref type="bibr" target="#b14">[15]</ref>, or create synthetic graph connections and node features <ref type="bibr" target="#b15">[16,</ref><ref type="bibr" target="#b16">17]</ref>. To be applicable for scalable GNN training, the graph summarization process should be faster than fitting a GNN on the original graph. Additionally, the summarized graph should share properties with the original graph such that a GNN can be fit for various downstream tasks with good performance. Existing approaches to graph summarization typically fail to satisfy at least one of the mentioned desirable properties (Table <ref type="table">1</ref>).</p><p>In this work, we introduce Coarsening Via Convolution Matching (CONVMATCH), a highly scalable graph coarsening algorithm. CONVMATCH iteratively merges supernodes that minimize a cost Table <ref type="table">1</ref>: Qualitative comparison of graph summarization methods. 'Summary': the type of summarized graph produced; 'NC/LP': summarized graph can be used to train a model for node classification or link prediction, resp.; 'No GNN on full graph': does not require fitting a GNN on the full graph; 'Multi-level': multiple levels of summarization produced; 'Merge Strategy': if applicable, the strategy for selecting nodes to merge. quantifying the change in the output of graph convolution. Notably, CONVMATCH merges supernodes that are structurally similar, allowing the algorithm to identify and summarize redundant nodes that are distant or even disconnected in the original graph. Our primary contributions in this work are:</p><p>• New Approach: We introduce CONVMATCH, a coarsening algorithm that preserves the output of graph convolutions.</p><p>• Highly-scalable Variant: We propose a principled approximation to computing costs in the CONVMATCH algorithm, A-CONVMATCH, which allows it to scale to large graphs.</p><p>• Extensive Empirical Analysis: We perform an extensive empirical analysis demonstrating our method's ability to summarize large-scale graphs and preserve GNN prediction performance. On link prediction tasks, CONVMATCH achieves up to a 2× prediction performance improvement over the best baseline. In node classification, it achieves up to 95% of the prediction performance of a GNN on a graph that is 1% the size of the original.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>We give a qualitative comparison of our CONVMATCH variants to the most relevant work in Table <ref type="table">1</ref>.</p><p>Coreset Selection. Coreset methods aim to find a subset of training examples such that a model trained on the subset will perform similarly to a model trained on the complete dataset <ref type="bibr" target="#b9">[10]</ref><ref type="bibr" target="#b10">[11]</ref><ref type="bibr" target="#b11">[12]</ref><ref type="bibr" target="#b12">[13]</ref><ref type="bibr" target="#b13">[14]</ref>.</p><p>Herding, proposed by <ref type="bibr" target="#b11">Welling (2009)</ref>  <ref type="bibr" target="#b11">[12]</ref> is a coreset technique in which training examples are first mapped to an embedding space and then clustered by class. Examples closest to the cluster center in the embedding space are selected. The KCenter algorithm <ref type="bibr" target="#b12">[13]</ref> similarly embeds training data and then incrementally selects examples with the largest minimum distance to the growing cluster subset.</p><p>Graph Condensation. Distillation and condensation techniques search for a small synthetic dataset such that model parameters fit on the synthetic dataset are approximate minimizers of the training objective on the original dataset <ref type="bibr" target="#b15">[16]</ref><ref type="bibr" target="#b16">[17]</ref><ref type="bibr" target="#b17">[18]</ref><ref type="bibr" target="#b19">[20]</ref><ref type="bibr" target="#b20">[21]</ref><ref type="bibr" target="#b21">[22]</ref><ref type="bibr" target="#b22">[23]</ref><ref type="bibr" target="#b23">[24]</ref>. Recently, Jin et al. (2022) <ref type="bibr" target="#b17">[18]</ref> extended the dataset condensation via gradient matching scheme proposed by Zhao et al. (2021) <ref type="bibr" target="#b15">[16]</ref> with the GCond algorithm, which synthesizes graph data for training GNNs, and later with DosCond, which performs one-step gradient matching to find the synthesized graph <ref type="bibr" target="#b16">[17]</ref>. Alternatively, Liu et al. ( <ref type="formula">2022</ref>) <ref type="bibr" target="#b24">[25]</ref> propose a condensation method for creating a synthetic graph that aims to match statistics of the receptive field of the original graph nodes. CONVMATCH is not a graph condensation method as it does not generate a fully synthetic graph by matching graph statistics or learning loss gradients of training nodes computed with the original graph structure. CONVMATCH does use a structural embedding to create node pairs initially; however, the embedding does not need to be learned.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Graph Coarsening.</head><p>Coarsening is a graph summarization <ref type="bibr" target="#b25">[26]</ref> technique in which nodes and/or edges from an original graph are merged to form a supergraph. Graph coarsening methods are widely applied and studied for problems ranging from influence analysis <ref type="bibr" target="#b26">[27]</ref>, visualization <ref type="bibr" target="#b27">[28]</ref><ref type="bibr" target="#b28">[29]</ref><ref type="bibr" target="#b29">[30]</ref>, combinatorial optimization <ref type="bibr" target="#b30">[31,</ref><ref type="bibr" target="#b31">32]</ref>, and, recently, scaling graph embeddings <ref type="bibr" target="#b14">[15,</ref><ref type="bibr" target="#b32">[33]</ref><ref type="bibr" target="#b33">[34]</ref><ref type="bibr" target="#b34">[35]</ref><ref type="bibr" target="#b35">[36]</ref><ref type="bibr" target="#b36">[37]</ref><ref type="bibr" target="#b37">[38]</ref>. Moreover, coarsening methods typically have the practically advantageous property of producing multi-level summaries, i.e., producing summaries at multiple level of granularity. <ref type="bibr" target="#b14">Huang et al. (2021)</ref>  <ref type="bibr" target="#b14">[15]</ref> specifically proposed coarsening to overcome scalability issues of GNN training. The authors coarsen the graph used for training the GNN, with algorithms by Loukas (2019) <ref type="bibr" target="#b18">[19]</ref>. CONVMATCH is a graph coarsening algorithm that aims to preserve the graph convolution operations that are fundamental to spectral-based GNNs. CONVMATCH differs from existing coarsening approaches for scalable GNN training in that a structural embedding is used to initially pair nodes to consider for merging rather than pair nodes based on their proximity in the original graph.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Preliminaries</head><p>We start with key notations and the necessary background for describing our proposed approach.</p><p>Graph Notations. Let G = (V, E) denote a graph with a node attribute matrix X ∈ R n×d , where n = |V| and d &gt; 0. Moreover, let A ∈ {0, 1} n×n be the adjacency matrix corresponding to the graph G, and D be the diagonal degree matrix.</p><p>Graph Coarsening. A coarse graph is defined from a partitioning of the nodes into n ′ ≤ n clusters:</p><formula xml:id="formula_0">P = {C 1 , C 2 , • • • , C n ′ }.</formula><p>Each partition, C i ∈ P, is referred to as a supernode. The partitioning is represented by a partition matrix P ∈ P ′ ∈ {0, 1} n×n ′ j P ′ i,j = 1, ∀i ≜ P(n, n ′ ), where entry P i,j = 1 if and only if v i ∈ C j . Given the partition matrix, the coarse graph G ′ = (V ′ , E ′ ) is constructed with an adjacency matrix A ′ ≜ P T AP and degree matrix D ′ ≜ P T DP. We define the supernode size matrix of the coarse graph as</p><formula xml:id="formula_1">C ≜ diag([|C 1 |, |C 2 |, • • • , |C n ′ |]).</formula><p>Then, the coarse node attribute matrix is given as X ′ ≜ C -1 P T X. Spectral Graph Convolutions. Spectral-based GNNs are a prominent class of models rooted in graph Fourier analysis <ref type="bibr" target="#b38">[39]</ref><ref type="bibr" target="#b39">[40]</ref><ref type="bibr" target="#b40">[41]</ref><ref type="bibr" target="#b41">[42]</ref><ref type="bibr" target="#b42">[43]</ref>. These methods generally assume graphs to be undirected and rely on the graph Laplacian: ∆ ≜ D -A, and its eigendecomposition: ∆ = UΛU T , where U ∈ R n×n is an orthonormal matrix comprising the eigenvectors of ∆, and</p><formula xml:id="formula_2">Λ = diag(λ 1 , • • • , λ n ) is the diagonal matrix of eigenvalues. The graph Fourier transform of a signal x ∈ R n over the graph G is defined as F G (x) ≜ U T x.</formula><p>As U is an orthonormal matrix, the inverse graph Fourier transform is thus</p><formula xml:id="formula_3">F -1 G (x) ≜ Ux.</formula><p>The graph convolution of a signal x ∈ R n and a signal, or filter, g ∈ R n , is the inverse transform of the element-wise product (⊙) of the signals in the transformed domain:</p><formula xml:id="formula_4">g ⋆ G x ≜ F -1 G (F G (x) ⊙ F G (g)) = U(U T x ⊙ U T g).<label>(1)</label></formula><p>Spectral-based GNNs use this definition to motivate architectures that approximate graph convolutions and parameterize the filter. We write g θ to denote a filter parameterized by a scalar θ. Kipf and Welling (2017) <ref type="bibr" target="#b40">[41]</ref> make the following principled approximation of graph convolution:</p><formula xml:id="formula_5">g θ ⋆ G x ≈ θ( D-1 2 Ã D-1 2 )x,<label>(2)</label></formula><p>where Ã = A + I (graph with self-loops) and D is the degree matrix of Ã. A K-layer graph convolutional network (GCN) is a recursive application of Eq. ( <ref type="formula" target="#formula_5">2</ref>) and a activation function, σ(•):</p><formula xml:id="formula_6">H (K) ≜ X K = 0 σ(( D-1 2 Ã D-1 2 )H (K-1) Θ (K) ) o.w.<label>(3)</label></formula><p>Note that the graph signal is generalized to an (n × f ) matrix X and each GCN layer is parameterized by a matrix Θ (K) . Furthermore, defining 1) and H (0) ≜ X, we have the equivalent compact form:</p><formula xml:id="formula_7">H(K) ≜ ( D-1 2 Ã D-1 2 )H (k-</formula><formula xml:id="formula_8">H (K) ≜ σ( H(K) Θ (K) ).</formula><p>A notable instantiation of the GCN architecture proposed by <ref type="bibr" target="#b42">Wu et al. (2019)</ref> <ref type="bibr" target="#b42">[43]</ref> is the simplified GCN (SGC), which uses the identity operator as the activation. K recursive applications of SGC layers is equivalent to a single linear operator acting on ( D-</p><formula xml:id="formula_9">1 2 Ã D-1 2 ) K X: H (K) SGC ≜ ( D-1 2 Ã D-1 2 ) K XΘ.<label>(4)</label></formula><p>This expression illustrates the primary benefits of the SGC architecture; the result of ( D-1 2 Ã D-1 2 ) K X is cached so future inferences do not require computation of the intermediate representations of nodes. Moreover, the parameter space reduces to a single matrix Θ.</p><p>Coarse Graph Convolutions. <ref type="bibr" target="#b14">Huang et al. (2021)</ref> <ref type="bibr" target="#b14">[15]</ref> propose coarse graph convolution layers. Setting Ã′ ≜ A ′ + C and D′ ≜ D ′ + C, a coarse graph convolution is recursively defined as</p><formula xml:id="formula_10">H ′(K) ≜ X ′ K = 0 σ(( D′-1 2 Ã′ D′-1 2 )H ′(K-1) Θ (K) ) o.w. (<label>5</label></formula><formula xml:id="formula_11">)</formula><p>Algorithm 1: 1) we have the compact expression: H ′(K) ≜ σ( H′(K) Θ (K) ). Note that the dimensions of the parameter matrix, Θ (K) , of a coarse graph convolution layer is not dependent on the partition P, but rather on the dimensions of the original node attribute matrix X and can thus be applied to Eq. (3).</p><formula xml:id="formula_12">CONVMATCH input :Graph G = (V, E, X), Ratio r, Merges per level k output :Coarsened graph G ′ = (V ′ , E ′ , X ′ ) G ′ = (V ′ , E ′ , X ′ ) ← G = (V, E, X); P ← I; H′ ← ( D-1 2 Ã D-1 2 )X; candidates ← CandidateSupernodes(G ′ ); supernode_costs ← ComputeCosts(G ′ , H′ , candidates); while |V ′ | &gt; r • |V| do G ′ , P, H′ , supernodes ← Merge(G ′ , TopKNonOverlap(supernode_costs, k)); supernode_costs ← ComputeCosts(G ′ , H′ , Neighborhood(supernodes)); Similar to GCN convolutions, defining H ′(0) ≜ X ′ and H′(K) ≜ ( D′-1 2 Ã′ D′-1 2 )H ′(K-</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">CONVMATCH: Coarsening Via Convolution Matching</head><p>A coarsening algorithm designed for scalable GNN training should: (1) produce a small coarsened graph, and (2) a GNN fit on the coarsened graph should have a similar prediction performance to a GNN fit on the original graph. We hypothesize, and empirically verify in Section 5, that preserving the output of graph convolutions by minimizing the difference in the intermediate node representations computed for a GCN layer and a coarse graph convolution layer produces good coarsenings for scalable training of spectral-based GNNs. In this section, we formalize the notion of preserving the output of graph convolutions with a combinatorial optimization problem. We then introduce two coarsening methods: Coarsening Via Convolution Matching (CONVMATCH) and a highly scalable variant, A-CONVMATCH, both approximately solving the proposed optimization problem.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Convolution Matching Objective</head><p>Preserving the output of GCN graph convolution for a given graph signal x and parameterized filter g θ is formalized by the following problem:</p><formula xml:id="formula_13">arg min P∈P(n,n ′ ) ∥θP( D′-1 2 Ã′ D′-1 2 )x ′ -θ( D-1 2 Ã D-1 2 )x∥ 1 1 .<label>(6)</label></formula><p>In words, we aim to find a partition matrix that minimizes the sum of the L 1 distances between the node representations obtained via the output of a single graph convolution on the original and coarsened graph. The parameter θ acts as a positive scalar multiple in our objective and therefore minimizing the difference in unscaled GCN convolution operation is equivalent.</p><p>We generalize the objective in Eq. ( <ref type="formula" target="#formula_13">6</ref>) to multi-dimensional graph signals by formulating a multiobjective problem. Specifically, we equally weigh the difference in the GCN convolution operation for each component of the graph signal to define a linear scalarization of the multi-objective problem:</p><formula xml:id="formula_14">arg min P∈P(n,n ′ ) f i=1 ∥P( D′-1 2 Ã′ D′-1 2 )x ′ i -( D-1 2 Ã D-1 2 )x i ∥ 1 1 ,<label>(7)</label></formula><p>where x i and x ′ i are the i ′ th components of the f -dimensional graph signals X and X ′ . The resulting objective ensures that when fitting GNN parameters using the coarsened graph, the parameters are trained to operate on a matrix that is close to the original. It is important to note that the coarsening problem formulated in Eq. ( <ref type="formula" target="#formula_14">7</ref>) does not restrict the partitioning to preserve connections in the original graph, i.e., two nodes that are distant or even existing in disconnected components of the original graph may be merged into a single supernode.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">CONVMATCH</head><p>A brute-force approach solving Eq. ( <ref type="formula" target="#formula_14">7</ref>) by computing the cost of all partitionings of the nodes is an intractable procedure as the number of partitionings grows combinatorially with the number of nodes. The cost c i,j of merging every pair of nodes (i, j) in the merge-graph is then computed and a set of lowest-cost node pairs are merged into supernodes. This process is repeated until the desired coarsening ratio is reached.</p><p>We therefore take a bottom-up hierarchical agglomerative clustering approach with CONVMATCH to find an approximate solution. CONVMATCH is outlined in Algorithm 1 (and Algs. 2-3 in the Appendix) and illustrated in Figure <ref type="figure" target="#fig_0">1</ref>. In short, CONVMATCH proceeds by first, in Step 1, computing the intermediate node representation obtained via a coarse graph convolution (Eq. ( <ref type="formula" target="#formula_6">3</ref>)) and creating an initial set of candidate node pairs, or supernodes. Then, Step 2 computes a cost for each pair measuring the change in the objective value of Eq. ( <ref type="formula" target="#formula_14">7</ref>) caused by creating the supernode, i.e., the change in the GCN convolution output. Finally, Step 3 of CONVMATCH finds a number of lowest-cost node pairs, merges them, and finds new node pair candidates and costs. This process is repeated until the desired coarsening ratio is reached. As a hierarchical approach, ConvMatch produces multiple levels of coarsening, i.e., we refer to a the graph after ℓ passes of the ConvMatch algorithms a level-ℓ coarsened graph. In the following subsections, we describe the processes for generating candidate supernodes, computing supernode costs, and finally merging nodes.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.1">Step 1: Candidate Supernodes</head><p>Considering all ∼ n 2 node pairs as candidate supernodes is infeasible for large scale graphs with millions of nodes and edges. We therefore only look at a subset of all possible pairs that captures both attribute and structural similarities between nodes. Specifically, to generate the initial set of candidate supernodes CONVMATCH pairs nearest neighbors in the embedding space of a trivially parameterized (Θ = I) K-layer SGC network:</p><formula xml:id="formula_15">H (K) SGC = ( D-1 2 Ã D-1 2 ) K XI.</formula><p>This embedding is the output of K recursive applications of a GCN convolution Eq. ( <ref type="formula" target="#formula_5">2</ref>), the very operation we are aiming to preserve. The supernode candidate set defines the merge-graph: G merge = (V ′ , E merge ), where, initially, V ′ = V and E merge is the set of edges connecting the generated node pairs. The embedding step has a computational time complexity of O(K • d avg • |V|), where K is the depth of the SGC network being used and d avg is the average degree of nodes in the graph. Note that computing the embedding is embarrassingly parallelizable. This step is illustrated in Figure <ref type="figure" target="#fig_0">1</ref> as the initial merge graph creation. See Appendix B for a more detailed description and algorithm.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.2">Step 2: Supernode Cost Computation</head><p>Each edge connecting two supernodes, u, v ∈ V ′ , in the merge-graph, G merge = (V ′ , E merge ), is associated with a cost quantifying the objective value in Eq. ( <ref type="formula" target="#formula_14">7</ref>) for a partitioning that merges the incident supernodes. Let P (u,v) be the partition matrix merging supernodes u and v. Moreover, let H(1)</p><p>(l) and H(1) (l,P (u,v) ) represent the coarse graph convolution node representations obtained before and after applying the partitioning P at level l, respectively. Then, the cost of merging two supernodes is:</p><formula xml:id="formula_16">cost(u, v) ≜ ∥P (u,v) H(1) (l,P (u,v) ) - H(1) (l) ∥ 1 1 .<label>(8)</label></formula><p>A scalable algorithm and an illustration of an instance of the supernode cost computation is provided in Appendix C. Computing the cost of merging two nodes, u and v, exactly as it is defined in Eq. ( <ref type="formula" target="#formula_16">8</ref>) has a time complexity of O(d u + d v ), where d u and d v are the degrees of u and v, respectively. This is a result of the fact that merging nodes u and v effects the representation of each neighbor of u and v. In Figure <ref type="figure" target="#fig_0">1</ref>, edges in the merge graph are attributed with this cost. Caching techniques for scaling the evaluation of Eq. ( <ref type="formula" target="#formula_16">8</ref>) are described in Appendix E.</p><p>A-CONVMATCH. Motivated by the following result, we propose A-CONVMATCH, an approximation of the supernode cost computation that yields significant improvements in graph summarization time. Theorem 1. The following is a tight upper bound on Eq. ( <ref type="formula" target="#formula_16">8</ref>)</p><formula xml:id="formula_17">cost(u, v) ≤ ∥ H(1) (l) [u] -P (u,v) H(1) (l,P (u,v) ) [(u, v)]∥ 1 1 + ∥ H(1) (l) [v] -P (u,v) H(1) (l,P (u,v) ) [(u, v)]∥ 1 1 + ∥x (u,v) -xu∥ 1 1 i∈N ({u}) aui (di + |Ci|) + ∥x (u,v) -xv∥ 1 1 i∈N ({v}) avi (di + |Ci|) ,<label>(9)</label></formula><p>where xi</p><formula xml:id="formula_18">≜ xi √ (di+|Ci|)</formula><p>are the normalized features for supernode i. The bound is satisfied with</p><formula xml:id="formula_19">equality when N (u) ∩ N (v) = ∅.</formula><p>The proof of Theorem 1 is provided in Appendix F. We use this bound as an approximation of the cost of merging two nodes in A-CONVMATCH. This approximation allows the cost of merging two nodes to be a function of properties local to the two nodes being considered, making the cost computation fast and highly scalable. More formally, the time complexity of computing the approximate cost of merging two nodes, u and v, is a constant, O(1), operation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.3">Step 3: Node Merging</head><p>At every level of coarsening, CONVMATCH simultaneously merges the top-k non-overlapping lowestcost candidate supernodes. For both the coarsened graph and merge-graph, when supernodes u and v are merged to create a new supernode, the new supernode is connected to every neighbor of u and v. Furthermore, the edges connecting supernodes in the resulting coarsened graph are weighted by the number of edges connecting nodes in the two incident supernodes. Moreover, the features of the supernodes are a weighted average of the features of the nodes being merged and in node classification settings, the node label used for training is the majority label of nodes in a supernode. In addition, the cost of a subset of node pairs connected by an edge in the merge-graph must be updated after a merge. More formally, the time complexity of merging two nodes u and v is roughly O(d merge avg</p><formula xml:id="formula_20">• (d u + d v ))</formula><p>, where d merge avg is the average degree of nodes in the merge-graph. This process is also highly parallelizable. In Figure <ref type="figure" target="#fig_0">1</ref>, node merging is performed to obtain higher levels of coarsening, i.e., level-l merge-and coarsened-graphs. Details on a highly scalable merging procedure are provided in Appendix D and a scalable cost computation and update in Appendix F.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Experiments</head><p>We perform experiments to answer the following research questions: (RQ1) At varying coarsening ratios, how do our CONVMATCH variants compare to the baselines in terms of summarization time, as well as GNN training runtime and memory requirements? (RQ2) How effective are the GCNs trained on graphs summarized by our CONVMATCH variants (vs. baselines) in downstream node classification and link prediction tasks? (RQ3) What is the effect of the number of merges k at each level of coarsening in CONVMATCH on the summarization time and downstream task performance? All reported results are fully reproducible, with code and data available at: github. com/amazon-science/convolution-matching. Datasets. In our experiments, we use six datasets summarized in Table <ref type="table" target="#tab_1">2</ref>. Citeseer and Cora are citation networks which we use for both node classification (NC) and link prediction (LP) tasks <ref type="bibr" target="#b43">[44]</ref>. Additionally, we use four datasets from the Open Graph Benchmark (OGB) <ref type="bibr" target="#b44">[45]</ref>. OGB-NArxiv (Arxiv) and OGBLCitation2 (Cit2) are also citation networks and are curated for testing NC and LP performance, respectively. OGBLCollab (Coll) is a collaboration network with the LP task of ranking true collaborations higher than false collaborations. Finally, OGBNProducts (Prod) is a product co-purchasing network with the NC task of predicting product categories. Prediction performance for NC tasks is measured using accuracy. The prediction performance for LP tasks is measured using AUC on Citeseer and Cora, Hits@50 on Coll, and MRR on Cit2.</p><p>Baselines. We additionally evaluate the performance of six baselines: (a) three coreset methods: Random Node Sampling (RS), Herding <ref type="bibr" target="#b11">[12]</ref>, and KCenter <ref type="bibr" target="#b12">[13]</ref>; (b) two graph condensation methods: graph condensdation (GCond) <ref type="bibr" target="#b17">[18]</ref> and one-step gradient matching (DosCond) <ref type="bibr" target="#b16">[17]</ref>; and (c) one coarsening method: Variation Neighborhoods (VN) <ref type="bibr" target="#b14">[15,</ref><ref type="bibr" target="#b18">19]</ref>. For implementation and hyperparameter details see Appendix G.</p><p>GCN Architectures and Hyperparameters. All experiments are performed using a GCN model. We give the details of the GCN architectures and hyperparameters for summarization baselines and CONVMATCH and A-CONVMATCH in Appendix G. The merge batch sizes of our algorithm is fixed for each dataset for experiments in Section 5.1 and Section 5.2 and is also provided in Appendix G.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">(RQ1) Runtime and Memory Efficiency</head><p>First, we evaluate the efficiency of our proposed CONVMATCH variants and the baseline graph summarization algorithms, as well as the training time and memory efficiency of the GNNs trained on the resultant graph summaries.</p><p>Graph Summarization Time. We compare the graph summarization time of CONVMATCH and A-CONVMATCH to baselines at varying coarsening ratios for each dataset and task. The complete set of results are provided in Appendix G. The average time across 5 rounds of summarization for Cora, OGBNArxiv, and OGBNProducts are shown in Figure <ref type="figure" target="#fig_1">2</ref>.</p><p>First, we observe for Cora A-CONVMATCH is over 5× faster than CONVMATCH. For this reason we chose to only run A-CONVMATCH on the larger OGB datasets. A-CONVMATCH is consistently faster than all other baseline graph summarization methods on the larger OGB datasets. The VN baseline is faster than A-CONVMATCH in Cora, however we empirically demonstrate this method struggles to scale to larger graphs (e.g., it timed out after 24 hours on the OGBNProducts dataset). A-CONVMATCH is faster than the condensation and coreset baselines as it does not compute gradients of a GNN model with the full graph during summarization. Finally, we note that the coarsening methods have an additional advantage of being bottom-up multi-level approaches and thus the time required to reach the coarsening ratio r = 0.1% includes the time required to reach the ratio r = 1% and r = 10% and so on. On the other hand, creating the synthetic graphs with the condensation methods for two different ratios is two separate procedures and the work to reach one ratio is not obviously usable to reach another. In practice this property could be leveraged in GNN learning curriculums or hyperparameter exploration.</p><p>GNN Training Runtime and Memory Efficiency. We examine the amount of GPU memory used and the time required to complete a fixed number of training epochs for each dataset at varying coarsening ratios. Table <ref type="table" target="#tab_2">3</ref> shows the average total time and maximum amount of GPU memory used across 5 rounds of training on a graph coarsened using A-CONVMATCH. Table <ref type="table" target="#tab_2">3</ref> shows there is a significant decrease in the amount of GPU memory and time required to complete training on a coarsened graph. The results are most notable on the largest datasets: OGBLCitation2 and OGBNProducts, where the amount of memory required to compute the batch gradient for the GCN exceeded the 120GB of GPU memory available on our machine. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">(RQ2) Downstream Task Prediction Performance</head><p>We now compare the prediction performance of GCNs trained on graphs summarized using CON-VMATCH, A-CONVMATCH, and baseline summarization methods at varying coarsening ratios. Link prediction and node classification performance of the trained GCNs are reported in Table <ref type="table" target="#tab_3">4a</ref> and Table <ref type="table" target="#tab_3">4b</ref>, respectively. CONVMATCH or A-CONVMATCH is consistently among the top three performing summarization methods for both tasks. Furthermore, A-CONVMATCH achieves the best overall performance, as indicated by the lowest average rank.</p><p>Table <ref type="table" target="#tab_3">4a</ref> shows CONVMATCH and A-CONVMATCH are significantly better at creating summarized graphs for training a GCN for link prediction compared to alternative summarization methods. Notably, GCN's trained on CONVMATCH and A-CONVMATCH summarized graphs achieve up to 90% of the link prediction performance at a coarsening ratio of r = 1% in Citeseer and Cora, respectively. Moreover, A-CONVMATCH achieves a nearly 2 × improvement over the best performing baseline in Cit2 at r = 0.1% and over a 20% point improvement at r = 1%. A possible explanation for this is that CONVMATCH and A-CONVMATCH merge nodes that are equivalent or similar with respect to the GCN convolution operation, which captures both nodes attributes and structural properties. For this reason the summarized graph contains supernodes that can be used to create good positive and negative link training examples.</p><p>Table <ref type="table" target="#tab_3">4b</ref> shows Herding and KCenter methods perform well for the node classification task on the larger OGB datasets. These methods do however have a trade off as they initially fit a GNN using the complete graph to obtain node embeddings resulting in a slower summarization time, as shown in the previous section. Condensation methods perform extremely well on Citeseer and Cora, however they have difficulty creating larger summarized graphs hitting out of memory errors on the OGB datasets because they compute a full gradient using the original graph. Furthermore, the results we find for GCond on OGBNArxiv differ from those reported in Jin et al. ( <ref type="formula">2022</ref>) <ref type="bibr" target="#b16">[17]</ref> as the GCN architecture in the summarizer and the GCN being trained are not exactly matched. The authors mention this behavior in their appendix section C.5. Finally, we observe A-CONVMATCH is the most reliable summarizer for node classification with the best average rank of 2.3. The next best method in terms of average rank is Herding at 3.3.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">(RQ3) Ablation for CONVMATCH Merge Batch Size</head><p>First, we analyze the effect the number of node pairs simultaneously merged at each level of coarsening in CONVMATCH has on the summarization time and prediction performance of the proposed approach. We summarize the training graph for each of the 6 datasets to the coarsening ratio r = 1.0% and train a GCN using the summarized graph. The summarization time in seconds and prediction performance are reported in Table <ref type="table" target="#tab_4">5</ref> for both link prediction and node classification. We find increasing the merge batch size has a limited effect on the prediction performance across all datasets and for both NC and LP tasks. However, the summarization time improves considerably.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>We introduced the CONVMATCH graph summarization algorithm and a principled approximation, A-CONVMATCH, which preserve the output of graph convolution. Our methods were empirically proven to produce summarized graphs that can be used to fit GCN model parameters with significantly lower memory consumption, faster training times, and good prediction performance on both node classification and link prediction tasks, a first for summarization for scalable GNN training. Notably, our model is consistently a top-performing summarization method and achieves up to 20% point improvements on link prediction tasks. There are exciting next steps to this research, including extending the idea of convolution matching to heterogeneous graphs and developing GNN training algorithms that leverage multiple levels of a graph coarsening. Moreover, although in this work we focus on motivating our approach and providing a comprehensive evaluation for GCN's, no change to our coarsening algorithm is necessary to apply it to a different models, for instance a GraphSAGE model may be trained on the condensed graph produced by ConvMatch. Future research on applying the same algorithmic framework of ConvMatch but specialized to preserving the operations applied in another GNN model is promising.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Appendix</head><p>Here we expand on the theoretical contributions of this work and provide further details on the empirical evaluation presented in Section 5. The appendix includes the following sections: Extended</p><p>Step </p><formula xml:id="formula_21">CandidateSupernodes input :Graph G ′ = (V ′ , E ′ , X ′ ), Number of neighbors per node k1, Number of neighbors k2 output :Set of candidate supernodes candidates candidates ← ∅ H (K) SGC = ( D-1 2 Ã D-1 2 ) K X //Compute the exact SGC matches. candidates ← candidates ∪ (i, j) | H (K) SGC [i] = H (K) SGC [j] //Compute the nearest SGC matches for each node. candidates ← candidates ∪ (i, j) | j ∈ arg min k 1 j ′ H (K) SGC [i] -H (K) SGC [j ′ ] 1 1 //Compute the nearest SGC matches overall. candidates ← candidates ∪ (i, j) | (i, j) ∈ arg min k 2 (i ′ ,j ′ ) H (K) SGC [i ′ ] -H (K) SGC [j ′ ] 1 1</formula><p>The initial supernode candidate set generation process is detailed in Algorithm 2. To ensure every node has the potential to be merged into a supernode, we find the top k nn -nearest neighbors for each node and add the node pair to E merge . Additionally, the nearest d nn % of all node pairs are added to E merge . The supernode candidate set defines the merge-graph: G merge = (V ′ , E merge ), that is updated throughout the coarsening processes. Specifically, all nodes from the original graph are initially added to the merge-graph, i.e., initially, V ′ = V, then two nodes are connected in G merge if their pair exists in the candidate supernode set. Details on merging nodes in the coarsened graph and the merge-graph are given in Appendix D.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Extended</head><p>Step 2: Computing Supernode Costs Algorithm 3:</p><formula xml:id="formula_22">ComputeCosts input :Graph G ′ = (V ′ , E ′ , X ′ ), Node rep. H, Node pairs candidates output :Supernode cost map supernode_costs supernode_costs ← M ap() for (u, v) ∈ candidates do _, P, H′ , _ ← Merge(V ′ , E ′ , X ′ , {(u, v)}) supernode_costs[(u, v)] ← ∥P H′ -H∥ 1 1</formula><p>By definition of the GCN and coarse graph convolution operations, the effect of merging u and v can only reach the one-hop neighborhood of the two supernodes. Let h i be the representation of node i at the level l of coarsening:</p><formula xml:id="formula_23">h i ≜ H(1) (l) [i]</formula><p>. Additionally, define h ′ i to be the representation of node i after merging supernodes u and v:</p><formula xml:id="formula_24">h ′ i ≜ P (u,v) H(1) (l,P (u,v) ) [i].</formula><p>With this notation, the cost function is equivalently: where, h ′ (u,v) is the representation of the supernode created by the merge. Algorithm 3 details the cost computation process for CONVMATCH. Additionally, Figure <ref type="figure" target="#fig_2">3</ref> illustrates the cost computation for a small subgraph.</p><formula xml:id="formula_25">cost(u, v) = ∥h u -h ′ (u,v) ∥ 1 1 + ∥h v -h ′ (u,v) ∥ 1 1 + i∈N ({u,v}) ∥h i -h ′ i ∥ 1 1<label>(10)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D Extended Step 3: Merging Nodes</head><p>The top-k non-overlapping lowest-cost candidate supernodes are merged simultaneously at every level of coarsening. For each pair of nodes, (u, v), being merged, the set of edges incident with the resulting supernode is inherited from the nodes u and v. Specifically, let src = {w ∈ V | (w, u) ∈ E l ∨ (w, v) ∈ E l } and dst = {w ∈ V | (u, w) ∈ E l ∨ (v, w) ∈ E l }, where E l is the edge set of the graph at the coarsening level l. Then the edges incident with the supernode created by merging u, v is: {(s, w) | w ∈ dst} ∪ {(w, s) | w ∈ src}. Furthermore, the edges connecting supernodes in the resulting coarsened graph are weighted by the number of edges connecting nodes in the two incident supernodes. Recall, if P is the partitioning matrix representing the assignment of nodes to supernodes, then the coarsened graph's weighted adjacency matrix is A ′ = P T AP. Moreover, the features of the supernodes are a weighted average of the features of the nodes being merged: X ′ = P T C -1 X.</p><p>When two nodes are merged, the merge-graph is also updated. As in the coarsened graph, when supernodes u and v are merged to create a new supernode, the new supernode is connected to every neighbor of u and v. This is illustrated in Figure <ref type="figure" target="#fig_0">1</ref>. If A merge,l is the adjacency matrix of the merge-graph at the coarsening level, then after partitioning nodes by P (l+1) , we have A ′ merge,l+1 = P T (l+1) A merge,l P (l+1) . However, the weights of the merge-graph adjacency matrix are irrelevant to the coarsening algorithm. In addition to updating the structure of the merge-graph after a merge, costs must also be recomputed. A scalable method for updating costs is described in Appendix F.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E Caching Node Summation Terms</head><p>In this section, we introduce a technique for scaling the exact supernode cost computation. By definition, the representation of a supernode i obtained via a single layer of coarse GCN convolution is</p><formula xml:id="formula_26">h i = |C i | d i + |C i | x i + 1 d i + |C i | j∈N ({i}) a ji d j + |C j | x j<label>(11)</label></formula><p>where d i is the degree of node i, x i is the attributes of node i, and a ji is the adjacency matrix entry for row j column i, i.e., the weight of the edge from node j to i. Define</p><formula xml:id="formula_27">s i ≜ j∈N ({i}) aji √ dj +|Cj | x j .</formula><p>Then, for the nodes being merged, u and v, the new representation after the merge is</p><formula xml:id="formula_28">h ′ (u,v) = |Cu| + |Cv| di + |Cu| + |Cv| x (u,v) + (su - av,u √ dv +|Cv | xv + sv - au,v √ du+|Cu| xu) d (u,v) + |Cu| + |Cv|<label>(12)</label></formula><p>where x (u,v) is the attributes of the supernode created by merging u and v. Observe that if the value of s i is cached for each node, then the coarse graph convolution output of a supernode created by merging a pair of nodes does not require information from the node neighbors.</p><p>Similarly, using the cached value of s i , the new representation after the merge for a node i ∈ N ({u, v}) is simplified to</p><formula xml:id="formula_29">h ′ i = |Ci| di + |Ci| xi + 1 di + |Ci| si + aui + avi (di + |Ci|)(d (u,v) + |Cu| + |Cv|) x (u,v) - aui (di + |Ci|)(du + |Cu|) xu - avi (di + |Ci|)(dv + |Cv|) xv<label>(13)</label></formula><p>The benefit of caching s i is that no information from the 2-hop neighbors of the nodes being considered for merging needs to be obtained.</p><p>The cached statistics for each node are therefore updated using the following rules:</p><formula xml:id="formula_30">s (u,v) = s u - a v,u d v + |C v | x v + s v - a u,v d u + |C u | x u<label>(14)</label></formula><p>Note that the influence and sum statistics of the neighbors of the merged nodes must also be updated as the graph's structure is updated.</p><formula xml:id="formula_31">s ′ i = si - au,i du + |Cu| xu - av,i dv + |Cv| xv + au,i + av,i du + dv + |Cu| + |Cv| x (u,v)<label>(15)</label></formula><p>F A Supernode Cost Approximation</p><p>An approximation yielding significant improvements in graph summarization time is motivated by the upper bound on the merge cost approximation stated in Theorem 1. This section provides the proof for this theorem.</p><p>Proof of Theorem 1. Let h i be the representation of node i at the level l of coarsening:</p><formula xml:id="formula_32">h i ≜ H(1) (l) [i]</formula><p>. Additionally, define h ′ i to be the representation of node i after merging supernodes u and v:</p><formula xml:id="formula_33">h ′ i ≜ P (u,v) H(1) (l,P (u,v) ) [i].</formula><p>Starting from the definition of the supernode cost provided in Eq. ( <ref type="formula" target="#formula_16">8</ref>), we have:</p><formula xml:id="formula_34">cost(u, v) = ∥hu -h ′ (u,v) ∥ 1 1 + ∥hv -h ′ (u,v) ∥ 1 1 + i∈N ({u,v}) ∥hi -h ′ i ∥ 1 1<label>(16)</label></formula><p>By the definitions of h i and h ′ i provided in the previous section, the ∥h i -h ′ i ∥ 1 1 terms in the summation can be expanded and simplified</p><formula xml:id="formula_35">∥hi -h ′ i ∥ 1 1 = ∥ |Ci| di + |Ci| xi + 1 di + |Ci| j∈N ({i}) aji dj + |Cj| xj - |Ci| di -|Ci| xi - 1 di + |Ci| j∈N ({i})\{u,v} aji dj + |Cj| xj - au,i + av,i (di + |Ci|)(d (u,v) + |Cu| + |Cv|) x (u,v) ∥ 1 1 = ∥ au,i (di + |Ci|)(du + |Cu|) xu + av,i (di + |Ci|)(dv + |Cv|) xv - au,i + av,i (di + |Ci|)(d (u,v) + |Cu| + |Cv|) x (u,v) ∥ 1 1<label>(17)</label></formula><p>Then, using the sub-additivity and absolute homogeneity properties of norms we realize the following inequality.</p><p>= ∥ au,i</p><formula xml:id="formula_36">(di + |Ci|)(du + |Cu|) xu + av,i (di + |Ci|)(dv + |Cv|) xv - au,i + av,i (di + |Ci|)(d (u,v) + |Cu| + |Cv|) x (u,v) ∥ 1 1 ≤ au,i (di + |Ci|) ∥ 1 (d (u,v) + |Cu| + |Cv|) x (u,v) - 1 (du + |Cu|) xu∥ 1 1 + av,i (di + |Ci|) ∥ 1 (d (u,v) + |Cu| + |Cv|) x (u,v) - 1 (dv + |Cv|) xv∥ 1 1<label>(18)</label></formula><p>Observe if one of a v,i or a u,i is 0, the inequality is satisfied with equality. Plugging this result into the definition of supernode costs yields our upper bound.</p><formula xml:id="formula_37">cost(u, v) ≤ ∥hu -h ′ (u,v) ∥ 1 1 + ∥hv -h ′ (u,v) ∥ 1 1 + ∥ x (u,v) (d (u,v) + |Cu| + |Cv|) - xu (du + |Cu|) ∥ 1 1 i∈N ({u}) au,i (di + |Ci|) + ∥ x (u,v) (d (u,v) + |Cu| + |Cv|) - xv (dv + |Cv|) ∥ 1 1 i∈N ({v})</formula><p>av,i</p><formula xml:id="formula_38">(di + |Ci|)<label>(19)</label></formula><p>In the case N (u) ∩ N (v) = ∅, every instance of the bound in Eq. (F) is satisfied with equality, and consequentially the bound above is satisfied with equality.</p><p>As a result, the following term, referred to as the node's influence, is cached for all nodes v ∈ V:</p><formula xml:id="formula_39">infl v ≜ i∈N ({v}) avi √<label>(di+|Ci|)</label></formula><p>. This allows the cost of merging two nodes to be a function of properties local to the two nodes being considered, making the cost computation fast and highly scalable.</p><p>In addition to updating the structure of the merge-graph after a merge, the costs and the cached influence scores for each node must be updated. The influence of the supernode created by merging two nodes u and v is:</p><formula xml:id="formula_40">infl l,(u,v) = infl l,u - a uv d v + |C v | + infl v - a v,u d u + |C u | . (<label>20</label></formula><formula xml:id="formula_41">)</formula><p>Furthermore, the influence score of each neighbor, i, of two merged nodes u and v is:</p><formula xml:id="formula_42">infl l,i = infl l,i - a iu d u + |C u | - a iv d v + |C v | + a ui + a vi d u + d v + |C u | + |C v | .<label>(21)</label></formula><p>G Extended Evaluation</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>G.1 Graph Summarization Time</head><p>We compare the graph summarization time of CONVMATCH and A-CONVMATCH to baselines at varying coarsening ratios for each dataset and task. The average time across 5 rounds of summarization for all datasets are shown in Figure <ref type="figure" target="#fig_3">4</ref>. A-CONVMATCH is consistently faster than all other baseline graph summarizers on the larger OGB datasets. This is partially explained by the fact that much of the A-CONVMATCH algorithm is highly parallelizable due to our cost approximation.</p><p>Baselines. The RS method randomly samples nodes from the original graph and uses the induced subgraph to train the GNN. Herding and KCenter first fit node embeddings for the NC task and then group the nodes by labels. The Herding and KCenter methods then select nodes from each group to create a subgraph. Herding and KCenter require a class label to group nodes are therefore only used in NC settings. Furthermore, the implementation of Herding and KCenter follows that of <ref type="bibr" target="#b16">[17]</ref>. The original implementation was extended to reach coarsening ratios exceeding the training labeling rate of the dataset by treating the the unlabeled nodes as a distinct class in such settings. GCond <ref type="bibr" target="#b17">[18]</ref> and DosCond <ref type="bibr" target="#b16">[17]</ref> train a GNN on the original graph and fit synthetic graph features and connections so the gradient with respect to the GNN weights computed with both graphs are similar. We use the implementation of GCond and DosCond provided in <ref type="bibr" target="#b16">[17]</ref> for NC tasks and extend their method for LP using an appropriate link prediction training loss. Furthermore, to support coarsening ratios exceeding the training labeling rate of the dataset, synthetic node features are initialized using a sampling procedure with replacement. Finally, the VN approach is a coarsening algorithm proposed by Loukas (2019) that recursively merges neighborhoods of nodes into supernodes.  </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Illustration of the CONVMATCH algorithm. Nodes with similar SGC embeddings obtained from the original graph are first connected in a merge-graph.The cost c i,j of merging every pair of nodes (i, j) in the merge-graph is then computed and a set of lowest-cost node pairs are merged into supernodes. This process is repeated until the desired coarsening ratio is reached.</figDesc><graphic coords="5,127.80,72.01,356.37,171.51" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Plots of graph summarization times at multiple coarsening ratios for Cora, Arxiv, and Prod datasets. CONVMATCH and A-CONVMATCH are fast summarization algorithms.</figDesc><graphic coords="7,113.29,72.00,117.61,88.21" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: (a) A portion of a graph with computed representations h i for each node i ∈ V. (b) A portion of a graph with the nodes 9 and 11 merged into a supernode. The updated representations of the nodes 8 and 10 denoted by h ′ 8 and h ′ 10 , respectively. The representation of the supernode resulting from the merge is h ′ (9,11) . (c) The cost of merging the nodes 9 and 11 is the sum of the absolute differences in the representations caused by the merge.</figDesc><graphic coords="14,177.30,72.02,257.34,168.82" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Plots of graph summarization times at multiple coarsening ratios for all datasets and tasks. CONVMATCH and A-CONVMATCH are fast summarization algorithms when compared to baselines.</figDesc><graphic coords="17,108.50,157.41,98.01,73.51" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head></head><label></label><figDesc>Huang et al. (2021) found VN resulted in the best overall prediction performance of the coarsening algorithms proposed by Loukas (2019). We use the implementation of VN provided by Huang et al. (2021).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Table of dataset statistics and task (NC: node classification; LP: link prediction).</figDesc><table><row><cell>Dataset</cell><cell>Task</cell><cell>Nodes</cell><cell>Edges</cell><cell>Features</cell></row><row><cell>Citeseer</cell><cell>NC / LP</cell><cell>3, 327</cell><cell>4, 732</cell><cell>3, 703</cell></row><row><cell>Cora</cell><cell>NC / LP</cell><cell>2, 708</cell><cell>5, 429</cell><cell>1, 433</cell></row><row><cell>OGBNArxiv</cell><cell>NC</cell><cell>169, 343</cell><cell>1, 166, 243</cell><cell>128</cell></row><row><cell>OGBLCollab</cell><cell>LP</cell><cell>235, 868</cell><cell>1, 285, 465</cell><cell>128</cell></row><row><cell>OGBLCitation2</cell><cell>LP</cell><cell cols="2">2, 927, 963 30, 561, 187</cell><cell>128</cell></row><row><cell>OGBNProducts</cell><cell>NC</cell><cell cols="2">2, 449, 029 61, 859, 140</cell><cell>100</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 :</head><label>3</label><figDesc>Average time, rounded to the nearest minute, and GPU memory, rounded to the nearest GB, required to complete all training epochs at varying coarsening ratios.</figDesc><table><row><cell></cell><cell cols="2">(a) Link Prediction</cell><cell></cell><cell></cell><cell cols="2">(b) Node Classification</cell><cell></cell></row><row><cell cols="4">Dataset Ratio Time (min) Memory (GB)</cell><cell cols="4">Dataset Ratio Time (min) Memory (GB)</cell></row><row><cell></cell><cell>1</cell><cell>3</cell><cell>2</cell><cell></cell><cell>1</cell><cell>4</cell><cell>1</cell></row><row><cell>Citeseer</cell><cell>10</cell><cell>3</cell><cell>3</cell><cell>Citeseer</cell><cell>10</cell><cell>5</cell><cell>1</cell></row><row><cell></cell><cell>100</cell><cell>10</cell><cell>12</cell><cell></cell><cell>100</cell><cell>5</cell><cell>1</cell></row><row><cell></cell><cell>1</cell><cell>4</cell><cell>1</cell><cell></cell><cell>1</cell><cell>2</cell><cell>1</cell></row><row><cell>Cora</cell><cell>10</cell><cell>4</cell><cell>1</cell><cell>Cora</cell><cell>10</cell><cell>4</cell><cell>1</cell></row><row><cell></cell><cell>100</cell><cell>12</cell><cell>7</cell><cell></cell><cell>100</cell><cell>4</cell><cell>1</cell></row><row><cell></cell><cell>0.1</cell><cell>6</cell><cell>9</cell><cell></cell><cell>0.1</cell><cell>5</cell><cell>7</cell></row><row><cell>Coll</cell><cell>1 10</cell><cell>15 40</cell><cell>9 12</cell><cell>Arxiv</cell><cell>1 10</cell><cell>10 20</cell><cell>7 8</cell></row><row><cell></cell><cell>100</cell><cell>210</cell><cell>70</cell><cell></cell><cell>100</cell><cell>170</cell><cell>20</cell></row><row><cell></cell><cell>0.1</cell><cell>60</cell><cell>22</cell><cell></cell><cell>0.1</cell><cell>60</cell><cell>38</cell></row><row><cell>Cit2</cell><cell>1</cell><cell>660</cell><cell>40</cell><cell>Prod</cell><cell>1</cell><cell>150</cell><cell>45</cell></row><row><cell></cell><cell>100</cell><cell>&gt; 1440</cell><cell>&gt; 120</cell><cell></cell><cell>100</cell><cell>&gt; 1440</cell><cell>&gt; 120</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 4 :</head><label>4</label><figDesc>Link prediction and node classification performance at varying coarsening levels. The top three performing scores are highlighted as: First , Second , Third . Average ranks are reported for methods that were ran on all datasets and coarsening ratios. Our A-CONVMATCH approach performs the best across datasets and coarsening ratios, as indicated by the lowest average rank in both link prediction and node classification tasks (1.4 and 2.5, resp.).</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">(a) Link Prediction</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>Sumarizer</cell></row><row><cell></cell><cell></cell><cell>Ratio</cell><cell></cell><cell>RS</cell><cell></cell><cell>GCond</cell><cell cols="2">DosCond</cell><cell>VN</cell><cell>CONVMATCH (ours) A-CONVMATCH (ours)</cell></row><row><cell></cell><cell>Citeseer</cell><cell>1% 10% 100%</cell><cell cols="7">67.41 ± 1.26 65.01 ± 1.09 63.54 ± 6.36 69.11 ± 2.09 72.65 ± 6.78 53.06 ± 12.28 88.55 ± 0.77 80.26 ± 4.51 91.57 ± 0.55</cell><cell>87.72 ± 1.38 90.43 ± 0.49</cell><cell>87.68 ± 1.24 88.41 ± 0.97</cell></row><row><cell></cell><cell>Cora</cell><cell>1% 10% 100%</cell><cell cols="6">70.91 ± 3.67 67.08 ± 0.64 72.84 ± 2.15 66.19 ± 0.39 60.21 ± 0.52 71.60 ± 0.35</cell><cell>75.19 ± 3.01 81.81 ± 2.06 85.04 ± 0.68</cell><cell>66.33 ± 2.35 83.51 ± 1.01</cell><cell>78.63 ± 1.55 83.30 ± 1.45</cell></row><row><cell></cell><cell></cell><cell>.1%</cell><cell></cell><cell>7.22 ± 0.97</cell><cell cols="2">7.61 ± 0.41</cell><cell cols="2">1.15 ± 0.88</cell><cell>6.60 ± 1.47</cell><cell>-</cell><cell>9.14 ± 2.07</cell></row><row><cell></cell><cell>Coll</cell><cell>1% 10%</cell><cell></cell><cell>11.41 ± 0.35 15.80 ± 3.11</cell><cell></cell><cell>OOM OOM</cell><cell></cell><cell>OOM OOM</cell><cell>5.45 ± 1.95 24.33 ± 1.61</cell><cell>--</cell><cell>26.25 ± 1.84 35.94 ± 1.86</cell></row><row><cell></cell><cell></cell><cell>100%</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>44.08 ± 0.94</cell></row><row><cell></cell><cell>Cit2</cell><cell>.1% 1% 100%</cell><cell></cell><cell>9.86 ± 0.01 9.87 ± 0.01</cell><cell></cell><cell>OOM OOM</cell><cell></cell><cell>OOM OOM</cell><cell>10.43 ± 2.71 38.95 ± 4.83 84.74 ± 0.00</cell><cell>--</cell><cell>30.42 ± 0.63 60.34 ± 1.15</cell></row><row><cell></cell><cell cols="2">Avg. Rank</cell><cell></cell><cell>3.4</cell><cell></cell><cell>-</cell><cell></cell><cell>-</cell><cell>2.6</cell><cell>-</cell><cell>1.4</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="3">(b) Node Classification</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>Sumarizer</cell></row><row><cell></cell><cell>Ratio</cell><cell>RS</cell><cell></cell><cell>KCenter</cell><cell></cell><cell>Herding</cell><cell></cell><cell>GCond</cell><cell>DosCond</cell><cell>VN</cell><cell>CONVMATCH A-CONVMATCH (ours) (ours)</cell></row><row><cell>Citeseer</cell><cell cols="3">1% 19.22 ± 6.85 10% 28.00 ± 9.15 100%</cell><cell>59.02 ± 2.25 54.70 ± 3.62</cell><cell></cell><cell cols="2">62.80 ± 1.33 53.5 ± 1.68</cell><cell cols="2">68.22 ± 2.08 70.10 ± 3.43 71.40 ± 0.35 71.36 ± 1.27 35.92 ± 3.76 68.76 ± 0.97 53.88 ± 7.36</cell><cell>65.40 ± 4.12 69.84 ± 1.58</cell><cell>67.68 ± 2.87 68.46 ± 1.61</cell></row><row><cell>Cora</cell><cell cols="3">1% 18.76 ± 9.67 10% 27.52 ± 9.89 100%</cell><cell>59.92 ± 1.67 56.12 ± 7.46</cell><cell></cell><cell cols="2">63.74 ± 2.24 64.10 ± 2.12</cell><cell cols="2">77.44 ± 1.90 80.02 ± 0.92 81.02 ± 0.19 78.40 ± 0.83 31.96 ± 11.02 78.64 ± 1.87 59.22 ± 4.90</cell><cell>72.60 ± 3.11 79.82 ± 0.60</cell><cell>72.30 ± 2.90 80.12 ± 1.09</cell></row><row><cell>Arxiv</cell><cell cols="5">0.1% 42.45 ± 3.62 1% 59.97 ± 1.58 10% 67.50 ± 0.63 68.25 ± 0.25 49.79 ± 2.87 61.99 ± 1.24</cell><cell cols="2">58.79 ± 0.90 61.42 ± 1.34 67.75 ± 0.58</cell><cell cols="2">48.10 ± 3.27 OOM OOM</cell><cell>21.69 ± 4.30 OOM OOM</cell><cell>28.90 ± 5.79 53.61 ± 2.76 67.12 ± 1.26</cell><cell>---</cell><cell>54.82 ± 2.67 64.08 ± 0.39 67.51 ± 0.47</cell></row><row><cell></cell><cell>100%</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>72.14 ± 0.18</cell></row><row><cell>Prod</cell><cell cols="3">0.1% 48.20 ± 1.57 1% 66.57 ± 1.47 100%</cell><cell cols="2">60.88 ± 1.31 69.66 ± 0.31</cell><cell cols="2">66.14 ± 0.71 71.79 ± 0.45</cell><cell>OOM OOM</cell><cell>OOM OOM 75.64 ± 0.00  *</cell><cell>TIMEOUT TIMEOUT</cell><cell>--</cell><cell>62.36 ± 0.84 68.20 ± 0.36</cell></row><row><cell cols="2">Avg. Rank</cell><cell>5.9</cell><cell></cell><cell>3.8</cell><cell></cell><cell>3.2</cell><cell></cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>2.5</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 5 :</head><label>5</label><figDesc>CONVMATCH graph summarization time in seconds and prediction performance at varying merge batch sizes and a coarsening ratio r = 1.0%.</figDesc><table><row><cell></cell><cell cols="2">(a) Link Prediction</cell><cell></cell><cell></cell><cell cols="2">(b) Node Classification</cell><cell></cell></row><row><cell cols="2">Dataset Batch Size</cell><cell>Time (sec)</cell><cell>Perf. Valid. Test</cell><cell cols="2">Dataset Batch Size</cell><cell>Time (sec)</cell><cell>Perf. Valid. Test.</cell></row><row><cell></cell><cell>1</cell><cell>178.03</cell><cell>85.42 87.68</cell><cell></cell><cell>1</cell><cell>198.84</cell><cell>66.92 66.08</cell></row><row><cell>Citeseer</cell><cell>10</cell><cell>37.95</cell><cell>86.78 86.44</cell><cell>Citeseer</cell><cell>10</cell><cell>36.78</cell><cell>72.40 68.90</cell></row><row><cell></cell><cell>100</cell><cell>8.46</cell><cell>88.19 88.25</cell><cell></cell><cell>100</cell><cell>8.03</cell><cell>65.20 62.30</cell></row><row><cell></cell><cell>1</cell><cell>105.46</cell><cell>74.21 74.93</cell><cell></cell><cell>1</cell><cell>101.74</cell><cell>74.40 74.70</cell></row><row><cell>Cora</cell><cell>10</cell><cell>25.73</cell><cell>76.20 78.44</cell><cell>Cora</cell><cell>10</cell><cell>27.16</cell><cell>70.20 72.30</cell></row><row><cell></cell><cell>100</cell><cell>4.72</cell><cell>69.98 67.53</cell><cell></cell><cell>100</cell><cell>4.89</cell><cell>71.40 71.20</cell></row><row><cell></cell><cell>100</cell><cell>777.77</cell><cell>22.59 26.23</cell><cell></cell><cell>100</cell><cell>624.91</cell><cell>63.94 63.46</cell></row><row><cell>Coll</cell><cell>1, 000</cell><cell>259.11</cell><cell>22.78 24.63</cell><cell>Arxiv</cell><cell>1, 000</cell><cell>194.73</cell><cell>62.25 61.07</cell></row><row><cell></cell><cell>10, 000</cell><cell>205.53</cell><cell>23.70 26.25</cell><cell></cell><cell>10, 000</cell><cell>149.91</cell><cell>64.05 64.12</cell></row><row><cell>Cit2</cell><cell>10, 000 100, 000</cell><cell>6, 555 4, 740</cell><cell>60.05 60.05 55.21 55.24</cell><cell>Prod</cell><cell>10, 000 100, 000</cell><cell>11, 285 6, 729</cell><cell>85.95 68.57 86.18 68.20</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head></head><label></label><figDesc>1: Candidate Supernodes, Extended Step 2: Computing Supernode Costs, Extended Step 3: Merging Nodes, Caching Node Summation Terms, A Supernode Cost Approximation, and Extended Evaluation. All reported results are fully reproducible, with code and data available at: github.com/amazon-science/convolution-matching.</figDesc><table><row><cell>B Extended Step 1: Candidate Supernodes</cell></row><row><cell>Algorithm 2:</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 7 :</head><label>7</label><figDesc>Table of CONVMATCH hyperparameters.</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_0"><p>Preprint. Preliminary work.</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Model Architectures and Hyperparameters. The GCN architectures and training parameters for Citeseer and Cora are from <ref type="bibr" target="#b16">[17]</ref> and the GCN architectures and training parameters for OGB datasets are from <ref type="bibr" target="#b44">[45]</ref>. Every GCN is trained using the ADAM optimizer implementation from PyTorch. The Table <ref type="table">6</ref> summarizes the parameters used in the experiments.</p><p>The hyperparameters for the CONVMATCH and A-CONVMATCH algorithms were tuned for each dataset using validation data at a summarization rate r = 1% and at a selected batch size. The Table <ref type="table">7</ref> summarizes the final parameters used in the experiments. Hyperparameter settings for VN and the two coreset baselines (Herding and KCenter) are taken from <ref type="bibr" target="#b14">[15]</ref> and <ref type="bibr" target="#b16">[17]</ref>, respectively. Hyperparameter settings for the GCond and DosCond methods are taken from <ref type="bibr" target="#b16">[17]</ref> on the datasets they examined, otherwise, they are found via a hyperparameter search.</p><p>Hardware. All experiments were run on an AWS p3.16xlarge EC2 instance with 8 16GB NVIDIA Tesla V100 GPUs.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Open graph benchmark: Datasets for machine learning on graphs</title>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marinka</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michele</forename><surname>Catasta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="22118" to="22133" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Deep graph library: A graph-centric, highly-performant package for graph neural networks</title>
+		<author>
+			<persName><forename type="first">Minjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Da</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zihao</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quan</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mufei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinjing</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lingfan</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Gai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianjun</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Karypis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinyang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1909.01315</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Fast graph representation learning with PyTorch Geometric</title>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><forename type="middle">E</forename><surname>Lenssen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR Workshop on Representation Learning on Graphs and Manifolds</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Distributed hybrid cpu and gpu training for graph neural networks on billion-scale graphs</title>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Da Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengru</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dominique</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Lasalle</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Karypis</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2112.15345,2021.1</idno>
+		<imprint/>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Distdgl: distributed graph neural network training for billion-scale graphs</title>
+		<author>
+			<persName><forename type="first">Da</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinjing</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qidong</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quan</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Karypis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE/ACM 10th Workshop on Irregular Applications: Architectures and Algorithms (IA</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="36" to="44" />
+			<date type="published" when="2020">2020. 2020</date>
+			<publisher>IEEE</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Communication-efficient sampling for distributed training of graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Masuma</forename><surname>Akter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rumi</forename></persName>
+		</author>
+		<idno type="arXiv">arXiv:2101.07706</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Learn locally, correct globally: A distributed algorithm for training graph neural networks</title>
+		<author>
+			<persName><forename type="first">Morteza</forename><surname>Ramezani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weilin</forename><surname>Cong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mehrdad</forename><surname>Mahdavi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mahmut</forename><surname>Kandemir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anand</forename><surname>Sivasubramaniam</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Simplifying distributed neural network training on massive graphs: Randomized partitions improve model aggregation</title>
+		<author>
+			<persName><forename type="first">Jiong</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aishwarya</forename><surname>Naresh Reganti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edward</forename><forename type="middle">W</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><forename type="middle">Andrew</forename><surname>Dickens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nikhil</forename><surname>Rao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karthik</forename><surname>Subbian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danai</forename><surname>Koutra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML Workshop on Localized Learning (LLW)</title>
+		<imprint>
+			<biblScope unit="page" from="2023" to="2024" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Distributed deep graph learning at scale</title>
+		<author>
+			<persName><forename type="first">Swapnil</forename><surname>Gandhi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anand Padmanabha</forename><surname>Iyer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">15th {USENIX} Symposium on Operating Systems Design and Implementation ({OSDI} 21)</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="551" to="568" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Core vector machines: Fast svm training on very large data sets</title>
+		<author>
+			<persName><forename type="first">Ivor</forename><forename type="middle">W</forename><surname>Tsang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><forename type="middle">T</forename><surname>Kwok</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pak-Min</forename><surname>Cheung</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="page">2</biblScope>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Smaller coresets for k-mediam and k-means clustering</title>
+		<author>
+			<persName><forename type="first">Sariel</forename><surname>Har</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">-Peled</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Akash</forename><surname>Kushal</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM Annual Symposium on Computational Geometry (ACG)</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Herding dynamical weights to learn</title>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page">7</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Active learning for convolutional neural networks: A core-set approach</title>
+		<author>
+			<persName><forename type="first">Ozan</forename><surname>Sener</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Silvio</forename><surname>Savarses</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page">7</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Coreset for data-efficient training of machine learning models</title>
+		<author>
+			<persName><forename type="first">Baharan</forename><surname>Mirzasoleiman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeff</forename><surname>Bilmes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page">2</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Scaling up graph neural networks via graph coarsening</title>
+		<author>
+			<persName><forename type="first">Zengfeng</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shengzhong</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chong</forename><surname>Xi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Min</forename><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining (KDD)</title>
+		<imprint>
+			<date type="published" when="2021">2021. 1, 2, 3, 7, 17</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Dataset condensation with gradient matching</title>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Konda</forename><surname>Reddy Mopuri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hakan</forename><surname>Bilen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR), 2021</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page">2</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Condensing graphs via one-step gradient matching</title>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xianfeng</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haoming</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqing</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bing</forename><surname>Yin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining (KDD)</title>
+		<imprint>
+			<date type="published" when="2022">2022. 1, 2, 7, 8, 16</date>
+			<biblScope unit="page">17</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Graph condensation for graph neural networks</title>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lingxiao</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Schichang</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yozen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neil</forename><surname>Shah</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="page">16</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Graph reduction with spectral and cut guarantees</title>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Loukas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">20</biblScope>
+			<biblScope unit="issue">116</biblScope>
+			<biblScope unit="page">17</biblScope>
+			<date type="published" when="2007">2019. 2, 7</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Tongzhou</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun-Yan</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antonio</forename><surname>Torralba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexei</forename><forename type="middle">A</forename><surname>Efros</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">Dataset distillation. In Arxiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Flexible dataset distillation: Learn labels instead of images</title>
+		<author>
+			<persName><forename type="first">Ondrej</forename><surname>Bohdal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yongxin</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothy</forename><surname>Hospedales</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Arxiv preprint</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Soft-label dataset distillation and text dataset distillation</title>
+		<author>
+			<persName><forename type="first">Ilia</forename><surname>Sucholutsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Schonlau</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Arxiv preprint</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Dataset meta-learning from kernel ridge-regression</title>
+		<author>
+			<persName><forename type="first">Timothy</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhourong</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jaehoon</forename><surname>Lee</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Dataset condensation with differentiable siamese augmentation</title>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hakan</forename><surname>Bilen</surname></persName>
+		</author>
+		<idno>2021. 2</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Graph condensation via receptive field distribution matching</title>
+		<author>
+			<persName><forename type="first">Mengyang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shanchuan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinshi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Le</forename><surname>Song</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Arxiv preprint</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Graph summarization methods and applications: A survey</title>
+		<author>
+			<persName><forename type="first">Yike</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tara</forename><surname>Safavi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhilash</forename><surname>Dighe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danai</forename><surname>Koutra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Computing Surveys</title>
+		<imprint>
+			<biblScope unit="volume">51</biblScope>
+			<biblScope unit="issue">62</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Fast influence-based coarsening for large networks</title>
+		<author>
+			<persName><forename type="first">Manish</forename><surname>Purohit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">Aditya</forename><surname>Prakash</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chanhyun</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">S</forename><surname>Subrahmanian</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining (KDD)</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">A fast multi-scale method for drawing large graphs</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Harel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yehuda</forename><surname>Koren</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Graph Algorithms and Applications</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="179" to="202" />
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">A multilevel algorithm for force-directed graph drawing</title>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Walshaw</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Graph Algorithms and Applications</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="253" to="285" />
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Motif simplification: Improving network visualization readability with fan, connector, and clique glyphs</title>
+		<author>
+			<persName><forename type="first">Cody</forename><surname>Dunne</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Schneiderman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGCHI Conference on Human Factors in Computing Systems (CHI)</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Approximation algorithms for multicommodity-type problems with guarantees independent of the graph size</title>
+		<author>
+			<persName><forename type="first">Ankur</forename><surname>Moitra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Symposium on Foundation of Computer Science</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Vertex sparsifiers: New results from old techniques</title>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Englert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anupam</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Krauthgamer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harald</forename><surname>Racke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Inbal</forename><surname>Talgam-Cohen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kunal</forename><surname>Talwar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">SIAM Journal on Computing</title>
+		<imprint>
+			<biblScope unit="volume">43</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="1239" to="1262" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Mile: A multi-level framework for scalable graph embedding</title>
+		<author>
+			<persName><forename type="first">Jiongqian</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saket</forename><surname>Gurukar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Srinivasan</forename><surname>Parthasarathy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International AAAI Conference on Web and Social Media (ICWSM)</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Network embedding: On compression and learning</title>
+		<author>
+			<persName><forename type="first">Esra</forename><surname>Akbas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mehmet</forename><surname>Emin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aktas</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Transactions on Big Data</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Faster graph embeddings via coarsening</title>
+		<author>
+			<persName><forename type="first">Matthew</forename><surname>Fahrbach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gramoz</forename><surname>Goranci</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sushant</forename><surname>Sachdeva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chi</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Cosine: Compressive network embedding on large-scale information networks</title>
+		<author>
+			<persName><forename type="first">Zhengyan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cheng</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhichong</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Leyu</forename><surname>Lin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Transactions on Knowledge and Data Engineering</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Graphzoom: A multi-level spectral approach for accurate and scalable graph embedding</title>
+		<author>
+			<persName><forename type="first">Chenhui</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiqiang</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yongyu</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiru</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhuo</forename><surname>Feng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Featured graph coarsening with similarity guarantees</title>
+		<author>
+			<persName><forename type="first">Manoj</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anurag</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shashwat</forename><surname>Saxena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sandeep</forename><surname>Kumar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Spectral networks and locally connected networks on graphs</title>
+		<author>
+			<persName><forename type="first">Joan</forename><surname>Bruna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wojciech</forename><surname>Zaremba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arthur</forename><surname>Szlam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yann</forename><surname>Lecun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Convolutional neural networks on graphs with fast localized spectral filtering</title>
+		<author>
+			<persName><forename type="first">Michaël</forename><surname>Defferrard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xavier</forename><surname>Bresson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pierre</forename><surname>Vandergheynst</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems (NIPS)</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Cayleynets: Graph convolutional neural networks with complex rational spectral filters</title>
+		<author>
+			<persName><forename type="first">Ron</forename><surname>Levie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Federico</forename><surname>Monti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xavier</forename><surname>Bresson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">M</forename><surname>Bronstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Signal Processing</title>
+		<imprint>
+			<biblScope unit="volume">67</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="97" to="109" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Simplifying graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amauri</forename><surname>Holanda De</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Souza</surname><genName>Jr</genName></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Fifty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kilian</forename><forename type="middle">Q</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Wienberger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Collective classification in network data</title>
+		<author>
+			<persName><forename type="first">Prithviraj</forename><surname>Sen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Galileo</forename><surname>Namata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mustafa</forename><surname>Bilgic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lise</forename><surname>Getoor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brian</forename><surname>Galligher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tina</forename><surname>Eliassi-Rad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AI Magazine</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Open graph benchmark: Datasets for machine learning on graphs</title>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marinka</forename><surname>Zitnk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michele</forename><surname>Catasta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conference on Neural Information Processing Systems (NeurIPS)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page">17</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

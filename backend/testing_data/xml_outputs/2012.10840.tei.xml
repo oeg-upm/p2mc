@@ -1,0 +1,1071 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">ANALYZING THE PERFORMANCE OF GRAPH NEURAL NETWORKS WITH PIPE PARALLELISM</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2021-04-05">5 Apr 2021</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Matthew</forename><forename type="middle">T</forename><surname>Dearing</surname></persName>
+							<email>&lt;dearing@uchicago.edu&gt;</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">Univer-sity of Chicago</orgName>
+								<address>
+									<settlement>Chicago</settlement>
+									<region>Illinois</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Angela</forename><surname>Wang</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">Univer-sity of Chicago</orgName>
+								<address>
+									<settlement>Chicago</settlement>
+									<region>Illinois</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<address>
+									<settlement>Xiaoyan (Angela) Wang</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">ANALYZING THE PERFORMANCE OF GRAPH NEURAL NETWORKS WITH PIPE PARALLELISM</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2021-04-05">5 Apr 2021</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">B8A823981E8C69DBE2836B6E5C98B129</idno>
+					<idno type="arXiv">arXiv:2012.10840v2[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T09:57+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Many interesting datasets ubiquitous in machine learning and deep learning can be described via graphs. As the scale and complexity of graph-structured datasets increase, such as in expansive social networks, protein folding, chemical interaction networks, and material phase transitions, improving the efficiency of the machine learning techniques applied to these is crucial. In this study, we focus on Graph Neural Networks (GNN) that have found great success in tasks such as node or edge classification and link prediction. However, standard GNN models have scaling limits due to necessary recursive calculations performed through dense graph relationships that lead to memory and runtime bottlenecks. While new approaches for processing larger networks are needed to advance graph techniques, and several have been proposed, we study how GNNs could be parallelized using existing tools and frameworks that are known to be successful in the deep learning community. In particular, we investigate applying pipeline parallelism to GNN models with GPipe, introduced by Google in 2018.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>Traditional flat or sequential data delivery cannot fully satisfy many of today's demanding deep learning models, especially as more data structures of interest can be better represented as high-dimensional graphs instead of lowdimensional grids. Graph machine learning has demonstrated successful applications in domains such as chemistry and drug design <ref type="bibr" target="#b9">(Duvenaud et al., 2015;</ref><ref type="bibr">Mercado et al., 2020)</ref>, natural language processing <ref type="bibr" target="#b25">(Vashishth, 2019)</ref>, spatio-temporal forecasting <ref type="bibr" target="#b30">(Yu et al., 2017)</ref>, security <ref type="bibr" target="#b34">(Zhou et al., 2020)</ref>, social networks <ref type="bibr" target="#b34">(Zhou et al., 2020)</ref>, knowledge graphs <ref type="bibr" target="#b1">(Arora, 2020)</ref>, recommender systems <ref type="bibr" target="#b29">(Ying et al., 2018)</ref>, protein design discovery <ref type="bibr" target="#b24">(Strokach et al., 2020)</ref>, and material phase transitions <ref type="bibr" target="#b3">(Bapst et al., 2020)</ref>. With its increased use, especially on large datasets, performance and scaling challenges with the Graph Neural Network (GNN) <ref type="bibr" target="#b33">(Zhou et al., 2018)</ref> are becoming prevalent when using existing machine learning frameworks and accelerators because of memory and data movement limitations <ref type="bibr" target="#b2">(Auten et al., 2020)</ref> A variety of new solutions to address these issues have been proposed and are highlighted in Section 3. However, Proceedings of the First MLSys Workshop on Graph Neural Networks and Systems (GNNSys'21), San Jose, CA, USA, 2021. Copyright 2021 by the author(s). as a practical consideration, leveraging existing state-ofthe-art tools and frameworks with demonstrated success at improving deep neural network performance is valuable to push these technologies forward. Therefore, to better understand how training and inference can be more efficient for GNN models, we implement and analyze the performance of parallelized GNN models compared to their unparallelized counterparts when trained on a single CPU and GPU and multiple GPUs. As GNNs are executed sequentially, either layer-by-layer or stage-by-stage, the motivation for this study is to extend current techniques for improving performance by introducing pipeline parallelism into the GNN model architecture <ref type="bibr" target="#b32">(Zhang et al., 2020)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">GRAPH NEURAL NETWORKS</head><p>The success of deep learning on traditional grid-or sequence-based inputs, such as images and sentences, cannot be overstated. Nevertheless, many datasets in the realworld cannot be expressed within a Euclidean coordinate system, and instead naturally take an arbitrary form of graphs or networks. Various studies exist on how to generalize neural networks for the application to arbitrary irregular graphs <ref type="bibr" target="#b4">(Bruna et al., 2013;</ref><ref type="bibr" target="#b13">Henaff et al., 2015;</ref><ref type="bibr" target="#b9">Duvenaud et al., 2015;</ref><ref type="bibr" target="#b18">Li et al., 2015;</ref><ref type="bibr" target="#b7">Defferrard et al., 2016;</ref><ref type="bibr" target="#b17">Kipf &amp; Welling, 2016)</ref>, and we follow the exposition of <ref type="bibr" target="#b17">Kipf and Welling (Kipf &amp; Welling, 2016)</ref> who first introduced the notion of a convolution architecture for a graph.</p><p>We consider the general scenario of node classification in a graph. The input is a graph G = (V, E) where V is the set of vertices and E is the set of edges. Each node (or vertex) i in V has a set of features x i . Some pairs of nodes are connected, and the connections are called edges (or links) and form the set E. If n is the number of nodes and there are d features in each node, then the set of all features form a n × d matrix. Some nodes may have labels from a set of C classes. The task is to classify each node into C classes using the ingrained feature information through the edge connectivity between nodes across the graph. For our analysis, we use the Cora, CiteSeer, and PubMed datasets which are well-established citation network datasets <ref type="bibr" target="#b23">(Sen et al., 2008;</ref><ref type="bibr" target="#b28">Yang et al., 2016)</ref> often used in benchmark training. For comparison of these in Table <ref type="table" target="#tab_0">1</ref>, we also list the sizes of two larger datasets, the Reddit post dataset <ref type="bibr" target="#b12">(Hamilton et al., 2017)</ref> and the Amazon data dump <ref type="bibr" target="#b21">(McAuley et al., 2015)</ref>. As the data sets used in this study are small and do not require the techniques explored here to provide training efficiency, they offer valuable benchmarks for GNNs and measuring the baseline efficiency of parallelized models.</p><p>A GNN approaches the node classification problem by building a neural network layer atop a simultaneous message passing paradigm. Suppose there are L + 1 layers, H 0 , . . . , H L .</p><p>Then, H 0 = X, the input set of features. For each layer l, the set of output features H l+1 depends only on the previous layer H l and the input graph G. So, for some efficiently computable function f , we have H l+1 = f (H l , G). Implementations of the GNN model considers different choices of f . By setting the output of the last layer to be a single neuron, the model computes the logits for each node, which is then used to classify the nodes. Assuming f is differentiable, this approach can be optimized by standard gradient descent algorithms. In most graph networks studied in the literature, the features H l+1 (i) for node i depend on the original feature H l (i) and the features of neighboring nodes H l (j), where j being a neighbor of i connected by edge {i,j}. In some settings, these edges can be of different types, such as being directed or undirected, as well as include features, in which case the edge properties also contribute to the calculation of f . The message passing paradigm is designed by how the output features of a layer are simultaneously updated based on the input features of the layer, instead of through sequential updates. For many learning tasks on a graph, earlier approaches <ref type="bibr" target="#b8">(Dijkstra, 1959;</ref><ref type="bibr" target="#b5">Cheriton &amp; Tarjan, 1976)</ref> usually introduced problem-specific architec-tures or spectral graph theory to make predictions. However, these algorithms are limited as they require prior knowledge of the graph structure, and the GNN model provides a unified approach that allows for studying the properties of a graph itself.</p><p>The experiments presented in this paper are based on the Graph Attention Network (GAT), which is a novel GNN architecture that use attention layers on top of graph convolutions <ref type="bibr" target="#b26">(Veličković et al., 2017)</ref>. By leveraging this selfattention mechanism, GAT can achieve state-of-the-art accuracy results on several transductive and inductive graph benchmarks including the Cora, CiteSeer, and Pubmed datasets. We chose this model because it can be applied to graphs of different degrees by specifying arbitrary weights on the neighbors, making it useful for a wide variety of graph datasets. GAT is also applicable to inductive learning problems and has generalization capabilities to unseen graph data. Through our experiments, it does not perform as efficiently as simpler Graph Convolutional Networks (GCN), such as those inspired by <ref type="bibr" target="#b17">(Kipf &amp; Welling, 2016)</ref>, lending it to being an illustrative technique to inform us on parallelization benchmarks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">RELATED WORK</head><p>As described above, the core message-passing function of a GNN is the aggregation of features from the neighborhood of each node. Computing a gradient descent operation requires storing the entire graph as a single training batch.</p><p>With increasing graph size or edge density, the time and memory complexity of this computation can grow exponentially and introduce an information bottleneck <ref type="bibr" target="#b0">(Alon &amp; Yahav, 2020)</ref>. This effect limits the scalability of traditional GNNs, many of which, including GAT, do not address these concerns as their benchmark datasets were of a reasonable size for the available device capacities.</p><p>GraphSAGE <ref type="bibr" target="#b12">(Hamilton et al., 2017)</ref> was the first attempt to address graph scalability by using a neighborhood sampling with mini-batch training to limit the number of nodes included in a batch. This approach can introduce redundant calculations as the same nodes may appear in multiple sampled batches and lead to "neighbor explosion" <ref type="bibr" target="#b31">(Zeng et al., 2020)</ref>. Similar sampling techniques responded to this challenge by batching sub-graphs instead of nodes, such as in <ref type="bibr" target="#b6">(Chiang et al., 2019)</ref>. However, graph clustering approaches are faced with the challenge of defining sub-graphs that sufficiently preserve the edge topology that guides the node feature updates during training, which is an issue directly observed in the analysis of the present study. NeuGraph <ref type="bibr" target="#b20">(Ma et al., 2019)</ref> introduced parallel computation to enable GNN scalability through a new graph-parallel abstraction of Scatter-ApplyEdge-Gather-ApplyVertex (SAGA-NN). This framework conveniently encapsulates almost all existing GNNs in the literature <ref type="bibr" target="#b32">(Zhang et al., 2020)</ref>, and serves as a foundation for studying parallelized GNN performance optimization. The authors explored the design of a GNN processing framework on top of a dataflow based deep learning system, through which they optimized graph computations, scheduling, and parallelism in a dataflow-based deep learning framework for graphs. Exploring computational efficiencies at the device level, G 3 <ref type="bibr" target="#b19">(Liu et al., 2020)</ref>  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">PIPELINE PARALLELISM</head><p>Google Brain introduced the scalable pipeline parallelism library GPipe <ref type="bibr" target="#b15">(Huang et al., 2019)</ref> to enable the efficient distributed training of large, memory-consuming deep learning models on current accelerator architectures. According to their published results, GPipe increased training times of a 557 million-parameter model by 25 times using eight TPU devices and 3.5 times faster using four devices.</p><p>GPipe configures a distribution of a sequentially-designed deep neural network across multiple devices. To maximize these devices' capability to calculate in parallel, it further splits the input mini-batch from the training samples into "micro-batches" to distribute across the devices. This micro-batching technique reduces the load for the available memory on the accelerators, resulting in effectively simultaneous training of the same batch across all devices. This approach to pipeline parallelism is like a stacked combination of model parallelism and small data parallelism. During the forward pass, when each partition finishes processing a micro-batch, it shifts the output to the next partition, then immediately begins work on the next micro-batch, enabling partitions can overlap across GPUs. During the backward pass, the gradients for each micro-batch are calculated using the same model parameters from the forward pass, and are consistently accumulated at the end into the mini-batch to update the model parameters. Therefore, the number of partitions separating the data does not affect model quality.</p><p>Although designed for deep neural networks, the GPipe workflow is applicable to GNNs, with some necessary adaptations that we explore in this study. To the best of our knowledge, this is the first work to consider the idea of applying pipeline parallelism using existing libraries to potentially optimize the runtime of GNNs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">IMPLEMENTATION</head><p>Experiments included training a GAT-based multi-layer sequential neural network on the task of node classification with the citation datasets described above. The PubMed set was solely used to compare performance with pipeline parallelism and graph data batching. The forward propagation model structure remained consistent across all experiments designed with a drop-out layer (p = 0.6) followed by a GAT layer with eight heads (attention drop-out = 0.6), a leaky ReLU activation function, a second drop-out layer (p = 0.6), a second GAT layer (eight heads, attention drop-out = 0.6) where the outputs are averaged, and, finally, a log softmax function. The neural network model was implemented in PyTorch with the graph frameworks, PyTorch Geometric (PyG) <ref type="bibr" target="#b10">(Fey &amp; Lenssen, 2019)</ref>, and Deep Graph Library (DGL) <ref type="bibr" target="#b27">(Wang et al., 2019)</ref>. Each framework was compared for performance on each device architecture. Pipeline and data parallelism through GPipe was only implemented through DGL. Trials included performance measures for a single CPU, single GPU, and pipe parallel distribution across four GPUs with and without micro-batching of the graph data. For the single device benchmarks, we used an Intel(R) Xeon(R) CPU @ 2.20GHz and NVIDIA Tesla T4 GPU, and four NVIDIA Tesla V100-SXM2 GPUs (DGX) were used for the distributed pipeline parallel experiments.</p><p>GPipe was incorporated into the GNN models for each framework with the torchgpipe <ref type="bibr" target="#b16">(Kim et al., 2020)</ref> library, an implementation of the GPipe framework in PyTorch.</p><p>The defined model is wrapped in a method that takes as parameters a defined distribution of the model layers across the available GPUs as the number of micro-batches (called "chunks") to be applied. A value of one corresponds to the data parallelism feature being disabled.</p><p>In Listing 1, g contains the complete graph, numfeats represents the number of features per node, and nclasses is the number of classes in the classification task. The customizable balance array specifies how many layers from the sequence to distribute to each GPU. From this, GPipe automatically manages the necessary movements of the model and data across devices. An automated distribution algorithm is also available to optimize this layer assignment. However, for the uniform analysis presented in this paper, we manually set the layer distribution across four devices to ensure consistency for all experiments. With chunks &gt; 1, the complete dataset or batches from the training are split into micro-batches by GPipe to increase device parallelism. After a partition completes its processing of a micro-batch, it passes the output to the next partition and begins on the next incoming micro-batch in the pipeline. Through this approach, the multiple devices effectively process the same mini-batch (or entire dataset) simultaneously during a training epoch. A key challenge with this implementation for a GNN is that a sequential module is required for the network layers. A cascade of additional restrictions results, beginning with only a single input of features may be passed through the layers. However, the graph convolution layer expects as input the graph data object and its corresponding features.</p><p>For our experiments that did not incorporate model parallelism across multiple GPUs, this condition did not pose an issue because we could simply include the full graph data object, g, into the GNN model definition and pass the single tensor of features. However, when model parallelism is activated, GPipe applies micro-batching to this feature tensor, and the corresponding subset of graph nodes must instead be presented to the graph convolution layer, instead of the full graph data object.</p><p>As a workaround for enabling micro-batching, we exploited the option that the sequential module can pass a single tuple comprised of multiple tensors. Then, we pass the node indices of the graph as the first tensor along with the corresponding features in a second tensor. GPipe applies its micro-batching to each tensor in the tuple, and a subset of graph nodes with the corresponding features are passed along the sequence of layers, as needed. When the graph convolution layer receives the passed tuple, our adapted code extracts the node tensor comprised of the sub-graph as determined by the micro-batch from GPipe. Both DGL and PyG graph frameworks include a method to re-build a graph structure from a subset of graph nodes, which requires the full graph data object, g, for the re-build. The output is then a sub-graph structure expected by the graph convolution layer. The second tensor of the passed tuple that includes the features is subsequently extracted in the graph convolution layer and used in the forward calculation. Upon completion, the two-tensor tuple is reformed with the original nodes of the sub-graph and the updated features to be passed along through the remaining layers of the sequence. Next, we compare the average training time per epoch on three compute architectures, including the single CPU and GPU, as previously measured, with the DGX system comprised of four GPUs leveraging GPipe pipeline parallelism without micro-batching. In each case presented in Figure <ref type="figure" target="#fig_0">1</ref>, the complete graph data object was included in the graph convolution layer during each training epoch. The comprehensive benchmark report in Table <ref type="table" target="#tab_4">3</ref> implements the GAT model on the PubMed dataset across combinations of frameworks and compute clusters for an expanded analysis and comparison of the runtimes and accuracy. We also include the duration of the first epoch in the reported training times to provide a complete comparison of the graph frameworks and hardware, which varied slightly across graph frameworks and architectures. The remaining training epochs ran on the order of 80-100 times faster on the single GPU compared to the single CPU.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">RESULTS</head><p>Surprisingly, no significant performance improvement in training time is observed in the four GPU system using  GPipe with a "chunk size" = 1 (i.e., no micro-batching) compared to a single GPU. The PubMed dataset used in these experiments is considered small compared to those that are intended to benefit from pipeline parallelism. Therefore, the added cost of shifting data across the four GPUs may overtake the minimal speedup provided by GPipe. This may also suggest that the additional feature of data parallelism (via the data "chunks") provided by GPipe is crucial to realizing meaningful performance improvements. We also measured the training accuracy resulting from both graph machine learning frameworks applied with GPipe across four GPUs, but without micro-batching, exactly as in the timing measurements. As plotted in Figure <ref type="figure" target="#fig_1">2</ref>, each framework converged similarly in accuracy over 300 training epochs in this configuration.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2">Increased training time</head><p>To investigate the impact of data parallelism within GPipe, we activated micro-batching and ran the training with the DGL graph framework to compare total training times between a single GPU and multiple distributed GPUs. As seen in Figure <ref type="figure" target="#fig_2">3</ref>, the training times dramatically increase with micro-batching enabled at two, three, and four batches, as generated by GPipe.</p><p>Our approach adapts the forward training to pass the graph information along with the features through a tuple of tensors into the sequential model. The GPipe micro-batching splits each tensor within the tuple so that only a subset of nodes is passed through, along with its corresponding set of features, as expected. The first convolution layer receives this subset of nodes indices but still must have a complete graph structure as its input with the feature tensor. So, a re-build of a graph is first performed with a DGL framework-delivered method. This sub-graph creation from the provided subset of nodes requires the full graph data object as a reference. However, DGL necessitates that the full graph, g, must remain on the CPU. To generate the sub-graph within the convolution layer, a copy of the subset node tensor must first be moved from the GPU onto the CPU, then the sub-graph is built and moved back onto the GPU. This data flow across devices was performed twice because our model includes two convolution layers. So, significant overhead was added to the total time just to enable the basic training calculations. As the chunk size increased, more micro-batches were generated, resulting in even more sub-graph build steps. Fortunately, the feature tensor extracted from the passed tuple could remain on the GPU. However, the updated values were still re-packaged into a tuple with the original sub-graph nodes to be returned into the forward pass of the model sequence.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.3">Degraded accuracy</head><p>We also observed that the training accuracy suffered severely with an increasing number of micro-batches. Although GPipe micro-batching can be disabled, as configured for our benchmark tests (Figures <ref type="figure" target="#fig_0">1</ref> and<ref type="figure" target="#fig_1">2</ref>), the expected benefit of pipeline parallelism requires micro-batching. We next ran the same DGL framework-based model with GPipe across four GPUs, sequentially distributed as before, to observe the effects of micro-batching in our adapted implementation.</p><p>The intended design of the GPipe micro-batching through the torchgpipe library implementation is to separate the features tensor into uniform batches. This challenges our adaptation that passes a tuple containing both a node tensor and feature tensor, as we observed the micro-batching being applied to each tensor by sequentially selecting the tensor indices into a number of batches equal to the set chunk size parameter. This sequential separation preserves the nodes of the resulting sub-graph with their corresponding features. However, the edge relationships between the nodes are lost.</p><p>Although edges are re-established during the sub-graph rebuild in the convolution layers, the original graph structure is not expected to store its edges sequentially. Therefore, separating the graph this way during the micro-batching likely eliminates crucial node relationships that need aggregated during the graph convolution layer calculations. As expected from such a potential for significant information loss during the GPipe micro-batching, as the number of batches generated increases, the training accuracy drops, as seen in Figure <ref type="figure" target="#fig_3">4</ref>. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">CONCLUSION AND FUTURE WORK</head><p>By analyzing the performance of GNNs using pipeline parallelism via GPipe, our first results suggest that although GPipe has demonstrated great success in optimizing deep neural networks, its ability to deliver efficiency for a graph neural network remains limited with the adapted implementation presented here.</p><p>An immediate scope for future work is to determine how to customize the GPipe data parallelism to utilize intelligent graph batching instead of a sequential separation by index. Such an improvement is expected to increase accuracy to match the benchmark levels while benefiting from the parallelism in runtime efficiency. The SIGN technique described in Section 3 may be the best batching approach to consider for parallelizing GNNs with our implementation because it avoids the experienced pitfalls of node and graph sampling and instead provides precomputed node representations that may be straightforwardly mini-batched by GPipe.</p><p>Pipeline parallelism is intended to benefit neural network training on very large datasets, much greater in size than the PubMed set used here to establish our adapted implementation without overburdening memory resources. We anticipate that runtime performance will increase for training on extremely large graphs after memory bottlenecks or computational complexity overtake the capability offered by a single GPU. Extending the current implementation to massive datasets, on the scale of millions of nodes and a billion edges, such as the Reddit post dataset <ref type="bibr" target="#b12">(Hamilton et al., 2017)</ref>, the Amazon data dump <ref type="bibr" target="#b21">(McAuley et al., 2015)</ref>, and others available with data loaders for DGL and PyG through the Open Graph Benchmark (OGB) <ref type="bibr" target="#b14">(Hu et al., 2020)</ref>, will better illustrate the impact of GPipe parallelism on GNNs, and provide a deeper understanding for potential enhancements to our current implementation for improving training performance with these existing tools and frameworks.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 .</head><label>1</label><figDesc>Figure 1. Benchmark training times for DGL and PyG on the PubMed dataset comparing the single devices to multiple devices with pipeline parallelism. Here, data parallelism is disabled.</figDesc><graphic coords="5,60.05,228.74,222.30,156.91" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 .</head><label>2</label><figDesc>Figure 2. Training accuracy with the DGL and PyG frameworks with pipe parallelism across four GPUs with no graph data batching.</figDesc><graphic coords="5,312.05,228.75,222.29,192.07" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 .</head><label>3</label><figDesc>Figure 3. Increased training time with GPipe applied pipeline parallelism with an increasing number of graph micro-batches.</figDesc><graphic coords="6,60.05,67.06,222.29,228.82" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 .</head><label>4</label><figDesc>Figure 4. Accuracy drop-off with GPipe and graph micro-batching with comparisons to the previous training accuracy results without batching.</figDesc><graphic coords="6,312.05,227.97,222.30,187.97" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 .</head><label>1</label><figDesc>Comparisons of training dataset sizes used in this work and considered for future experimentation.</figDesc><table><row><cell>Dataset</cell><cell>Nodes</cell><cell>Edges</cell><cell>Classes</cell></row><row><cell>Cora</cell><cell>2,708</cell><cell>5,429</cell><cell>7</cell></row><row><cell>CiteSeer</cell><cell>3,312</cell><cell>4,732</cell><cell>6</cell></row><row><cell>PubMed</cell><cell>19,717</cell><cell>44,338</cell><cell>3</cell></row><row><cell>Reddit</cell><cell>233,000</cell><cell>150,000,000</cell><cell>50</cell></row><row><cell cols="3">Amazon 6,000,000 180,000,000</cell><cell>11</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head></head><label></label><figDesc>Listing 1. Illustrative GPipe implementation with torchgpipe.</figDesc><table><row><cell>import torch.nn as nn</cell></row><row><cell>from torchgpipe import GPipe</cell></row><row><cell># Define a sequential model</cell></row><row><cell>model = nn.Sequential(</cell></row><row><cell>nn.Dropout(0.6),</cell></row><row><cell>GAT(g, numfeats, 8),</cell></row><row><cell>nn.ELU(),</cell></row><row><cell>nn.Dropout(0.6),</cell></row><row><cell>GAT(g, 8 * 8, nclasses, take_mean = True),</cell></row><row><cell>nn.LogSoftmax(1))</cell></row><row><cell># Wrap the model for pipeline parallelism management</cell></row><row><cell>model = GPipe(model, balance = [1, 2, 1, 2], chunks=4)</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 2 .</head><label>2</label><figDesc>Benchmark results on multiple compute architectures and graph frameworks for the standard, small graph datasets.</figDesc><table><row><cell>Compute</cell><cell cols="3">Ave. epoch (ms) | Test accuracy</cell></row><row><cell>Package</cell><cell>Cora</cell><cell>CiteSeer</cell><cell>PubMed</cell></row><row><cell>CPU -PyG</cell><cell cols="3">104.4 | 0.717 182.9 | 0.696 798.5 | 0.718</cell></row><row><cell>CPU -DGL</cell><cell>71.3 | 0.785</cell><cell cols="2">153.4 | 0.710 338.6 | 0.723</cell></row><row><cell>GPU -PyG</cell><cell>7.7 | 0.796</cell><cell>8.4 | 0.720</cell><cell>10.9 | 0.718</cell></row><row><cell>GPU -DGL</cell><cell>13.3 | 0.721</cell><cell>12.4 | 0.641</cell><cell>12.5 | 0.682</cell></row><row><cell cols="4">All experimental training runs were performed for 300</cell></row><row><cell cols="4">epochs on the same GNN model structure. This model was</cell></row><row><cell cols="4">not optimized for best training performance but remained</cell></row><row><cell cols="4">consistent for all scenarios so that direct comparisons fo-</cell></row><row><cell cols="4">cusing on the graph frameworks, hardware, and parallelism</cell></row><row><cell cols="4">approach could be observed independent of the model struc-</cell></row><row><cell>ture.</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="2">6.1 Benchmarks</cell><cell></cell><cell></cell></row><row><cell cols="4">As a first comparison benchmark, we trained the GNN</cell></row><row><cell cols="4">model on single devices with the citation datasets of Cora,</cell></row><row><cell cols="4">CiteSeer, and PubMed. The training time and test accuracy</cell></row><row><cell cols="4">results are summarized in Table 2. As expected, training</cell></row><row><cell cols="4">times, as measured by the average time per training epoch,</cell></row><row><cell cols="4">on the GPU are faster for both graph frameworks across all</cell></row><row><cell cols="4">datasets. Interestingly, DGL trained on average 35% faster</cell></row><row><cell cols="4">than PyG on a CPU, while PyG trained on average 29%</cell></row><row><cell cols="4">faster than DGL on a GPU. This outcome suggests, at least</cell></row><row><cell cols="4">for our applied GNN model training on a single device, PyG</cell></row><row><cell cols="4">may be better optimized for a GPU and DGL for a CPU.</cell></row><row><cell cols="4">Training accuracy remained within a range of 15.5%, with</cell></row><row><cell cols="4">PyG averaging 2.4% better than DGL over all datasets.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 3 .</head><label>3</label><figDesc>Benchmarks on different compute architectures and graph frameworks for the sequential GAT model with the PubMed dataset. *The full graph was defined in the GNN model instead of being passed through as a subset of nodes to be re-built as a sub-graph.Framework Compute Epoch 1 (s) Epochs 2-300 (s) Ave. Epoch (s) Train Loss Train Acc. Val Acc.</figDesc><table><row><cell>DGL</cell><cell>Single CPU</cell><cell>0.3555</cell><cell>101.2</cell><cell>0.3386</cell><cell>0.2000</cell><cell>0.9833</cell><cell>0.7520</cell></row><row><cell>DGL</cell><cell>Single GPU</cell><cell>0.2254</cell><cell>3.736</cell><cell>0.0125</cell><cell>0.2030</cell><cell>1.000</cell><cell>0.7520</cell></row><row><cell>PyG</cell><cell>Single CPU</cell><cell>0.7946</cell><cell>238.7</cell><cell>0.7985</cell><cell>0.1567</cell><cell>0.9833</cell><cell>0.7910</cell></row><row><cell>PyG</cell><cell>Single GPU</cell><cell>0.2509</cell><cell>3.260</cell><cell>0.0109</cell><cell>0.2131</cell><cell>1.000</cell><cell>0.7920</cell></row><row><cell>DGL</cell><cell>DGX with GPipe Chunk = 1*</cell><cell>6.985</cell><cell>3.755</cell><cell>0.0126</cell><cell>0.1984</cell><cell>1.000</cell><cell>0.7660</cell></row><row><cell>PyG</cell><cell>DGX with GPipe Chunk = 1*</cell><cell>7.312</cell><cell>3.407</cell><cell>0.0114</cell><cell>0.2097</cell><cell>1.000</cell><cell>0.7840</cell></row><row><cell>DGL</cell><cell>DGX with GPipe Chunk = 1</cell><cell>7.294</cell><cell>15.62</cell><cell>0.0522</cell><cell>0.1879</cell><cell>0.9500</cell><cell>0.7780</cell></row><row><cell>DGL</cell><cell>DGX with GPipe Chunk = 2</cell><cell>7.192</cell><cell>12.30</cell><cell>0.0411</cell><cell>0.4283</cell><cell>0.8333</cell><cell>0.6000</cell></row><row><cell>DGL</cell><cell>DGX with GPipe Chunk = 3</cell><cell>7.281</cell><cell>15.29</cell><cell>0.0511</cell><cell>0.5204</cell><cell>0.7667</cell><cell>0.4920</cell></row><row><cell>DGL</cell><cell>DGX with GPipe Chunk = 4</cell><cell>7.712</cell><cell>18.06</cell><cell>0.0604</cell><cell>0.6016</cell><cell>0.7500</cell><cell>0.4580</cell></row></table></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGMENTS</head><p>Thank you to <rs type="person">Prof. Ian Foster</rs>, <rs type="person">Prof. Rick Stevens</rs>, and <rs type="person">Peng Ding</rs> for the guidance and feedback on this paper. We also thank the DGX team, <rs type="person">Daniel Murphy-Olson</rs> and <rs type="person">Ryan Aydelott</rs>, and the Computing, Environment, and <rs type="institution">Life Sciences directorate at Argonne National Laboratory</rs>.</p></div>
+			</div>			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">On the bottleneck of graph neural networks and its practical implications</title>
+		<author>
+			<persName><forename type="first">U</forename><surname>Alon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Yahav</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2006.05205</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">A survey on graph neural networks for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Arora</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Hardware acceleration of graph neural networks</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Auten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Tomei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kumar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2020 57th ACM/IEEE Design Automation Conference (DAC)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1" to="6" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Unveiling the predictive power of static structure in glassy systems</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Bapst</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Keck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Grabska-Barwińska</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Donner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Cubuk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Schoenholz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Obika</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Nelson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Back</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Hassabis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Kohli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nature Physics</title>
+		<imprint>
+			<biblScope unit="volume">16</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="448" to="454" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bruna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zaremba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Szlam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lecun</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1312.6203</idno>
+		<title level="m">Spectral networks and locally connected networks on graphs</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Finding minimum spanning trees</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Cheriton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Tarjan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">SIAM Journal on Computing</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="724" to="742" />
+			<date type="published" when="1976">1976</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Cluster-gcn: An efficient algorithm for training deep and large graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">W.-L</forename><surname>Chiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Si</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C.-J</forename><surname>Hsieh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</title>
+		<meeting>the 25th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="257" to="266" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Convolutional neural networks on graphs with fast localized spectral filtering</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Defferrard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Bresson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Vandergheynst</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="3844" to="3852" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">A note on two problems in connexion with graphs</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Dijkstra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Numerische Mathematik</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="269" to="271" />
+			<date type="published" when="1959">1959</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Convolutional networks on graphs for learning molecular fingerprints</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">K</forename><surname>Duvenaud</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Maclaurin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Iparraguirre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Bombarell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hirzel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Aspuru-Guzik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">P</forename><surname>Adams</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="2224" to="2232" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Fast graph representation learning with pytorch geometric</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">E</forename><surname>Lenssen</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1903.02428</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<author>
+			<persName><forename type="first">F</forename><surname>Frasca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Eynard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bronstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Monti</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2004.11198</idno>
+		<title level="m">Sign: Scalable inception graph neural network</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Inductive representation learning on large graphs</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1024" to="1034" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<author>
+			<persName><forename type="first">M</forename><surname>Henaff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bruna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lecun</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1506.05163</idno>
+		<title level="m">Deep convolutional networks on graph-structured data</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Open graph benchmark: Datasets for machine learning on graphs</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Catasta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2005.00687</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Gpipe: Efficient training of giant neural networks using pipeline parallelism</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bapna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Firat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ngiam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><forename type="middle">V</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="103" to="112" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">On-the-fly pipeline parallelism for training giant models</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Jeong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Baek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Yoon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Torchgpipe</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1609.02907</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Gated graph sequence neural networks</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Tarlow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Brockschmidt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Zemel</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1511.05493</idno>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">G3: when graph neural networks meet parallel graph processing systems on gpus</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>He</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the VLDB Endowment</title>
+		<meeting>the VLDB Endowment</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="page" from="2813" to="2816" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Neugraph: parallel deep neural network computation on large graphs</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Miao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Xue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Dai</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2019 {USENIX} Annual Technical Conference ({USENIX}{ATC} 19)</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="443" to="458" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Image-based recommendations on styles and substitutes</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Mcauley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Targett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Van Den</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hengel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 38th international ACM SIGIR conference on research and development in information retrieval</title>
+		<meeting>the 38th international ACM SIGIR conference on research and development in information retrieval</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="43" to="52" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Graph Networks for Molecular Design</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Mercado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Rastemo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Lindelöf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Klambauer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Engkvist</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">J</forename><surname>Bjerrum</surname></persName>
+		</author>
+		<idno type="DOI">10.26434/chemrxiv.12843137.v1</idno>
+		<ptr target="https://chemrxiv.org/articles/preprint/Graph_Networks_for_Molecular_Design/12843137" />
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page">2020</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Collective classification in network data</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Namata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bilgic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Getoor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Galligher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Eliassi-Rad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AI magazine</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="93" to="93" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Fast and flexible protein design using deep graph neural network</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Strokach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Becerra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Corbi-Verge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Perez-Riba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Kim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Cell Systems</title>
+		<imprint>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="402" to="411" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Neural graph embedding methods for natural language processing</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Vashishth</surname></persName>
+		</author>
+		<idno>CoRR, abs/1911.03042</idno>
+		<ptr target="http://arxiv.org/abs/1911.03042" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Graph attention networks</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1710.10903</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">Deep graph library: A graphcentric, highly-performant package for graph neural networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Gai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Karypis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1909.01315</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Revisiting semi-supervised learning with graph embeddings</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Cohen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Salakhudinov</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="40" to="48" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title level="m" type="main">Graph convolutional neural networks for web-scale recommender systems</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Eksombatchai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<idno>CoRR, abs/1806.01973</idno>
+		<ptr target="http://arxiv.org/abs/1806.01973" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">Spatio-temporal graph convolutional neural network: A deep learning framework for traffic forecasting</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhu</surname></persName>
+		</author>
+		<idno>CoRR, abs/1709.04875</idno>
+		<ptr target="http://arxiv.org/abs/1709.04875" />
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<title level="m" type="main">Graphsaint: Graph sampling based inductive learning method</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kannan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Prasanna</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1907.04931</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Architectural implications of graph neural networks</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Miao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Computer Architecture Letters</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="59" to="62" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sun</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1812.08434</idno>
+		<title level="m">Graph neural networks: A review of methods and applications</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title level="m" type="main">Automating botnet detection with graph neural networks</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">M</forename><surname>Rush</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Yu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2003.06344</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

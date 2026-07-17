@@ -1,0 +1,1876 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Modeling Dynamic Environments with Scene Graph Memory</title>
+				<funder>
+					<orgName type="full">Meta</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">Salesforce</orgName>
+				</funder>
+				<funder ref="#_Z8TUBTe">
+					<orgName type="full">unknown</orgName>
+				</funder>
+				<funder ref="#_hCfXxsV">
+					<orgName type="full">National Science Foundation</orgName>
+					<orgName type="abbreviated">NSF</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">Stanford Institute for Human-Centered Artificial Intelligence</orgName>
+					<orgName type="abbreviated">HAI</orgName>
+				</funder>
+				<funder ref="#_wWCw96N">
+					<orgName type="full">Analog Devices</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2023-06-12">12 Jun 2023</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Andrey</forename><surname>Kurenkov</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Michael</forename><surname>Lingelbach</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Tanmay</forename><surname>Agarwal</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Emily</forename><surname>Jin</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Chengshu</forename><surname>Li</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Ruohan</forename><surname>Zhang</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Li</forename><surname>Fei-Fei</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Jiajun</forename><surname>Wu</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Silvio</forename><surname>Savarese</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Roberto</forename><surname>Martín-Martín</surname></persName>
+						</author>
+						<title level="a" type="main">Modeling Dynamic Environments with Scene Graph Memory</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2023-06-12">12 Jun 2023</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">33AA53473C3A7880E841D10B6570F399</idno>
+					<idno type="arXiv">arXiv:2305.17537v4[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:52+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Embodied AI agents that search for objects in large environments such as households often need to make efficient decisions by predicting object locations based on partial information. We pose this as a new type of link prediction problem: link prediction on partially observable dynamic graphs. Our graph is a representation of a scene in which rooms and objects are nodes, and their relationships are encoded in the edges; only parts of the changing graph are known to the agent at each timestep. This partial observability poses a challenge to existing link prediction approaches, which we address. We propose a novel state representation -Scene Graph Memory (SGM) -with captures the agent's accumulated set of observations, as well as a neural net architecture called a Node Edge Predictor (NEP) that extracts information from the SGM to search efficiently. We evaluate our method in the Dynamic House Simulator, a new benchmark that creates diverse dynamic graphs following the semantic patterns typically seen at homes, and show that NEP can be trained to predict the locations of objects in a variety of environments with diverse object movement dynamics, outperforming baselines both in terms of new scene adaptability and overall accuracy. The codebase and more can be found this URL.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Temporal link prediction is the problem of estimating the likelihood of edges being present in the future in a dynamically changing graph based on past observed instances of the full graph <ref type="bibr" target="#b9">(Divakaran &amp; Mohan, 2020)</ref>. This type of problem appears when analyzing social networks, com-munication networks, or even biological networks. We investigate a novel instance of this problem: temporal link prediction with partial observability, i.e. when the past observations of the graph contain only parts of it. This setting maps naturally to a common problem in embodied AI: using past sensor observations to predict the state of a dynamic environment represented by a graph. Graphs are used frequently as the state representation of large scenes in the form of scene graphs <ref type="bibr" target="#b18">(Johnson et al., 2015;</ref><ref type="bibr" target="#b2">Armeni et al., 2019;</ref><ref type="bibr">Ravichandran et al., 2022a;</ref><ref type="bibr" target="#b15">Hughes et al., 2022)</ref>, a relational object-centric representation where nodes are objects or rooms, and edges encode relationships such as inside or onTop. Link prediction could be applied to partially observed, dynamic scene graphs to infer relationships between pairs of objects enabling various downstream decision-making tasks for which scene graphs have been shown to be useful such as navigation <ref type="bibr" target="#b1">(Amiri et al., 2022;</ref><ref type="bibr" target="#b40">Santos &amp; Romero, 2022)</ref>, manipulation <ref type="bibr" target="#b0">(Agia et al., 2022;</ref><ref type="bibr" target="#b59">Zhu et al., 2021)</ref> and object search <ref type="bibr">(Ravichandran et al., 2022a;</ref><ref type="bibr" target="#b51">Xu et al., 2022)</ref>.</p><p>In this paper, we study link prediction in dynamic, partially observable graphs with a focus on using this formalism to perform object search with an embodied AI agent in a large scene. Although this is a popular problem, most past works assumes a static scene with the agent having no prior memory of it, whereas we focus on dynamic scenes with a continually learning agent. For that, we first propose a novel state representation named a scene graph memory (SGM) that encodes the nodes and edges the agent has observed-including those that may no longer be true-in a single graph with reference to the time the nodes and edges were lastly observed. The SGM enables the agent to gradually build up a representation of all of its observations, which can then be the input to a link prediction model.</p><p>Existing solutions for dynamic link prediction assume full observability (knowing all the nodes and edges in graphs from prior timesteps) and are not well suited to this new kind of link prediction problem. Therefore, we introduce a novel solution for dynamic link prediction in partial observable settings based on a neural net architecture we call a Node Edge Predictor (NEP). The NEP is designed to predict the likelihood of a single node's edges with a self-attention mechanism that "compares" them. Our problem setup and proposed method: an agent is queried to find target objects in an unknown dynamic household environment where objects change location over time and objects may be added or removed -a specific instance of the general problem of link prediction in partially observable dynamic graphs. The agent can observe subsets of the true scene graph, which are aggregated in a Scene Graph Memory which is then passed into the Node Edge Predictor model that produces observation-conditioned posterior probabilities of where the query object is. Finally, the agent uses the posterior probabilities to decide on its next action.</p><p>Lastly, we address the lack of existing benchmarks for link prediction with partially observable graphs by introducing the Dynamic House Simulator. Existing simulators for evaluating embodied agents in household environments <ref type="bibr">(Li et al., 2021a;</ref><ref type="bibr" target="#b43">Shen et al., 2021;</ref><ref type="bibr" target="#b41">Savva et al., 2019;</ref><ref type="bibr" target="#b12">Gan et al., 2020;</ref><ref type="bibr" target="#b8">Deitke et al., 2022)</ref> change only by actions of the embodied AI agent, whereas the Dynamic House Simulator enables sampling diverse dynamic scenes that realistically evolve over time.</p><p>In summary, the contribution of our work is three-fold:</p><p>• We propose a new state representation, the Scene Graph Memory, to enable embodied agents to aggregate their observations of a dynamic environment over time.</p><p>• We introduce a novel neural net architecture, the Node Edge Predictor, and show it can be used to perform link prediction learning on dynamic, partially observable graphs. To the best of our knowledge, this is the first solution to this type of problem.</p><p>• We present the Dynamic House Simulator, a novel benchmark to evaluate embodied agent performance in dynamic, partially observable environments, and show that our proposed method significantly outperforms multiple baselines.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Related Work</head><p>Temporal link prediction: Link prediction is the problem of predicting the likelihood of unknown links (edges) in graphs. While the community has studied the problem extensively in static graphs (we refer to <ref type="bibr" target="#b21">Kumar et al. (2020)</ref> for a comprehensive review), link prediction in dynamic graphs, or temporal link prediction as it is also known, is also an important emerging problem <ref type="bibr" target="#b9">(Divakaran &amp; Mohan, 2020)</ref>. Recently, there has been an increasing amount of approaches based on graph neural networks (GNNs) for nontemporal <ref type="bibr" target="#b56">(Zheng et al., 2021;</ref><ref type="bibr" target="#b30">Opolka &amp; Lió, 2022;</ref><ref type="bibr" target="#b54">Zhao et al., 2022;</ref><ref type="bibr" target="#b3">Atzeni et al., 2021)</ref> as well as temporal link prediction <ref type="bibr" target="#b35">(Qu et al., 2020;</ref><ref type="bibr" target="#b23">Lei et al., 2019;</ref><ref type="bibr" target="#b45">Skarding et al., 2022;</ref><ref type="bibr" target="#b44">Singh et al., 2021)</ref> due to the capabilities of GNNs to encode and efficiently propagate graph information for inference. Several works also combine GNNs with transformers <ref type="bibr" target="#b52">(Yang et al., 2021;</ref><ref type="bibr" target="#b17">Jin et al., 2022)</ref>, which we also do with our Node Edge Predictor.</p><p>We focus on a modified version of the temporal link prediction problem. Motivated by challenges embodied AI agents typically face, we add the property of partial observability: only subsets of the prior input graphs are known. This makes the problem significantly more challenging, as the model must make its predictions based on less information. Furthermore, our problem formulation allows for not just the edges but also the nodes in the graph to be dynamic, which has rarely been the case in prior work <ref type="bibr" target="#b13">(Haghani &amp; Keyvanpour, 2017;</ref><ref type="bibr" target="#b36">Ran et al., 2022)</ref>. To our knowledge, this is the first work to introduce the problem of temporal link prediction on partially observable dynamic graphs.</p><p>Modeling object relations in embodied AI research: Often in embodied AI tasks, the relations between objects in the environment provide critical information for decisionmaking. Previous works have designed various data structures or representations that embed co-occurrence statistics between objects such as probabilistic semantic maps <ref type="bibr" target="#b25">(Li &amp; Meng, 2012;</ref><ref type="bibr" target="#b49">Veiga et al., 2016)</ref>, graphical models <ref type="bibr" target="#b19">(Kim &amp; Suh, 2019;</ref><ref type="bibr" target="#b20">Kollar &amp; Roy, 2009;</ref><ref type="bibr" target="#b4">Aydemir et al., 2013;</ref><ref type="bibr" target="#b28">Lorbach et al., 2014)</ref>, hierarchical models <ref type="bibr" target="#b34">(Pronobis et al., 2017)</ref>, extended POMDPs <ref type="bibr" target="#b55">(Zheng et al., 2022)</ref>, and scene graphs <ref type="bibr" target="#b22">(Kurenkov et al., 2021)</ref>.</p><p>Although object co-occurrence statistics can be learned by the agent from scratch in an environment, it is beneficial to extract such statistics prior to agent deployment from knowledge sources that capture commonsense about object relations, such as hand-coded priors <ref type="bibr" target="#b28">(Lorbach et al., 2014)</ref>, online text <ref type="bibr" target="#b58">(Zhou et al., 2012)</ref> or image <ref type="bibr" target="#b20">(Kollar &amp; Roy, 2009)</ref> datasets, or curated knowledge base <ref type="bibr" target="#b46">(Toro et al., 2014)</ref>. We introduce a novel way to extract a scene graph specific co-occurrence statistics through counting of observed object relations in the simulated environments of iGibson and ProcThor <ref type="bibr">(Li et al., 2021a;</ref><ref type="bibr" target="#b8">Deitke et al., 2022)</ref>.</p><p>Modeling object locations in scenes: As summarized in <ref type="bibr" target="#b7">Crespo et al. (2020)</ref>, graphs have commonly been used in the embodied AI literature as memory for tasks that require semantic information. We highlight several recent works that are particularly related to ours.  <ref type="formula">2022</ref>) also produces probabilities over object locations but does so with a contextual bandits approach over vantage points with no use explicit memory, and for just three comparatively simple environments. Lastly and most related, the concurrent work of <ref type="bibr" target="#b33">Patel &amp; Chernova (2022)</ref> also learns a predictive model of object dynamics with the use of scene graphs and GNNs as well as a household simulator, but assumes full knowledge of past states of the environment rather than dealing with partial observability, does not use the graph as a form of memory, does not make use of linguistic cues for generalization, and focuses on realistically simulating five households rather than procedural generation of any number of households.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Problem Formulation</head><p>The standard temporal link prediction problem for dynamic graphs is defined as follows <ref type="bibr" target="#b27">(Liben-Nowell &amp; Kleinberg, 2003;</ref><ref type="bibr" target="#b9">Divakaran &amp; Mohan, 2020)</ref>: The state of a dynamic graph at time t is represented as</p><formula xml:id="formula_0">G t = (V, E t )</formula><p>, where E t is the set of edges present at time t and V are the nodes. Given past observations of the state of G from time step 0 to t, G 0 , ..., G t , the goal is to predict the presence of all future edges in the next step, E t+1 .</p><p>Our problem formulation (see Fig. <ref type="figure" target="#fig_0">1</ref>) is a derivation of the above with three major differences. First, the set of nodes in the graph can change between timesteps, so that The third difference is in the scope of the prediction: instead of attempting at estimating the state of all edges, our goal is to predict the state of a subset of the edges, E Q t ⊆ E t+1 . We assume this subset is associated with query nodes V Q t of interest for a downstream task. The query edges as well as the query node may or may not have been seen in a past observation and may or may not change from G t to G t+1 . This is a natural setup in several embodied AI tasks such as object search, where the agent does not need to infer the state of the entire environment but only the relevant information to find a specific target objects.</p><formula xml:id="formula_1">V t ̸ = V t+1 . Second,</formula><p>Object search with temporal link prediction in dynamic, partially observable graphs: While our method is applicable to temporal link prediction with any form of graph information, we focus on the problem of reasoning about scene graphs in household environments. In this domain, the nodes in a given scene graph are hierarchically organized: at the top are the room nodes, then furniture nodes, and then object nodes. The edges represent the kinematic relations between nodes, such as inside and onTop. The edges between furniture nodes and object nodes are dynamic, and the underlying environment dynamics modify the edges according to some unknown probability distribution. In other words, objects "move" over time as they do in real household settings populated by humans.</p><p>Given this household context, the observations O 0 , ..., O t consist of one or more furniture nodes along with the objects connected to these furniture nodes with an edge. The goal of our agent is to correctly predict the furniture node that is connected to a target object node. The agent can choose furniture nodes to receive an observation from, which represents it exploring to observe where objects are. The agent's observations are noisy: some objects may not be observed even if connected to the chosen furniture node. This simulates realistic perception that may fail to detect objects due to occlusions or other factors.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Method</head><p>To study and address the dynamic link prediction problem with partial observability, our work includes several components: (1) The Dynamic House Simulator -a mechanism to simulate household environments with diverse object layouts and distributions, (2) Scene Graph Memory (SGM)a state representation to aggregate agent observations and serve as a basis for learning to predict where objects are, and</p><p>(3) Node Edge Predictor (NEP) -a novel neural network architecture that is best suited for predicting the presence of query edges in the scene graph.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.">Dynamic House Simulator</head><p>Algorithm 1 Dynamic House Simulator Algorithm Require: Initial prior probability graph P prior for i = 0, 1, . . . , M do Create a noisy copy of P prior : P i ← P prior + N i class Sample object instances from P i and create scene graph SG i 0 at its initial state (t = 0) Create environment dynamics:</p><formula xml:id="formula_2">T i ← P i + N i instance Define a new env instance: Env i = {SG i 0 , T i } end for for t = 1, 2, . . . , t end do for i = 0, 1, . . . , M do Evolve scene graph: SG i t ← T i (SG i t-1</formula><p>) end for end for Due to there not being a well suited benchmark for our task, we created the Dynamic House Simulator to benchmark link prediction in dynamic, partially observable graphs in the context of object search in households. There exist several simulation frameworks for embodied AI in household environments <ref type="bibr">(Li et al., 2021a;</ref><ref type="bibr" target="#b43">Shen et al., 2021;</ref><ref type="bibr" target="#b41">Savva et al., 2019;</ref><ref type="bibr" target="#b12">Gan et al., 2020;</ref><ref type="bibr" target="#b8">Deitke et al., 2022)</ref> but none of them simulate the object movement that results from other agents such as humans interacting and changing object locations. Our simulator supports sampling a wide variety of household environments with a distinct set of initial objects, locations, and patterns of object movement over time.</p><p>Priors graph. The first component of the simulator is a graph encoding the probabilities of room-furniture and furniture-object relationships for all households <ref type="bibr">(Fig 5)</ref>. We call this our prior probabilities graph P prior because it represents the commonsense knowledge about any given household environment prior to observing it. The probability of an object being inside or onTop a piece of furniture depends on which room the furniture is in. We compute these probabilities via simple counting of the presence of relationships in different environments of iGibson 2.0 <ref type="bibr">(Li et al., 2021a)</ref> and ProcTHOR-10k <ref type="bibr" target="#b8">(Deitke et al., 2022)</ref>, two simulators with realistic object placements in house environments, but the prior could come from any source of furniture-object-room distribution such as a large language model.</p><p>After obtaining the prior probabilities, we manually annotate each node in P prior with the following attributes: a set of adjectives that could describe the object or piece of furniture (e.g. "blue", "metal", etc.), the min/max number of the object in the environment, and how likely the object is to move between furniture or to disappear from or appear in the environment over time. These attributes enable more varied and realistic simulation of the household environment. Additional details can be found in the Appendix (Sec. A).</p><p>Scene sampling and evolving. The priors probabilities, P prior , are the basis for the simulator algorithm to sample diverse dynamic environments in the form of scene graphs, which we now describe (Alg. 1 and Fig. <ref type="figure">5</ref>). To sample an environment instance, Env i , we first inject class-level noise, N i class , to the prior graph to obtain the environmentspecific relation probabilities, P i . The class-level noise is a function of object class, furniture class, and relationship type. For example, for the specific environment Env i , a jar has an 80% probability of being inside a shelf and a 20% probability of being inside a cabinet. The specifics of noise generation are included in the Appendix (Sec. A).</p><p>Then, the initial scene graph SG i 0 will be sampled based on P i in a procedural manner. Given the minimum and maximum bounds, P i is used to first sample a set of rooms, then a set of furniture items within each room, and then objects for each piece of furniture. Note that there might be multiple instances of the same object type in SG i 0 . To capture the fact that different instances of the same object type are distinct in their appearance or material, each sampled node is associated with a description, in addition to its type. The description is generated by randomly sampling a subset of adjectives from the prior graph. For instance, a "mug" node may get the description "large red mug".</p><p>After this, we create the environment-specific object relation change probabilities, or dynamics for short, T i by injecting instance-level noise N i instance into P i . The instance-level noise N i instance is a function of object description, furniture description, and relationship type. For example, a "large red mug" has a 50%, 30%, 5%, 15% chance of being inside of shelf 1, shelf 2, cabinet 1, and cabinet 2 respectively. At each timestep, the dynamics T i will be used to modify the scene by changing the furniture-object relations in the scene graph SG i t to create SG i t+1 . T i can also potentially add or remove an object instance based on P i . As a result, each environment is defined in terms of its unique initial scene graph and unique object dynamics Env i = {SG i 0 , T i }, which conceptually corresponds to a unique household.</p><p>iGridson. We implement a gridworld version of iGibson 2.0 <ref type="bibr">(Li et al., 2021a)</ref>, named iGridson, to ground the agent in an environment with support for 3D-object relations. In particular, given an initial scene graph, iGridson instantiates an environment such that every object in the environment corresponds to a node in the scene graph, and the objects are sampled to satisfy all edge relationships in the scene graph. The environment evolves according to the object dynamics. More details are included in the Appendix (Sec. F). </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.">Scene Graph Memory (SGM)</head><p>As described in Sec. 3, the goal of the agent is to predict the probability of query edges in each scene graph SG i t . Since each environment has distinct probability distributions P i and T i , the agent needs to make use of the observations from the environment O i 0 ...O i t to estimate these environmentspecific distributions. We propose the Scene Graph Memory (SGM) data structure to enable the agents to do so.</p><p>To simplify notation, the following applies to an agent operating in a specific environment Env i . At timestep t, an instance of a Scene Graph Memory</p><formula xml:id="formula_3">SGM t = (V SGM t , E SGM t</formula><p>) is composed of a set of nodes and edges of the same type as in the environment scene graphs. The SGM nodes</p><formula xml:id="formula_4">V SGM t = ( t n=0 V O n ) V Q t are made</formula><p>up of all the observed nodes, as well as the set of query nodes -the latter may not or may not be a subset of the former, since the query may be related to objects that agent has not seen before. The SGM edges</p><formula xml:id="formula_5">E SGM t = ( t n=0 E O n ) E H t</formula><p>are made up of all the observed edges up until timestep t, and any new hypothetical edges. Hypothetical edges are edges the agent can predict for the query nodes without actually having observed them according to some function</p><formula xml:id="formula_6">E H t = f h (V Q t )</formula><p>; these are needed when dealing with queries of nodes that have not been observed yet or have few observed edges. f h could be implemented in various ways; we implement it by adding an edge to the SGM for every edge in P prior with a probability above a certain threshold.</p><p>Each node and edge in the SGM is associated with features reflecting the semantic properties of the object or relationship it represents as well its observed dynamics. Semantic properties are captured by word embedding associated with the node's rooms, furniture, or object label (eg "mug"). We use the 96-dimensional Tok2Vec vectors optimized on en core web sm from the spaCy python package <ref type="bibr" target="#b14">(Honnibal &amp; Montani, 2017)</ref>. These semantic features are useful for recognizing nodes that are likely to share similar edges. The observed "temporal" features include the time since a A useful property of using the SGM representation is that it collapses the sequence of observations O 0 , ..., O t into a single graph. Thus, unlike prior works that relied on hardto-optimize recurrent models, we only need our model to reason about SGM t .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3.">Node Edge Predictor (NEP)</head><p>Model architecture. We are concerned with predicting the probabilities of query edges, with a focus on the case when these edges all connect to a single node. This motivates our design for the Node Edge Predictor (NEP) model (Fig. <ref type="figure" target="#fig_2">3</ref>).</p><p>NEP consists of four modules: node embedding, edge embedding, feature fusion, and edge classification. The node and edge embedding layers consist of a three-layer MLP with ReLU activations. The node embedding layers also optionally include graph convolutional layers after the MLP. In other words, we first embed the raw input features for nodes and edges and then optionally perform message passing to propagate the embedded features across the graph.</p><p>We evaluate three variants of the model with different node embedding modules: NEP-MLP includes no graph convolution layers, NEP-GCN performs a two-layer graph convolution operation on top of the MLP embedding, and NEP-HEAT <ref type="bibr" target="#b29">(Mo et al., 2021)</ref> replaces the graph convolution layers with heterogeneous edge-enhanced graph attentional (HEAT) operators, which condition the attention computed for message passing on both the node and edge features. NEP-HEAT is chosen as our primary variant because we expect that edge-conditioned attention will allow for more effective feature propagation. HEAT was originally designed for trajectory prediction of traffic, so this is the first time it is being applied to link prediction.</p><p>After creating embeddings for all nodes and edges, we fuse the features of each pair of nodes associated with a query edge by averaging the nodes' embeddings and then concatenating that with the edge's embedding. Since different query nodes have different numbers of edges, we pad the input tensors for each batch before fusion. Lastly, the batch of fused features is passed to a 2-layer transformer encoder <ref type="bibr" target="#b48">(Vaswani et al., 2017)</ref>. The self-attention layers in the transformer enable the model to evaluate all the query edges jointly, which is important for cases in which a node's edges are mutually exclusive. NEP's use of a GNN followed by a transformer is most similar to GraphFormer from <ref type="bibr" target="#b52">Yang et al. (2021)</ref> Heterformer from <ref type="bibr" target="#b17">Jin et al. (2022)</ref>, but differs in that NEP uses the transfomer only on the embedded query edges, as opposed to the costlier use of transformers in alteration with GNN layers. Lastly, the transformer's output are passed through a 3-layer MLP with a Sigmoid activation in order to yield the output logits across all edge candidates.</p><p>Model training. For each training iteration, we randomly sample a batch of SGMs from the training dataset, and batch all the query edges from each SGM. The loss is computed by calculating the Binary Cross-Entropy between the logits and the ground-truth labels. We optimize for binary classification per edge as opposed to N-way classification because a given node may have multiple edges that are true. Because the number of true edges is far lower than false edges, we multiply the losses corresponding to false edges by the ratio of true edges to false edges before backpropagation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Experimental Setup</head><p>We design our experiments to test whether the proposed NES models can outperform alternative approaches across three downstream tasks that involve link prediction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1.">Training Data Collection</head><p>In order to train the model, we first collect data by having an agent gather observations in a variety of training environments. The agent's goal is to complete the same object search task that the SGM model is meant to help with, and can follow any policy during data collection, such as the heuristic baselines explained below. As the agent tries the complete the task, it gathers observations and constructs SGMs along the way. Besides the features described above, each query edge in the SGM i t is also annotated with a label -true or false -which corresponds to whether this edge is actually present in the ground-truth scene graph. Each node is also labeled as being a query node or not. Once a variety of SGMs with labels have been collected, they can be aggregated into an offline dataset for model training.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2.">Tasks and Metrics</head><p>We define three tasks with associated metrics as the basis of our experiments.</p><p>Predict Object Location: At every timestep, the agent must predict the location (furniture node) of an object with a particular description. The agent is then able to observe the node it has predicted and its associated object nodes, regardless of whether its output is correct. The metric for the task is accuracy -whether the agent correctly predicted a furniture node that is connected to an object with the correct description. This task is designed to evaluate how well an embodied agent may work in practice in an unknown environment; predicting the correct location of a given query object is essential for downstream tasks like household chores.</p><p>Predict Relative Location Likelihood: At every timestep, the agent is queried for multiple objects and is required to predict the likelihood of each location that each object can be at. The metric for the task is the Normalized Discounted Cumulative Gain (NDCG), a popular method for measuring the quality of a set of search results <ref type="bibr" target="#b16">(Järvelin &amp; Kekäläinen, 2002)</ref>. We choose this metric as we primarily care about the agent correctly predicting the ranking of the location options rather than the exact values in T . The agent is then able to observe the mostly likely nodes for each query node, as in the previous task. Compared to the previous task, this task and metric provide a more holistic evaluation of how well the agent models the entire environment at every timestep.</p><p>Find Object: The prior two tasks involve a single prediction at each time step. This task has the same objective as predict location, but the agent is now allowed multiple sequential choices. After each location choice, the agent can observe the location and update its internal state before making the prediction for the next action. The environment is static during this, so exhaustive search will always succeed. The metric for this task is the number of actions it takes to pick a correct node.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3.">Baselines</head><p>We compare our models with six heuristic-based models as well as the most highly relevant prior work.</p><p>These are the heuristic baselines: Random: Randomly chooses an edge among all options. Frequentist: Records the number of times edges have been observed to be true and false, and chooses the option with the highest ratio of true observations to total observations. Priors: Chooses the most likely option according to P prior . Myopic: Always chooses the last location each object was observed at, or at random if the object has not been observed. Bayesian: Treats each edge in the SGM as having a distinct beta-binomial probability distribution. We create the distributions with a beta prior based on P prior and compute the posterior distribution by treating observations as a sequence of Bernoulli trials. More details in the Appendix (Sec. D). Oracle: Uses ground truth knowledge about the dynamics of the scene as well as memory of past observed object locations to make the best choice possible.</p><p>Lastly, we also compare to the HMS model from Kurenkov et al. This model was also designed for link prediction in the context of scene graphs, but in the context of static scenes. Thus, it is a good point of comparison for our revised problem definition. Compared to our model, it does not use the SGM representation and uses a standard GCN neural net rather than the NEP.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.">Experiment Results</head><p>We evaluate our NEP variants against all baselines on the test set (unseen environments) for all three tasks. We train each NEP model with a dataset of 10,000 SGMs collected over 100 different environments, with 100 steps being taken per environment. The data collection is done by having the Bayesian baseline do the relevant task while creating and storing SGM graphs along the way. The main results can be seen in Fig. <ref type="figure" target="#fig_3">4</ref> and Table <ref type="table" target="#tab_2">1</ref>. We have the following observations. First, as seen in Fig. <ref type="figure" target="#fig_3">4</ref>, the use of SGM enables the NEP to improve over time, unlike models that completely rely on the prior information and do not make any use of observations (Priors and HMS). The model also outperforms the baselines that do make use of observations (Frequentist, Myopic, and Bayesian), which we hypothesize is due to the NEP's understanding of object semantics, use of GNNbased feature propagation, and the self-attention mechanism that allows for edge comparisons.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1.">Task Performance</head><p>Second, the priors embedded in the SGM as well as learned semantic patterns make the NEP able perform better than all heuristics from the outset. This gives NEP a head start compared to the models that purely rely on observations made during test time (Myopic and Frequentist). These baselines do approach the performance of NEP over time, since eventually it's possible to model the dynamics perfectly. However, NEP still has the advantage of faster and better adaptation to new environments.</p><p>Third, NEP also significantly outperforms the Bayesian method, which is given access to both the priors and observations over time. We believe this is because the Bayesian approach reasons on a per-edge basis, whereas NEP is able to propagate information about edge features with the use of a GNN and fuse information about query edges with the use of self-attention. Thus, it is possible to share information about the dynamics of nodes with similar semantics.</p><p>Lastly, the detailed results in Table <ref type="table" target="#tab_2">1</ref> demonstrate several things. As could be expected, making the environment dynamic both in terms of object location and object presence makes the tasks harder, compared to always dealing with the same set of objects. The HEAT NEP variant generally performs best, but the simpler GCN variant performs slightly better on the predict relative likelihood task, possibly because producing a ranking of edges is easier than specifically predicting the most likely edge. Lastly, the first two tasks do correspond to better downstream performance on finding objects through a sequence of actions, as is our ultimate goal.</p><p>The results support our initial hypothesis that combining the proposed representation (SGM) with the NEP model is suitable for the temporal link prediction tasks in our setting, as this combination allows generalization to unseen environments as well as online adaptation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2.">Ablations</head><p>We further perform several ablation studies to test the relative importance of the components in our model (Fig. <ref type="figure" target="#fig_2">3</ref>). The results are shown in Table <ref type="table" target="#tab_3">2</ref>. It is evident that all of our model designs contribute significantly to the model performance. The prior probability information is most critical, not only because it is included in node edge, but crucially also because it is used for selection of hypothetical edges; with no priors, hypothetical edges are sampled at random and so may not include the true object location. Even though the priors do not match the test environments' true dynamics, they are highly beneficial for improving performance. The use of the transformer layers, a key aspect of the NEP model, turns out to be the second most important design choice. This validates our hypothesis that it is useful to perform self-attention over query edges prior to predicting their likelihoods. Interestingly, temporal features are the most important for the HEAT variant, suggesting it makes the most use of them for adapting to novel environments. Lastly, semantic features in the SGM turn out to be the least important, perhaps because temporal features alone are sufficient to infer semantics.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.3.">Downstream Task Performance in iGridson</head><p>We also evaluate the agent's performance on the Find Object task in the iGridson environment shown in Fig 2 . The quantitative results are shown in Table <ref type="table" target="#tab_4">3</ref>. This environment contains only 21 furniture locations, so the agent is successful if it predicts the correct location by searching up to roughly half the options. Unlike the Find Object in Table <ref type="table" target="#tab_2">1</ref>, the iGridson representation includes a spatial layout rather than just a symbolic one. Therefore, it is possible to compute the path length the agent traverses across all its actions. The NEP method is always able to find the object, and does so within fewer actions and shorter paths. The variances for these metrics are surprisingly high, potentially because some objects are much harder to find than others. We hope to explore performance in iGridson more in the future. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.">Conclusion</head><p>We proposed a new problem setup, temporal link prediction for dynamic and partially observable graphs, as well as a first solution to this problem in the context of object search in embodied AI. Our work includes a new benchmark, the Dynamic House Simulator, where it is possible to evaluate model performance on dynamic link prediction in the embodied AI context. Our solution to predict object locations and environment dynamics efficiently includes a new representation, Scene Graph Memory (SGM), and a novel net learned architecture, the Node Edge Predictor (NEP). Our SGM-based models significantly outperform all the alternative approaches due to their ability to (1) learn scene statistics (commonsense knowledge about object relations) during training, and (2) adapt online by leveraging noisy, partial observations. These features help embodied AI agents perform object searches in unseen, dynamic, and partially observable environments, as well as link prediction models with partially observable graphs in general.</p><p>Figure <ref type="figure">6</ref>. The household object placement probability priors. Nodes at the top correspond to rooms, nodes at the middle correspond to furniture, and nodes at the bottom correspond to objects. Node color a unique room, furniture, or object label. Edge color represents the likelihood of a piece of furniture being sampled for a room or the likelihood of an object being sampled for a piece of furniture, with darker edges having a higher likelihood. To improve visualization, a node with a given label is created per room that it is connected to.</p><p>Figure <ref type="figure">7</ref>. The "coarse" household object placement probability priors. The layout and use of color is the same as in Fig. <ref type="figure">6</ref>. In the this version of the priors, the furniture-object relationships (i.e. edges at the bottom level) are independent from the room-furniture relationships (i.e. edges on the top level). Nodes with a given label are not replicated per room, meaning that each node represents a distinct room, furniture, or object type. Some nodes have primarily white edges because they have a large number of outgoing edges, which makes the probability of each edge lower compared to nodes with few outgoing edges.</p><p>distribution between 1 and the maximum number of categories. Then a specific adjective is uniformly sampled for each of these categories. This can result in multiple distinct objects sharing the same class existing in the scene, such as a "small green bag" or a "large red bag".</p><p>Evolution of the environment The evolution of the environment is determined by the move frequency and add/remove probability outlined in Table <ref type="table">5</ref>. First objects are removed based on the remove probability, with a constraint that the object count cannot dip below 95% of the original object count. In the second step, 5% of all objects are moved. The distribution of which objects move is determined by the move frequency of the individual move probabilities based on the object class as outlined in Table <ref type="table">5</ref>. Finally, we iterate over every possible object and spawn objects according to the add probability with the constraint that the total number of objects in the scene cannot be higher than 105% of the initial object count.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. SGM representation</head><p>The SGM consists of a set of node (V SGM t</p><p>) and edges (E SGM t</p><p>). The node features are the following:</p><p>• The text embedding for the node is the 96-dimensional Tok2Vec vectors optimized on en core web sm from the spaCy python package <ref type="bibr" target="#b14">(Honnibal &amp; Montani, 2017)</ref>: 96 dimensional vector of floats in the range 0.0-1.0.</p><p>• The number of timesteps since the node was last observed: integer scalar in the range 0-100 (max timesteps).</p><p>• The number of times the node was observed: integer scalar in the range 0-100.</p><p>• The number of timesteps since the object was observed to have moved, which occurs during an evolution of the environment. This requires the agent to have observed the object to at least twice: integer scalar in the range 0-100.</p><p>• The observed frequency for which an object has moved: scalar with value in the range 0.0-1.0.</p><p>• The node type ('house', 'floor', 'room', 'furniture', 'object'): 5 dimensional 1-hot vector.</p><p>The edge features are the following:</p><p>• The cosine similarity between the Tok2Vec text embedding of the edge's two nodes: scalar in the range 0.0-1.0.</p><p>• The number of timesteps since the edge was last observed: Integer scalar in the range 0-100.</p><p>• The number of timesteps since the observed last state change: scalar with the value 0.0 or 1.0.</p><p>• The number of times the edge was observed: integer scalar in the range 0-100.</p><p>• The number of times the edge state was observed to be true (present in the scene graph): integer scalar in the range 0-100.</p><p>• The frequency with which the edge observed to be true (present in the scene graph): scalar in the range 0.0-1.0.</p><p>• The number of times the edge state was observed to have changed: integer scalar in the range 0-100.</p><p>• The last observed state of the edge: scalar with value 0.0 or 1.0.</p><p>• The prior probability that the edge exists derived from the ProcThor-10k and iGibson datasets: scalar with value in the range 0.0-1.0.</p><p>• The edge type ('in', 'contains', 'onTop', 'under'): 4 dimensional 1-hot vector.</p><p>All features are concatenated to form the feature vectors of nodes and edges. Prior to concatenation, temporal features (integers in the range 0-100) are first normalized to be roughly in the range 0.0-1.0 via multiplication by a manually derived scaling factor. For nodes this factor is average scene graph num nodes(200)/(steps per scene(100) * 10.0), and for edges this is average scene graph num edges(500)/(steps per scene(100) * 10.0).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Training hyperparameters</head><p>Implementation All models are implemented and trained using PyTorch <ref type="bibr" target="#b32">(Paszke et al., 2019)</ref> and PyTorch-Geometric <ref type="bibr" target="#b11">(Fey &amp; Lenssen, 2019)</ref>. Unless otherwise stated, we use the default parameters of these two packages.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Model parameters</head><p>The node embedding network and edge embedding networks are two-layer feedforward neural networks with 64 units and ReLU activations following each layer. The HEAT and GCN graph neural networks have one graph convolution layer with 64 units. The transformer encoder is a standard self-attention model with 2 heads with a 64 unit feedforward network.</p><p>Training parameters The model was trained for 25 epochs with a batch size of 100. The Adam optimizer was used with a learning rate of 1 × 10 -4 .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Task and Baseline Implementation Details</head><p>Detection error For all tasks, we simulate detection error by randomly skipping 25% of the objects during observation.</p><p>Choice of query object For the predict object location task, the query object is sampled at random either from the set of objects that has moved since the last step or from all object nodes. In the former case, the node is sampled uniformly, and in the latter case, it is sampled with a weight proportional to its movement probability. This ensures the agent sometimes has to predict the location of an object that is guaranteed to have been moved since it was last observed, which is a capability we wish to be able to evaluate.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Bayesian policy</head><p>The bayesian baseline is based on a Bernoulli model with a beta prior. The beta prior parameters are computed to match a desired variance. Given prior probability µ and desired variance v, the compute the following:</p><formula xml:id="formula_7">α ← µ 2 × 1-µ v -1 µ β ← α × 1 µ -1</formula><p>This variance is chosen to be relatively large (0.05) to reflect that the priors don't in general match the dynamics of environments. The posterior predictive for an edge being true is then computed as follows:</p><formula xml:id="formula_8">α n ← α + N n=1 x n β n ← N - N n=1 x n + β p ← αn αn+βn</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Additional Discussion</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E.1. Combining our method with Reinforcement Learning</head><p>Multiple approaches have been proposed for integrating scene graphs with RL agents for navigation tasks, and as scene graph memory is the same sort of data structure it can be used in the RL scenario in the same sorts of ways. Examples of such approaches include <ref type="bibr">(Ravichandran et al., 2022b;</ref><ref type="bibr">Li et al., 2021b;</ref><ref type="bibr" target="#b42">Seymour et al., 2022;</ref><ref type="bibr" target="#b31">Pal et al., 2021)</ref>. As in these works, the SGM data structure can be used as input to the RL agent alongside its raw observations to aid the agent's decision making. Further, these works all utilize GNN layers to process the scene graphs as part of the policy network, and our NEP architecture could be used to fulfill this purpose. We performed some exploratory experiments in training an RL agent in the iGridson environment, and found convergence to be non-trivial. Therefore, we leave this problem to future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E.2. The complexity of Dynamic House Simulator tasks</head><p>While our simulator may seem simple, the environments the simulator generates are in many ways more complicated than any existing benchmarks for object search. Concretely, our generated environments are complex in terms of:</p><p>• Diversity of scenes -most benchmarks in this space only support a set number of pre-generated scenes, whereas ours can generate endless scene variations through controllable sampling</p><p>• Size of scenes -per Appendix A, our experiments are conducted in scenes with 4 rooms, 32 furniture items, and 192 objects. Prior benchmarks are typically limited to smaller spaces with significantly fewer objects.</p><p>• Variety of furniture and object types -our simulator supports over 20 furniture types and over 100 object types, with most of them having 3 or more possible modifying adjectives. This is far larger than the furniture or object variety in other benchmarks.</p><p>• Dynamics evolution -no other benchmark supports continual evolution of the scene state.</p><p>While our experiments focus on demonstrating results for symbolic scene graphs and the semi-realistic 2D iGridson environment, the approach we take for the latter can be directly extended to object search in realistic 3D spaces, as discuss next.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E.3. Applicability of our approach to realistic 3D embodied object search</head><p>Our work abstracts away the challenges of perception and navigation that are part of embodied object search in order to focus on the problem of modeling dynamics with the use of memory. Complementary to our focus, many recent works have demonstrated impressive performance on embodied instances of this problem that do require robust perception and navigation, but do not require modeling of environment dynamics of long term memory. A possible future direction for our research is to demonstrate the usefulness of scene graph memory and the node edge predictor model in the context of realistic embodied instances of this problem that these works address.</p><p>One possible approach for doing this is a direct extension of our approach for implementing the iGridson agent discussed in section 6.3 and Appendix F. Analogous to our 2D iGridson agent implementation, an agent can continually maintain a scene graph memory via processing of embodied observations, and then use NEP predictions to decide on navigation goals, which can be achieved via robust point-goal navigation. The works cited above could likely form the basis for implementing the necessary perception and point-goal navigation. In particular, the recent paper "Long-term object search using incremental scene graph updating" <ref type="bibr" target="#b57">(Zhou et al., 2022)</ref> demonstrated the feasibility of incremental scene graph updating from visual observations, which can be directly extended to incrementally building scene graph memory.</p><p>Our simulator can also form the basis for adding dynamic objects to the benchmarks used in prior works <ref type="bibr" target="#b47">(Trivedi et al., 2019;</ref><ref type="bibr">?;</ref><ref type="bibr" target="#b53">Yi et al., 2020;</ref><ref type="bibr" target="#b5">Bear et al., 2020;</ref><ref type="bibr" target="#b57">Zhou et al., 2022)</ref>. As we demonstrate with the iGridson component of our simulator, it is possible to translate the symbolic scene graphs of the environment into embodied spaces. While we only demonstrate this for the simplified 2D setting, the same approach can be extended to more realistic 3D simulators by sampling object placements according to the scene graph. For instance, iGibson 2.0 <ref type="bibr">(Li et al., 2021a)</ref> supports sampling object placements to satisfy object placement constraints. The primary difficulty with implementing this would be acquiring sufficient 3D assets for all the objects our simulator supports.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>F. iGridson Embodied Environment Details</head><p>The iGridson simulator is a 2D embodiment of a home environment laid out in a grid format, built using the minigrid library <ref type="bibr" target="#b6">(Chevalier-Boisvert et al., 2018)</ref>. It enables translating the scene graphs generating by the Dynamic House Simulator into a spatial arrangement, which is what embodied agents actually have to deal with.</p><p>As shown in Fig. <ref type="figure" target="#fig_1">2</ref>, the environment has a fixed layout of the home with four rooms, each with a predetermined number and type of furniture objects. In total, the environment consists of 21 furniture objects spread across different rooms, all of which remains static throughout the evolution of the environment. A set of objects are then placed on top of these furniture objects, and are dynamically moved to a different furniture at each time step based on their priors and specific dynamics as described in section 4.1. Note that in our experiments, the overall set of objects itself is static. That is, no new objects are added to the environment, nor are any existing objects removed, they simply move from one furniture object to another.</p><p>Our experiments in this environment follow the Find Object task, wherein each agent is given multiple attempts to find a target object. If the agent correctly predicts the furniture object on which the object is placed, we count the event as a success and the task is terminated. In this setup, given a target object, the agent makes N predictions of furniture objects, which are sequentially visited by the agent. The cost returned by the environment is therefore the total path length traversed by the agent in an episode, and the number of attempts it took to find the target object (N + 1 if object could not be found in N steps). It should be noted that the path length itself is not a direct indicator of performance, as the furniture node on which an object is placed can sometimes be far away from the agent's current position. Hence, the optimal solution in this case would incur a high path length. As a result, even optimal agents which can find the target object in a few steps can have a high variance for the average path length when aggregated over thousands of episodes. </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 .</head><label>1</label><figDesc>Figure1. Our problem setup and proposed method: an agent is queried to find target objects in an unknown dynamic household environment where objects change location over time and objects may be added or removed -a specific instance of the general problem of link prediction in partially observable dynamic graphs. The agent can observe subsets of the true scene graph, which are aggregated in a Scene Graph Memory which is then passed into the Node Edge Predictor model that produces observation-conditioned posterior probabilities of where the query object is. Finally, the agent uses the posterior probabilities to decide on its next action.</figDesc><graphic coords="2,268.10,88.29,106.37,77.88" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 .</head><label>2</label><figDesc>Figure 2. iGridson, our gridworld implementation of the iGibson 2.0 (Li et al., 2021a) simulator. An example household scene with four rooms is shown here with various furniture items and objects.</figDesc><graphic coords="5,65.90,67.06,210.57,134.79" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 .</head><label>3</label><figDesc>Figure 3. Node Edge Predictor (NEP) model architecture (GCN and HEAT variants). See the Appendix (Sec. B) for details on the node and edge features.</figDesc><graphic coords="5,307.44,67.06,233.99,140.40" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 .</head><label>4</label><figDesc>Figure 4. The average accuracy and variance for the Predict Object Location task, averaged across 100 different environments. The x-axis is the environment steps. The y-axis is smoothed with averaging over 10 steps. NEP results are with the HEAT variant.</figDesc><graphic coords="7,65.90,406.07,210.60,157.95" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="12,55.44,114.22,486.00,191.86" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="13,59.06,67.06,476.28,238.14" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="13,59.06,376.61,476.28,238.14" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc><ref type="bibr" target="#b50">Wu et al. (2019)</ref> also uses observations to build a Bayesian probabilistic relation graph of the room connectivity in novel houses, but is focused on static environments with no objects, and does not used link prediction.Kurenkov et al.  </figDesc><table /><note><p><p><p><p>(2021) also uses link prediction on a scene graph for finding objects, but does so in the context of static scenes without the need to learn object dynamics.</p>Du et al. (2022)  </p>also attempts to capture the dynamics of object movement by maintaining an object-based memory and training attention-based neural networks, but focuses on visual rather than semantic information and within a much smaller number of locations and objects than us.</p>Rudra et al. (</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>we assume partial observability; instead of having full access to past graph states, G 0 , ..., G t , our agent has only access to partial observations of these states, O 0 , ..., O t .</figDesc><table><row><cell>Each partial observation, O t = (V O t , E O t ), contains the current state of a subset of the nodes, V O t ⊆ V , and the edges, E O t ⊆ E t . The content of an observation, O, is task-</cell></row><row><cell>dependent; in our embodied AI context it will be the result</cell></row><row><cell>of agent actions, representing a realistic sensing operation.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 1 .</head><label>1</label><figDesc>The mean accuracy and standard deviation (averaged across 100 runs/environments) are shown for three tasks and different environment conditions. Lower is better for Predict Object Location and Find Object. Dynamic nodes refer to whether nodes are added and removed throughout scene evolution, which makes the problem significantly more challenging.</figDesc><table><row><cell>Task</cell><cell cols="2">Predict Object Location ↑</cell><cell cols="2">Predict Relative Location Likelihood ↑</cell><cell>Find Object ↓</cell><cell></cell></row><row><cell>Dynamic Nodes?</cell><cell>Y</cell><cell>N</cell><cell>Y</cell><cell>N</cell><cell>Y</cell><cell>N</cell></row><row><cell>Random</cell><cell cols="3">0.046 ± 0.005 0.044 ± 0.005 0.381 ± 0.001</cell><cell>0.384 ± 0.001</cell><cell cols="2">8.769 ± 1.092 8.750 ± 1.100</cell></row><row><cell>Priors</cell><cell cols="3">0.159 ± 0.019 0.180 ± 0.025 0.536 ± 0.001</cell><cell>0.546 ± 0.002</cell><cell cols="2">5.911 ± 1.433 5.869 ± 1.438</cell></row><row><cell>Frequentist</cell><cell cols="3">0.271 ± 0.029 0.315 ± 0.038 0.668 ± 0.001</cell><cell>0.728 ± 0.002</cell><cell cols="2">4.550 ± 1.571 4.218 ± 1.624</cell></row><row><cell>Myopic</cell><cell cols="3">0.282 ± 0.030 0.339 ± 0.043 0.029 ± 0.000</cell><cell>0.017 ± 0.000</cell><cell cols="2">6.333 ± 2.202 6.048 ± 2.186</cell></row><row><cell>HMS</cell><cell cols="3">0.194 ± 0.023 0.210 ± 0.033 0.529 ± 0.001</cell><cell>0.582 ± 0.002</cell><cell cols="2">5.357 ± 1.379 5.254 ± 1.458</cell></row><row><cell>Bayesian</cell><cell cols="3">0.286 ± 0.028 0.308 ± 0.034 0.699 ± 0.002</cell><cell>0.725 ± 0.0 02</cell><cell cols="2">3.469 ± 0.761 3.610 ± 0.970</cell></row><row><cell>NEP-MLP</cell><cell cols="3">0.302 ± 0.032 0.336 ± 0.038 0.661 ± 0.002</cell><cell>0.736± 0.002</cell><cell cols="2">3.650 ± 1.035 3.445 ± 0.948</cell></row><row><cell>NEP-GCN</cell><cell cols="3">0.324 ± 0.034 0.359 ± 0.041 0.728 ± 0.001</cell><cell>0.792 ± 0.002</cell><cell cols="2">3.629 ± 1.042 3.191 ± 0.866</cell></row><row><cell>NEP-HEAT</cell><cell cols="3">0.351 ± 0.033 0.391 ± 0.041 0.724 ± 0.002</cell><cell>0.783 ± 0.002</cell><cell cols="2">3.570 ± 1.032 3.186 ± 0.910</cell></row><row><cell>Oracle</cell><cell cols="3">0.454 ± 0.039 0.475 ± 0.063 0.932 ± 0.002</cell><cell>0.939 ± 0.002</cell><cell cols="2">3.001 ± 0.772 2.921 ± 0.764</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 2 .</head><label>2</label><figDesc>Ablation study results. The mean accuracy and variance (averaged across 100 runs/environment) are reported for for the Predict Object Location task with dynamic nodes. Higher is better. Temporal features 0.288 ± 0.032 0.320 ± 0.033 0.322 ± 0.031 (-) Semantic features 0.263 ± 0.027 0.322 ± 0.030 0.328 ± 0.030</figDesc><table><row><cell></cell><cell>NEP-MLP</cell><cell>NEP-GCN</cell><cell>NEP-HEAT</cell></row><row><cell>Full Model</cell><cell cols="3">0.302 ± 0.032 0.324 ± 0.034 0.351 ± 0.033</cell></row><row><cell>(-) Prior probability</cell><cell cols="3">0.260 ± 0.028 0.233 ± 0.024 0.267 ± 0.029</cell></row><row><cell>(-) Transformer</cell><cell cols="3">0.263 ± 0.028 0.310 ± 0.034 0.314 ± 0.032</cell></row><row><cell>(-)</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 3 .</head><label>3</label><figDesc>Mean success rate, number of actions, and path length (± standard deviation) to reach the query objects in the iGridson environment averaged over 10k runs. The agent is given at most 10 actions to reach the target object.</figDesc><table><row><cell></cell><cell cols="2">Success Rate # of Actions</cell><cell>Path Length</cell></row><row><cell>Random</cell><cell>0.57</cell><cell cols="2">9.36 ± 4.09 141.74 ± 63.86</cell></row><row><cell>Myopic</cell><cell>0.57</cell><cell cols="2">9.31 ± 4.14 140.92 ± 64.40</cell></row><row><cell>Bayesian</cell><cell>0.84</cell><cell>5.06 ± 4.50</cell><cell>70.90 ± 63.06</cell></row><row><cell>NEP-HEAT</cell><cell>1.00</cell><cell>1.56 ± 0.86</cell><cell>30.05 ± 24.67</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 4 .</head><label>4</label><figDesc>Furniture types used in Dynamic House Sim and their associated metadata</figDesc><table><row><cell>label</cell><cell cols="4"># possible adjectives sample probability max count # edges</cell></row><row><cell>counter</cell><cell>3</cell><cell>0.80</cell><cell>3</cell><cell>27</cell></row><row><cell>table</cell><cell>1</cell><cell>0.80</cell><cell>3</cell><cell>17</cell></row><row><cell>shelf</cell><cell>7</cell><cell>0.80</cell><cell>10</cell><cell>6</cell></row><row><cell>fridge</cell><cell>3</cell><cell>0.90</cell><cell>2</cell><cell>30</cell></row><row><cell>top cabinet</cell><cell>3</cell><cell>0.50</cell><cell>10</cell><cell>8</cell></row><row><cell>coffee table</cell><cell>4</cell><cell>0.60</cell><cell>3</cell><cell>34</cell></row><row><cell>cooktop</cell><cell>3</cell><cell>0.90</cell><cell>1</cell><cell>3</cell></row><row><cell>counter top</cell><cell>5</cell><cell>0.80</cell><cell>3</cell><cell>67</cell></row><row><cell>dining table</cell><cell>7</cell><cell>1.00</cell><cell>1</cell><cell>74</cell></row><row><cell>chair</cell><cell>7</cell><cell>0.75</cell><cell>12</cell><cell>40</cell></row><row><cell>tv stand</cell><cell>2</cell><cell>1.00</cell><cell>1</cell><cell>33</cell></row><row><cell>sofa</cell><cell>1</cell><cell>0.75</cell><cell>2</cell><cell>18</cell></row><row><cell>bed</cell><cell>3</cell><cell>0.90</cell><cell>2</cell><cell></cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>Department of Computer Science, Stanford University</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>Salesforce AI Research</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>Department of Computer Science, University of Texas at Austin. Correspondence to: Andrey Kurenkov &lt;andreyk@stanford.edu&gt;.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><p>Acknowledgments. This work is in part supported by <rs type="funder">Stanford Institute for Human-Centered Artificial Intelligence (HAI)</rs>, <rs type="funder">NSF</rs> RI #<rs type="grantNumber">2211258</rs>, <rs type="grantNumber">ONR MURI N00014-22-1-2740</rs>, <rs type="grantNumber">AFOSR YIP FA9550-23-1-0127</rs>, <rs type="funder">Analog Devices</rs>, <rs type="person">JPMorgan Chase</rs>, <rs type="funder">Meta</rs>, and <rs type="funder">Salesforce</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_hCfXxsV">
+					<idno type="grant-number">2211258</idno>
+				</org>
+				<org type="funding" xml:id="_Z8TUBTe">
+					<idno type="grant-number">ONR MURI N00014-22-1-2740</idno>
+				</org>
+				<org type="funding" xml:id="_wWCw96N">
+					<idno type="grant-number">AFOSR YIP FA9550-23-1-0127</idno>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Dynamic House Simulator</head><p>class to the global prior P prior to generate environment-specific relation probabilities P i . The initial scene graph SG i 0 will be sampled based on P i in a procedural manner. Then we inject object instance-level noise N i instance into the environment-specific relation probabilities P i to generate the environment dynamics T i , which will evolve the scene graph across time steps.</p><p>Object placement probabilities For ProcThor-10k, we counted the occurrences of object relationships and normalized to get point probabilities. iGibson already includes the probabilities as metadata, so we use that directly. For relationships that are in both, we use the ProcThor-10k. We compute object placement probabilities for ProcThor-10k by counting the number of occurrences in each relationship type within the 10,000 published train environments and normalizing the counts of all room-furniture relationships and furniture-object relationships. Specifically, we create counts of furniture-object edges counts per room and divide by the sum of all object instance in each room. iGibson 2.0 already encodes such probabilities in its metadata, so we only need to average the F-O probabilities for the coarse graph. We filter out any furniture nodes with fewer than 3 outgoing edges to focus computation on simulating busier aspects of the environment. The resulting P prior graphs is visualized in Fig. <ref type="figure">6</ref>.</p><p>We also create a the "coarse" version of the priors graph in which furniture-object edges are counted irrespective of rooms and divided by the sum of all object instances. The resulting P prior graphs is visualized in Fig. <ref type="figure">7</ref>. We did not use these priors in our experiments, since they lead to object dynamics that are strictly simpler than the "detailed" priors and therefore the results were less informative.</p><p>Sampling noise There are two types of class-level noise: sparsification and randomization. Sparsification means we zero out probabilities for some edges, e.g. a certain object will never be inside a certain piece of furniture. If an edge's probability is not zeroed out, we then randomly scale it up or down by a certain amount. After the application of noise, all edge probabilities for the object are normalized. The goal is to make each environment instance have its own specific locations for various objects. In our experiments we use a probability of 25% for both zeroing out edges and as the maximum and minimum by which probabilities may be scaled.</p><p>Environment Sampling An environment consists of 1 floor, 4 rooms (kitchen, living room, bedroom, bathroom), 8 furniture items per room, and 6 objects per piece of furniture. While our approach is compatible with different counts for each category, we chose this specific ratio (floor:room:furniture:item) to standardize our experiments. The furniture and object items are sampled from the candidate lists in Table <ref type="table">4</ref> and<ref type="table">Table 5</ref>. Adjectives are additional descriptors belonging to an adjective category such as size or color which are then sampled and attached to both furniture and objects by the following procedure. First, the number of adjective categories to attach to a given object or furniture items is sampled from a uniform </p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Taskography: Evaluating robot task planning over large 3d scene graphs</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Agia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">M</forename><surname>Jatavallabhula</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Khodeir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Miksik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Vineet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mukadam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Paull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Shkurti</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conference on Robot Learning</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="46" to="58" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Reasoning with scene graphs for robot planning under partial observability</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Amiri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chandan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Robotics and Automation Letters</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="5560" to="5567" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">3d scene graph: A structure for unified semantics, 3d space, and camera</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Armeni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z.-Y</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gwak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">R</forename><surname>Zamir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fischer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Malik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Savarese</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF International Conference on Computer Vision</title>
+		<meeting>the IEEE/CVF International Conference on Computer Vision</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="5664" to="5673" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Modeling edge features with deep bayesian graph networks</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Atzeni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bacciu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Errica</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Micheli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2021 International Joint Conference on Neural Networks (IJCNN)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="1" to="8" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Active visual object search in unknown environments using uncertain semantics</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Aydemir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pronobis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Göbelbecker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Jensfelt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Robotics</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="986" to="1002" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Learning physical graph representations from visual scenes</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bear</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Mrowca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Alter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Nayebi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schwartz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">F</forename><surname>Fei-Fei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tenenbaum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="6027" to="6039" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Minimalistic gridworld environment for gymnasium</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Chevalier-Boisvert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Willems</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pal</surname></persName>
+		</author>
+		<ptr target="https://github.com/Farama-Foundation/Minigrid" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Semantic information for robot navigation: A survey</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Crespo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">C</forename><surname>Castillo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><forename type="middle">M</forename><surname>Mozos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Barber</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Applied Sciences</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page">497</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">Procthor: Large-scale embodied ai using procedural generation</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Deitke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Vanderbilt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Herrasti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Weihs</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Salvador</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Ehsani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Kolve</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Farhadi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kembhavi</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2206.06994</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Temporal link prediction: A survey</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Divakaran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mohan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">New Generation Computing</title>
+		<imprint>
+			<biblScope unit="volume">38</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="213" to="258" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Learning object-based state estimators for household robots</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lozano-Perez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">P</forename><surname>Kaelbling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)</title>
+		<imprint>
+			<biblScope unit="page">2022</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Fast graph representation learning with PyTorch Geometric</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">E</forename><surname>Lenssen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR Workshop on Representation Learning on Graphs and Manifolds</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Threedworld: A platform for interactive multi-modal physical simulation</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schwartz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Alter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Schrimpf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Traer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>De Freitas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kubilius</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bhandwaldar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Haber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sano</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2007.04954</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Temporal link prediction: techniques and challenges. Computer science and information technologies</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Haghani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">R</forename><surname>Keyvanpour</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<pubPlace>Yerevan</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">spaCy 2: Natural language understanding with Bloom embeddings, convolutional neural networks and incremental parsing</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Honnibal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Montani</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note>To appear</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Hydra: A real-time spatial perception engine for 3d scene graph construction and optimization</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Hughes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Carlone</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2201.13360</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Cumulated gain-based evaluation of ir techniques</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Järvelin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kekäläinen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Information Systems (TOIS)</title>
+		<imprint>
+			<biblScope unit="volume">20</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="422" to="446" />
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Heterformer: A transformer architecture for node representation learning on heterogeneous text-rich networks</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Han</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2205.10282</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Image retrieval using scene graphs</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Johnson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Krishna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Stark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L.-J</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Shamma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bernstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Fei-Fei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<meeting>the IEEE Conference on Computer Vision and Pattern Recognition</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="3668" to="3678" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Active object search in an unknown large-scale environment using commonsense knowledge and spatial relations</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><forename type="middle">H</forename><surname>Suh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Intelligent Service Robotics</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="371" to="380" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Utilizing object-object and objectscene context when planning to find things</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Kollar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Roy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2009 IEEE International Conference on Robotics and Automation</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="2168" to="2173" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Link prediction techniques, applications, and performance: A survey</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">S</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Biswas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Physica A: Statistical Mechanics and its Applications</title>
+		<imprint>
+			<biblScope unit="volume">553</biblScope>
+			<biblScope unit="page">124289</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Semantic and geometric modeling with neural message passing in 3d scene graphs for hierarchical mechanical search</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kurenkov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Martín-Martín</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ichnowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Goldberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Savarese</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2021 IEEE International Conference on Robotics and Automation (ICRA)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="11227" to="11233" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Gcngan: A non-linear temporal link prediction model for weighted dynamic networks</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Lei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE INFOCOM 2019-IEEE Conference on Computer Communications</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="388" to="396" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">igibson 2.0: Object-centric simulation for robot learning of everyday household tasks</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Martín-Martín</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lingelbach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Vainio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Gokmen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Dharan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Jain</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2108.03272</idno>
+		<imprint>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Indoor scene recognition via probabilistic semantic map</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">Q</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><surname>-H</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2012 IEEE International Conference on Automation and Logistics</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="352" to="357" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Ion: Instance-level object navigation</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Jiang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 29th ACM International Conference on Multimedia</title>
+		<meeting>the 29th ACM International Conference on Multimedia</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="4343" to="4352" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">The link prediction problem for social networks</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Liben-Nowell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kleinberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the twelfth international conference on Information and knowledge management</title>
+		<meeting>the twelfth international conference on Information and knowledge management</meeting>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+			<biblScope unit="page" from="556" to="559" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Prior-assisted propagation of spatial information for object search</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lorbach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Höfer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Brock</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2014 IEEE/RSJ International Conference on Intelligent Robots and Systems</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="2904" to="2909" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title level="m" type="main">Heterogeneous edge-enhanced graph attention network for multi-agent trajectory prediction</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Mo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Lv</surname></persName>
+		</author>
+		<idno>CoRR, abs/2106.07161</idno>
+		<ptr target="https://arxiv.org/abs/2106.07161" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Bayesian link prediction with deep graph convolutional gaussian processes</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Opolka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lió</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="4835" to="4852" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Learning hierarchical relationships for object-goal navigation</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Christensen</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Conference on Robot Learning</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="517" to="528" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">An imperative style, high-performance deep learning library</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Paszke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Massa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bradbury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Chanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Killeen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Gimelshein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Antiga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Desmaison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Devito</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Raison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Tejani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chilamkurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Steiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chintala</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Pytorch</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="8024" to="8035" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">Proactive robot assistance via spatio-temporal object modeling</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Patel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chernova</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2211.15501</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Deep spatial affordance hierarchy: Spatial knowledge representation for planning in large-scale environments</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pronobis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Riccio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">P</forename><surname>Rao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICAPS 2017 Workshop on Planning and Robotics</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1" to="9" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Continuous-time link prediction via temporal dependent graph neural network</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Duan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Shi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of The Web Conference</title>
+		<meeting>The Web Conference</meeting>
+		<imprint>
+			<date type="published" when="2020">2020. 2020</date>
+			<biblScope unit="page" from="3026" to="3032" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Predicting future links with new nodes in temporal academic networks</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Ran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S.-Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K.-K</forename><surname>Shang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Jia</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Physics: Complexity</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">15006</biblScope>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Hierarchical representations and explicit memory: Learning effective navigation policies on 3d scene graphs using graph neural networks</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ravichandran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Hughes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">D</forename><surname>Griffith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Carlone</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE International Conference on Robotics and Automation (ICRA)</title>
+		<imprint>
+			<biblScope unit="page">2022</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Hierarchical representations and explicit memory: Learning effective navigation policies on 3d scene graphs using graph neural networks</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ravichandran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Hughes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">D</forename><surname>Griffith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Carlone</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2022 International Conference on Robotics and Automation (ICRA)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="9272" to="9279" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">A contextual bandit approach for learning to plan in environments with probabilistic goal configurations</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rudra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Goel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Santara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Gentile</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Perron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Sindhwani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Parada</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Aggarwal</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2211.16309</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">A deep reinforcement learning approach with visual semantic navigation with memory for mobile robots in indoor home context</title>
+		<author>
+			<persName><forename type="first">I</forename><forename type="middle">B D A</forename><surname>Santos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">A</forename><surname>Romero</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Intelligent &amp; Robotic Systems</title>
+		<imprint>
+			<biblScope unit="volume">104</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="1" to="21" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Habitat: A platform for embodied ai research</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Savva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kadian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Maksymets</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Wijmans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Straub</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Koltun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Malik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF International Conference on Computer Vision</title>
+		<meeting>the IEEE/CVF International Conference on Computer Vision</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="9339" to="9347" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Graphmapper: Efficient visual navigation by scene graph generation</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Seymour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">C</forename><surname>Mithun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H.-P</forename><surname>Chiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Samarasekera</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kumar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2022 26th International Conference on Pattern Recognition (ICPR)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="4146" to="4153" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">igibson 1.0: a simulation environment for interactive tasks in large realistic scenes</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Martín-Martín</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Pérez-D'arpino</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Buch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Tchapmi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="7520" to="7527" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<monogr>
+		<title level="m" type="main">Edge proposal sets for link prediction</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">L</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Bhalerao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S.-N</forename><surname>Lim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">R</forename><surname>Benson</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2106.15810</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">A robust comparative analysis of graph neural networks on dynamic link prediction</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Skarding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hellmich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Gabrys</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Musial</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Access</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page" from="64146" to="64160" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Probabilistic relational reasoning in semantic robot navigation</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Toro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">G</forename><surname>Cozman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Revoredo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">H R</forename><surname>Costa</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">URSW</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="37" to="48" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Learning representations over dynamic graphs</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Trivedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Farajtabar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Biswal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zha</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Dyrep</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on learning representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ł</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Polosukhin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Efficient object search for mobile robots in dynamic environments: Semantic map as an input for the decision maker</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">S</forename><surname>Veiga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Miraldo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ventura</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">U</forename><surname>Lima</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2016 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2745" to="2750" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Bayesian relational memory for semantic visual navigation</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Tamar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Russell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Gkioxari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Tian</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF international conference on computer vision</title>
+		<meeting>the IEEE/CVF international conference on computer vision</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2769" to="2779" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Learning hierarchical graph convolutional neural network for object navigation</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zheng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Neural Networks</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="544" to="556" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Graphformers: Gnnnested transformers for representation learning on textual graph</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Lian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Agrawal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Xie</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="28798" to="28810" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Clevrer: Collision events for video representation and reasoning</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Yi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Kohli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Torralba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">B</forename><surname>Tenenbaum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Learning from counterfactual links for link prediction</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Jiang</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="26911" to="26926" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Towards optimal correlational object search</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Chitnis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Sung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Konidaris</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Tellex</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2022 International Conference on Robotics and Automation (ICRA)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="7313" to="7319" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<monogr>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">W</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Rao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Katariya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Subbian</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2111.04840</idno>
+		<title level="m">Cold brew: Distilling graph node representations with incomplete or missing neighborhoods</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">Long-term object search using incremental scene graph updating</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Liang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Robotica</title>
+		<imprint>
+			<biblScope unit="page" from="1" to="14" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<analytic>
+		<title level="a" type="main">Web mining driven object locality knowledge acquisition for efficient robot behavior</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zillich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zender</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Vincze</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2012 IEEE/RSJ International Conference on Intelligent Robots and Systems</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="3962" to="3969" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<analytic>
+		<title level="a" type="main">Hierarchical planning for long-horizon manipulation with geometric and symbolic scene graphs</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tremblay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Birchfield</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2021 IEEE International Conference on Robotics and Automation (ICRA)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="6541" to="6548" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

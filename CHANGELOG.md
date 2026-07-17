@@ -1,0 +1,5 @@
+- structured the repository in backend & frontend
+- added docker compose for ollama (and pull the models), grobid, rabbitmq, workers, backend and frontend
+- added .env to change models, urls
+- added .gitignore
+- added poetry environments for backend and frontend

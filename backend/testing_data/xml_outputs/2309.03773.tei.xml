@@ -1,0 +1,856 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Extending Transductive Knowledge Graph Embedding Models for Inductive Logical Relational Inference</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2023-09-07">7 Sep 2023</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Thomas</forename><surname>Gebhart</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">University of Minnesota</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">John</forename><surname>Cobb</surname></persName>
+							<affiliation key="aff1">
+								<orgName type="department">Department of Mathematics</orgName>
+								<orgName type="institution">University of Wisconsin-Madison</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Extending Transductive Knowledge Graph Embedding Models for Inductive Logical Relational Inference</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2023-09-07">7 Sep 2023</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">75F3428677855CF37C026C8A5E661410</idno>
+					<idno type="arXiv">arXiv:2309.03773v1[cs.AI]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:56+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Many downstream inference tasks for knowledge graphs, such as relation prediction, have been handled successfully by knowledge graph embedding techniques in the transductive setting. To address the inductive setting wherein new entities are introduced into the knowledge graph at inference time, more recent work opts for models which learn implicit representations of the knowledge graph through a complex function of a network's subgraph structure, often parametrized by graph neural network architectures. These come at the cost of increased parametrization, reduced interpretability and limited generalization to other downstream inference tasks. In this work, we bridge the gap between traditional transductive knowledge graph embedding approaches and more recent inductive relation prediction models by introducing a generalized form of harmonic extension which leverages representations learned through transductive embedding methods to infer representations of new entities introduced at inference time as in the inductive setting. This harmonic extension technique provides the best such approximation, can be implemented via an efficient iterative scheme, and can be employed to answer a family of conjunctive logical queries over the knowledge graph, further expanding the capabilities of transductive embedding methods. In experiments on a number of large-scale knowledge graph embedding benchmarks, we find that this approach for extending the functionality of transductive knowledge graph embedding models to perform knowledge graph completion and answer logical queries in the inductive setting is competitive with-and in some scenarios outperforms-several state-of-the-art models derived explicitly for such inductive tasks.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Introduction</head><p>Inferring interactions between nodes in a network is a fundamental and ubiquitous task in relational machine learning. For example, product recommendation via collaborative filtering may be cast as a link prediction problem between customers and products <ref type="bibr" target="#b17">(Koren, Bell, and Volinsky 2009)</ref>, and association prediction within a social network corresponds to link prediction between people or communities (Al <ref type="bibr" target="#b1">Hasan et al. 2006</ref>). This problem is popularly represented within the framework of knowledge graphs, which encodes facts about a particular domain by specifying relations (as directed edges) between entities (as nodes). Figure <ref type="figure">1</ref>: Overview of the method. A: An example knowledge graph G train . B: The representations of entities E train and relations R are learned using a traditional transductive knowledge graph embedding method like Structured Embedding. C: A knowledge graph G inf with new entities (colored red) introduced among existing entities in E train (colored blue). D: Representations for new entities are inferred by harmonic extension anchored by the representations of the known entities E train , denoted by 2-dimensional vectors, and relation representations, depicted here as (2 × 2)dimensional matrices.</p><p>A common knowledge graph task is to estimate the likelihood of a potential relation existing between two entities, or more generally, a potential logical statement about a group of entities and their interrelationships. The former task is related to simple link prediction (e.g. for knowledge graph completion), and the latter to more complex logical reasoning. In the transductive setting wherein all entities and relations are known at training and inference time there are a wide variety of effective embedding-based methods to perform these knowledge graph completion and logical reasoning tasks <ref type="bibr" target="#b6">(Bordes et al. 2011</ref><ref type="bibr" target="#b5">(Bordes et al. , 2013;;</ref><ref type="bibr" target="#b24">Sun et al. 2019;</ref><ref type="bibr" target="#b28">Zhang et al. 2019</ref>). These embedding-based methods learn a vector-like representation of each entity and each relation type and have seen continued progress in recent years <ref type="bibr" target="#b2">(Ali et al. 2020)</ref>. Despite the fact that these representations lend themselves to a wide variety of downstream applications beyond knowledge graph completion, the assumption that the training and inference graphs contain the same set of entities can be restrictive in practice, and presently the only way for a transductive knowledge graph embedding method like TransE <ref type="bibr" target="#b5">(Bordes et al. 2013)</ref> or Structured Embedding (SE) <ref type="bibr" target="#b6">(Bordes et al. 2011)</ref> to handle the introduction of new entities or relations in the knowledge graph is to learn a completely new set of embeddings over the expanded knowledge graph-a costly update procedure. This is particularly concerning given that modern knowledge graphs can contain millions of entities and billions of relational facts and are notoriously incomplete.</p><p>Motivated by this structural flaw, recent work <ref type="bibr" target="#b13">(Hamilton, Ying, and Leskovec 2017;</ref><ref type="bibr" target="#b25">Teru, Denis, and Hamilton 2020;</ref><ref type="bibr" target="#b29">Zhu et al. 2021;</ref><ref type="bibr" target="#b26">Yan et al. 2022;</ref><ref type="bibr" target="#b11">Geng et al. 2022)</ref> focuses on learning knowledge graph representations in the inductive setting which permits the inclusion of new entities in the knowledge graph at test time. Many of these approaches employ graph neural networks (GNNs) to learn latent representations of each entity or pair of entities <ref type="bibr" target="#b29">(Zhu et al. 2021)</ref> based on the pattern of relations seen within some neighborhood of the query. While these approaches are effective for inductive link and query prediction, the increase in complexity introduced by these models results in latent entity representations which are highly task-specific and only definable with respect to their presence within a larger knowledge graph, thus significantly reducing their interpretability and adaptability to other downstream tasks.</p><p>Contributions.</p><p>In this paper, we present a general feature propagation approach for handling missing entity representations for knowledge graph learning tasks. These representations can then be used for downstream tasks on the inference graph, effectively extending all previouslymentioned transductive relational learning methods to the inductive setting. The framework relies on minimizing the Dirichlet energy of a sheaf Laplacian which may be interpreted as an optimal "diffusion" of existing entity representations to unknown entities according to the learned relation representations which connect them. This minimization has a closed-form solution which can be computed for small networks which we leverage to reason over complex logical queries. We also provide an efficient iterative implementation of this minimization problem, via gradient descent on this sheaf Dirichlet energy, which scales to support harmonic extension over real-world knowledge graphs with hundreds of thousands of nodes (or more).</p><p>We examine the efficacy of this process by measuring performance of two popular downstream tasks: knowledge graph completion and logical query reasoning. Interestingly, the same feature propagation techniques described above also yield competitive approaches to both of these tasks. In summary, our method has the following advantages:</p><p>• Theoretically Motivated: Our technique comes from a natural generalization of harmonic extension and thus comes with optimality guarantees. In particular, our method provably estimates an closed-form solution for the optimal representations of new entities subject to consistency conditions imposed by the relation representations. • Robust to high rates of missing data: Even in the fully-inductive case where all entity embeddings are unknown at inference time, performing harmonic extension of sparse randomized entity embeddings is, perhaps surprisingly, still effective. • Logical Reasoning: By framing the logical query reasoning problem in terms of harmonic extension over subgraphs of the inference graph, our method provides a competitive approach to solving more complex logical queries over knowledge graphs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Background and Problem Formulation</head><p>Knowledge Graphs. A knowledge graph is a directed multigraph with labeled edges. The nodes are referred to as the set of entities E, the labels as relation types R, and the labeled directed edges as triplets T ⊆ E × R × E thought of as facts linking the head entity to a tail entity via a relation type. Typically, we think of knowledge graphs as respecting an underlying knowledge schema which restricts the possible types of triplets for a given graph according to an entity typing scheme. For instance, we may have a knowledge graph constructed from a social network composed of various types of entities such as people, interest groups, and items. Some relations (e.g. being friends) may make sense between people, but not items. Knowledge Graph Completion. For all knowledge graph embedding tasks, we assume we are given a knowledge graph G = (E, R, T ) consisting of all true facts about a domain. In this work, G represents the entirety of a knowledge base like Freebase <ref type="bibr" target="#b4">(Bollacker et al. 2008)</ref> or Wordnet <ref type="bibr" target="#b20">(Miller 1995)</ref>. The graph G need not be completely observable in practice and could represent, for example, the complete network of true facts about a domain which have yet to be discovered or inferred. We will define two subgraphs from G. The first is the training graph G train = (E train , R, T train ) ⊂ G which encodes knowledge known about the domain at training time. We also define the inference graph G est inf = (E inf , R, T est inf ) ⊆ G which encodesnot necessarily exclusively-knowledge about the domain to be inferred during evaluation. Additionally, we assume we are given access to an observable inference graph</p><formula xml:id="formula_0">G obs inf = (E inf , R, T obs inf ) ⊆ G est inf such that T obs inf ⊂ T est inf .</formula><p>We may conceive of G obs inf as a knowledge graph delineating how new entities E inf \ E train are related to E train given the existing structure of G train and R. Note that G train , G obs inf , and G est inf are all composed by the same relation set R, meaning they share the same schema. Within this notation, knowledge graph completion amounts to inferring the existence of estimation inference triplets T est inf given knowledge about G train . Typically, this inference task amounts to scoring the validity of the tuple (h, r, t) ∈ T est inf given h and r and observing the score assigned to (h, r, t) relative to (h, r, t ′ ) for all other t ′ ∈ E inf .</p><p>Transductive Setting. We are concerned with three variations of the knowledge graph completion task in this work. The first variation is the traditional transductive setting wherein G train = G obs inf ⊂ G est inf . In this transductive setting, one seeks to learn representations of E train and relations R which can be leveraged to correctly infer the inference triplets T est inf ⊆ E train × R × E train . This traditional knowledge graph completion task has received intensive study over the last decade, leading to a menagerie of solutions including well-known knowledge graph embedding methods like TransE <ref type="bibr" target="#b6">(Bordes et al. 2011)</ref>, RotatE <ref type="bibr" target="#b24">(Sun et al. 2019)</ref>, and StructuredEmbedding <ref type="bibr" target="#b6">(Bordes et al. 2011)</ref>.</p><p>Semi-Inductive Setting. Note that in the transductive setting, we have implicitly assumed that all possible entities to be observed at inference time are contained within G train , i.e. E train = E. This assumption is restrictive in many applications where new entities may arise at the time of query inference. Relaxing this assumption gives rise to what we will call the semi-inductive knowledge graph completion task which allows for the inference graph to contain entities not seen within the training graph such that</p><formula xml:id="formula_1">G est inf ⊃ G obs inf ⊃ G train , E train ⊂ E inf ⊆ E, and T est inf = E inf × R × E inf . Inductive Setting.</formula><p>Finally, the assumption that entities of the training graph have any overlap with entities in the inference graph may be excised entirely, giving rise to the inductive knowledge graph completion setting. In this variation, E train ∩ E inf = ∅ so that inference over queries T est inf ⊆ E inf × R × E inf must depend only on abstract structural knowledge of G train and R instead of relying on explicit entity embeddings. This inductive knowledge graph completion tasks has received significant attention recently, leading to a number of tokenized and graph neural network methods like DRUM <ref type="bibr" target="#b23">(Sadeghian et al. 2019)</ref>, NodePiece <ref type="bibr" target="#b8">(Galkin et al. 2021)</ref>, and GraIL <ref type="bibr" target="#b25">(Teru, Denis, and Hamilton 2020)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Logical Queries and Knowledge Graph Completion</head><p>As detailed in the previous section, the knowledge graph completion task is to predict the validity of a collection of previously unseen triplets T est inf using information derived from the training process performed on G train . Inference of e.g. the tail entity satisfying a particular triplet (h, r, ?) ∈ T est inf may be viewed as satisfying a simple firstorder logical statement ?U : r(h, U ) where here the relation r is interpreted as a binary logical operation r : E × E → {true, false}.</p><p>By composing the basic relations of a knowledge graph, one can construct more complex, higher-order relationships between entities-for instance, the composition of two child of relations is a new relation grandchild (?U ∃V : r(h, r(V, U )). We refer to these as * p queries. Similarly, the intersection of a number of atomic relationships towards a target entity (h 1 , r 1 , ?) ∧ (h 2 , r 2 , ?) may be viewed as conjunction</p><formula xml:id="formula_2">?U ∃V 1 , V 2 : r 1 (V 1 , U ) ∧ r 2 (V 2 , U ).</formula><p>We refer to these as * i queries. We can also combine these projection and conjunction operations to derive ipand pitype queries. As shown in Figure <ref type="figure" target="#fig_3">4</ref>, we can represent these queries as subgraphs Q of the estimation inference graph:</p><formula xml:id="formula_3">Q ⊂ G est inf .</formula><p>Given such a logical query, the task is then to predict whether Q is actually a subgraph of G est inf . See <ref type="bibr">Ren and Leskovec (2020)</ref> and <ref type="bibr" target="#b9">Galkin et al. (2022)</ref> for further details regarding logical reasoning over knowledge graphs. This logical query reasoning task has been investigated in the transductive setting across a number of prior works <ref type="bibr" target="#b12">(Hamilton et al. 2018;</ref><ref type="bibr" target="#b21">Ren, Hu, and Leskovec 2020;</ref><ref type="bibr">Ren and Leskovec 2020)</ref>. However to the best of the authors' knowledge, <ref type="bibr" target="#b9">Galkin et al. (2022)</ref> is the only work to investigate models which solve such queries in the semiinductive setting. We show in the following sections how models trained in the transductive setting can also be extended to support conjunctive logical query reasoning in the semi-inductive setting.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Knowledge Graph Embedding</head><p>Broadly speaking, knowledge graph embedding is concerned with finding vectorized representations for each entity and relation such that these representations reflect the epistemic relationships which are encoded by the graph. Specifically, these representations are chosen so that the evaluation of some scoring function f (h, r, t) corresponds to the likelihood of a link (h, r, t) being a true fact within the knowledge graph's domain. A wide variety of scoring functions and embedding spaces have been proposed for this task <ref type="bibr" target="#b6">(Bordes et al. 2011</ref><ref type="bibr" target="#b5">(Bordes et al. , 2013;;</ref><ref type="bibr" target="#b24">Sun et al. 2019;</ref><ref type="bibr" target="#b28">Zhang et al. 2019</ref>), a select few of which we will introduce and utilize.</p><p>Structured Embedding (SE) was one of the earliest approaches to embedding knowledge graphs <ref type="bibr" target="#b6">(Bordes et al. 2011)</ref>. SE represents each entity as a vector x e ∈ R d and each relation r as a pair of (d × d) matrices (R rh , R rt ). It is convenient to think of the transformation R re as embedding x e into a comparison space along an edge as R re x e . The scoring function for SE then measures the distance between embeddings of entities along a common edge:</p><formula xml:id="formula_4">f SE (h, r, t) = ∥R rh x h -R rt x t ∥.</formula><p>Other embedding models seek to measure the distance between embeddings of entities along common edges up to some translation. For instance, TransR <ref type="bibr" target="#b18">(Lin et al. 2015)</ref> scores triplets via</p><formula xml:id="formula_5">f TransR (h, r, t) = ∥R r x h + r r -R r x t ∥.</formula><p>Here, we think of R r as embedding x e along relation r and r r as a translation associated to r. Taking R r = I recovers TransE <ref type="bibr" target="#b5">(Bordes et al. 2013)</ref>, which scores a triplet as the discrepancy introduced from translating x h to x t via r r :</p><formula xml:id="formula_6">f TransE (h, r, t) = ∥x h + r r -x t ∥.</formula><p>As a final example of the flexibility provided by the choice of representation space, observe that RotatE <ref type="bibr" target="#b24">(Sun et al. 2019)</ref> uses the same scoring motivation as TransE, but instead takes entity and relation embeddings to be complexvalued vectors x h , r r , x t ∈ C d , resulting in scoring function f RotatE (h, r, t) = ∥x h •r r -x t ∥ which evaluates the discrepancy introduced via rotation of the representation of h onto the representation of t via r r . Note in all three of these scoring function examples, the score is evaluating some notion of consistency of the triplet as x h is transformed across an adjacent edge r with respect to the (possibly transformed) value of x t .</p><p>In each case, entity and relation representations are learned by performing gradient descent updates on the representations with respect to some loss function. This loss function L may compare the value f (h, r, t) to a ground truth value l(h, r, t) ∈ {0, 1} as is the case in binary crossentropy loss</p><formula xml:id="formula_7">L BCE (h, r, t) = -l(h, r, t) log(σ(f (h, r, t)))+ (1 -l(h, r, t)) log(1 -σ(f (h, r, t))</formula><p>, or it could take the form of a margin ranking loss computed with respect to the score of a sampled negative triplet (h, r, t):</p><formula xml:id="formula_8">L γ (h, r, t) = max(0, f (h, r, t) + γ -f (h, r, t)).</formula><p>Irrespective of the chosen score function, note that these embeddings are transductive-explicitly calculated and assigned to particular entities and relations according to triplets (h, r, t) ∈ T train . Because the triplets to predict at test time T trans pred are assumed to be drawn from the training graph vertices E train in the transductive setting, this means that for any new entities e ′ ∈ E \ E train introduced into G train , one must, naively, re-run the training procedure described above in order to learn a representation x e ′ . We will address this issue in dealing with such inductive inference scenarios the next section by defining a generalization of harmonic extension to infer the embedding x e ′ of a new entity e ′ using our trained relation representations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Classical Harmonic Extension</head><p>The concept of harmonic extension is a well-studied topic within spectral graph theory. Given a graph G = (V, E, A) with weighted adjacency matrix A, define the (normalized) graph Laplacian as</p><formula xml:id="formula_9">∆ = I -D -1 2 AD -1 2</formula><p>where D is the diagonal degree matrix of G. The equation ∆x = 0 is a discrete analog to Laplace's equation on a manifold without boundary where x ∈ R |V | is an assignment of a realvalued signal to each node in G. Building upon this intuition, we can alter this equation to find harmonic functions which vanish along certain subsets U ⊂ V with respect to some boundary subset B = V \ U , reminiscent of a boundary value problem:</p><formula xml:id="formula_10">∆x U = 0 x B = y</formula><p>where x U and x B are the values of x restricted to node sets U and B, respectively. To solve this, we break ∆ into subblocks according to the partitions U , B and solve:</p><formula xml:id="formula_11">∆[U, U ] ∆[U, B] ∆[B, U ] ∆[B, B] x U y = 0 z</formula><p>Because z is free, we are concerned only with the solution to</p><formula xml:id="formula_12">∆[U, U ]x U + ∆[U, B]y = 0. The solution x U = -∆[U, U ] -1 ∆[U, B]y,<label>(1)</label></formula><p>known as the harmonic extension of x B to x U , always exists and is unique when ∆[U, U ] is invertible. This solution may be envisioned as measuring the diffusion of heat emanating from the boundary nodes to the rest of the graph. Equation 1 solves for the values x U which minimize the Dirichlet energy ϵ(x, G) = x ⊤ ∆x assuming the boundary is fixed at x B = y. The quadratic form of ϵ(x, G) can be expanded as</p><formula xml:id="formula_13">ϵ(x, G) = u∼v A uv (x u -x v ) 2</formula><p>(2)</p><p>which corresponds to computing a squared distance between values x v and x u of incident nodes u and v, scaled by weight of the edge between them.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Vectorized Feature Propagation as Generalized Harmonic Extension</head><p>From the perspective of Equation 2, the solution x U provided by harmonic extension amounts to a choice of signal values x U ∈ R |U | for interior vertices U that are "most consistent" with respect to x B ∈ R |B| and the weighted connectivity of G. This implies that if we are missing values on some set of nodes U , the values on B can be used to infer the values of U implied by x B and the topology of G via harmonic extension. This problem of inferring optimally consistent values for nodes embedded within a network mirrors the semi-inductive knowledge graph completion problem.</p><p>In the semi-inductive setting, one seeks to infer the feasibility of edges T est inf \ T train in G inf given only the information contained in G train ⊂ G inf . Given embeddings x B over nodes B = E train of G train , we seek embeddings x U over nodes U = E inf \ E train . In contrast to classical harmonic extension, the node features resulting from transductive knowledge graph embedding are d-dimensional vectors instead of real-valued scalars, and edge weights A uv are now transformations (R rh , R rt ), and translations r r mapping x h and x t across edge type r.</p><p>We will now introduce a generalized form of harmonic extension which can handle these vector-valued signals and matrix-valued edge weights, providing both a closed-form and iterative solution for this semi-inductive representation recovery problem. Specifically, we will prove that harmonic extension exists with respect to the following energy functional:</p><formula xml:id="formula_14">E(x, G) = u r →v ∥R ru x u + r r -R rv x v ∥ 2 . (<label>3</label></formula><formula xml:id="formula_15">)</formula><p>where x is the concatenation of all {x v } v∈E . We can see from Equation 3 that this generalized energy function E(x, G) also computes the squared distance between values x u and x v in a similar manner to the standard graph Dirichlet energy in Equation <ref type="formula">2</ref>. However in the case of E(x, G), this distance is the norm of the vector-valued distance between vector x u after an (affine) transformation R ru x u +r r and vector x v after a linear transformation R rv x v .</p><p>Note that E(x, G) may also be interpreted as generalized form of the TransR <ref type="bibr" target="#b18">(Lin et al. 2015)</ref> scoring function where R rh and R rt are allowed to differ:</p><formula xml:id="formula_16">f E (h, r, t) = ∥R rh x h + r r -R rt x t ∥ 2 . (<label>4</label></formula><formula xml:id="formula_17">)</formula><p>The scoring function f E can be thought to measure the distance between embeddings of entities along a common edge after some translation r r ∈ R d . The scoring function f E describes a number of other popular scoring functions including Structured Embedding <ref type="bibr" target="#b6">(Bordes et al. 2011)</ref> and TransE <ref type="bibr" target="#b5">(Bordes et al. 2013)</ref> when embedding in R d and Ro-tatE <ref type="bibr" target="#b24">(Sun et al. 2019</ref>) when embedding in C d . If r r = 0 for all edge types r, E(x, G) takes the form of the Structured Embedding scoring function f SE which can be given by the quadratic form:</p><formula xml:id="formula_18">u r →v f SE (h, r, t) = u r →v ∥R ru x u -R rv x v ∥ 2 (5) = x ⊤ ∆x (6)</formula><p>where ∆ is the block-diagonal matrix composed of blocks for incident nodes u r → v across edge r:</p><formula xml:id="formula_19">∆ v,u = u r →v R ⊤ ru R ru v = u -R ⊤ rv R ru v ̸ = u</formula><p>The matrix ∆, known as the (normalized) sheaf Laplacian, has a number of nice algebro-topological properties which are discussed in the Appendix. The fact that the scoring function given in Equation 5 has a quadratic form similar to the Dirichlet energy ϵ(x, G) implies that harmonic extension may be possible in this more general scenario. This turns out to be the case, and we can derive a form for harmonic extension even in the presence of translational edge feature r r .</p><p>Theorem 1. Given a knowledge graph G = (E, R, T ) with relation embeddings R ru , R rv , r r for relation r and entity embeddings x B for nodes B ⊂ E learned by minimizing scoring function f E as given in Equation <ref type="formula" target="#formula_16">4</ref>, the feature values x U propagated to nodes U = E \ B given by <ref type="formula" target="#formula_14">3</ref>and therefore scoring function f E . Here, δ is a coboundary map whose definition is given in the Appendix.</p><formula xml:id="formula_20">x U = -∆[U, U ] -1 ∆[U, B]x B + ∆[U, U ] -1 (δ ⊤ r) U (7) minimize E(x, G) in Equation</formula><p>Proof. See the Appendix. Equation <ref type="formula">7</ref>is the harmonic extension of x B to x U with respect to the representation of r, and corresponds to the optimal choice of embeddings for nodes U given pre-specified embeddings for B and relation embeddings for each relation type r of G. The usage of "optimal" here is with respect to the minimization of E(x, G) i.e. choosing x U such that the total discrepancy across edges is minimized. Note that if we take r = 0 in Equation <ref type="formula">7</ref>, the solution</p><formula xml:id="formula_21">x q U = -∆[U, U ] -1 ∆[U, B]</formula><p>x B takes the same structural form as the solution to the traditional harmonic extension given in Equation 1. Indeed, x q U minimizes E(x, G) when r r = 0 for all r, and therefore provides E-minimal embeddings for U when G is embedded according to the Structured Embedding scoring function f SE . The second term</p><formula xml:id="formula_22">x r U = ∆[U, U ] -1 (δ ⊤ r) U represents the correction to x q U</formula><p>required when the relation embeddings include nontrivial translational components r r . If ∆[U, U ] -1 does not exist, we may use its Moore-Penrose pseudoinverse ∆[U, U ] † .</p><p>While Theorem 1 provides a closed-form solution for extending known entity representations to unknown entities U , it involves a matrix inversion ∆[U, U ] -1 which is on the order of O (d|U |) 3 for embedding dimension d. In an environment with a large number of unknown embeddings |U | to be inferred, this matrix inversion may become computationally infeasible. The following lemma provides an iterative approach to harmonic extension, taking the form of gradient descent on E(x, G), which avoids a costly matrix inversion: Proposition 2. Let the setup be as in Theorem 1 with an initial feature vector x (0) . The recursive relation</p><formula xml:id="formula_23">x (k) = I -∆[U, U ] -∆[U, B] 0 I x (k-1) + (δ ⊤ r) U 0 converges with steady state lim k→∞ x (k) = -∆[U, U ] -1 ∆[U, B]x B + ∆[U, U ] -1 (δ ⊤ r) U x B</formula><p>Proof. See the Appendix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Logical Query Reasoning</head><p>We can employ similar harmonic machinery to perform reasoning over the conjunctive logical query structures 2p, 3p, 2i, 3i, ip, pi depicted in Figure <ref type="figure" target="#fig_3">4</ref> (Appendix). Here, each query structure Q ⊂ G est inf is constructed of source vertices S ⊂ E inf , a target vertex t ∈ E inf to be inferred, and unspecified interior vertices U ⊂ E inf representing possible choices of intermediating entities. We will describe the solution approach for the Structured Embedding scoring function. See the Appendix for further details, including an approach for translational scoring functions.</p><p>We continue with the assumption that the relations connecting each entity in Q are known and that the representations for each entity e ∈ E inf have already been calculated, e.g by harmonic extension. We seek the t whose representation is most consistent given Q and x S . A naive approach would be to fix the representation x S and perform a search through all possible interior vertex sets U * ⊂ E inf and target vertices t * ∈ E inf to find representations x U * and x t * which minimize x ⊤ ∆ Q x, where ∆ Q is normalized sheaf Laplacian of Q and x now refers only to the representations of the subset of entities comprising Q. However even for these small logical query graphs, such a combinatorial search is prohibitively expensive on real-world knowledge graphs with entity search spaces on the order of hundreds of thousands or millions of entities.</p><p>Fix a possible target entity t and let B = S ∪ {t}. We wish to minimize x ⊤ ∆ Q x with optimal choices of representations for U * . As further explained in the Appendix, this has the closed solution</p><formula xml:id="formula_24">x ⊤ B (∆ Q /∆ Q [U, U ])x B , where ∆ Q /∆ Q [U, U ] is the Schur complement of ∆ Q [U, U ] in ∆ Q . This solution implicitly uses Theorem 1 and given that Q is generally much smaller than G est inf , ∆ Q /∆ Q [U, U</formula><p>] can be computed efficiently. Therefore, to infer a target vertex we require only a single search over E inf for the minimizing representation x t :</p><formula xml:id="formula_25">t * = arg min t∈E inf x ⊤ B (∆ Q /∆ Q [U, U ])x B .</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Experiments</head><p>We evaluate the efficacy of the extension method discussed in the prior sections on two different inductive inference tasks. In the first, we assume the inference graph G est inf contains a ratio of new inference entities relative to entities seen in the training graph and evaluate the performance of extended transductive models in answering a number of conjunctive logical queries across various ratios. In the second task, we assume the entities of the inference graph are completely disjoint from the training graph and evaluate the standard knowledge graph completion performance of these extended transductive models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Semi-Inductive Logical Query Reasoning</head><p>We use the FB15k-237 logical query reasoning dataset preparation described in <ref type="bibr" target="#b9">Galkin et al. (2022)</ref>. The data is segmented into nine splits, each corresponding to a ratio of new inference entities relative to the number of entities in the knowledge training graph |E inf \ E train |/|E train | log-spaced between [106%, 550%]. Each split contains its own training graph G train along with validation G val and test G test inference graphs such that G train ⊂ G valid , G train ⊂ G test , and E valid ∩ E test = ∅. Each inference graph type in each ratio split additionally contains a number of complex logical queries to be evaluated. In this work, we focus on the query types 1p, 2p, 3p, 2i, 3i, pi, and ip (Figure <ref type="figure" target="#fig_3">4</ref>).</p><p>For each ratio split, we trained four transductive models: TransE, RotatE, TransR, and SE using the Pykeen <ref type="bibr" target="#b3">(Ali et al. 2021</ref>) knowledge graph embedding package. These transductive models are trained with respect to the traditional 1p knowledge graph completion objective in the transductive setting i.e. they are trained to minimize some consistency loss given only T train . We chose loss functions and negative sampling procedures for each model according to the bestperforming model configurations found in <ref type="bibr" target="#b2">Ali et al. (2020)</ref>. This corresponds to Crossentropy loss without negative sampling for TransE and TransR, and NSSA loss <ref type="bibr" target="#b24">(Sun et al. 2019)</ref> with negative sampling for RotatE and SE. All models are optimized using Adam (Kingma and Ba 2014) without weight decay. We optimized remaining hyperparameters (embedding dimension, learning rate, negative sampling ratio, ranking margin and temperature) based on the models' performance on 1p queries in the validation graph which do not contain new head or tail entities but were not seen during training. After optimizing hyperparameters for this transductive task, we re-train the optimal models on T train and extend these transductive representations to E valid by randomly initializing representations for unknown entities in E test \ E train then performing harmonic extension via the Euler diffusion scheme described in Proposition 2 using entity representations in E train as the boundary values and relation representations from the transductively-trained models. The number of diffusion iterations is determined by the bestperforming number of iterations found by running the same extension approach on G valid , evaluated on 1p queries. We set α = 0.1.</p><p>After extending representations to all of E test , we then evaluate each model with respect to each logical query structure by ranking all possible tail entities against the Kron reduction of the logical query graph. Following <ref type="bibr" target="#b9">Galkin et al. (2022)</ref>, we evaluate on only "hard" queries, which require at least one triplet in T est test to be inferred with correct "easy" answers filtered during ranking.</p><p>The results of this logical query reasoning approach are plotted in Figure <ref type="figure" target="#fig_0">2</ref>. As a baseline, we include the performance of an Edge-type Heuristic model which selects all entities in E test that satisfy the relations in the final hop of the query. We also plot the performance of the NodePiece-QE models as described in <ref type="bibr" target="#b9">Galkin et al. (2022)</ref> which are state-of-the-art models for inductive logical query reasoning that, similar to the transductive models, are trained only on the 1p knowledge graph completion task.</p><p>From Figure <ref type="figure" target="#fig_0">2</ref> we see that, even though the TransE, Ro-tatE, TransR, and SE models are trained transductively, we can extend their functionality to the semi-inductive setting by inferring new entity representations via harmonic extension which results in performance that exceeds baseline and occasionally state-of-the-art performance on 1p queries across numerous embedding models and ratios. We find similar aggregate performance across each of the logical query reasoning tasks. In particular, we find the RotatE and TransE models are most amenable to this extension approach, with RotatE nearing or exceeding state-of-the-art performance on semi-inductive graphs with only slightly more new entities versus training entities, and TransE outperforming in higher new-to-training entity ratio environments. Similar to the GNN-boosted NodePiece-QE model, these extended transductive models tend to struggle with path-based logical queries at high ratios relative to other logical query types.</p><p>For comparison, we also performed hyperparameter tuning of these transductive training models with respect to the models' average performance on pi and ip in the semiinductive setting (Appendix). The performance of these inductively-tuned models largely mirrors the aggregate performance trends observed above, implying that the representations learned via transductive training alone are already well-suited for logical query reasoning in the semi-inductive setting.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Inductive Knowledge Graph Completion</head><p>As observed in the previous section, the performance of the transductive models when extended to the semi-inductive setting is influenced by the ratio of the number of new entities to the number of entities present in the training knowledge graph. This is expected, as the harmonic extension algorithm detailed in Proposition 2 assumes the existence of known entity representations to be used as boundary representations anchoring the inference of new entity representations. In this section, we investigate the performance of this approach if we remove the overlap between E train and E test and observe the performance of this transductive extension method relative to a number of state-of-the-art models for knowledge graph completion in the inductive setting.</p><p>We evaluate on the four version splits of the FB15k-237 and WN18RR datasets detailed in <ref type="bibr" target="#b25">Teru, Denis, and Hamilton (2020)</ref>. We follow the same transductive training and hyperparameter tuning procedure for the TransE, RotatE, TransR, and SE models as was done in the semi-inductive logical query estimation task above. We hold out 10% of the triples in each version's training graph for evaluation during transductive hyperparameter tuning, as the dataset preparation from <ref type="bibr" target="#b25">Teru, Denis, and Hamilton (2020)</ref> does not provide transductive validation triplets. During inference on G test , we retain the relation representations learned during transductive training but now randomly initialize entity representations for all of E test .</p><p>Treating all entities as interior vertices, we diffuse these randomly-initialized representations according to Proposition 2 then evaluate these diffused representations on T est test for each version split. We tune the optimal step size α and number of diffusion iterations using G valid of each version split.</p><p>The results for this inductive knowledge graph completion task are plotted in Figure <ref type="figure" target="#fig_1">3</ref>. For comparison, we include the performance of a number of state-of-the-art models designed specifically for inductive knowledge graph completion, namely RuleN <ref type="bibr" target="#b19">(Meilicke et al. 2018)</ref>, Neural-LP <ref type="bibr">(Yang,</ref>  Yang, and Cohen 2017), DRUM <ref type="bibr" target="#b23">(Sadeghian et al. 2019)</ref>, and GraIL (Teru, Denis, and Hamilton 2020) using performance data from <ref type="bibr" target="#b25">Teru, Denis, and Hamilton (2020)</ref>. In general, we find that these transductively-extended models perform well on this fully-inductive knowledge graph completion task given their access to only relation representations R from the transductive training step. Note that TransE performs in-line with, and occasionally outperforms, Neural-LP and DRUM: two models designed explicitly for this inductive task. This performance is surprising considering the fact that each of these transductive models begins with random representations of E test and bootstraps representations for these entities based solely on their incidence with representations of R learned over G train . Given these results, we can conclude that although the method for extending transductively-learned representations to the inductive setting presented in this paper does not achieve state-of-theart performance in the fully-inductive setting, the performance of especially TransE when extended to the inductive regime should serve as a strong baseline against which the performance of future inductive-specific model architectures should be compared.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Conclusion</head><p>We have presented a method for extending the knowledge graph completion and logical query reasoning capabilities of transductive embedding methods to the inductive setting. Through a generalized form of harmonic extension, representations of new entities introduced within a knowledge graph may be inferred using representations of relations and known entities learned previously through transductive embedding methods. This harmonic extension methodology may also be used to perform logical reasoning over conjunctive queries posed on the knowledge graph, further enriching the capabilities of traditional knowledge graph embedding techniques. Empirically, we observe transductive models extended into the semi-inductive and inductive settings perform competitively with, and sometimes outperform, stateof-the-art models designed specifically for such inductive inference tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Appendix Cellular Sheaf Theory</head><p>A sheaf is a mathematical object which tracks the assignment of data along the open sets of a topological space. Using the topology of a graph created from its intrisic partial order of vertices and edges yields a cellular sheaf : Definition 1. A cellular sheaf F on an undirected graph G = (V, E) consists of:</p><p>• A vector space F(v) for every v ∈ V , • A vector space F(e) for every e ∈ E, • A linear map F v⊴e : F(v) → F(e) for every incident node-edge pair v ⊴ e.</p><p>The vector spaces of the nodes and edge are called stalks, while the linear maps are called restriction maps. In the main text, these restriction maps were notated as R ev . The space formed by all node stalks is called the space of 0-cochains C 0 (G, F) := v∈V F(v), while the space formed by edge stalks is called the space of 1-cochains C 1 (G, F) := e∈E F(e). Given a 0-cochain x ∈ C 0 (G, F), we use x v to mean the vector in F(v) of node v. In reference to this paper and knowledge graphs, x v plays the role of a potential entity representation of entity v. The choice of cellular sheaf F is then a choice of relation representations F v⊴e which embeds x v in a comparison space F(e) as F v⊴e x v . Under this mental framework, the space of global sections</p><formula xml:id="formula_26">H 0 (G, F) := {x ∈ C 0 (G, F) | F v⊴e x v = F u⊴e x u }</formula><p>is the space of entity representations whose embeddings are consistent along each edge with respect to our representation of the given relations. The linear map appearing in the definition of global sections δ(x) e = F v⊴e x v -F u⊴e x u , is called the coboundary map and can be thought to measure the disagreement between entity representations of entity u and v when embedded along relation e. The coboundary maps help us define the sheaf Laplacian which aggregates these disagreements together. Definition 2. The sheaf Laplacian of a cellular sheaf F on a graph G is a map</p><formula xml:id="formula_27">L F : C 0 (G, F) → C 0 (G, F) defined as L F := δ ⊤ δ, or node-wise as L F (x) v = v,u⊴e F ⊤ v⊴e (F v⊴e x v -F u⊴e x u ).</formula><p>The sheaf Laplacian is a symmetric positive semi-definite block matrix with diagonal blocks:</p><formula xml:id="formula_28">(L F ) v,u = v⊴e F ⊤ v⊴e F v⊴e v = u -F ⊤ v⊴e F u⊴e v ̸ = u</formula><p>Cochains such that L F (x) = 0 are called harmonic. The space of harmonic cochains coincides with the space of global sections:</p><formula xml:id="formula_29">H 0 (G, F) = ker(∆ F ).</formula><p>For a trivial sheaf, where all the stalks are R and the restriction maps are the identity, the sheaf Laplacian is the usual graph Laplacian. Akin to how many results in spectral graph theory depend on a normalized version of the graph Laplacian, we use the normalized sheaf Laplacian</p><formula xml:id="formula_30">∆ F := D -1 2 L F D -1 2</formula><p>where D is the block-diagonal of L F . Importantly, this is the sheaf Laplacian for an isomorphic sheaf with rescaled stalks and ensures the eigenvalues lie between 0 and 2. For the purposes of harmonic extension, we use knowledge sheaves that have been normalized after training so that the sheaf Laplacian is normalized. When the sheaf F is understood, we use L or ∆ for short.</p><p>For more details, we direct the reader to <ref type="bibr" target="#b7">(Curry 2014</ref>) for more information regarding cellular sheaves and to <ref type="bibr" target="#b15">(Hansen and Ghrist 2019)</ref> for their spectral theory.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Training a Knowledge Sheaf</head><p>Given a cellular sheaf F defined on G, our intuition might be that the larger the space of global sections H 0 (G, F), the more consistent it is with the relation representations given by F. In practice, it would surprising if there were even one global section and so we replace this notion with an approximate one. Instead of asking for the size of H 0 (G, F ), we could ask how far off we are from having even one global section. This is equivalent to minimizing the Laplacian quadratic form</p><formula xml:id="formula_31">x ⊤ ∆ F x = u r →v ∥F v⊴e x v -F u⊴e x u ∥ 2 (8)</formula><p>over all possible entity embeddings x ∈ C 0 (G, F). This then recovers the classical structured embedding scoring function (see Equation <ref type="formula">5</ref>).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Harmonic Extension</head><p>As is the case for the graph Laplacian, the sheaf Laplacian helps one understand how a system with initial data evolves over time. Returning to the knowledge graph embedding, the sheaf Laplacian tracks how entity representations diffuse over a larger and larger subset of vertices according to the relations. More precisely, minimizing then function 8 with some fixed boundary values x B intuitively corresponds to finding sections x which result from propagating the constant values x B to unknown entities x U using the sheaf restriction maps. However, in the paper we minimize energy functionals that are slightly more general than in Equation <ref type="formula">8</ref>. Namely, we allow some translations r r :</p><formula xml:id="formula_32">E(x, G) = u r →v ∥F v⊴e x v + r r -F u⊴e x u ∥ 2 . (<label>9</label></formula><formula xml:id="formula_33">)</formula><p>Note that minimizing the function 9 is the same as minimizing ∥δx -r∥ 2 .</p><p>(10) This is still convex and we now solve for a closed form minimum, completing the proof of Theorem 1.</p><p>Proof of Theorem 1. By rewriting the function 10, solutions to the harmonic extension problem are given by finding</p><formula xml:id="formula_34">min x∈C 0 (G,F )</formula><p>x ⊤ ∆x -2r ⊤ δx + r ⊤ r assuming the boundary x B values are fixed. This can be solved directly via Lagrange multipliers, which we can break up into the following:</p><formula xml:id="formula_35">∆[U, U ] ∆[U, B] ∆[B, U ] ∆[B, B] x U x B = (δ ⊤ r) U λ</formula><p>Because λ is free, we can solve the top row to give</p><formula xml:id="formula_36">x U = -∆[U, U ] -1 ∆[U, B]x B + ∆[U, U ] -1 (δ ⊤ r) U</formula><p>as desired.</p><p>In practice, finding this closed solution is impractical since matrix inversion incurs O(|E| 3 ) complexity. Instead, we can discretize the gradient flow ẋ(t) = -∇ 1 2 E(x(t), G) as a differential equation with boundary condition x B (t) =</p><p>x B and initial condition x(0) =</p><p>x U (0)</p><p>x B .</p><p>We can explicitly compute ∇ x 1 2 E(x(t), G):</p><formula xml:id="formula_37">∇ x 1 2 E(x(t), G) = 1 2 ∇ x x(t) ⊤ ∆x(t) -2r ⊤ δx(t) + r ⊤ r = ∆x(t) -δ ⊤ r</formula><p>Thus the gradient flow becomes</p><formula xml:id="formula_38">ẋU (t) ẋB (t) = - ∆[U, U ] ∆[U, B] 0 0 x U (t) x B + (δ ⊤ r) U 0 = -∆[U, U ]x U (t) -∆[U, B]x B + (δ T r) U<label>0</label></formula><p>To discretize this diffusion equation, we approximate the derivative with respect to the time variable t using Euler's method:</p><formula xml:id="formula_39">x (k) = x (k-1) -h ∆[U, U ] ∆[U, C] 0 0 x (k-1) + h (δ ⊤ r) U 0 = I -h∆[U, U ] -h∆[U, B] 0 I x (k-1) + h (δ ⊤ r) U<label>0</label></formula><p>Here, h is a step size parameter. The following result ensures that this iterative scheme with h = 1 converges and gives the closed form solution regardless of the initial values x</p><p>U . Proof of Proposition 2. The recursive relation can be written as</p><formula xml:id="formula_41">x (k) U x (k) B = I -∆[U, U ] -∆[U, B] 0 I x (k-1) U x (k-1) B + (δ ⊤ r) U<label>0</label></formula><p>Since last rows pertaining to the boundary remain the same, we have x</p><formula xml:id="formula_42">(k-1) B = x B .</formula><p>All that is left is to show convergence on the first rows pertaining to the nodes in U ,</p><formula xml:id="formula_43">x (k) U = (I -∆[U, U ])x (k-1) U -∆[U, B]x B + (δ ⊤ r) U .</formula><p>Rewriting this recursively, we see that </p><formula xml:id="formula_44">x (k) U = (I -∆[U, U ]) k x (0) U - k i=1 (I -∆[U, U ]) i-1 ∆[U, B]x B + (δ ⊤ r) U .<label>(</label></formula><formula xml:id="formula_45">(I -∆[U, U ]) i-1 = ∆[U, U ] -1 .</formula><p>Thus we can take the limit of ( <ref type="formula">11</ref>) to get </p><formula xml:id="formula_46">lim k→∞ x (k) U = -∆[U, U ] -1 ∆[U, B]x B + ∆[U, U ] -1 (δ ⊤ r) U as desired.</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Logical Query Reasoning</head><p>We employ harmonic extension to perform reasoning over the conjunctive logical query structures 2p, 3p, 2i, 3i, ip, pi depicted in Figure <ref type="figure" target="#fig_3">4</ref>. In this figure, each query structure Q ⊂ G est inf is depicted with source vertices S ⊂ E inf colored blue, the target vertex t ∈ E inf colored red, and the interior vertices U ⊂ E inf depicted in gray. The goal is to infer t whose representation x t is most consistent given Q and x S . Let ∆ Q be the normalized sheaf Laplacian for query Q ⊂ G est inf and let B = S ∪ {t}. In the case of structured embedding, we wish to find arg min</p><formula xml:id="formula_47">t∈E inf min y∈R d|Q| y ⊤ ∆ Q y s.t. y B = x B .</formula><p>As mentioned in the text, performing a naive search through possible choices U * ⊂ E inf and t * ∈ E inf is prohibitively expensive. Luckily, there is a closed form solution using a form of Kron reduction. Define</p><formula xml:id="formula_48">∆ Q /∆ Q [U, U ] = ∆ Q [B, B] -∆ Q [B, U ]∆ Q [U, U ] -1 ∆ Q [U, B] to be the Schur complement of ∆ Q [U, U ] in ∆ Q . Because Q is generally much smaller than G inf , ∆ Q /∆ Q [U, U ] can be computed efficiently.</formula><p>In instances where U is trivial, as is the case for 1p, 2i, and 3i queries, we have</p><formula xml:id="formula_49">∆ Q /∆ Q [U, U ] = ∆ Q .</formula><p>One can think of the Schur complement as giving the sheaf Laplacian for a dynamically-equivalent reduced knowledge graph just involving the nodes B and implicitly uses the closed form solution from Theorem 1 when r = 0.</p><p>For more details, see <ref type="bibr" target="#b14">Hansen (2020)</ref>.</p><p>Having excised the unknown nodes U , the boundary conditions reduce our search to a single search over E inf :</p><formula xml:id="formula_50">t * = arg min t∈E inf x ⊤ B (∆ Q /∆ Q [U, U ])x B .</formula><p>Because logical inference problems over knowledge graphs are typically evaluated by ranking scores for all choices of t, the cost of this search for the optimal assignment of y t = x t becomes negligible. The logical reasoning solution described above applies only to models without scoring functions involving translational relational components r r for each representation r. Substituting the closed form solution from Theorem 1 back into E(x B , Q), we can solve, fixing t, for models with translational relation components for the optimal energy as</p><formula xml:id="formula_51">E(x B , Q) = x ⊤ B (∆ Q /∆ Q [U, U ])x B -2r ⊤ Q (δ Q ) B -(δ Q ) U ∆ Q [U, U ] -1 ∆ Q [U, B] x B</formula><p>where (δ Q ) B and (δ Q ) U is the coboundary operator for Q restricted to the sets B and U , respectively, and r Q is the collection of relation representations for Q. As before, we find an optimal target node by searching over E inf :</p><p>t * = arg min</p><formula xml:id="formula_52">t∈E inf E(x B , Q).</formula><p>See <ref type="bibr" target="#b10">Gebhart, Hansen, and Schrater (2023)</ref> for further details.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Additional Experimental Details</head><p>All experiments were run on a single machine with a single Nvidia A100 GPU with 40GB of RAM. Hyperparameter optimization was performed for each model and dataset using the Optuna <ref type="bibr" target="#b0">(Akiba et al. 2019</ref>) optimization package. We used the default optimization search settings and adjusted the number of trials such that each model and dataset completed within 48 hours, capping the maximum number of trials at 200. The hyperparameter search configurations and resulting optimal hyperparameters, along with the rest of the implementation can be found at https://github.com/tgebhart/ sheaf kg transind.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Choosing Diffusion Iterations</head><p>The number of iterations to run the iterative approximation of harmonic extension represents an important hyperparameter in the inductive inference pipeline. Many iterative algorithms employ a stopping criterion, defined with respect to some objective function, to determine when to cease iteration. However because this stopping criterion is also technically a hyperparameter, we chose instead to optimize for the number of diffusion iterations explicitly to gain a better sense of the relationship between the choice of diffusion iterations and performance.  Figure <ref type="figure">5</ref> plots the performance of these extended models on knowledge graph completion across the Induc-tiveFB15k237 and InductiveWN18RR if we were to use the number of diffusion iterations which results in maximal performance on the test set. We see the aggregate performance depicted in this plot is only slightly better than that attained when the optimal number of diffusion iterations for the validation set are transferred to the test set (Figure <ref type="figure" target="#fig_4">6</ref>). However as can be seen from Figure <ref type="figure">7</ref>, which plots the performance of each transductive model's performance for knowledge graph completion in the inductive setting on the test set relative to the number of diffusion iterations, the optimal number of diffusion iterations on the validation graph does not always align with the optimal choice for the test graph. We leave the determination of more robust methods for choosing the number of diffusion iterations to future work.  </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Model performance across different logical query structures with respect to the ratio of inductive to transductive entities. TransE, RotatE, TransR, and SE models are trained transductively on the 1p query completion task then extended to infer representations for new entities. Performance of Edge-type Heuristic and NodePiece models from Galkin et al. (2022).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Knowledge graph completion performance in the inductive setting across version splits of each dataset. SE, TransE, RotatE, and TransR models are trained transductively on the knowledge graph completion task then extended to infer entity representations for E test .</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>11) Since ∆ has eigenvalues in the range [0, 2], we know lim k→∞ (I -∆[U, U ]) k x</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Examples of conjunctive logical query structures considered in this paper. Unknown entities are gray, source entities are colored blue, and target entities are colored red. Evaluating 1p queries corresponds to traditional knowledge graph completion.</figDesc><graphic coords="10,319.45,305.00,247.00,83.79" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: Fully-inductive knowledge graph completion performance with diffusion iterations for SE, TransE, RotatE, and TransR chosen according to the best performance on the validation graphs. Error bars indicate standard error across dataset version splits.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 8 :</head><label>8</label><figDesc>Figure 8: Logical query performance comparison for models with hyperparameters chosen according to inductive performance (inductive) versus hyperparameters chosen according to transductive performance (transductive).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>Fully-inductive knowledge graph completion performance with diffusion iterations for SE, TransE, RotatE, and TransR chosen such that performance is maximized on the test graph. Error bars indicate standard error across dataset version splits.</figDesc><table><row><cell></cell><cell>80</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>60</cell><cell></cell><cell></cell><cell></cell></row><row><cell>H@10</cell><cell>0 20 40</cell><cell>InductiveFB15k237</cell><cell>dataset</cell><cell>InductiveWN18RR model RotatE SE TransR RuleN TransE Neural-LP DRUM GraIL</cell></row><row><cell cols="3">60 80 Figure 5: InductiveFB15k237 0 20 40 H@10</cell><cell>dataset</cell><cell>InductiveWN18RR model RotatE SE TransR RuleN TransE Neural-LP DRUM GraIL</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Hits@k</head><p>The Hits@k metric is defined as the proportion of true entities with ranking below some threshold k:</p><p>where rank E inf (t) is the rank of entity t's score in completing the triplet (h, r, t) with respect to all other entities in E inf .   </p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Optuna: A Next-generation Hyperparameter Optimization Framework</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Akiba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sano</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Yanase</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ohta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Koyama</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</title>
+		<meeting>the 25th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Link prediction using supervised learning</title>
+		<author>
+			<persName><forename type="first">Al</forename><surname>Hasan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Chaoji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Salem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zaki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SDM06: workshop on link analysis, counter-terrorism and security</title>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="page" from="798" to="805" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">Bringing Light Into the Dark: A Large-scale Evaluation of Knowledge Graph Embedding Models Under a Unified Framework</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ali</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Berrendorf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">T</forename><surname>Hoyt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Vermue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Galkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sharifzadeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Fischer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lehmann</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2006.13365</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page">6</biblScope>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">PyKEEN 1.0: A Python Library for Training and Evaluating Knowledge Graph Embeddings</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ali</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Berrendorf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">T</forename><surname>Hoyt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Vermue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sharifzadeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lehmann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="issue">82</biblScope>
+			<biblScope unit="page" from="1" to="6" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Freebase: a collaboratively created graph database for structuring human knowledge</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Bollacker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Evans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Paritosh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Sturge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Taylor</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2008 ACM SIGMOD international conference on Management of data</title>
+		<meeting>the 2008 ACM SIGMOD international conference on Management of data</meeting>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="1247" to="1250" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multi-relational data</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page">4</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Learning structured embeddings of knowledge bases</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Collobert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page">4</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<author>
+			<persName><forename type="first">J</forename><surname>Curry</surname></persName>
+		</author>
+		<title level="m">Sheaves, Cosheaves, and Applications</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="volume">9</biblScope>
+		</imprint>
+		<respStmt>
+			<orgName>University of Pennsylvania</orgName>
+		</respStmt>
+	</monogr>
+	<note>Ph.D. thesis</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">NodePiece: Compositional and Parameter-Efficient Representations of Large Knowledge Graphs</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Galkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Denis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">3</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Inductive Logical Query Answering in Knowledge Graphs</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Galkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page">12</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Knowledge Sheaves: A Sheaf-Theoretic Framework for Knowledge Graph Embedding</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Gebhart</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hansen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Schrater</surname></persName>
+		</author>
+		<idno>PMLR. ↑ 11</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="9094" to="9116" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Geng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">Z</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Jiang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2210.03994.↑2</idno>
+		<title level="m">Relational Message Passing for Fully Inductive Knowledge Graph Completion</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Embedding logical queries on knowledge graphs. Advances in neural information processing systems</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Bajaj</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Jurafsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="31" to="33" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Inductive representation learning on large graphs. Advances in neural information processing systems</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<idno>30. ↑ 2</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hansen</surname></persName>
+		</author>
+		<title level="m">Laplacians of Cellular Sheaves: Theory and Applications</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">11</biblScope>
+		</imprint>
+		<respStmt>
+			<orgName>University of Pennsylvania</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">Ph.D. thesis</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Toward a Spectral Theory of Cellular Sheaves</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hansen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ghrist</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Applied and Computational Topology</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="315" to="358" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6980</idno>
+		<title level="m">Adam: A method for stochastic optimization</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Matrix factorization techniques for recommender systems</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Koren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Bell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Volinsky</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computer</title>
+		<imprint>
+			<biblScope unit="volume">42</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page" from="30" to="37" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Learning entity and relation embeddings for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="page">4</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Fine-grained evaluation of rule-and embedding-based systems for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Meilicke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fink</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gemulla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Stuckenschmidt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Semantic Web-ISWC 2018: 17th International Semantic Web Conference</title>
+		<meeting><address><addrLine>Monterey, CA, USA, Oc</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018">2018. tober 8-12, 2018</date>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="page" from="3" to="20" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">WordNet: a lexical database for English</title>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">A</forename><surname>Miller</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Communications of the ACM</title>
+		<imprint>
+			<biblScope unit="volume">38</biblScope>
+			<biblScope unit="issue">11</biblScope>
+			<biblScope unit="page" from="39" to="41" />
+			<date type="published" when="1995">1995</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Query2box: Reasoning Over Knowledge Graphs In Vector Space Using Box Embeddings</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<idno>ICLR). ↑ 3</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Beta Embeddings for Multi-Hop Logical Reasoning in Knowledge Graphs</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="page" from="33" to="33" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Drum: End-to-end differentiable rule mining on knowledge graphs. Advances in Neural Information Processing Systems</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sadeghian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Armandpour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page">7</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">RotatE: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z.-H</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-Y</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1902.10197</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page">6</biblScope>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Inductive relation prediction by subgraph reasoning</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Teru</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Denis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hamilton</surname></persName>
+		</author>
+		<idno>PMLR. ↑ 2</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page">13</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Cycle Representation Learning for Inductive Relation Prediction</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Chen</surname></persName>
+		</author>
+		<idno>PMLR. ↑ 2</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="24895" to="24910" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">Differentiable learning of logical rules for knowledge base reasoning. Advances in neural information processing systems</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">W</forename><surname>Cohen</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="30" to="37" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Quaternion knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Tay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page">3</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Neural bellman-ford networks: A general graph neural network framework for link prediction</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L.-P</forename><surname>Xhonneux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="29476" to="29490" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

@@ -1,0 +1,2033 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Diffusing Graph Attention</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2023-03-02">March 2, 2023</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Daniel</forename><surname>Glickman</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Technion</orgName>
+								<address>
+									<country key="IL">Israel</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Eran</forename><surname>Yahav</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Technion</orgName>
+								<address>
+									<country key="IL">Israel</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Diffusing Graph Attention</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2023-03-02">March 2, 2023</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">B3FD79F92AEF3C43761C1936451C87FA</idno>
+					<idno type="arXiv">arXiv:2303.00613v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:47+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>The dominant paradigm for machine learning on graphs uses Message Passing Graph Neural Networks (MP-GNNs), in which node representations are updated by aggregating information in their local neighborhood. Recently, there have been increasingly more attempts to adapt the Transformer architecture to graphs in an effort to solve some known limitations of MP-GNN. A challenging aspect of designing Graph Transformers is integrating the arbitrary graph structure into the architecture. We propose Graph Diffuser (GD) to address this challenge. GD learns to extract structural and positional relationships between distant nodes in the graph, which it then uses to direct the Transformer's attention and node representation. We demonstrate that existing GNNs and Graph Transformers struggle to capture long-range interactions and how Graph Diffuser does so while admitting intuitive visualizations. Experiments on eight benchmarks show Graph Diffuser to be a highly competitive model, outperforming the state-of-the-art in a diverse set of domains.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>Graph Neural Networks have seen increasing popularity as a versatile tool for graph representation learning, with applications in a wide variety of domains such as protein design (e.g., <ref type="bibr" target="#b26">Ingraham et al. (2019)</ref>) and drug development (e.g., <ref type="bibr" target="#b16">Gaudelet et al. (2020)</ref>). The majority of Graph Neural Networks (GNNs) operate by stacking multiple local message passing layers <ref type="bibr" target="#b17">Gilmer et al. (2017)</ref>, in which nodes update their representation by aggregating information from their immediate neighbors <ref type="bibr" target="#b36">Li et al. (2016)</ref>; <ref type="bibr" target="#b29">Kipf &amp; Welling (2017)</ref>; <ref type="bibr" target="#b20">Hamilton et al. (2017)</ref>; <ref type="bibr">Veličković et al. (2018)</ref>; <ref type="bibr">Wu et al. (2019a)</ref>; <ref type="bibr">Xu et al. (2019b)</ref>.</p><p>In recent years, several limitations of GNNs have been observed by the community. These include under-reaching <ref type="bibr" target="#b2">Barceló et al. (2020)</ref>, over-smoothing <ref type="bibr" target="#b59">Wu et al. (2020)</ref> and oversquashing <ref type="bibr" target="#b0">Alon &amp; Yahav (2021)</ref>; <ref type="bibr" target="#b50">Topping et al. (2022)</ref>. Over-smoothing manifests as node representations of well-connected nodes become indistinguishable after sufficiently many layers, and over-squashing occurs when distant nodes do not communicate effectively due to the exponentially growing amount of messages that must get compressed into a fixed-sized vector. Even prior to the formalization of these limitations, it was clear that going beyond local aggregation is essential for certain problems <ref type="bibr" target="#b1">Atwood &amp; Towsley (2016)</ref>; <ref type="bibr" target="#b31">Klicpera et al. (2019)</ref>.</p><p>Since their first appearance for natural language processing, Transformers have been applied to domains such as computer vision <ref type="bibr" target="#b21">(Han et al. (2022)</ref>), robotic control <ref type="bibr" target="#b33">Kurin et al. (2020)</ref>, and bio-logical sequence modeling <ref type="bibr" target="#b44">Rives et al. (2021)</ref> with great success. They improve previous models' expressivity and efficiency by replacing local inductive biases with the global communication of the attention mechanism. Following this trend, the Transformer has been studied extensively in recent years as a way to combat the issues mentioned above with GNNs. Graph Transformers (GTs) usually integrate the input into the architecture by encoding node structural and positional information as features or by modulating the attention between nodes based on their relationships within the graph. However, given the arbitrary structure of graphs, incorporating the input into the Transformer remains a challenging aspect in designing GTs, and so far, there has been no universal solution.</p><p>We propose a simple architecture for incorporating structural data into the Transformer, Graph Diffuser (GD). The intuition that guides us is that while the aggregation scheme of GNNs is limited, the propagation of information along the graph structure provides a valuable inductive bias for learning on graphs.</p><p>Figure <ref type="figure" target="#fig_0">1</ref> shows an overview of our approach. We start with the graph structure (as shown on the left) and construct Virtual Edges (middle) that capture the propagation of information between nodes at multiple propagation steps. This allows our approach to zoom out of the local message passing and relates distant nodes that do not have a direct connection in the original graph. We then use the virtual edges to direct the transformer attention (shown on the right) and node representations. In the following sections, we first show that existing GNNs and Graph Transformers struggle to model long-range interactions using a seemingly trivial problem. We follow by defining Graph Diffuser and then show how it solves the same problem. Finally, we demonstrate the effectiveness of our approach on eight benchmarks spanning multiple domains by showing it outperforms stateof-the-art with no hyperparameter tuning.  <ref type="bibr" target="#b20">Hamilton et al. (2017)</ref>; <ref type="bibr">Xu et al. (2019a)</ref>. However, as mentioned above, they suffer from underreaching <ref type="bibr" target="#b2">Barceló et al. (2020)</ref>, over-smoothing <ref type="bibr" target="#b59">Wu et al. (2020)</ref> and over-squashing <ref type="bibr" target="#b0">Alon &amp; Yahav (2021)</ref>; <ref type="bibr" target="#b50">Topping et al. (2022)</ref>. Several works have addressed the problem of over-squashing.  <ref type="formula">2022</ref>)) applied the graph structure as a soft bias to the attention. However, all of the works above use the original adjacency matrix or Laplacian to learn positional or relative encoding, unlike this work that learns the adjacency matrix using node and edge features.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">RELATED WORK</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Message</head><p>Diffusion Diffusion and other distance measures were used before to increase the expressivity of MP-GNNs <ref type="bibr">Li et al. (2020b)</ref>, replace local message passing <ref type="bibr" target="#b1">( Atwood &amp; Towsley (2016)</ref>; <ref type="bibr">Wu et al. (2019b)</ref>; <ref type="bibr" target="#b31">Klicpera et al. (2019;</ref><ref type="bibr" target="#b47">2018)</ref>) or modulate the Transformers attention <ref type="bibr" target="#b40">Mialon et al. (2021)</ref>. None of these works, however, combines information from multiple different propagation steps.</p><p>To the best of our knowledge, this work is the first Graph Transformer to: (1) learn to construct a new adjacency matrix using node and edge features to generate positional or relative encoding, and (2) learn to combine information propagation over multiple different propagation steps in an end-to-end manner.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">WHY DO WE NEED ANOTHER GRAPH TRANSFORMER?</head><p>Given the successful application of Transformers to other domains and the flurry of recent Graph Transformers, it is natural to ask why is there a need for another Graph Transformer?</p><p>To illustrate the difficulties of current GNNs and Graph Transformers in modeling interactions in a graph, we use a simple synthetic node classification task. Counting the frequencies of tokens in a sequence is an elementary task that <ref type="bibr" target="#b56">Weiss et al. (2021)</ref> showed the original Transformer could easily solve. We propose a simple extension of this task to graphs: In Grid Histogram Counting (Figure <ref type="figure" target="#fig_2">2</ref>), we generate N × M grids with randomly colored nodes and ask models to predict, for each node, how many other nodes in the same row or column have the same color. This is a contrived problem but illustrates many real-world problems' needs. Solving it requires far away nodes to communicate, and the communication should consider both the nodes' content (color) and relation within the graph (being in the same row or column). This is a straightforward generalization of the 1D sequential problem that Transformer easily solves to a 2D graph. However, as we show in Section 5.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">GRAPH DIFFUSER</head><p>We now describe our approach for taking a graph G = (X, A) with a node embeddings matrix X and edges A and processing it using the Transformer, which usually takes only a single matrix X as input. Our approach consists of 2 stages, illustrated in the left and right halves of Figure <ref type="figure" target="#fig_3">3</ref>. First, GD embeds the structural relations between distant nodes in what we refer to as Virtual Edges. Then, the Transformer processes the nodes while using the virtual edges to direct the computation at different layers.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">VIRTUAL EDGES</head><p>Virtual Edges are high-dimensional representations constructed between distant nodes in the graph. They contain rich information on the structural and positional relationships.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.1">POWERS OF THE ADJACENCY MATRIX</head><p>To consider relations between distant nodes, the first step is broadening the receptive field on which the architecture operates. In a row-normalized adjacency matrix A, A k ij corresponds to the probability of getting from node i to node j in a k step random walk. We stack different powers of</p><formula xml:id="formula_0">A into a 3 dimensional tensor E ∈ R n×n×k E = [I|A|A 2 |..|A k ] (1)</formula><p>where k is the number of stacks and | denotes stacking matrices along the 3ed dimension and I is the identity matrix.</p><p>Multiplication by the adjacency matrix is closely related to the aggregation scheme of MP-GNNS <ref type="bibr" target="#b60">Xu et al. (2018)</ref>, however, considering multiple powers of the matrix at once, we zoom </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.2">EDGE-WISE FEED-FORWARD NETWORK</head><p>In order to mix information between different propagation steps and extract meaningful structural relations, each stack is processed by a fully connected edge-wise feed-forward network. Each layer consists of 1 hidden layer with batch norm, ReLU activation, and a residual connection.</p><formula xml:id="formula_1">Edge-F F N (E ij ) = ReLU (BN (E ij W 1))W 2 1 (2) E ij = Edge-F F N (E ij ) + E ij<label>(3)</label></formula><p>The Edge-Wise FFN consists of 2 such layers and we apply batch norm on the input, before the first layer. This network is applied once, before any of the Transformers layers.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.3">WEIGHTED ADJACENCY</head><p>Rather than using the original adjacency matrix in equation 1, we found it beneficial to learn a new adjacency matrix using the node and edge features.</p><formula xml:id="formula_2">Âij = ReLU (BN ([x i ; x j , e ij ]W 1 ))W 2 (4) A ij = normalize(σ( Âij ))<label>(5)</label></formula><p>Where ; means contacting vectors, σ is the sigmoid function and noramlize means l1 row normalization.</p><formula xml:id="formula_3">x i ,x j ∈ R d , e ij ∈ R d edge , W 1 ∈ R (2d+d edge )×2d and W 2 ∈ R 2d×1 .</formula><p>If there are no edge features, we use only the nodes. This aligns with existing approaches such as GAT <ref type="bibr">(Veličković et al. (2018)</ref>; <ref type="bibr" target="#b5">Brody et al. (2022)</ref>), which find it beneficial to dynamically learn a new adjacency matrix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">INTEGRATING WITH THE TRANSFORMER</head><p>Most Graph Transformers use the graph structure to either alter the node's representations or to affect the attention mechanism itself. Graph Diffuser combines the 2 approaches. In the input layer, Self-Virtual Edges are added to the node representation as positional encoding, and at each attention layer, the Virtual Edges are reduced to an attention matrix that is combined with the standard dotproduct attention.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.1">ATTENTION</head><p>At each of the Transformer attention layers, we linearly project each virtual edge E ij separately to get the positional attention score between i and j.</p><p>Âtt</p><formula xml:id="formula_4">P osition ij = E ij W p (6)</formula><p>We then combine the positional attention and the content(dot-product) attention scores and apply row-wise normalization.</p><formula xml:id="formula_5">Âtt Content ij = QK T √ d ij (7) Att = normalize(exp( Âtt Content ) ⊙ σ( Âtt P osition ))<label>(8)</label></formula><p>Where σ is the sigmoid function and ⊙ means element-wise multiplication. In multi-head attention with h heads, the projection in equation 6 is done h times.</p><p>equation 8 can be viewed as scaling the content attention coefficients based on the positional attention. As we will see in the next section, separating the attention based on content and positions and then combining them seems to assist with learning meaningful connections in the data and provides a natural visualization mechanism.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">POSITIONAL ENCODING</head><p>Self-Virtual-Edges, E ii , are Virtual Edges between a node to itself. They contain important structural information, such as whether the node is part of an odd length cycle and the degrees of adjacent nodes. We project Self-Virtual-Edges to the node's representation dimensionality and add them as positional encoding.</p><formula xml:id="formula_6">X i = X i + Relu(E ii W pe )<label>(9)</label></formula><p>Where W pe ∈ R k×d .</p><p>Self-walks were shown (Dwivedi et al. ( <ref type="formula">2022a</ref>)) to be an effective positional encoding. Adding such features to the node representations allows the Transformer to use structural information in all of its layers, including the feed-forward network. The GNN baseline, which in theory can solve the task, achieves 0.483 accuracy. This may be due to the over-squashing phenomenon. Indeed in a 10 × 10 grid, passing information between opposing nodes in the same row will require 9 message passing layers to deliver a single message that has been "squashed" with nearly 90k other messages. Next, we observe that using only positional attention(without dot-product attention) performs the second best while having the least parameters. Finally, Graph Diffuser nearly solves the task entirely by combining both positional and content attention. Looking at Figure <ref type="figure" target="#fig_2">2b</ref>, we can see the model learns to use the different attention mechanisms in an intuitive way, with content attention detecting nodes in the same color and position attention detecting nodes in the same row or column.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">EXPERIMENTS</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">BENCHMARKING GRAPH DIFFUSER</head><p>Throughout our experiments, we take an existing Graph Transformer architecture and use it "as is" as our Transformer module without doing any hyper-parameter search. That is, we take a graph Transformer with the same hyperparameters used by the original work and only add our positional attention and encoding.<ref type="foot" target="#foot_1">2</ref> For 5 of the datasets, ZINC, OGBG-{molpcba, ppa,code2}, PCQM-Contact and PCQM4Mv2, we use the very competitive <ref type="bibr">GPS Rampášek et al. (2022)</ref> as the Transformer model. For the LRGB benchmarks, Peptides-func and Peptides-struct, there are no official GPS hyperparameters, and we use a Transformer with the authors' baseline hyperparameters and a CLS token added to the input. For a detailed hyperparameters report, see Table <ref type="table" target="#tab_10">8</ref> and<ref type="table" target="#tab_11">9</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2.1">RESULTS</head><p>We evaluate our model on 8 datasets overall and compare our results with those of popular MP-GNNs, Graph Transformers and other recent state-of-the-art models. Graph Diffuser exceeds SOTA in 6 of them and achieves very competitive results in the rest. All results for the comparison methods are taken from the original paper or their official leaderboards.</p><p>ZINC Dwivedi et al. ( <ref type="formula">2020a</ref>) is a molecular regression dataset, where the value to be predicted is the molecule's constrained solubility. Table <ref type="table" target="#tab_4">2</ref> shows the results, where we exceed SOTA results by a substitutional margin. 0.367 ± 0.011 <ref type="bibr">GIN Xu et al. (2019a)</ref> 0.526 ± 0.051 <ref type="bibr">GAT Veličković et al. (2018)</ref> 0.384 ± 0.007 GatedGCN <ref type="bibr" target="#b4">Bresson &amp; Laurent (2017)</ref>; Dwivedi et al. (2020b) 0.282 ± 0.015 <ref type="bibr">GatedGCN-LSPE Dwivedi et al. (2022a)</ref> 0.090 ± 0.001 CRaWl <ref type="bibr" target="#b49">Toenshoff et al. (2021)</ref> 0.085 ± 0.004 GIN-AK+ <ref type="bibr" target="#b68">Zhao et al. (2022)</ref> 0.080 ± 0.001 SAN <ref type="bibr" target="#b32">Kreuzer et al. (2021)</ref> 0.139 ± 0.006 Graphormer <ref type="bibr" target="#b65">Ying et al. (2021)</ref> 0.122 ± 0.006 K-Subgraph <ref type="bibr">SAT Chen et al. (2022)</ref> 0.094 ± 0.008 GPS <ref type="bibr" target="#b43">Rampášek et al. (2022)</ref> 0.070 ± 0.004</p><p>Graph Diffuser(ours) 0.0683 ± 0.002</p><p>Open Graph Benchmark Hu et al. ( <ref type="formula">2020</ref>) is a highly competitive benchmark with a variety of datasets. We evaluate GD on three graph-level prediction tasks from different domains and report the results at </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">CONCLUSION</head><p>In this work, we introduced a simple and effective architecture for machine learning on graphs, Graph Diffuser. Using a controlled example, we demonstrated its effectiveness in modeling longrange interactions while providing better interpretability. We then showed that this translates to real-world problems by evaluating GD on eight benchmarks from multiple domains. With minimal hyperparameter tuning, Graph Diffuser achieves a new state-of-the-art on most datasets and reaches very competitive results on the rest.</p><p>In the future, we plan to integrate Graph Diffuser with other promising Graph Transformer compositions, such as Transformers stacked on top of GNNs. Another area of interest is amplifying virtual edges, for example, by considering paths between nodes rather than just information propagation.   </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Illustration of our positional attention, focusing on node B. Information propagation from multiple propagation steps is combined to create Virtual Edges(colored) between distant nodes, which then direct the Transformer's attention in each layer.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head></head><label></label><figDesc>Passing Graph Neural Networks (MP-GNNs) MP-GNNs Gori et al. (2005); Scarselli et al. (2008) have been the predominant method for graph representation learning in recent years, and have been applied to a wide variety of domains (e.g., Kosaraju et al. (2019); Nathani et al. (2019); Wang et al. (2019); Huang &amp; Carley (2019); Yang et al. (2020); Ma et al. (2020); Wu et al. (2020); Zhang et al. (2020)), MP-GNNss update node representation by stacking multiple layers in which each node aggregates information from its local neighborhoodLi et al. (2016); Kipf &amp; Welling (2017); Veličković et al. (2018); Wu et al. (2019a); Xu et al. (2019b);</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: An example of 2D Grid Histogram Counting with a 5 × 5 grid. 2a shows the original graph. 2b shows the attention patterns our model learns for node 23 in the graph.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: An illustration of Graph Diffuser with 2 Transformer layers. Virtual Edges are created by combining multiple powers of the weighted adjacency matrix(left). Virtual Edges modulate each of the Transformers attention layers(right). Self-Virtual Edges are added to the Transformer input as positional encoding(bottom right)</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc><ref type="bibr" target="#b17">Gilmer et al. (2017)</ref> add "virtual edges" to shorten long distances, and<ref type="bibr" target="#b45">Scarselli et al. (2008)</ref> add "supersource nodes". None of these works, however, suggest integrating such virtual nodes or edges into the Transformer as a way to process the virtual graph. Another line of work uses the attention mechanismVeličković et al. (2018);<ref type="bibr" target="#b5">Brody et al. (2022)</ref> to dynamically propagate information in the graph rather than use the original adjacency matrix or Laplacian.</figDesc><table><row><cell>Graph Transformers (GTs) Considering their successes in natural language understand-</cell></row><row><cell>ing Vaswani et al. (2017); Kalyan et al. (2021),computer vision d'Ascoli et al. (2021); Han et al.</cell></row><row><cell>(2022); Guo et al. (2021), robotic control Kurin et al. (2020) and a variety of other domains, there</cell></row><row><cell>have been numerous attempts to apply Transformers to graphs. These works add positional encoding</cell></row><row><cell>as node features, similar to the encoding in Vaswani et al. (2017), or use relative positioning to bias</cell></row><row><cell>the attention between nodes, similar to Shaw et al. (2018). Others combine Transformer with local</cell></row><row><cell>MP-GNN models by interleaving Rampášek et al. (2022) or stacking them Jain et al. (2021), much</cell></row><row><cell>in the same way the Transformers were stacked on top of CNNs in computer vision Carion et al.</cell></row><row><cell>(2020). Early Graph Transformer works Dwivedi &amp; Bresson (2020) used the graph Laplacian eigen-</cell></row><row><cell>vectors as the node positional encoding (PE) to provide a sense of nodes' location in the input graph.</cell></row><row><cell>SAN Kreuzer et al. (2021) significantly improved this idea by using an invariant aggregation for the</cell></row><row><cell>eigenvectors. Since then, there have been many recent works constructing PE from the Laplacian</cell></row><row><cell>Lim et al. (2022); Beaini et al. (2021); Wang et al. (2022); Lim et al. (2022), as well as other struc-</cell></row><row><cell>tural or positional information such as the node degree Ying et al. (2021) and random-walk SE</cell></row><row><cell>Dwivedi et al. (2022a). Relative positioning was applied with great success on a large molecular</cell></row><row><cell>benchmark by Graphormer Ying et al. (2021); Shi et al. (2022) by using pair-wise graph distances</cell></row><row><cell>to direct the Transformer's attention. Further, GraphiT Mialon et al. (2021) used relative positions</cell></row><row><cell>between nodes derived from the random walk kernel to bias the attention but heuristically chose</cell></row><row><cell>a single random walk length. In contrast, Graph Diffuser learns to combine multiple distances.</cell></row><row><cell>Since then, various works(e.g SAT Chen et al. (2022), EGT Hussain et al. (2021), GRPE Park et al.</cell></row><row><cell>(</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>An example of a 5 × 5 grid. Nodes are colored in one out of 20 colors. The goal is to predict, for each node, how many other nodes in the same row or column have the same color. For example, node 23, at the bottom row, has only a single node (node 20) that has the same color(green) and is in the same row or column with node 23. Visualization of the position and content attention our trained model gives to node 23 in the input graph shown in 2a. The model learns to pay attention to nodes in the same row and column using positional attention and to nodes of the same color using content attention. Their element-wise product selects only the relevant nodes for solving the task.</figDesc><table><row><cell>0 5 10</cell><cell>11 1 6</cell><cell>12 2 7</cell><cell>3 8 13</cell><cell>9 14 4</cell><cell></cell><cell></cell><cell cols="10">(a) Therefore, its label is 1. The label for node 6 is 2, since it matches</cell></row><row><cell>15</cell><cell>16</cell><cell>17</cell><cell>18</cell><cell>19</cell><cell></cell><cell></cell><cell cols="3">with nodes 5 and 21.</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>20</cell><cell>21</cell><cell>22</cell><cell>23</cell><cell>24</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>0</cell><cell>1</cell><cell>2</cell><cell>3</cell><cell>4</cell><cell></cell><cell>0 0</cell><cell>1</cell><cell>2</cell><cell>3</cell><cell>4</cell><cell></cell><cell>0</cell><cell>1</cell><cell>2</cell><cell>3</cell><cell>4</cell></row><row><cell>5</cell><cell>6</cell><cell>7</cell><cell>8</cell><cell>9</cell><cell></cell><cell>5</cell><cell>6</cell><cell>7</cell><cell>8</cell><cell>9 9</cell><cell></cell><cell>5</cell><cell>6</cell><cell>7</cell><cell>8</cell><cell>9</cell></row><row><cell>10</cell><cell>11</cell><cell>12</cell><cell>13</cell><cell>14</cell><cell>×</cell><cell>10</cell><cell>11 11</cell><cell>12</cell><cell>13</cell><cell>14 14</cell><cell>=</cell><cell>10</cell><cell>11</cell><cell>12</cell><cell>13</cell><cell>14</cell></row><row><cell>15</cell><cell>16</cell><cell>17</cell><cell>18</cell><cell>19</cell><cell></cell><cell>15</cell><cell>16</cell><cell>17</cell><cell>18</cell><cell>19</cell><cell></cell><cell>15</cell><cell>16</cell><cell>17</cell><cell>18</cell><cell>19</cell></row><row><cell>20</cell><cell>21</cell><cell>22</cell><cell>23</cell><cell>24</cell><cell></cell><cell>20</cell><cell>21</cell><cell>22</cell><cell>23</cell><cell>24</cell><cell></cell><cell>20</cell><cell>21</cell><cell>22</cell><cell>23</cell><cell>24</cell></row><row><cell></cell><cell cols="3">Position Attention</cell><cell></cell><cell></cell><cell></cell><cell cols="3">Content Attention</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>(b)</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table><note><p>1.2, it defeats all existing GNN and Graph Transformer techniques, while Graph Diffuser succeeds.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 1 :</head><label>1</label><figDesc>Grid Histogram Counting average accuracy and s.d over 10 different seeds. GNN→ Transformer refers to Transformer blocks stacked on top of GNN<ref type="bibr" target="#b27">(Jain et al. (2021)</ref>) and GNN | Transformer refers to combining Transformer and GNN blocks in the same layer<ref type="bibr" target="#b43">(Rampášek et al. (2022)</ref>).</figDesc><table><row><cell>5.1 GRID HISTOGRAM COUNTING</cell></row><row><cell>5.1.1 SETUP</cell></row></table><note><p><p><p>We generate 10k grids of size 10 × k, where k ∈ {10, 11, 12, 13} with node colors uniformly from a set of 20 colors, and split them into 8k/1k/1k train/valid/test sets. The task is cast as a node multi-class classification task, where each node representation is used to predict the number of other nodes in the same row or column with the same color, as illustrated in Figure</p>2a</p>. More details are in Appendix A.1</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 1</head><label>1</label><figDesc>shows the results. First, we observe that the vanilla Transformer, which easily solves the histogram task over sequential input, fails here and performs the worst. This is not surprising as the Transformer is oblivious to the graph structure. Next, we observe that RWPE Dwivedi et al. (2022a), a popular positional embedding technique, improves very slightly over the base Transformer. This may be because RWPE is unable to detect symmetries in the graph. Nodes 0,4,20 and 24 in the example illustrated in Figure2awill all get the same embedding by RWPE. Adding SignNet Lim et al.</figDesc><table /><note><p><p>(2022)</p>, a theoretically expressive positional embedding technique based on the graph eigenvectors, does not yield much improvement either. This may indicate difficulties learning useful embeddings in eigenvectors based techniques.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 2 :</head><label>2</label><figDesc>MAE for the ZINC dataset from Dwivedi et al. (2020b).</figDesc><table><row><cell>Model</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 3</head><label>3</label><figDesc>OGBG-MOLPCBA is a multi-task binary classification dataset containing 438k molecules, and the task is to predict the activity/inactivity of 128 properties. Here we rank the second highest and the first among all GNN or Transformer architectures. OGBG-PPA consists of protein-protein interaction networks of different species, where the task is predicting the category of species the network is from. The previously highest-ranking model is GPS, and adding our positional attention and encoding to it proves to be an efficient strategy that reaches a new state-ofthe-art. OGBG-CODE2 contains Abstract Syntax Trees(ASTs) of Python methods, and models are tasked with predicting the methods' names. The average distance between nodes in this dataset is larger than that of any other dataset in our experiments, which can explain why Graph Transformers variations dominate its leaderboards. Since positional encoding was not found to be significant by the previous three highest ranking models in this dataset, and considering the large improvement of our model over GPS, it seems that positional attention brings significant benefits in this benchmark, which allows us to reach a new state-of-the-art. OGB-LSC PCQM4Mv2 Hu et al. (2021) is a largescale molecular dataset with over 3.7M graphs. Here, our results are similar to GPS, which ranks highest among Graph Transformers variations. Our results lag behind only GEM-2<ref type="bibr" target="#b38">Liu et al. (2022)</ref>, which was designed specifically for modeling molecular interactions.Long Range Graph Benchmark Dwivedi et al. (2022b) is a recently proposed dataset specifically designed to evaluate models on their ability to capture long-range interactions. We are the first, other than the author's baselines, to evaluate our model on these datasets and currently rank first in all of them. Peptides-func and Peptides-struct are multi-label graph classification and regression datasets containing 15.5k Peptides molecular graphs. They are of particular interest since the molecules in them consist of many more nodes, on average, than the other molecular datasets in our experiments. As we can see in Table5, adding our positional attention and encoding outperforms both RWSE and LapPE encodings. PCQM-Contact is a molecular dataset with an edge prediction task of predicting if two atoms interact. Our results are reported in Table6.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 3 :</head><label>3</label><figDesc>Test results in OGB graph-level benchmarks<ref type="bibr" target="#b22">Hu et al. (2020)</ref>. Pre-trained or ensemble models are not included. Bold:first, Underlined:Second.</figDesc><table><row><cell>Model</cell><cell>ogbg-molpcba</cell><cell>ogbg-ppa</cell><cell>ogbg-code2</cell></row><row><cell></cell><cell>Avg. Precision ↑</cell><cell>Accuracy ↑</cell><cell>F1 score ↑</cell></row><row><cell>GCN+virtual node Kipf &amp; Welling (2017)</cell><cell>0.2424 ± 0.0034</cell><cell cols="2">0.6857 ± 0.0061 0.1595 ± 0.0018</cell></row><row><cell>GIN+virtual node Xu et al. (2019a)</cell><cell>0.2703 ± 0.0023</cell><cell cols="2">0.7037 ± 0.0107 0.1581 ± 0.0026</cell></row><row><cell>PNA Corso et al. (2020)</cell><cell>0.2838 ± 0.0035</cell><cell>-</cell><cell>0.1570 ± 0.0032</cell></row><row><cell>GIN-AK+ Zhao et al. (2022)</cell><cell>0.2930 ± 0.0044</cell><cell>-</cell><cell>-</cell></row><row><cell>DeeperGCN Li et al. (2020a)</cell><cell>0.2781 ± 0.0038</cell><cell>0.7712 ± 0.0071</cell><cell>-</cell></row><row><cell>DGN Beaini et al. (2021)</cell><cell>0.2885 ± 0.0030</cell><cell>-</cell><cell>-</cell></row><row><cell>CRaWl Toenshoff et al. (2021)</cell><cell>0.2986 ± 0.0025</cell><cell>-</cell><cell>-</cell></row><row><cell>ExpC Yang et al. (2022)</cell><cell>0.2342 ± 0.0029</cell><cell>0.7976 ± 0.0072</cell><cell>-</cell></row><row><cell>SAN Kreuzer et al. (2021)</cell><cell>0.2765 ± 0.0042</cell><cell>-</cell><cell>-</cell></row><row><cell>GraphTrans (GCN-Virtual) Jain et al. (2021)</cell><cell>0.2761 ± 0.0029</cell><cell>-</cell><cell>0.1830 ± 0.0024</cell></row><row><cell>K-Subtree SAT Chen et al. (2022)</cell><cell>-</cell><cell cols="2">0.7522 ± 0.0056 0.1937 ± 0.0028</cell></row><row><cell>GPS Rampášek et al. (2022)</cell><cell>0.2907 ± 0.0028</cell><cell cols="2">0.8015 ± 0.0033 0.1894 ± 0.0024</cell></row><row><cell>Graph Diffuser</cell><cell>0.2931 ± 0.0034</cell><cell cols="2">0.8133 ± 0.0057 0.1941 ± 0.0014</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 4 :</head><label>4</label><figDesc>Evaluation on PCQM4Mv2 Hu et al. (2021). Since the test set labels are private, we use 150k examples from the train set as our validation and the validation set is treated as the test set.</figDesc><table><row><cell>Model</cell><cell cols="2">MAE ↓ # Param.</cell></row><row><cell>GCN Kipf &amp; Welling (2017)</cell><cell>0.1379</cell><cell>2.0M</cell></row><row><cell>GCN-virtual</cell><cell>0.1153</cell><cell>4.9M</cell></row><row><cell>GIN Xu et al. (2019a)</cell><cell>0.1195</cell><cell>3.8M</cell></row><row><cell>GIN-virtual</cell><cell>0.1083</cell><cell>6.7M</cell></row><row><cell>GRPE Park et al. (2022)</cell><cell>0.0890</cell><cell>46.2M</cell></row><row><cell>EGT Hussain et al. (2021)</cell><cell>0.0869</cell><cell>89.3M</cell></row><row><cell>Graphormer Shi et al. (2022)</cell><cell>0.0864</cell><cell>48.3M</cell></row><row><cell>GPS Rampášek et al. (2022)</cell><cell>0.0858</cell><cell>19.4M</cell></row><row><cell>GEM-2 Liu et al. (2022)</cell><cell>0.0806</cell><cell>32.0M</cell></row><row><cell>Graph Diffuser(ours)</cell><cell>0.0867</cell><cell>20.3M</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 5 :</head><label>5</label><figDesc>Evaluation on the recently suggested Peptides-func and Peptides-struct Dwivedi et al. (2022b).</figDesc><table><row><cell>Model</cell><cell># Params.</cell><cell>Peptides-func Peptides-struct</cell></row><row><cell>GCN</cell><cell>508k</cell><cell>AP ↑ 0.5930±0.0023 0.3496±0.0013 MAE ↓</cell></row><row><cell>GINE</cell><cell>476k</cell><cell>0.5498±0.0079 0.3547±0.0045</cell></row><row><cell>GatedGCN</cell><cell>509k</cell><cell>0.5864±0.0077 0.3420±0.0013</cell></row><row><cell>GatedGCN+RWSE</cell><cell>506k</cell><cell>0.6069±0.0035 0.3357±0.0006</cell></row><row><cell>Transformer+LapPE</cell><cell>488k</cell><cell>0.6326±0.0126 0.2529±0.0016</cell></row><row><cell>SAN+LapPE</cell><cell>493k</cell><cell>0.6384±0.0121 0.2683±0.0043</cell></row><row><cell>SAN+RWSE</cell><cell>500k</cell><cell>0.6439±0.0075 0.2545±0.0012</cell></row><row><cell>Graph Diffuser</cell><cell>509k</cell><cell>0.6651±0.001 0.2461±0.001</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 6 :</head><label>6</label><figDesc>Comparison with the baselines in the PCQM-Contact dataset.</figDesc><table><row><cell>Model GINE</cell><cell># Params. 517k</cell><cell>Hits@1 ↑ 0.1337±0.0013 0.3642±0.0043 0.8147±0.0062 0.3180±0.0027 Hits@3 ↑ Hits@10 ↑ MRR ↑</cell></row><row><cell>GCN</cell><cell>504k</cell><cell>0.1321±0.0007 0.3791±0.0004 0.8256±0.0006 0.3234±0.0006</cell></row><row><cell>GatedGCN</cell><cell>527k</cell><cell>0.1279±0.0018 0.3783±0.0004 0.8433±0.0011 0.3218±0.0011</cell></row><row><cell>GatedGCN+RWSE</cell><cell>524k</cell><cell>0.1288±0.0013 0.3808±0.0006 0.8517±0.0005 0.3242±0.0008</cell></row><row><cell>Transformer+LapPE</cell><cell>502k</cell><cell>0.1221±0.0011 0.3679±0.0033 0.8517±0.0039 0.3174±0.0020</cell></row><row><cell>SAN+LapPE</cell><cell>499k</cell><cell>0.1355±0.0017 0.4004±0.0021 0.8478±0.0044 0.3350±0.0003</cell></row><row><cell>SAN+RWSE</cell><cell>509k</cell><cell>0.1312±0.0016 0.4030±0.0008 0.8550±0.0024 0.3341±0.0006</cell></row><row><cell>Graph Diffuser(ours)</cell><cell>521k</cell><cell>0.1369± 0.0012 0.4053 ± 0.0011 0.8592± 0.0007 0.3388± 0.0011</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 8 :</head><label>8</label><figDesc>Graph Diffuser hyperparameters for the OGB benchmarks.</figDesc><table><row><cell>Hyperparameter</cell><cell>ogbg-molpcba</cell><cell>ogbg-ppa</cell><cell cols="2">ogbg-code2 PCQM4Mv2</cell></row><row><cell>Transformer/GPS Layers</cell><cell>5</cell><cell>3</cell><cell>4</cell><cell>10</cell></row><row><cell>Edge-Wise FFN Layers</cell><cell>2</cell><cell>2</cell><cell>2</cell><cell>2</cell></row><row><cell>number of stacks(k)</cell><cell>16</cell><cell>10</cell><cell>20</cell><cell>16</cell></row><row><cell>MP-NN</cell><cell>GatedGCN</cell><cell>GatedGCN</cell><cell>GatedGCN</cell><cell>GatedGCN</cell></row><row><cell>Hidden dim</cell><cell>384</cell><cell>256</cell><cell>256</cell><cell>384</cell></row><row><cell>Transformer FFN multiplier</cell><cell>x2</cell><cell>x2</cell><cell>x4</cell><cell>x2</cell></row><row><cell>Transformer FFN norm type</cell><cell>Batch Norm</cell><cell cols="3">Batch Norm Batch Norm Batch Norm</cell></row><row><cell>Attention Heads</cell><cell>4</cell><cell>8</cell><cell>4</cell><cell>16</cell></row><row><cell>Dropout</cell><cell>0.2</cell><cell>0.1</cell><cell>0.2</cell><cell>0.1</cell></row><row><cell>Attention dropout</cell><cell>0.5</cell><cell>0.5</cell><cell>0.5</cell><cell>0.1</cell></row><row><cell>Graph pooling</cell><cell>mean</cell><cell>mean</cell><cell>mean</cell><cell>mean</cell></row><row><cell>Batch size</cell><cell>512</cell><cell>32</cell><cell>32</cell><cell>16</cell></row><row><cell>Learning Rate</cell><cell>0.0005</cell><cell>0.0003</cell><cell>0.0001</cell><cell>0.0002</cell></row><row><cell>Epochs</cell><cell>100</cell><cell>200</cell><cell>30</cell><cell>150</cell></row><row><cell>Warmup epochs</cell><cell>5</cell><cell>10</cell><cell>2</cell><cell>10</cell></row><row><cell>Weight decay # Parameters</cell><cell>1e -5 10646k</cell><cell>1e -5 3050k</cell><cell>1e -5 13912k</cell><cell>0 20320k</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_11"><head>Table 9 :</head><label>9</label><figDesc>Hyperparameters for ZINC and the LRGB datasets.</figDesc><table><row><cell>Hyperparameter</cell><cell>ZINC</cell><cell cols="3">PCQM-Contact Peptides-func Peptides-struct</cell></row><row><cell>Transformer/GPS Layers</cell><cell>10</cell><cell>4</cell><cell>4</cell><cell>4</cell></row><row><cell>Edge-Wise FFN Layers</cell><cell>2</cell><cell>2</cell><cell>2</cell><cell>2</cell></row><row><cell>number of stacks(k)</cell><cell>16</cell><cell>16</cell><cell>16</cell><cell>16</cell></row><row><cell>MP-NN</cell><cell>GINE</cell><cell>GatedGCN</cell><cell>-</cell><cell>-</cell></row><row><cell>Hidden dim</cell><cell>64</cell><cell>92</cell><cell>112</cell><cell>112</cell></row><row><cell>Transformer FFN multiplier</cell><cell>x2</cell><cell>x2</cell><cell>x2</cell><cell>x2</cell></row><row><cell cols="2">Transformer FFN norm type Batch Norm</cell><cell>Batch Norm</cell><cell>Batch Norm</cell><cell>Batch Norm</cell></row><row><cell>Attention Heads</cell><cell>4</cell><cell>4</cell><cell>4</cell><cell>4</cell></row><row><cell>Dropout</cell><cell>0.</cell><cell>0.</cell><cell>0.</cell><cell>0.</cell></row><row><cell>Attention dropout</cell><cell>0.5</cell><cell>0.5</cell><cell>0.5</cell><cell>0.5</cell></row><row><cell>Graph pooling</cell><cell>sum</cell><cell>sum</cell><cell>CLS</cell><cell>CLS</cell></row><row><cell>Batch size</cell><cell>32</cell><cell>128</cell><cell>128</cell><cell>128</cell></row><row><cell>Learning Rate</cell><cell>0.001</cell><cell>0.0003</cell><cell>0.0003</cell><cell>0.0003</cell></row><row><cell>Epochs</cell><cell>2000</cell><cell>200</cell><cell>200</cell><cell>200</cell></row><row><cell>Warmup epochs</cell><cell>50</cell><cell>10</cell><cell>10</cell><cell>10</cell></row><row><cell>Weight decay # Parameters</cell><cell>1e -5 443k</cell><cell>0 503k</cell><cell>0 509k</cell><cell>0 509k</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>Omitting bias for clearity</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>We remove any positional encoding used by the original work.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>https://github.com/rampasek/GraphGPS</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A APPENDIX A.1 IMPLEMENTATION DETAILS FOR THE GRID HISTOGRAM COUNTING TASK</head><p>We generate 10k graphs and split them into 8k/1k/1k train/val/test sets. Each grid is of size 10 × k, where k ∈ {10, 11, 12, 13}. Node colors are drawn uniformly from a set of 20 colors. We search over learning rates in {3e-4, 4e-4, 8e-4}, repeat each experiment with ten different random seeds and report the average and standard deviation of the best configuration. All models have a hidden dimension of 32. We use GatedGCN as GNN modules, and four attention heads in Transformer modules. Transformer models use six layers, GN N → T ransf ormer uses 3 GNN layers and 3 Transformer layers. GNNs model has 12 layers to avoid underreaching. For Graph Diffuser, we found 3 layers sufficient. We use 0.2 dropout for GNN's modules and 0.5 dropout for attention. For the Diffuser model, we found no need for dropout.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 THE EFFECTS OF GD ON GRAPH TRANSFORMER VARIATIONS</head><p>We Conducted a simplified experiment to see the effects of GD when used as an out-of-the-box addition to different Transformer compositions. We evaluated 3 Transformer variations: Transformer, Transformer layers stacked on top of GNN layers (GNN → Transformer), and Transformer interleaved with GNN in the same layer ( GNN | Transformer). For each variation, we evaluate the unmodified architecture with no positional embedding or positional attention, the architecture with our positional encoding and attention added, but not learning the adjacency matrix(+ Graph Diffuser), and one we learn a new weighted adjacency matrix(+ Weighted Adjacency), as described in Section 4.1.3. The results are in Table <ref type="table">7</ref>.  <ref type="bibr" target="#b66">You et al. (2020)</ref>. We use a machine with 24GB NVIDIA A10G GPU with 32GB or 64GB RAM for the larger datasets(ogbg-ppa, ogbg-code2,PCQM4Mv2), and a shared cluster equipped with NVIDIA TITAN Xp for the other datasets.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">On the bottleneck of graph neural networks and its practical implications</title>
+		<author>
+			<persName><forename type="first">Uri</forename><surname>Alon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eran</forename><surname>Yahav</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=i80OPhOCVH2" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Diffusion-convolutional neural networks</title>
+		<author>
+			<persName><forename type="first">James</forename><surname>Atwood</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Don</forename><surname>Towsley</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="1993" to="2001" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">The logical expressiveness of graph neural networks</title>
+		<author>
+			<persName><forename type="first">Pablo</forename><surname>Barceló</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Egor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mikael</forename><surname>Kostylev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jorge</forename><surname>Monet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juan</forename><surname>Pérez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juan</forename><forename type="middle">Pablo</forename><surname>Reutter</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Silva</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=r1lZ7AEKvB" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Directional graph networks</title>
+		<author>
+			<persName><forename type="first">Dominique</forename><surname>Beaini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saro</forename><surname>Passaro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vincent</forename><surname>Létourneau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Will</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gabriele</forename><surname>Corso</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>Liò</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="748" to="758" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">Residual Gated Graph ConvNets</title>
+		<author>
+			<persName><forename type="first">Xavier</forename><surname>Bresson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Laurent</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1711.07553</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">How attentive are graph attention networks?</title>
+		<author>
+			<persName><forename type="first">Shaked</forename><surname>Brody</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Uri</forename><surname>Alon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eran</forename><surname>Yahav</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=F72ximsx7C1" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">End-to-end object detection with transformers</title>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Carion</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francisco</forename><surname>Massa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gabriel</forename><surname>Synnaeve</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Kirillov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Zagoruyko</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2005.12872" />
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Structure-aware transformer for graph representation learning</title>
+		<author>
+			<persName><forename type="first">Dexiong</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O'</forename><surname>Leslie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karsten</forename><surname>Bray</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Borgwardt</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2202.03036</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Principal neighbourhood aggregation for graph nets</title>
+		<author>
+			<persName><forename type="first">Gabriele</forename><surname>Corso</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Cavalleri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dominique</forename><surname>Beaini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>Liò</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Petar</forename><surname>Veličković</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="13260" to="13271" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">A generalization of transformer networks to graphs</title>
+		<author>
+			<persName><forename type="first">Vijay</forename><surname>Prakash</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dwivedi</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xavier</forename><surname>Bresson</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2012.09699</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<author>
+			<persName><forename type="first">Vijay</forename><surname>Prakash Dwivedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chaitanya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Joshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Laurent</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xavier</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bresson</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2003.00982</idno>
+		<title level="m">Benchmarking graph neural networks</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Benchmarking graph neural networks</title>
+		<author>
+			<persName><forename type="first">Vijay</forename><surname>Prakash Dwivedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chaitanya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Joshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Laurent</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xavier</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bresson</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2003.00982</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Graph neural networks with learnable structural and positional representations</title>
+		<author>
+			<persName><forename type="first">Vijay</forename><surname>Prakash Dwivedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anh</forename><forename type="middle">Tuan</forename><surname>Luu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Laurent</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xavier</forename><surname>Bresson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Long range graph benchmark</title>
+		<author>
+			<persName><forename type="first">Vijay</forename><surname>Prakash Dwivedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ladislav</forename><surname>Rampášek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mikhail</forename><surname>Galkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ali</forename><surname>Parviz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guy</forename><surname>Wolf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anh</forename><forename type="middle">Tuan</forename><surname>Luu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dominique</forename><surname>Beaini</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2206.08164" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Convit: Improving vision transformers with soft convolutional inductive biases</title>
+		<author>
+			<persName><forename type="first">Hugo</forename><surname>Stéphane D'ascoli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthew</forename><forename type="middle">L</forename><surname>Touvron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ari</forename><forename type="middle">S</forename><surname>Leavitt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giulio</forename><surname>Morcos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Levent</forename><surname>Biroli</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sagun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="2286" to="2296" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Fast graph representation learning with PyTorch Geometric</title>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><forename type="middle">E</forename><surname>Lenssen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR Workshop on Representation Learning on Graphs and Manifolds</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">Utilising graph machine learning within drug discovery and development</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Gaudelet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Day</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arian</forename><forename type="middle">R</forename><surname>Jamasb</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jyothish</forename><surname>Soman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cristian</forename><surname>Regep</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gertrude</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeremy</forename><forename type="middle">B R</forename><surname>Hayter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Vickers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><surname>Roberts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Roblin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><forename type="middle">L</forename><surname>Blundell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">M</forename><surname>Bronstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jake</forename><forename type="middle">P</forename><surname>Taylor-King</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2012.05716" />
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Neural message passing for quantum chemistry</title>
+		<author>
+			<persName><forename type="first">Justin</forename><surname>Gilmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Samuel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><forename type="middle">F</forename><surname>Schoenholz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Riley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><forename type="middle">E</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Dahl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 34th International Conference on Machine Learning</title>
+		<meeting>the 34th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">70</biblScope>
+			<biblScope unit="page" from="1263" to="1272" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">A new model for learning in graph domains</title>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Gori</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gabriele</forename><surname>Monfardini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Franco</forename><surname>Scarselli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings. 2005 IEEE International Joint Conference on Neural Networks</title>
+		<meeting>2005 IEEE International Joint Conference on Neural Networks</meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2005">2005. 2005</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="729" to="734" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">CMT: Convolutional neural networks meet vision transformers</title>
+		<author>
+			<persName><forename type="first">Jianyuan</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Han</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chang</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yehui</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chunjing</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunhe</forename><surname>Wang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2107.06263</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Inductive representation learning on large graphs</title>
+		<author>
+			<persName><forename type="first">Will</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhitao</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1024" to="1034" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">A survey on vision transformer</title>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunhe</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanting</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinghao</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianyuan</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhenhua</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yehui</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">An</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chunjing</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixing</forename><surname>Xu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Pattern Analysis and Machine Intelligence</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marinka</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michele</forename><surname>Catasta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<title level="m">Open Graph Benchmark: Datasets for Machine Learning on Graphs. 34th Conference on Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">OGB-LSC: A large-scale challenge for machine learning on graphs</title>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maho</forename><surname>Nakata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">35th Conference on Neural Information Processing Systems: Datasets and Benchmarks Track</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Syntax-aware aspect level sentiment classification with graph attention networks</title>
+		<author>
+			<persName><forename type="first">Binxuan</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kathleen</forename><forename type="middle">M</forename><surname>Carley</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="5472" to="5480" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Edge-augmented graph transformers: Global self-attention is enough for graphs</title>
+		<author>
+			<persName><forename type="first">Md</forename><surname>Shamim Hussain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohammed</forename><forename type="middle">J</forename><surname>Zaki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dharmashankar</forename><surname>Subramanian</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2108.03348</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Generative models for graphbased protein design</title>
+		<author>
+			<persName><forename type="first">John</forename><surname>Ingraham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Vikas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Regina</forename><surname>Garg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tommi</forename><surname>Barzilay</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Jaakkola</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=SJgxrLLKOE" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Representing long-range context for graph neural networks with global attention</title>
+		<author>
+			<persName><forename type="first">Paras</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhanghao</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthew</forename><surname>Wright</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Azalia</forename><surname>Mirhoseini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joseph</forename><forename type="middle">E</forename><surname>Gonzalez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ion</forename><surname>Stoica</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Ammus: A survey of transformer-based pretrained models in natural language processing</title>
+		<author>
+			<persName><forename type="first">Katikapalli</forename><surname>Subramanyam Kalyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ajit</forename><surname>Rajasekharan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sivanesan</forename><surname>Sangeetha</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2108.05542</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Predict then propagate: Graph neural networks meet personalized pagerank</title>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Klicpera</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aleksandar</forename><surname>Bojchevski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Günnemann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<title level="m" type="main">Diffusion Improves Graph Learning</title>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Klicpera</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefan</forename><surname>Weienberger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Günnemann</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<publisher>Curran Associates Inc</publisher>
+			<pubPlace>Red Hook, NY, USA</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Social-bigat: Multimodal trajectory forecasting using bicyclegan and graph attention networks</title>
+		<author>
+			<persName><forename type="first">Vineet</forename><surname>Kosaraju</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amir</forename><surname>Sadeghian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roberto</forename><surname>Martín-Martín</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ian</forename><surname>Reid</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hamid</forename><surname>Rezatofighi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Silvio</forename><surname>Savarese</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Pap</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Devin</forename><surname>Kreuzer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dominique</forename><surname>Beaini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vincent</forename><surname>Létourneau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prudencio</forename><surname>Tossou</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Beygelzimer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">F</forename><surname>Alché-Buc</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">E</forename><surname>Fox</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Garnett</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2019">2019. 2019/file/d09bf41544a3365a46c9077ebb5e35c3. 2021</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+	<note>Advances in Neural Information Processing Systems</note>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">My body is a cage: the role of morphology in graph-based incompatible control</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Vitaly Kurin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Igl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wendelin</forename><surname>Rocktäschel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shimon</forename><surname>Boehmer</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Whiteson</surname></persName>
+		</author>
+		<idno>CoRR, abs/2010.01856</idno>
+		<ptr target="https://arxiv.org/abs/2010.01856" />
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title level="m" type="main">Deepergcn: All you need to train deeper gcns</title>
+		<author>
+			<persName><forename type="first">Guohao</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenxin</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ali</forename><surname>Thabet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernard</forename><surname>Ghanem</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2006.07739" />
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Distance encoding: Design provably more powerful neural networks for graph representation learning</title>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanbang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongwei</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="4465" to="4478" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Gated graph sequence neural networks</title>
+		<author>
+			<persName><forename type="first">Yujia</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Tarlow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc</forename><surname>Brockschmidt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Zemel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<author>
+			<persName><forename type="first">Derek</forename><surname>Lim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joshua</forename><surname>Robinson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lingxiao</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tess</forename><surname>Smidt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suvrit</forename><surname>Sra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haggai</forename><surname>Maron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefanie</forename><surname>Jegelka</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2202.13013</idno>
+		<title level="m">Sign and basis invariant networks for spectral graph representation learning</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<monogr>
+		<title level="m" type="main">Gem-2: Next generation molecular property prediction network with many-body and full-range interaction modeling</title>
+		<author>
+			<persName><forename type="first">Lihang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Donglong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaomin</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shanzhuo</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingzhou</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hua</forename><surname>Wu</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2208.05863" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Entity-aware dependency-based deep graph attention network for comparative preference classification</title>
+		<author>
+			<persName><forename type="first">Nianzu</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sahisnu</forename><surname>Mazumder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bing</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="5782" to="5788" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<title level="m" type="main">GraphiT: Encoding graph structure in transformers</title>
+		<author>
+			<persName><forename type="first">Grégoire</forename><surname>Mialon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dexiong</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Margot</forename><surname>Selosse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julien</forename><surname>Mairal</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2106.05667</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Learning attention-based embeddings for relation prediction in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Deepak</forename><surname>Nathani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jatin</forename><surname>Chauhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charu</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manohar</forename><surname>Kaul</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 57th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="4710" to="4723" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<monogr>
+		<title level="m" type="main">GRPE: Relative positional encoding for graph transformer</title>
+		<author>
+			<persName><forename type="first">Wonpyo</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Woonggi</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Donggeon</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juntae</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seung Won</forename><surname>Hwang</surname></persName>
+		</author>
+		<idno>arXiv:22201.12787</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Ladislav</forename><surname>Rampášek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mikhail</forename><surname>Galkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vijay</forename><forename type="middle">Prakash</forename><surname>Dwivedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anh</forename><forename type="middle">Tuan</forename><surname>Luu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guy</forename><surname>Wolf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dominique</forename><surname>Beaini</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2205.12454</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Powerful, Scalable Graph Transformer</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note>Recipe for a General</note>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Biological structure and function emerge from scaling unsupervised learning to 250 million protein sequences</title>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Rives</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joshua</forename><surname>Meier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Sercu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Siddharth</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zeming</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Demi</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Myle</forename><surname>Ott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">Lawrence</forename><surname>Zitnick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jerry</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rob</forename><surname>Fergus</surname></persName>
+		</author>
+		<idno type="DOI">10.1073/pnas.2016239118</idno>
+		<ptr target="https://doi.org/10.1073/pnas.2016239118" />
+	</analytic>
+	<monogr>
+		<title level="j">Proc. Natl. Acad. Sci. USA</title>
+		<imprint>
+			<biblScope unit="volume">118</biblScope>
+			<biblScope unit="issue">15</biblScope>
+			<date type="published" when="2021">2016239118. 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">The graph neural network model</title>
+		<author>
+			<persName><forename type="first">Franco</forename><surname>Scarselli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Gori</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ah</forename><surname>Chung Tsoi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Markus</forename><surname>Hagenbuchner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gabriele</forename><surname>Monfardini</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Neural Networks</title>
+		<imprint>
+			<biblScope unit="volume">20</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="61" to="80" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">Self-attention with relative position representations</title>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Shaw</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ashish</forename><surname>Vaswani</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Corr</surname></persName>
+		</author>
+		<idno>abs/1803.02155</idno>
+		<ptr target="http://arxiv.org/abs/1803.02155" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuxin</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guolin</forename><surname>Ke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yifei</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiacheng</forename><surname>You</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiyan</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shengjie</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Di</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tie-Yan</forename><surname>Liu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2203.04810</idno>
+		<title level="m">Benchmarking graphormer on large-scale molecular modeling datasets</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<monogr>
+		<title level="m" type="main">Graph learning with 1d convolutions on random walks</title>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>Toenshoff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Ritzert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hinrikus</forename><surname>Wolf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Grohe</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2102.08786</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Understanding over-squashing and bottlenecks on graphs via curvature</title>
+		<author>
+			<persName><forename type="first">Jake</forename><surname>Topping</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francesco</forename><forename type="middle">Di</forename><surname>Giovanni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benjamin</forename><surname>Paul Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaowen</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">M</forename><surname>Bronstein</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=7UmjRGzp-A" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">Ashish</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niki</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Llion</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aidan</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Łukasz</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Illia</forename><surname>Polosukhin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="6000" to="6010" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Graph attention networks</title>
+		<author>
+			<persName><forename type="first">Petar</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillem</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arantxa</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adriana</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>Liò</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Graph attention networks</title>
+		<author>
+			<persName><forename type="first">Petar</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillem</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arantxa</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adriana</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>Liò</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Equivariant and stable positional encoding for more powerful graph neural networks</title>
+		<author>
+			<persName><forename type="first">Haorui</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haoteng</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Heterogeneous graph attention network</title>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Houye</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chuan</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bai</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanfang</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philip</forename><forename type="middle">S</forename><surname>Yu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The World Wide Web Conference</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2022" to="2032" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<monogr>
+		<title level="m" type="main">Thinking like transformers</title>
+		<author>
+			<persName><forename type="first">Gail</forename><surname>Weiss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoav</forename><surname>Goldberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eran</forename><surname>Yahav</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2106.06981" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">Simplifying graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amauri</forename><surname>Souza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Fifty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kilian</forename><surname>Weinberger</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="6861" to="6871" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<monogr>
+		<title level="m" type="main">Simplifying graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amauri</forename><surname>Holanda De</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Souza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Fifty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kilian</forename><forename type="middle">Q</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Weinberger</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1902.07153" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<analytic>
+		<title level="a" type="main">A comprehensive survey on graph neural networks</title>
+		<author>
+			<persName><forename type="first">Zonghan</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shirui</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fengwen</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guodong</forename><surname>Long</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengqi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philip</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Neural Networks and Learning Systems</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<analytic>
+		<title level="a" type="main">Representation learning on graphs with jumping knowledge networks</title>
+		<author>
+			<persName><forename type="first">Keyulu</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengtao</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yonglong</forename><surname>Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tomohiro</forename><surname>Sonobe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ken-Ichi</forename><surname>Kawarabayashi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefanie</forename><surname>Jegelka</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="5453" to="5462" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<analytic>
+		<title level="a" type="main">How powerful are graph neural networks?</title>
+		<author>
+			<persName><forename type="first">Keyulu</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefanie</forename><surname>Jegelka</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<analytic>
+		<title level="a" type="main">How powerful are graph neural networks</title>
+		<author>
+			<persName><forename type="first">Keyulu</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefanie</forename><surname>Jegelka</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=ryGs6iA5Km" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b63">
+	<analytic>
+		<title level="a" type="main">Breaking the expression bottleneck of graph neural networks</title>
+		<author>
+			<persName><forename type="first">Mingqi</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Renjian</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanming</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Heng</forename><surname>Qi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baocai</forename><surname>Yin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Knowledge and Data Engineering</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b64">
+	<analytic>
+		<title level="a" type="main">Distilling knowledge from graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Yiding</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiayan</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mingli</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dacheng</forename><surname>Tao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinchao</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)</title>
+		<meeting>the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)</meeting>
+		<imprint>
+			<date type="published" when="2020-06">June 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b65">
+	<analytic>
+		<title level="a" type="main">Do transformers really perform badly for graph representation?</title>
+		<author>
+			<persName><forename type="first">Chengxuan</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianle</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shengjie</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuxin</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guolin</forename><surname>Ke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Di</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanming</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tie-Yan</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b66">
+	<analytic>
+		<title level="a" type="main">Design space for graph neural networks</title>
+		<author>
+			<persName><forename type="first">Jiaxuan</forename><surname>You</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rex</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b67">
+	<analytic>
+		<title level="a" type="main">Adaptive structural fingerprints for graph attention networks</title>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaokang</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Zhang</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=BJxWx0NYPr" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b68">
+	<analytic>
+		<title level="a" type="main">From stars to subgraphs: Uplifting any GNN with local structure awareness</title>
+		<author>
+			<persName><forename type="first">Lingxiao</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Leman</forename><surname>Akoglu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neil</forename><surname>Shah</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

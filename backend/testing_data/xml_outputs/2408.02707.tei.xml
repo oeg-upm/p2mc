@@ -1,0 +1,1263 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">SnapE -Training Snapshot Ensembles of Link Prediction Models</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-08-05">5 Aug 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Ali</forename><surname>Shaban</surname></persName>
+							<email>shaban-a@live.com</email>
+							<affiliation key="aff0">
+								<orgName type="department">Data and Web Science Group</orgName>
+								<orgName type="institution">University of Mannheim</orgName>
+								<address>
+									<country key="DE">Germany</country>
+								</address>
+							</affiliation>
+							<affiliation key="aff1">
+								<orgName type="laboratory">Amazon Web Services</orgName>
+								<address>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Heiko</forename><surname>Paulheim</surname></persName>
+							<email>heiko.paulheim@uni-mannheim.de</email>
+						</author>
+						<title level="a" type="main">SnapE -Training Snapshot Ensembles of Link Prediction Models</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-08-05">5 Aug 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">252C0A7B982E5ED4650870C94D26C8C6</idno>
+					<idno type="arXiv">arXiv:2408.02707v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:14+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>Link Prediction</term>
+					<term>Knowledge Graphs</term>
+					<term>Snapshot Ensembles</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Snapshot ensembles have been widely used in various fields of prediction. They allow for training an ensemble of prediction models at the cost of training a single one. They are known to yield more robust predictions by creating a set of diverse base models. In this paper, we introduce an approach to transfer the idea of snapshot ensembles to link prediction models in knowledge graphs. Moreover, since link prediction in knowledge graphs is a setup without explicit negative examples, we propose a novel training loop that iteratively creates negative examples using previous snapshot models. An evaluation with four base models across four datasets shows that this approach constantly outperforms the single model approach, while keeping the training time constant.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Knowledge Graphs (KGs) are a crucial instrument for structuring complex, interrelated data in a way that is interpretable both by humans and machines <ref type="bibr" target="#b13">[14,</ref><ref type="bibr" target="#b14">15]</ref>. They are used in many applications ranging from search engines to recommendation systems and from natural language processing to computer vision.</p><p>KGs often exhibit sparseness and incompleteness <ref type="bibr" target="#b6">[7,</ref><ref type="bibr" target="#b21">22]</ref>. This link sparseness can significantly hinder the KGs' potential use in applications like semantic search. As a result, filling the missing links has gained traction in the AI community. This task is called Link Prediction, and it is one of the primary applications of machine learning and embedding methods on Knowledge Graphs <ref type="bibr" target="#b3">[4]</ref>. Various research efforts have validated the efficacy of link prediction in addressing the sparsity issue in KGs and reinforcing their potential <ref type="bibr" target="#b20">[21]</ref>.</p><p>Link prediction with knowledge graph embeddings (KGEs) faces many challenges that have been the subject of research <ref type="bibr" target="#b1">[2]</ref>, including the sparsity of graphs <ref type="bibr" target="#b26">[27]</ref>, noisy or erroneous data <ref type="bibr" target="#b41">[42]</ref>, and scalability <ref type="bibr" target="#b7">[8]</ref>, among others. In machine learning, many of those challenges are addressed by ensemble methods. Ensembles can improve generalization by reducing the overfitting often seen in individual predictors <ref type="bibr" target="#b42">[43]</ref>, and better handle incomplete or noisy data by leveraging the robustness resulting from the combination of multiple models that make errors on different instances <ref type="bibr" target="#b23">[24]</ref>. Finally, ensemble methods can be used to address the scalability challenges of link predictions by training different models on different sub-graphs and combining them <ref type="bibr" target="#b7">[8]</ref> or by training smaller models on the whole graphs and combining them into an ensemble <ref type="bibr" target="#b39">[40]</ref>. The approach followed in this paper falls into the latter category.</p><p>Snapshot Ensembles are an effective way of training ensembles without increasing the training time or computation cost <ref type="bibr" target="#b15">[16]</ref>. By storing snapshots of a single model at distinct points in its training process and combining them into an ensemble, they require the same training time as a single model <ref type="bibr" target="#b15">[16]</ref>. These snapshots, stored at the end of each cycle during training with cyclic learning rate schedules, have diverse model behaviors, ensuring less correlation among base models and avoiding the model being stuck in local minima. In many fields, snapshot ensembles have been shown to outperform single base models.</p><p>In this paper, we show how to apply the idea of snapshot ensembles to link prediction in KGs. We train an ensemble of base models in the same time as we would classically train a single model, and show that the ensemble outperforms the single base model in many cases. Moreover, we propose a new technique of negative sampling, where the previous snapshots are used to generate adversarial samples for the next training cycle. The contributions of this paper are as follows:</p><p>-We propose SnapE, a new training method which can be applied to existing link prediction models. <ref type="foot" target="#foot_0">3</ref>-We show that using the same resources for training (measured by training time or memory), we can improve the performance of existing link prediction models. -We propose a new negative sampling method which can be used with SnapE.</p><p>The rest of this paper is structured as follows. We provide a brief overview of ensemble methods for link prediction in knowledge graphs in section 2. We sketch our approach in section 3, followed by an evaluation and an ablation study in section 4. We conclude with a summary and an outlook on future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>Link prediction in knowledge graphs is an extensively researched area. Approaches can be roughly categorized as geometric, matrix factorization, and neural network based approaches <ref type="bibr" target="#b29">[30,</ref><ref type="bibr" target="#b37">38]</ref>.</p><p>One of the earliest approaches to use ensembles for link prediction has been proposed by Krompass et al. <ref type="bibr" target="#b17">[18]</ref>. They train three different heterogeneous models (i.e., a TransE, a RESCAL, and an mwNN model), and make a prediction by averaging the probabilities for each predicted triple. Similar approaches are pursued by Rivas-Barragan et al. <ref type="bibr" target="#b28">[29]</ref> and Gregucci et al. <ref type="bibr" target="#b11">[12]</ref>. They can improve the prediction quality, but also signficantly increase the training efforts.</p><p>Prabhakara et al. <ref type="bibr" target="#b25">[26]</ref> divide a knowledge graph into separate subgraphs, and train an embedding model on each subgraph. The predictions of each single embedding model are aggregated using the min, max, or mean of the individual scores. The results are mixed, and no evidence of an actual performance improvement is given, i.e., there is no evidence that training m models on a smaller subgraph is computationally cheaper than training one model on the full graph. Wan et al. <ref type="bibr" target="#b36">[37]</ref> also consider the training on subgraphs, but instead of combining predictions, they combine the embedding vectors of entities and relations. While they can show that the resulting model is more robust to noise in the knowledge graph, their paper also lacks a discussion of training cost.</p><p>The approach closest to ours is Xu et al. <ref type="bibr" target="#b39">[40]</ref>, which proposes an approach of training different models of the same base class at a lower dimensionality independently, initialized with different random seeds, and combining their scores. They show that training the ensemble of different models with the same memory footprint exposes a better prediction quality than a single large model. Unlike our approach, they train the set of different models in in multiple parallel runs, rather than a single training run (i.e., Xu et al. train m models in N epochs each, which requires a total of N × m epochs, whereas we train m models in N epochs in total ). Since this approach is the closest to SnapE, we compare our work to theirs, also empirically.</p><p>While most of the approaches above can show an improvement in the link prediction quality, they usually require a larger training effort, e.g., by training more than one full model. In contrast, SnapE, as proposed in this paper, is the first approach to train an ensemble of link prediction models at the same training cost of one single full model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Approach</head><p>KGE models are trained by iteratively adapting their weights in order to maximize a target function. In each iteration, the model's weights are adapted so that the error function is lowered. The amount by which each weight can be changed in each iteration is called the learning rate. A high learning rate leads to a fast convergence of the model, but may not yield the best possible solution. A low learning rate, on the other hand, requires more time for convergence, but may yield better results. Therefore, many models are trained with a decaying learning rate, as shown in Fig. <ref type="figure" target="#fig_1">1a</ref>. There are different decay functions for learning rates, such as step decay <ref type="bibr" target="#b10">[11]</ref> or cosine annealing <ref type="bibr" target="#b18">[19]</ref>.</p><p>The idea of Snapshot Ensembles, introduced by Huang et al. in 2017 <ref type="bibr" target="#b15">[16]</ref>, uses a cyclic learning rate, as shown in Fig. <ref type="figure" target="#fig_1">1b</ref>. Each time the learning rate schedule reaches a local minimum, a snapshot of the model is stored. At prediction time, each stored model is used to predict, and the predictions are combined. The original snapshot ensemble paper uses cyclic cosine annealing, as shown in Fig. <ref type="figure" target="#fig_1">1b</ref>, and averages the predictions. In this paper, we use the same mechanism  for training an ensemble of link prediction models. We experiment with different learning rate schedulers, score aggregation functions, and negative samplers.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Learning Rate Schedulers</head><p>As discussed above, the original snapshot ensemble uses the cosine cyclic annealing schema (CCA), defined as <ref type="bibr" target="#b18">[19]</ref>:</p><formula xml:id="formula_0">α(t) = α 0 2 cos ( πmod(t -1, ⌈T /M ⌉) ⌈T /M ⌉ + 1<label>(1)</label></formula><p>where α 0 is the initial maximum learning rate, t is the iteration number, T is the total number of training iterations, and M is the number of cycles. A later paper used a variation called max-min cyclic cosine learning rate (MMCCLR), defined as <ref type="bibr" target="#b38">[39]</ref>:</p><formula xml:id="formula_1">η t = η min + 1 2 (η max -η min ) 1 + cos mod(⌈t/b⌉, ⌈T /M b⌉) ⌈T /M b⌉ π (2)</formula><p>where η t is the learning rate at step t, η min and η max are the minimum and maximum learning rates, respectively, and b is the batch size. The difference to cyclic cosine annealing is that the learning rate does not get as close to 0, which may lead to local minima being exploited a little better in the case of CCA.</p><p>In addition to those two schedulers, we explore two further variants, called deferred cyclic annealing. Assuming that a link prediction model requires some initial training in order to learn the principal structure of a knowledge graph, we defer the cyclic annealing by using a constant learning rate for the first k epochs before starting the cyclic annealing. The first model is then stored when the learning rate hits the first minimum. The result is a smaller number of models in a fixed set of epochs, but, on the other hand, those models may be a better fit due to the longer warmup time of the snapshot model. Fig. <ref type="figure">2</ref> illustrates the learning rate schedulers used in this paper.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Combining Predictions</head><p>In order to come up with a final prediction from the individual base models, their scores need to be aggregated. We follow different strategies:</p><p>Fig. <ref type="figure">2</ref>: Learning rate schedules used in this paper. Snapshots are always stored at the minima of the learning rate schedules.</p><p>Simple average: For each prediction made with the base models, we normalize the scores of each model with a min-max scaler (so that each model's scores fall into a [0, 1] range), and average those normalized scores. Weighted average: Instead of using a simple average, we weigh each model by (a) a weight derived from the model's last training loss <ref type="foot" target="#foot_1">4</ref> , or (b) with descending weights from the last stored base model, assigning the highest weight to the last model, assuming that this is the best fit. Borda rank aggregation: The rankings are unified using the Borda rank algorithm <ref type="bibr" target="#b8">[9]</ref> (without considering the scores).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Negative Samplers</head><p>Unlike many other machine learning problems, link prediction in knowledge graphs only comes with positive examples. Therefore, link prediction requires the creation of negative examples, which is usually done via randomly corrupting positive examples, i.e., for a given triple &lt; s, p, o &gt;, either s or o is replaced with a random other entity to form a corrupted triple &lt; s ′ , p, o &gt; or &lt; s, p, o ′ &gt;, respectively.</p><p>In addition to this standard sampling, we propose an extended negative sampler, which uses the last snapshot to create negative examples for the next cycle. The idea is similar to boosting <ref type="bibr" target="#b9">[10]</ref>, where an ensemble of models is trained in a sequence, with each model focusing on the mistakes made by the previous ones.</p><p>After storing a snapshot model, the model is used to predict o' or s' for a triple &lt; s, p, o &gt; in the training set. The highest scoring negative &lt; s, p, o ′ &gt; or &lt; s ′ , p, o &gt; is then added as a negative example. With that approach, we guide  the optimization to learn more diverse models, where subsequent models correct mistakes made by models stored in previous iterations. Like for the deferred cyclic annealing variants, we want to make sure that the models first learn the basic information in the graph before focusing on the edge cases. Therefore, we use random negative samples in the first iterations and successively use the extended sampling mechanism in the later stages. Fig. <ref type="figure" target="#fig_2">3</ref> illustrates this idea.</p><p>Fig. <ref type="figure" target="#fig_3">4</ref> illustrates the big picture. Following a learning rate schedule, the approach trains a base model and stores several snapshots. The last n snapshots are used for forming the final ensemble and computing a combined prediction. It is possible to use all snapshots, but since the later ones are expected to have a higher quality, we foresee the possibility to also only combine the latest ones. The negative samples in the first rounds are generated randomly; in later itera- </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Evaluation</head><p>We run experiments with our approach and four different base models and compare them to the results achieved with the respective baseline models. In our evaluation, we consider two different setups: The code for reproducing the results is available online. <ref type="foot" target="#foot_2">5</ref>We compare our approach to the one proposed by Xu et al. <ref type="bibr" target="#b39">[40]</ref>, who also train an ensemble of lower dimensional models, coined as Mbase, i.e., MTransE, MDistMult, MComplEx, and MRotatE. In order to ensure comparability to our approach, we use the same number of epochs for those models, train a total of 10 models (which is the maximum number of models for SnapE in our experiments,see section 4.3), and stick to the parameters in the original paper otherwise (i.e., a learning rate of 0.0003, Adam optimizer, and random negative sampling). <ref type="foot" target="#foot_3">6</ref> All experiments were run on a server with 24 NVIDIA A100 GPUs with 32 GB of RAM each.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Datasets</head><p>We evaluate our approach on four different datasets, i.e., DBpedia50 <ref type="bibr" target="#b32">[33]</ref>, FB15k-237 <ref type="bibr" target="#b34">[35]</ref>, WN18RR <ref type="bibr" target="#b5">[6]</ref>, and AristoV4 <ref type="bibr" target="#b4">[5]</ref>. The characteristics of the four datasets are depicted in table 1. <ref type="foot" target="#foot_4">7</ref>Table <ref type="table">2</ref>: Results of SnapE compared to baselines and to the Mbase ensemble approach. Ensemble approaches outperforming their representative baselines are marked in bold. The best overall results are underlined. The last column shows the average change in HITS@10 over the respective base model across all four datasets. Moreover, we show the average change of each metric for each dataset across all models.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Base Models</head><p>As base models, we chose TransE <ref type="bibr" target="#b3">[4]</ref>, DistMult <ref type="bibr" target="#b40">[41]</ref>, ComplEx <ref type="bibr" target="#b35">[36]</ref>, and Ro-tatE <ref type="bibr" target="#b33">[34]</ref>. For each base model, we train two baseline models, one with 64 and one with 128 dimensions, and a batch size of 128 each. We determine the optimal number of epochs by applying early stopping, using relative_delta = 0.000001 and patience = 2, and Hits@10 as a target metric. Furthermore, we pick the best learning rate lr ∈ {10, 1, 0.1, 0.01} and the best optimizer out of stochastic gradient descent (SGD), Adam, and AdaGrad by applying grid search. The number of epochs that worked best for each base model is then also used for the snapshot ensemble (while the learning rate is controlled by the respective decay scheme). <ref type="foot" target="#foot_5">8</ref> The parameters used for each model are listed in the appendix.</p><p>Note that the goal is not to achieve the best possible baseline results <ref type="bibr" target="#b30">[31]</ref>. We are more interested in analyzing the performance gains that can be obtained by using snapshot ensembles, compared to the standard training loop.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Parameters</head><p>For the parameters of the snapshot ensemble, we use the number of episodes that worked best on for the baseline model on the respective dataset (see table 5 in the appendix). Moreover, we use scores weighted by last training loss as an aggregation method, min-max-scaling to normalize the scores before, and deferred CCA as a scheduler. We pick the no. of cycles C out of {5, 10} and the number of models M to be used out of [2, C] ((cf. Fig. <ref type="figure">2</ref>) <ref type="foot" target="#foot_6">9</ref> , as well as the best performing optimizer. The parameters used for each model are listed in the appendix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Results</head><p>Table <ref type="table">2</ref> shows a comparison of SnapE against the baselines. We show the results both for the setup with the same memory budget as well as for the setup with the same time budget.</p><p>We can observe that training with SnapE outperforms the standard training mechanism in about a third of the cases when considering the same memory budget case, and in almost all cases when considering the same training time budget case (in that case at the price of a larger overall model). Moreover, in all cases, the best overall result is achieved by an ensemble model.</p><p>It can also be observed that not all models benefit equally from the SnapE training. The gains for RotatE are moderate, while the other models, especially DistMult and ComplEx, benefit much more strongly. In particular, ComplEx (and, to a lesser extent, DistMult) strongly benefit on FB15k237 and WN18RR, whereas the improvements for TransE and RotatE are not that strong on those two datasets. As stated in the original RotatE paper, composition patterns are very important in those two datasets, and ComplEx and DistMult are not capable of learning those patterns. So one possible explanation is that the ensembling compensates for the inability of those models to learn composition patterns.</p><p>Comparing to the Mbase models proposed by <ref type="bibr" target="#b39">[40]</ref>, we can observe that while they sometimes achieve the best overall performance, their average gains are less (and often even negative) than those of SnapE. Hence, we conclude that while SnapE is occasionally outperformed by Mbase, it is more stable overall. Given the observations about the runtime below, we observe that SnapE provides a better trade-off of computational efforts and prediction quality than Mbase.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.5">Runtime Behavior</head><p>Table <ref type="table" target="#tab_3">3</ref> shows the runtime behavior of the baselines as well as the SnapE configurations for the same memory and the same training time budget. <ref type="foot" target="#foot_7">10</ref>In both cases, we can observe that the training time is similar to or even smaller than the one for the baseline method.</p><p>On the other hand, the prediction time is significantly larger for the same training time budget setup. The reason is that instead of making one model predict, each of the snapshot models has to make a prediction, which leads to the higher prediction time. The combination of the individual predictions also contributes to the prediction time, but to a lesser extent. For the same memory setup, this effect is not observed, since a prediction with a number of smaller models is not more time-consuming than a prediction with one large model.</p><p>For the Mbase approach, we observe significantly larger training times <ref type="foot" target="#foot_8">11</ref> , as already discussed in section 2, since SnapE trains all its models in the same number of epochs that Mbase uses per model. The fact that the prediction time of Mbase is also higher is due to the fact that Mbase always uses all base models trained, while in SnapE, this is a hyperparameter, and often a smaller number of models is used (see appendix).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.6">Model Variety</head><p>One essential prerequisite for using ensemble methods successfully is that the base models expose some variety. Generally, the more diverse the single models in an ensemble are, the better the ensemble.</p><p>To measure the model variety, we look at the triple scores produced by the individual models, and compute their correlation for each pair of models. Table <ref type="table">4</ref> shows the average of those correlations for all models in the ensemble, together with the HITS@10 of the best single base model and the ensemble. We can see that the approach is indeed effective, since in most cases, the ensembles do not only outperform the baseline, but also the single best model. <ref type="foot" target="#foot_9">12</ref>Exceptions are only observed for the same memory setup for WN18RR, where in half of the cases, the best individual model is slightly better than the ensemble. Moreover, the gains over the best single model are often more considerable in cases of less correlated models, i.e., when SnapE learns more diverse base models.</p><p>What is also important is that the best performing model is only rarely the last one -otherwise, the overhead of storing all intermediate models would be even more questionable. Moreover, also in the cases where the best single model is found early on in the training process (indicated by a high value in the N-# Table <ref type="table">4</ref>: Analysis of the variance of models in the SnapE ensembles. The table contrasts the HITS@10 scores achieved by SnapE and by the best single model in the ensemble (the better of the two marked in bold). The column N-# shows which is the best performing single model (0 means the last, 1 means the second to last, etc.). Moreover, we depict the average pairwise correlation of the models in the ensemble. For Mbase, we do not report the number of the best performing model, since all models are independent. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Model</head><p>H@10 H@10 N-# corr.</p><p>H@10 H@10 N-# corr.</p><p>H@10 H@10 N-# corr.</p><p>H@10 H@10 N-# corr. Fig. <ref type="figure">5</ref>: Ablation study using different optimizers column in table <ref type="table">4</ref>), there are often considerable performance gains compared to the best single model, meaning that the subsequent models are not better but are able to capture information and cases not solved correctly by the best single model. Interestingly, negative are also (i.e., SnapE learns contradicting models). In many of those cases, we can see the ensemble still performs In comparison to Mbase, we observe SnapE often produces less correlated (i.e., more diverse) models, and, at the same, also better single models, which are then often learned late in the training process.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>SnapE -Same Memory Budget</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.7">Ablation Study</head><p>We analyze the impact of (1) different optimizers, (2) different learning rate schedulers (see Fig. <ref type="figure">2</ref>), (3) different negative samplers, (4) different strategies for combining the predictions of the snapshots. In all the ablation studies, we use the best performing parameter sets, and vary only the respective parameter of study. For the sake of space, we show only the impact on Hits@10, and we only consider the setting with the same training time budget. Fig. <ref type="figure">5</ref> shows results obtained with varying the optimizer. There is quite a bit of variation between using different optimizers. It can be observed that, in most cases, the Adam optimizer works best with SnapE. Only when using SnapE for TransE (and ocassionally RotatE), AdaGrad and SGD are preferred.</p><p>Fig. <ref type="figure" target="#fig_6">6</ref> shows the results for using different scheduling mechanisms. It can be observed that in general, the influence of the scheduler is rather minimal. In cases where the results differ, the deferred variants have an advantage over the non-deferred variants (i.e., those scheduling variants may help, but rather do not hurt). There is only a small difference between standard CCA and MMC-CLR. More detailed experiments have shown that CCA outperforms MMCCLR, but not vice versa. Fig. <ref type="figure">7</ref>: Ablation study on using the standard vs. the extended sampler Fig. <ref type="figure">7</ref> shows the results obtained with standard negative sampling and the proposed extended negative sampler, which uses snapshots from previous iterations for negative sampling. It can be observed that the proposed extended negative sampler yields better results in most cases. There is a clear outlier, which is the result for DistMult with d=128 on WN18RR. As shown in the analysis above, in that case, the variety of the models is very low when using the extended sampler (yielding a correlation of 0.967). This means that the individual models do not learn any different patterns (and, hence, the extended sampler cannot produce any interesting negatives for the subsequent iterations).</p><p>Lastly, Fig. <ref type="figure" target="#fig_8">8</ref> shows a study of the impact of using different techniques for combining the results. We can observe that in general, the worst results are achieved with Borda rank aggregation, while the other methods are en par in many cases (with the exception of some cases with TransE, which work significantly better with equal weights).  The SnapE framework allows for further experimentation. We have observed that learning rate schedulers and combination approaches have an impact on the overall results, thus, we can assume that more experimentation with different variants here might yield even better results. As far as the learning rate schedulers go, early stopping could also be applied in each of the learning cycles, allowing for further optimization of the training time. The deferred training schedules could also allow to train the first iteration on a condensed version of the graph, as proposed in <ref type="bibr" target="#b16">[17]</ref>. For combining the predictions of snapshot models, mixture of experts <ref type="bibr" target="#b19">[20]</ref> could be a promising candidate for creating even more powerful snapshot ensembles.</p><p>While we could show that SnapE models can be trained at the same training cost as standard baseline models, we have observed a drastic increase in prediction time. At the same time, we could observe that it is often sufficient or even beneficial to only use a subset of the snapshots, which in turn lowers the prediction time. Thus, the selection strategy for the subset of snapshots seems a crucial property for further optimizing SnapE.</p><p>We have also observed that the possibilities that snapshot ensembles yield with respect to creating negative samples are intriguing. One could think of more elaborate techniques for exploiting negative samples from previous snapshots, e.g., mixing negative samples created by several previous snapshots.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 1 :</head><label>1</label><figDesc>Fig. 1: Non-cyclic vs. cyclic learning rate schedules</figDesc><graphic coords="4,136.69,115.84,169.45,64.75" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 3 :</head><label>3</label><figDesc>Fig. 3: Usage of the extended negative sampler in the cosine annealing (left) and deferred cosine annealing (right) setting.</figDesc><graphic coords="6,234.61,232.73,224.11,75.35" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 4 :</head><label>4</label><figDesc>Fig. 4: Illustration of the overall approach</figDesc><graphic coords="6,209.67,373.15,196.31,89.75" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Fig. 6 :</head><label>6</label><figDesc>Fig. 6: Ablation study on using different schedulers</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Fig. 8 :</head><label>8</label><figDesc>Fig. 8: Ablation study on different strategies combining predictions</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Datasets used for the Evaluation</figDesc><table><row><cell></cell><cell cols="2">Entities Relations Triples</cell></row><row><cell cols="2">DBpedia50 24,624</cell><cell>351 34,421</cell></row><row><cell>FB15k237</cell><cell>14,505</cell><cell>237 310,079</cell></row><row><cell>WN18RR</cell><cell>40,559</cell><cell>11 92,584</cell></row><row><cell>AristoV4</cell><cell>42,016</cell><cell>1,593 279,425</cell></row><row><cell cols="3">tions, they can be successively replaced by the extended sampler, which uses the</cell></row><row><cell cols="3">(wrong) predictions of the previous snapshots as non-trivial negative examples.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 :</head><label>3</label><figDesc>Training and prediction time (s) of the baselines, the SnapE-trained approaches, and the Mbase ensembles</figDesc><table><row><cell></cell><cell cols="2">DBpedia50</cell><cell cols="2">FB15k237</cell><cell cols="2">WN18RR</cell><cell cols="2">AristoV4</cell></row><row><cell>Model</cell><cell>train</cell><cell>predict</cell><cell>train</cell><cell>predict</cell><cell>train</cell><cell>predict</cell><cell>train</cell><cell>predict</cell></row><row><cell></cell><cell></cell><cell></cell><cell cols="2">Baselines</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>TransE d=64</cell><cell>58.427</cell><cell>0.190</cell><cell>358.516</cell><cell>1.466</cell><cell>303.580</cell><cell>0.656</cell><cell>645.440</cell><cell>1.994</cell></row><row><cell>TransE d=128</cell><cell>48.723</cell><cell cols="2">0.316 1,687.463</cell><cell>2.134</cell><cell>128.592</cell><cell>0.517</cell><cell>599.860</cell><cell>2.831</cell></row><row><cell>DistMult d=64</cell><cell>84.571</cell><cell>0.340</cell><cell>196.292</cell><cell>1.490</cell><cell>49.885</cell><cell>0.411</cell><cell>186.774</cell><cell>2.417</cell></row><row><cell>DistMult d=128</cell><cell>22.309</cell><cell>0.234</cell><cell>185.398</cell><cell>1.626</cell><cell>77.129</cell><cell cols="2">0.517 1,690.012</cell><cell>2.768</cell></row><row><cell>ComplEx d=64</cell><cell>256.092</cell><cell cols="2">0.333 2,643.319</cell><cell>1.706</cell><cell>370.614</cell><cell cols="2">0.401 1,463.573</cell><cell>1.956</cell></row><row><cell>ComplEx d=128</cell><cell>29.171</cell><cell cols="2">0.372 1,319.236</cell><cell>1.805</cell><cell>344.264</cell><cell cols="2">0.566 11,334.286</cell><cell>5.792</cell></row><row><cell>RotatE d=64</cell><cell>62.807</cell><cell cols="2">0.241 1,130.800</cell><cell cols="2">1.620 1,109.552</cell><cell cols="2">0.532 1,962.201</cell><cell>2.764</cell></row><row><cell>RotatE d=128</cell><cell>92.876</cell><cell cols="2">0.393 1,687.463</cell><cell>2.135</cell><cell>169.264</cell><cell cols="2">0.743 1,677.724</cell><cell>4.825</cell></row><row><cell></cell><cell></cell><cell cols="4">SnapE -Same Memory Budget</cell><cell></cell><cell></cell><cell></cell></row><row><cell>TransE d=64</cell><cell>54.006</cell><cell>0.203</cell><cell>296.375</cell><cell>1.314</cell><cell>275.402</cell><cell>0.649</cell><cell>578.863</cell><cell>1.878</cell></row><row><cell>TransE d=128</cell><cell>38.658</cell><cell>0.236</cell><cell>443.577</cell><cell>1.503</cell><cell>103.982</cell><cell>0.755</cell><cell>619.845</cell><cell>2.258</cell></row><row><cell>DistMult d=64</cell><cell>55.419</cell><cell>0.203</cell><cell>126.954</cell><cell>1.638</cell><cell>31.698</cell><cell>0.648</cell><cell>182.741</cell><cell>1.781</cell></row><row><cell>DistMult d=128</cell><cell>13.182</cell><cell>0.239</cell><cell>258.389</cell><cell>1.599</cell><cell>49.283</cell><cell>0.783</cell><cell>198.814</cell><cell>2.474</cell></row><row><cell>ComplEx d=64</cell><cell>180.451</cell><cell cols="2">0.185 2,470.871</cell><cell>1.252</cell><cell>322.798</cell><cell cols="2">0.544 1,050.948</cell><cell>1.569</cell></row><row><cell>ComplEx d=128</cell><cell>23.597</cell><cell>0.282</cell><cell>836.381</cell><cell>1.518</cell><cell>300.829</cell><cell cols="2">0.738 2,243.378</cell><cell>2.129</cell></row><row><cell>RotatE d=64</cell><cell>56.665</cell><cell cols="2">0.219 1,119.917</cell><cell>1.452</cell><cell>99.450</cell><cell cols="2">0.784 1,336.407</cell><cell>2.317</cell></row><row><cell>RotatE d=128</cell><cell>66.058</cell><cell cols="2">0.362 1,594.601</cell><cell>1.689</cell><cell>128.422</cell><cell cols="2">1.143 1,482.312</cell><cell>3.306</cell></row><row><cell>avg. ∆</cell><cell>-23.86%</cell><cell>-17.77%</cell><cell>-17.07%</cell><cell>-13.18%</cell><cell cols="2">-30.21% +40.17%</cell><cell>-31.16%</cell><cell>-24.21%</cell></row><row><cell></cell><cell></cell><cell cols="4">SnapE -Same Training Time Budget</cell><cell></cell><cell></cell><cell></cell></row><row><cell>TransE d=64</cell><cell>91.298</cell><cell>0.637</cell><cell>397.608</cell><cell>2.374</cell><cell>291.219</cell><cell>0.782</cell><cell>930.551</cell><cell>5.007</cell></row><row><cell>TransE d=128</cell><cell>68.966</cell><cell>0.871</cell><cell>653.377</cell><cell>3.213</cell><cell>118.345</cell><cell cols="2">1.106 1,202.238</cell><cell>10.263</cell></row><row><cell>DistMult d=64</cell><cell>14.589</cell><cell>0.293</cell><cell>153.939</cell><cell>3.491</cell><cell>57.423</cell><cell>2.426</cell><cell>256.140</cell><cell>7.571</cell></row><row><cell>DistMult d=128</cell><cell>18.579</cell><cell>0.672</cell><cell>294.357</cell><cell>4.472</cell><cell>60.385</cell><cell cols="2">1.506 1,784.194</cell><cell>3.241</cell></row><row><cell>ComplEx d=64</cell><cell>200.428</cell><cell>0.269</cell><cell>842.800</cell><cell>2.881</cell><cell>329.754</cell><cell cols="2">0.734 1,652.348</cell><cell>6.809</cell></row><row><cell>ComplEx d=128</cell><cell>34.277</cell><cell>1.069</cell><cell>925.995</cell><cell>3.910</cell><cell>306.544</cell><cell cols="2">1.094 2,410.949</cell><cell>3.123</cell></row><row><cell>RotatE d=64</cell><cell>80.620</cell><cell>1.034</cell><cell>149.655</cell><cell>4.392</cell><cell>223.709</cell><cell cols="2">4.574 1,733.061</cell><cell>5.713</cell></row><row><cell>RotatE d=128</cell><cell>120.118</cell><cell cols="2">1.825 1,752.696</cell><cell>2.535</cell><cell>613.024</cell><cell cols="2">7.561 1,772.830</cell><cell>5.028</cell></row><row><cell>avg. ∆</cell><cell cols="2">+6.47% +180.78%</cell><cell cols="4">-24.25% +99.65% +17.71% +333.58%</cell><cell cols="2">+14.43% +119.61%</cell></row><row><cell></cell><cell></cell><cell></cell><cell cols="2">Mbase</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>MTransE d = 64</cell><cell>547.341</cell><cell cols="2">1.070 2,856.178</cell><cell cols="2">3.301 2,773.676</cell><cell>3.598</cell><cell>5,496.94</cell><cell>8.27</cell></row><row><cell>MTransE d = 128</cell><cell>424.415</cell><cell cols="2">1.615 4,343.727</cell><cell cols="2">5.108 1,061.422</cell><cell>4.234</cell><cell>5,078.27</cell><cell>12.73</cell></row><row><cell>MDistMult d = 64</cell><cell>547.341</cell><cell>1.070</cell><cell>903.491</cell><cell>3.290</cell><cell>195.154</cell><cell>2.558</cell><cell>836.39</cell><cell>7.31</cell></row><row><cell>MDistMult d = 128</cell><cell>167.593</cell><cell>0.981</cell><cell>965.005</cell><cell>5.410</cell><cell>516.893</cell><cell cols="2">4.229 15,772.17</cell><cell>13.29</cell></row><row><cell cols="2">MComplEx d = 64 1,925.209</cell><cell cols="2">1.217 23,684.887</cell><cell>3.681</cell><cell>962.539</cell><cell cols="2">2.319 12,888.71</cell><cell>7.55</cell></row><row><cell>MComplEx d = 128</cell><cell>147.732</cell><cell cols="2">1.058 11,655.125</cell><cell cols="2">5.773 2,895.896</cell><cell cols="2">5.013 10,317.45</cell><cell>12.48</cell></row><row><cell>MRotatE d = 64</cell><cell>589.339</cell><cell cols="2">1.674 11,047.856</cell><cell cols="2">5.361 1,029.588</cell><cell cols="2">4.473 18,374.42</cell><cell>13.92</cell></row><row><cell>MRotatE d = 128</cell><cell>713.364</cell><cell cols="2">2.362 16,925.643</cell><cell cols="2">9.354 1,287.857</cell><cell>7.531</cell><cell>6,434.62</cell><cell>22.24</cell></row><row><cell>avg. ∆</cell><cell cols="8">+671.36% +369.21% +624.30% +190.34% +494.37% +665.77% +571.36% +301.59%</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head></head><label></label><figDesc>Ensemble Best Single avg. Ensemble Best Single avg. Ensemble Best Single avg.</figDesc><table><row><cell>Ensemble Best Single avg.</cell><cell>DBpedia50</cell></row><row><cell></cell><cell>FB15k237</cell></row><row><cell></cell><cell>WN18RR</cell></row><row><cell></cell><cell>AristoV4</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_0"><p>Note: we do not propose a new link prediction model, but a new training method for existing models.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_1"><p>max + min -loss, where max and min are the maximum and minimum loss of the models in the ensemble</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_2"><p>https://github.com/Alishaba/pykeen-snapshot-ensembles</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="6" xml:id="foot_3"><p>Note that the setup is pretty similar to SnapE. The only differences are that each model is initialized randomly, that the sampling is always random, i.e., never uses a previous model to generate negative samples, and that the combination uses uniform weights. Therefore, and due to the implementation of Xu et al.<ref type="bibr" target="#b39">[40]</ref> not being available, we use the SnapE implementation to emulate MTransE etc. This also allows for a fair comparison of training and prediction times.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="7" xml:id="foot_4"><p><ref type="bibr" target="#b6">7</ref> We use the training, test, and validation split as provided in PyKEEN<ref type="bibr" target="#b0">[1]</ref>.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="8" xml:id="foot_5"><p>For all other parameters, we use the default values from PyKEEN, including negative sampling rate (1 negative sample per positive example) and loss function (Margin-RankingLoss for TransE, DistMult, and Rotate, SoftplusLoss for ComplEx).</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="9" xml:id="foot_6"><p><ref type="bibr" target="#b8">9</ref> Note that when M = C, then there is actually no warmup phase, i.e., the schedule is equal to a non-deferred one.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="10" xml:id="foot_7"><p>While it might seem surprising that the larger baseline models with d=128 often train faster than the smaller ones with d=64, despite having a larger number of parameters, this is due to the early stopping criterion, which allowed the larger models to be trained in a smaller number of episodes (see appendix), leading to overall lower training times.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="11" xml:id="foot_8"><p>However, the training in Mbase can be parallelized, which is not possible for SnapE.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="12" xml:id="foot_9"><p>Otherwise, one could have assumed that SnapE performs better simply due to a smaller model size and hence, e.g., a lesser tendency to overfit.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgements</head><p>The authors acknowledge support by the state of <rs type="person">Baden-Württemberg</rs> through bwHPC.</p></div>
+			</div>			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Finally, it would be interesting to see how the idea of snapshot ensembles can be carried over to different kinds of embedding and graph learning methods, like R-GCNs <ref type="bibr" target="#b31">[32]</ref> or walk-based methods like RDF2vec <ref type="bibr" target="#b27">[28]</ref> and its variants <ref type="bibr" target="#b24">[25]</ref>, and other downstream tasks, such as node classification <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b22">23]</ref>. Moreover, they might be an interesting approach to embedding versioned knowledge graphs <ref type="bibr" target="#b12">[13]</ref> by forming an evolving ensemble of snapshots trained on different versions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Appendix: Configurations Used</head><p>In this appendix, we show the configurations used for the baselines (table <ref type="table">5</ref>) as well as the SnapE models (table <ref type="table">6</ref>) in section 4.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Pykeen 1.0: A python library for training and evaluating knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ali</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Berrendorf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">T</forename><surname>Hoyt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Vermue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sharifzadeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lehmann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embeddings: open challenges and opportunities</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Biswas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">A</forename><surname>Kaffee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Cochez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Dumbrava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">E</forename><surname>Jendal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lissandrini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Lopez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">L</forename><surname>Mencía</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Paulheim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Sack</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Transactions on Graph Data and Knowledge</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="4" to="5" />
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">kgbench: A collection of knowledge graph datasets for evaluating relational and multimodal machine learning</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Bloem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wilcke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Van Berkel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>De Boer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Semantic Web: 18th International Conference, ESWC 2021, Virtual Event</title>
+		<title level="s">Proceedings</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2021">June 6-10, 2021. 2021</date>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="page" from="614" to="630" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multi-relational data</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Yakhnenko</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper_files/paper/2013/file/1cecc" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">C</forename><surname>Burges</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">L</forename><surname>Bottou</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Z</forename><surname>Ghahramani</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Weinberger</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">26</biblScope>
+		</imprint>
+	</monogr>
+	<note>a77928ca8133fa24680a88d2f9-Paper.pdf</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Relation prediction as an auxiliary training objective for improving multi-relational graph representations</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=Qa3uS3H7-Le" />
+	</analytic>
+	<monogr>
+		<title level="m">3rd Conference on Automated Knowledge Base Construction</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+		<idno>CoRR abs/1707.01476</idno>
+		<ptr target="http://arxiv.org/abs/1707.01476" />
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Knowledge vault: A web-scale approach to probabilistic knowledge fusion</title>
+		<author>
+			<persName><forename type="first">X</forename><forename type="middle">L</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Gabrilovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Heitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Horn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Lao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Strohmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<ptr target="http://www.cs.cmu.edu/~nlao/publication/2014.kdd.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">The 20th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, KDD &apos;14</title>
+		<editor>
+			<persName><forename type="first">Gabrilovich</forename><surname>Wilko Horn</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Ni</forename><surname>Lao</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kevin</forename><surname>Murphy</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Thomas</forename><surname>Strohmann</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Shaohua</forename><surname>Sun</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Wei</forename><surname>Zhang</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Geremy</forename><surname>Heitz</surname></persName>
+		</editor>
+		<meeting><address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2014">August 24 -27, 2014. 2014</date>
+			<biblScope unit="page" from="601" to="610" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Scaling up link prediction with ensembles</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Duan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Aggarwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Huai</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Ninth ACM International Conference on Web Search and Data Mining</title>
+		<meeting>the Ninth ACM International Conference on Web Search and Data Mining</meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="367" to="376" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Rank aggregation methods for the web</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Dwork</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Naor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sivakumar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 10th international conference on World Wide Web</title>
+		<meeting>the 10th international conference on World Wide Web</meeting>
+		<imprint>
+			<date type="published" when="2001">2001</date>
+			<biblScope unit="page" from="613" to="622" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">A decision-theoretic generalization of on-line learning and an application to boosting</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Freund</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">E</forename><surname>Schapire</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Computer and System Sciences</title>
+		<imprint>
+			<biblScope unit="volume">55</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="119" to="139" />
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">The step decay schedule: A near optimal, geometrically decaying learning rate procedure</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>Kakade</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kidambi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Netrapalli</surname></persName>
+		</author>
+		<idno>CoRR abs/1904.12838</idno>
+		<ptr target="http://arxiv.org/abs/1904.12838" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Link prediction with attention applied on multiple knowledge graph embedding models</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Gregucci</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nayyeri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Hernández</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Staab</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">WWW &apos;23: Proceedings of the ACM Web Conference</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="2600" to="2610" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Rdf2vec embeddings for updateable knowledge graphsreuse, don&apos;t retrain</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">H</forename><surname>Hahn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Paulheim</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+			<publisher>ESWC Posters and Demos</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Knowledge graphs on the web-an overview. Knowledge Graphs for eXplainable Artificial Intelligence: Foundations, Applications and Challenges</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Heist</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hertling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ringler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Paulheim</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="3" to="22" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Knowledge graphs</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hogan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Blomqvist</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Cochez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Amato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">D</forename><surname>Melo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Gutierrez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kirrane</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">E L</forename><surname>Gayo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Navigli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Neumaier</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Computing Surveys (Csur)</title>
+		<imprint>
+			<biblScope unit="volume">54</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="1" to="37" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Snapshot ensembles: Train 1, get m for free</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Pleiss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">E</forename><surname>Hopcroft</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">Q</forename><surname>Weinberger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Schema first! learn versatile knowledge graph embeddings by capturing semantics with maschine</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Hubert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Paulheim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Monnin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Brun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Monticolo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 12th Knowledge Capture Conference 2023</title>
+		<meeting>the 12th Knowledge Capture Conference 2023</meeting>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="188" to="196" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Ensemble solutions for link-prediction in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Krompass</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2015-09">09 2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">SGDR: Stochastic gradient descent with warm restarts</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Loshchilov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Hutter</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=Skq89Scxx" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Mixture of experts: a literature survey</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Masoudnia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ebrahimpour</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Artificial Intelligence Review</title>
+		<imprint>
+			<biblScope unit="volume">42</biblScope>
+			<biblScope unit="page" from="275" to="293" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">A review of relational machine learning for knowledge graphs</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Gabrilovich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE</title>
+		<meeting>the IEEE</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Knowledge graph refinement: A survey of approaches and evaluation methods</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Paulheim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Semantic Web</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="489" to="508" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Geval: a modular and extensible evaluation framework for graph embedding techniques</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">A</forename><surname>Pellegrino</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Altabba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Garofalo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Ristoski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Cochez</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Semantic Web: 17th International Conference, ESWC 2020</title>
+		<title level="s">Proceedings</title>
+		<meeting><address><addrLine>Heraklion, Crete, Greece</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2020-06-04">May 31-June 4, 2020. 2020</date>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="page" from="565" to="582" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Ensemble based systems in decision making</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Polikar</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/MCAS.2006.1688199</idno>
+		<ptr target="https://doi.org/10.1109/MCAS.2006.1688199" />
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Circuits and Systems Magazine</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="21" to="45" />
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">The rdf2vec family of knowledge graph embedding methods</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Portisch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Paulheim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Semantic Web (Preprint)</title>
+		<imprint>
+			<biblScope unit="page" from="1" to="32" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">An ensemble learning approach to perform link prediction on large scale biomedical knowledge graphs for drug repurposing and discovery</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Prabhakar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Vu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Crawford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Waite</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">bioRxiv</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Dylink2vec: Effective feature representation for link prediction in dynamic networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rahman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Saha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hasan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Reddy</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018-04">04 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Rdf2vec: Rdf graph embeddings for data mining</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Ristoski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Paulheim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Semantic Web-ISWC 2016: 15th International Semantic Web Conference</title>
+		<meeting><address><addrLine>Kobe, Japan</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2016">October 17-21, 2016. 2016</date>
+			<biblScope unit="page" from="498" to="514" />
+		</imprint>
+	</monogr>
+	<note>Proceedings, Part I 15</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Ensembles of knowledge graph embedding models improve predictions for drug discovery</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Rivas-Barragan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Domingo-Fernández</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Gadiya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Healey</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Briefings in Bioinformatics</title>
+		<imprint>
+			<biblScope unit="volume">23</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<date type="published" when="2022">11 2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding for link prediction: A comparative analysis</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Barbosa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Firmani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Matinata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Merialdo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Knowledge Discovery from Data (TKDD)</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="1" to="49" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">You can teach an old dog new tricks! on training knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Broscheit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gemulla</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Modeling relational data with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Bloem</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Van Den</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Titov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Semantic Web: 15th International Conference</title>
+		<title level="s">Proceedings</title>
+		<meeting><address><addrLine>Heraklion, Crete, Greece</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018-06-03">2018. June 3-7, 2018. 2018</date>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="page" from="593" to="607" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<title level="m" type="main">Open-world knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Weninger</surname></persName>
+		</author>
+		<idno>CoRR abs/1711.03438</idno>
+		<ptr target="http://arxiv.org/abs/1711.03438" />
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><forename type="middle">H</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">Y</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<idno>CoRR abs/1902.10197</idno>
+		<ptr target="http://arxiv.org/abs/1902.10197" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title level="m" type="main">Observed versus latent features for knowledge base and text inference</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chen</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/W15-4007</idno>
+		<ptr target="https://doi.org/10.18653/v1/W15-4007" />
+		<imprint>
+			<date type="published" when="2015-07">07 2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Complex embeddings for simple link prediction</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 33rd International Conference on International Conference on Machine Learning</title>
+		<meeting>the 33rd International Conference on International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">48</biblScope>
+			<biblScope unit="page" from="2071" to="2080" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Adaptive knowledge subgraph ensemble for robust and trustworthy knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Wan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">World Wide Web</title>
+		<imprint>
+			<biblScope unit="volume">23</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="471" to="490" />
+			<date type="published" when="2020-01">Jan 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">A survey on knowledge graph embeddings for link prediction</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Symmetry</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page">485</biblScope>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">A new snapshot ensemble convolutional neural network for fault diagnosis</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Access</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="page" from="32037" to="32047" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">Multiple run ensemble learning with low-dimensional knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nayyeri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Vahdati</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lehmann</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021-07">07 2021</date>
+			<biblScope unit="page" from="1" to="8" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Tau Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Deng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Learning Representations (ICLR</title>
+		<meeting>the International Conference on Learning Representations (ICLR</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Measuring the robustness of link prediction algorithms under noisy environment</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Xiao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Scientific Reports</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="issue">04</biblScope>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<monogr>
+		<title level="m" type="main">Ensemble Methods: Foundations and Algorithms. Chapman and Hall/CRC, 1st edn</title>
+		<author>
+			<persName><forename type="first">Z</forename><forename type="middle">H</forename><surname>Zhou</surname></persName>
+		</author>
+		<idno type="DOI">10.1201/b12207</idno>
+		<ptr target="https://doi.org/https://doi.org/10.1201/b12207" />
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

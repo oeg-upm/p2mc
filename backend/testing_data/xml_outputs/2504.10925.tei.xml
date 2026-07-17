@@ -1,0 +1,1405 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Transfer Learning for Temporal Link Prediction</title>
+				<funder>
+					<orgName type="full">Northeastern University</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Ayan</forename><surname>Chatterjee</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Barbara</forename><surname>Ikica</surname></persName>
+							<email>barbaraikica@google.com</email>
+						</author>
+						<author>
+							<persName><forename type="first">Babak</forename><surname>Ravandi</surname></persName>
+							<email>bk.ravandi@gmail.com</email>
+						</author>
+						<author>
+							<persName><forename type="first">John</forename><surname>Palowitch</surname></persName>
+							<email>palowitch@google.com</email>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution">BioClarity AI Northeastern University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="laboratory">Alexion AstraZeneca Rare Disease Northeastern University</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Transfer Learning for Temporal Link Prediction</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="MD5">5F2D510F01E7E413EA62913B85A3A7EB</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:25+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Link prediction on graphs has applications spanning from recommender systems to drug discovery. Temporal link prediction (TLP) refers to predicting future links in a temporally evolving graph and adds additional complexity related to the dynamic nature of graphs. State-of-the-art TLP models incorporate memory modules alongside graph neural networks to learn both the temporal mechanisms of incoming nodes and the evolving graph topology. However, memory modules only store information about nodes seen at train time, and hence such models cannot be directly transferred to entirely new graphs at test time and deployment. In this work, we study a new transfer learning task for temporal link prediction, and develop transfer-effective methods for memory-laden models. Specifically, motivated by work showing the informativeness of structural signals for the TLP task, we augment a structural mapping module to the existing TLP model architectures, which learns a mapping from graph structural (topological) features to memory embeddings. Our work paves the way for a memory-free foundation model for TLP.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Link prediction is a fundamental task in the field of machine learning and network science, focusing on predicting the unobserved connections in graphs <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b1">2]</ref>. Temporal link prediction (TLP) refers to link prediction in graphs where nodes and edges evolve over time <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b3">4]</ref>. The task spans a wide range of real-world graphs, including social networks <ref type="bibr" target="#b4">[5]</ref>, biological systems <ref type="bibr" target="#b5">[6]</ref>, and financial transactions <ref type="bibr" target="#b6">[7]</ref>. The ability to accurately predict the emergence of links over time is crucial for tasks such as recommendation systems <ref type="bibr" target="#b7">[8]</ref>, anomaly detection <ref type="bibr" target="#b8">[9]</ref>, and epidemic modeling <ref type="bibr" target="#b9">[10]</ref>.</p><p>Recent research <ref type="bibr" target="#b10">[11]</ref><ref type="bibr" target="#b11">[12]</ref><ref type="bibr" target="#b12">[13]</ref> has used unsupervised pre-training of node attributes to address inductive link prediction in both static and temporal graphs. However, practical constraints often render node attribute data unavailable, particularly due to confidentiality concerns in social networks <ref type="bibr" target="#b13">[14]</ref> and biological/medical networks <ref type="bibr" target="#b14">[15]</ref>. Furthermore, going beyond inductive tests and transferring a link prediction model to an entirely distinct graph poses challenges such as aligning latent spaces <ref type="bibr" target="#b15">[16]</ref>. The proposed solution of augmentation of loss functions by Gritsekno et al. does not truly emulate a transfer learning scenario <ref type="bibr" target="#b15">[16]</ref>. The complexity further escalates in temporal graphs, where transferring both spatial and temporal mechanisms to a new graph becomes necessary.</p><p>In this paper, we propose a novel approach to temporal link prediction that addresses these challenges. Our method incorporates topological features of the nodes, which allows for a common space between two disjoint graphs. We evaluate our approach on several benchmark datasets, demonstrating its effectiveness and efficiency compared to state-of-the-art methods.</p><p>The rest of this paper is organized as follows. In Section 2, we review related work on temporal link prediction. Section 3 introduces the problem definition and summarizes the limitations of the existing TLP models in transfer learning. Section 4 introduces our proposed method, followed by experimental results in Section 5. Finally, we conclude with the limitations, a discussion, and future work in Sections 6 and 7.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>A temporal graph is a graph in which new nodes and new edges arrive over time. The standard temporal link prediction (TLP) task is to predict future edges between nodes that currently exist in the graph, constituting a transductive link prediction scenario. In static graphs, link prediction necessitates capturing the neighborhood information of individual nodes. This is achieved by neighborhood aggregation <ref type="bibr" target="#b16">[17,</ref><ref type="bibr" target="#b17">18]</ref>. Conversely, the temporal domain adds an additional layer of complexity by requiring learning the sequential processes governing link formation <ref type="bibr" target="#b3">[4]</ref>. While temporally mature dynamic graphs <ref type="bibr" target="#b18">[19]</ref> offer sufficient neighborhood topology for transductive link prediction with high accuracy, forecasting edges for newly introduced nodes in an inductive setting presents a formidable challenge. Many SOTA temporal link prediction models, such as TGAT <ref type="bibr" target="#b20">[20]</ref> and DNformer <ref type="bibr" target="#b21">[21]</ref>, can tackle the inductive scenario predicting links between new nodes by aggregating the induced subgraph of an unseen node containing seen nodes.</p><p>However, the case of a test graph with a completely new set of nodes with no existing subgraphs to aggregate has yet to be considered. Such transfer tasks have been considered in static graphs. A graph coupling approach has been proposed by Gritsenko et al. <ref type="bibr" target="#b22">[22]</ref> for transfer learning in node classification by aligning the node embedding spaces. However, the approach requires simultaneous observation of both train and test graphs, which is impractical for evolving graphs, and also constitutes an unrealistic transfer learning scenario in which the test graph is seen during training.</p><p>Latent spaces are crucial in temporal graph learning as they encode graph nodes, edges, and dynamic interactions into lower-dimensional representations while retaining significant structural and temporal information. These representations capture temporal dependencies and variations in node relationships over time, enabling the efficient prediction of future states, interactions, or events. Temporal graph learning frameworks leverage latent spaces to map complex temporal patterns into features that can be processed by predictive models. For instance, graph neural networks (GNNs) equipped with temporal mechanisms, such as temporal attention or recurrent layers, project dynamic graph elements into latent spaces where time-dependent patterns are disentangled from static structures <ref type="bibr" target="#b23">[23,</ref><ref type="bibr" target="#b24">24]</ref>. This abstraction facilitates downstream tasks like temporal link prediction and anomaly detection, allowing for generalization across varying temporal dynamics <ref type="bibr" target="#b20">[20]</ref>.</p><p>Recently, the graph machine learning community has focused on the need to develop static graph foundation models (GFMs) <ref type="bibr" target="#b25">[25]</ref>. However, transferability in temporal graphs remains unexplored and is a key step towards developing a temporal graph foundation model. Graph foundation models aim to generalize across diverse graph-based tasks, including temporal graph learning, by pretraining on extensive graph datasets and fine-tuning them for specific applications. These models often incorporate temporal encoding mechanisms to process dynamic changes in graph topology and node interactions. GFMs leverage self-supervised pretraining tasks like masked edge prediction or temporal node classification to capture both temporal evolution and structural dependencies within dynamic graphs <ref type="bibr" target="#b26">[26]</ref>. Recent innovations integrate time-aware embeddings and memory-augmented structures to enhance temporal generalization capabilities. By adopting pretraining paradigms common in natural language processing and computer vision, GFMs provide robust latent representations that can adapt to various temporal graph learning challenges, such as forecasting time-evolving relationships in social networks or predicting drug-target interactions in dynamic biomedical graphs <ref type="bibr" target="#b16">[17,</ref><ref type="bibr" target="#b27">27]</ref>.</p><p>3 Problem Definition</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Preliminaries</head><p>Static graphs are usually modeled as a tuple G = (V, E, f, w), where V is the set of nodes, E ⊆ V × V is the set of edges, f : V → R d N are the node features and w : E → R d E are the edge features. Dynamic graphs are more complex to represent, as it is necessary to capture their evolution over time. In this work, we focus on the commonly used Continuous-Time Dynamic Graph (CTDG) representation <ref type="bibr" target="#b28">[28]</ref>. A CTDG is a tuple (G(0), T ), where G(0) = (V (0), E(0), f (0), w(0)) represents the initial state of the graph and T is a set of tuples of the form (timestamp, event) representing events to be applied to the graph at given timestamps. These events could be node additions/deletions, edge additions/deletions, or feature updates. Assume a CTDG (G(0), T ), a timestamp t ∈ N , and an edge (u, v). In dynamic link prediction, the task is to decide, whether there is some event e pertaining to (u, v), such that (t, e) ∈ T , while only considering the CTDG (G(0), (t ′ , e) ∈ T |t ′ &lt; t). This link prediction problem is usually considered in three settings, the transductive setting (predicting links between nodes that were seen during training), the semi-inductive setting (predicting links between two nodes, one of the nodes seen during training and the other unseen during training), and the inductive setting (predicting links between nodes not seen during training). In this work, we focus on link addition and deletion in an inductive setting, where the test nodes are completely disjoint from the train nodes and pertain to a graph different from the train graph.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Background: Temporal Graph Networks</head><p>This paper studies the limitations of Temporal Graph Networks (TGNs) <ref type="bibr" target="#b29">[29]</ref>, a class of deep learning models designed to learn dynamic node representations for both link prediction and node classification. Unlike static graph neural networks (GNNs) that operate on fixed graph structures, TGN captures temporal dependencies by incorporating memory mechanisms, message passing, time encoding, and a GNN-based aggregation step. Specifically, they consist of the following components:</p><p>(1) a memory module that maintains temporal embeddings for each node, continuously updating them as new interactions occur; (2) a message function that aggregates information from neighboring nodes and edges, allowing the model to incorporate temporal dependencies in message passing; (3) a memory updater, typically implemented as a gated recurrent unit (GRU) or an MLP, which refines node memories based on new interactions; (4) a temporal encoder, which models the time gaps between interactions to capture temporal patterns effectively; and finally, (5) a downstream GNN readout module, which learns a node embedding function that propagates the memory/message embeddings across the graph, typically using attention-based or graph convolution-based architectures to enhance structural learning. TGN models with these five components as a backbone can be trained for temporal link prediction (presence/absence of future edges) and temporal node property prediction (when a node will adopt/lose a certain state).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Limitations of TGN Memory Embeddings</head><p>In Figure <ref type="figure" target="#fig_0">1</ref>, we visualize the five TGN components described above, sized according to a training run on the tgbl-comment dataset (consisting of a large batch of Reddit interactions) from the TGB benchmark <ref type="bibr" target="#b30">[30]</ref>. The blue components (GNN and memory updater) pertain to the overall model architecture: the parameters of the functions responsible for aggregating and transforming node embeddings. On the other hand, the remaining blocks, representing memory embeddings and GNN embeddings, store parameters that are specific to objects (nodes) seen at training time. This breakdown illustrates that the majority of the learnable parameters in a TGN model are pertained to the representation learning space specific to the training graph, in this case tgbl-comment. This biases the TGN model toward transductive and semi-inductive link predictions -that is, node pairs where at least one node has been observed at training time -because the model can pull from the memory store the embedding for the seen node. Hence, for fully-inductive examples where both nodes are new, or in transfer learning scenarios when a new graph with all unseen nodes is introduced, the memory store must be augmented with zero-vectors for the new nodes, which are then updated after the test-time prediction has been made. We argue that this limitation is inherent to TGN models. In fact, we show that the number of parameters optimized for the training set scales with the number of nodes in the training set, denoted as N . The memory store has size N ×d M whereas the memory store update MLP has input dimension d M + d E (memory + edge features) and hidden layers h 1 , h 2 , . . . , h L , contributing</p><formula xml:id="formula_0">(d M + d E ) × h 1 + L-1 i=1 h i × h i+1 + h L × d M .</formula><p>The message function MLP, which processes concatenated node embeddings and edge features, adds The time encoder has a fixed number of parameters in N . Finally, the decoder MLP, which takes concatenated embeddings of two nodes and passes them through hidden layers to output a link score, contributes</p><formula xml:id="formula_1">(2d N + d E ) × h 1 + L-1 i=1 h i × h i+1 + h L × d M . G G' h (a) (b)</formula><formula xml:id="formula_2">(2d N ) × h 1 + L-1 i=1 h i × h i+1 + h L × 1.</formula><p>Summing all these terms, the total number of parameters in TGN scales like</p><formula xml:id="formula_3">O N (d N + d M ) + max i h i (max i h i + max{d N , d E , d M }) ,</formula><p>which, when all MLP hidden dimensions are fixed, reduces to O(N ).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4">Transfer Learning in Temporal Link Prediction</head><p>The analysis in the last section shows that as the number of nodes N grows large, the amount of information in the TGN model becomes increasingly specific to the training graph nodes, and therefore increasingly unable to be generalized or transferred to new nodes and new graphs. A TGN model trained on the tgbl-comment graph, as illustrated in Fig. <ref type="figure" target="#fig_0">1</ref>, has &gt; 90% of its parameters devoted to node memory. For the standard temporal link prediction task, where the model is tested on future snapshots of the train graph, this limitation is not too restrictive, because many seen nodes in the training graph participate in new (test-time) interactions. However, in this work, we study how we can transfer the model's knowledge of temporal interaction dynamics, i.e., those parameters that are not specific to training-time memory, to completely new graphs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Solution</head><p>In this work, we propose two solutions for enabling TGN models for transfer learning tasks. Specifically, we want to transfer a temporal link prediction model (h) trained on graph G to a new graph G ′ (see Figure <ref type="figure" target="#fig_0">1b</ref>).</p><p>Solution 1 -Naïve Fine-tuning: The simplest solution to the TGN transfer learning problem is to fine-tune h trained on G on the first T f inetune timesteps of the test graph G ′ . This allows the model to non-trivially initialize some amount of memory store for the unseen nodes. We set T f inetune to be the timestamp of the 20% mark through the test set. We then compute test metrics for the remaining 80% of the test data. period, we install a new module into TGN that learns a map between node structural features and the memory embeddings. Then, at test time, we apply the map to initialize the memory embeddings of unseen nodes. We motivate and describe this approach in the next two sections.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Background on Graph Structural Features</head><p>Ghasemian et al. <ref type="bibr" target="#b31">[31]</ref> showed that graph topological features of nodes, such as degree and centrality, contain information useful for static link prediction. The authors show that stacking simple topological features can achieve sub-optimal link prediction performance across 50 structurally diverse networks from six scientific domains. In a recent work, He et al. <ref type="bibr" target="#b32">[32]</ref> have extended the observations to temporal link prediction and have shown the effectiveness of topological features in temporal link prediction.</p><p>Structural features could replicate/improve temporal link prediction performance. These features provide a common latent space for transfer learning. We consider multiple topological features for the nodes (degree, betweenness centrality, closeness centrality, and local clustering coefficient), node positional embeddings <ref type="bibr" target="#b33">[33]</ref>, orbit counts (substructure counts) <ref type="bibr" target="#b34">[34]</ref> including cycle graphs, path graphs, complete graphs, binomial trees, star graphs, and non-isomorphic trees. In our current approach, we utilize the following structural features: 4 topological features (degree, betweenness centrality, closeness centrality, and local clustering coefficient), and node positional embeddings. While orbit counts and other higher-order structural features could provide valuable insights, they are not included in our analysis due to their computational scalability limitations. Given the large scale of our datasets, computing orbit counts is impractical, so we focus on features that are more efficient to compute while still capturing key structural properties. Future work could explore approximate or scalable methods for incorporating such features, possibly by the incorporation of Graph Reservoir Computing <ref type="bibr" target="#b35">[35]</ref> and efficiently representing the dynamic graph information in a format suitable for the reservoir.</p><p>We study the shared information between memory embeddings and these structural features. The shared information is measured by comparing the node pair-wise distances from memory embeddings and topological features. We observe a high correlation between the pairwise distances (e.g., r P earson =0.25 and r Spearman =0.42 for tgbl-wiki, r P earson =0.17 and r Spearman =0.20 for tgbl-flight). These observations motivate an approach that learns a map from structural features to memory embeddings and uses the learned map to initialize the memory embeddings of newly observed nodes during transfer learning.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Structural Mapping via Temporal Subgraph Aggregation</head><p>We now describe our solution to the TLP transfer learning problem via graph structure mapping. For each edge batch, we aggregate a window of edges that appeared immediately before the batch, using a window size of 1% of the total time span of the training set. Structural features, such as node degree and clustering coefficient, are then computed for each node in the aggregated graph. These structural features are fed into the structural map module during training, and an MLP learns the mapping from these structural features to the memory embeddings learned by TGN. During validation and test, when a new node is encountered, the structural map is used to predict and initialize the memory embeddings for the node (see Figure <ref type="figure" target="#fig_2">3b</ref>). This effectively operates as a "cold start" for unseen nodes, allowing for immediate transfer learning without an initial fine-tuning period.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Experiments</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Study Design</head><p>We now describe the design of experiments used to test our two approaches.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1.1">Datasets</head><p>We use the link prediction datasets from Temporal Graph Benchmark for the experiments <ref type="bibr" target="#b30">[30]</ref>. To set up a transfer learning scenario for each dataset, we divide the graph into two disjoint graphs (with disjoint node sets), using one for training, and the other for validation and testing. For tgbl-wiki and tgbl-review, we use Louvain community detection <ref type="bibr" target="#b36">[36]</ref> to divide the nodes, making sure that the community clusters for train, validation, and test are roughly balanced in terms of the number of nodes and time intervals with respect to the original graph dataset and among each other. For the tgbl-flight dataset, we create train + validation and test communities based on the airports on different continents.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1.2">Evaluation</head><p>We evaluate the test loss across three transfer scenarios:</p><p>• Transfer without warm-start: The TGN model, trained solely on the train graph, is applied directly to the test graph without any adaptation. • Transfer with warm-start: Before deployment, we fine-tune the trained TGN model on an initial temporal segment of the test graph to adapt to new patterns. • Transfer with structural mapping: Instead of fine-tuning, we initialize the memory embeddings of newly arrived nodes in the test graph using structural mapping while deploying the trained TGN model. Hypotheses:</p><p>• H1: We expect the test loss in the transfer with warm-start scenario to be lower than in the transfer without warm-start scenario, demonstrating the benefit of fine-tuning before deployment in a transfer learning setting.</p><p>• H2: We anticipate that the test loss in the transfer with structural mapping scenario will be lower than in the transfer without warm-start scenario and comparable to or lower than in the transfer with warm-start scenario. This would validate structural mapping as an effective and computationally efficient alternative to warm-starting.</p><p>While we primarily use the loss function to assess the effectiveness of our proposed transfer learning approaches, we plan to expand our evaluation to include additional temporal link prediction metrics, such as Hits@TopK and Mean Reciprocal Rank (MRR) <ref type="bibr" target="#b30">[30]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Results</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2.1">Fine-tuning</head><p>We fine-tune the trained TGN model on the initial 20% batches of edges of the test data. We observe lower loss when fine-tuning is applied during transfer learning (see Figure <ref type="figure" target="#fig_3">4</ref>). However, we would like to avoid fine-tuning since it prevents instant deployment on a new graph, and as a solution, we replace fine-tuning with a zero-shot structural mapping approach.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2.2">Structural Map</head><p>The experiments on the tgbl-flight dataset reveal key insights into the performance of TGN, TGN with fine-tuning, and  This highlights the robustness of the TGN Structural Map in handling domain shifts between training and testing environments (see Figure <ref type="figure" target="#fig_4">5</ref>).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Limitations</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1">Divergent Model Loss</head><p>During deployment, we frequently observe an increase in the total loss, which comprises both the temporal link prediction (TLP) model loss (e.g., DyRep <ref type="bibr" target="#b37">[37]</ref>, JODIE <ref type="bibr" target="#b38">[38]</ref>, or TGN <ref type="bibr" target="#b39">[39]</ref>) and the structural mapping loss. For example, in a transfer learning scenario on tgbl-flight, when transferring from SA (South America) to AS (Asia), the structural mapping loss (green lines in the first row) consistently increases across edge batches during both training and testing, while the TLP modelonly loss (second row) steadily decreases (see Figure <ref type="figure" target="#fig_5">6</ref>). This divergence suggests that the structural mapping module (MLP) is not converging effectively. Addressing this issue will require targeted hyperparameter optimization of the StructMap module and exploration of alternative architectural designs. Further investigation into the selection of more informative structural features, as well as a deeper analysis of the temporal dynamics of memory embeddings and structural representations, would also be beneficial.  In a transfer learning setting on tgbl-flight from Asia (AS) to AF (Africa), we observe that both the total loss (i.e., the sum of the TGN model loss and the structural mapping loss) (green lines) and the TGN-only loss (blue lines) exhibit substantial variation when the random seeds for torch and numpy are changed. This highlights potential concerns regarding the robustness and stability of the TGN model and underscores the need for further investigation into TLP model consistency.</p><note type="other">Total Loss Model Loss Seed 1 Total Loss Model Loss Seed 2</note></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2">Sensitivity to Seed Selection</head><p>Here, we investigate the impact of random seed selection and initialization on memory embeddings, as well as on the overall behavior of the TGN model and StructMap module. Our observations indicate that both the standalone TGN and its StructMap-augmented variants are highly sensitive to the initial seeds set in PyTorch and NumPy (see Figure <ref type="figure" target="#fig_6">7</ref>). This sensitivity raises concerns about the robustness and reproducibility of these models, warranting further examination. Studying the temporal evolution of the learned memory embeddings may provide valuable insights into the patterns captured by the TGN model and help inform the selection of structural features for more effective transfer across heterogeneous network domains.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Conclusion and Future Work</head><p>In this work, we examined the impact of temporal fine-tuning on a new test graph and then introduced structural mapping as an alternative. Structural mapping facilitates zero-shot deployment of temporal link prediction models in transfer learning scenarios. Our results showed improved deployment test loss for the TGN model across various inter-continental transfer learning scenarios on the benchmark tgbl-flight network. However, further investigation is needed to identify the limitations of structural mapping and explore ways to address them, enabling its applicability to other intercontinental scenario combinations within tgbl-flight and other TGB benchmark datasets, such as tgbl-wiki, tgbl-review, and tgbl-comment.</p><p>Associative memory <ref type="bibr" target="#b40">[40]</ref> can enhance machine learning models for link prediction in temporal graphs by efficiently capturing and utilizing historical interactions. While models like Temporal Graph Networks (TGNs) integrate memory modules to store and update node embeddings over time, enabling predictions that account for both temporal evolution and structural dynamics, JODIE <ref type="bibr" target="#b38">[38]</ref> employs embedding trajectories and associative memory-inspired mechanisms to adapt to recurrent interactions in dynamic graphs. We plan to develop structural mapping counterparts for associative memory-laden models like JODIE to validate the universality of structural mapping in temporal link prediction models.</p><p>Furthermore, persistent homology, a key concept in topological data analysis (TDA), has shown promise in applications to temporal graph learning and link prediction. This method captures the topological features of data, such as connected components, loops, and voids, that persist across different scales. In temporal graphs, persistent homology can help analyze the dynamic evolution of connections and identify robust structural patterns critical for predicting links over time. For instance, persistent homology has been used to extract topological features from subgraphs that evolve over time, enhancing the interpretability and performance of link prediction models. These features are particularly useful in understanding the multi-hop paths and structural connectivity between nodes, as demonstrated by Yan et al., where extended persistent homology was employed to encode rich multiscale topological information for link prediction tasks <ref type="bibr" target="#b41">[41]</ref>. Similarly, the PHLP method introduced the concept of persistence images to analyze dynamic graph substructures, enabling the integration of diverse topological signals for better predictive power <ref type="bibr" target="#b42">[42]</ref>. Integrating persistent homology in learning a transferable map for the memory embeddings could make the transfer learning task less parameter-intensive and improve computation time and resource efficiency.</p><p>Finally, Dall'Amico et al. <ref type="bibr" target="#b43">[43]</ref> have recently developed distance measures on temporal graphs that cluster temporal graphs. These graph clusters could provide us with insights into the transferability between temporal graphs and guide us toward developing a temporal graph foundation model.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: The majority of the trained parameters in TGN pertain to the training graph and are not transferable. (a) Representation of different components of the TGN model trained on tgbl-comment dataset. Here, blue circles are trainable, whereas the other blocks are intermediate state embeddings. We observe that the majority of the variable parameters (∼ 1M ) are associated with the dataset, and only a small fraction of parameters (∼ 150k) pertain to the model architecture. Hence, the trained TGN model is highly specific to the training data and inherently is less transferable. (b) Transfer learning task for temporal link prediction. We want to train a TLP model on G, a community of the larger network, and transfer it to a disjoint community G ′ .</figDesc><graphic coords="4,114.19,72.00,150.94,135.00" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Solution 2 -Figure 2 :</head><label>22</label><figDesc>Figure 2: Transfer learning framework and structural mapping overview. (a) We train and validate the TLP model on the training graph G. The validation set is used for early-stopping of the model training. During deployment, we learn the memory embeddings of a fraction of the unseen nodes in G ′ by fine-tuning the model on a fraction of G ′ . This model is thereafter used to derive the test performance on the remaining of G ′ . (b) We learn a structural map during training on G. This map learns a function to map the graph topological features to memory embeddings, and when a new node is encountered in the test, we use this learned mapping to initialize the memory embeddings from deterministic topological features.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Temporal aggregation and structural map architecture (a) For each newly observed node in test, we aggregate the past edges to construct an aggregated graph, which is used for computing the topological features of the newly incoming node. We use 1% of the time-span of the benchmark datasets as an aggregation window in our experiments. (b) Overview of the structural map-augmented TGN architecture. We use a 3-layer perceptron (MLP) as the structural map module. We combine the loss from the link prediction decoder and the structural map module and train the model in an end-to-end fashion.</figDesc><graphic coords="6,311.90,75.83,187.40,140.55" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Fine-tuning on a fraction of the test graph improves loss during deployment. We observe lower loss when fine-tuning is implemented in TGN during transfer learning. The improvement achieved by fine-tuning is consistent across multiple benchmark datasets, including tgbl-wiki, tgbl-review, and tgbl-flight. Here, metric value refers to the total loss of the TGN model.</figDesc><graphic coords="7,231.46,191.58,172.96,118.70" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: TGN with structural mapping improves transfer loss during deployment on an unseen temporal graph. The tgbl-flight dataset is tested in different transfer learning scenarios. TGN, TGN with fine-tuning, and TGN Structural Map are used in this study. The train and validation graphs pertain the flights and the airports contained in a certain continent, whereas the test graphs are derived from a continent different from the ones used in train and validation. This ensures that the airports trained and validated on are disjoint from the airport tested on. We show that TGN Structural Map can achieve similar or lower model loss compared to the fine-tuned version on the test dataset. The observations are consistent across 4 different transfer learning scenarios.</figDesc><graphic coords="8,127.14,231.39,172.43,119.63" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: Divergent Loss Trends in Transfer Learning: TLP Models vs. Structural Mapping Module. In a transfer learning setting on tgbl-flight from SA (South America) to AS (Asia), the total loss (i.e., the sum of the TLP model loss and the structural mapping loss) (green lines -first row) increase over train and test edge batches, while the TLP model-only model loss in presence of structural mapping (green line -second row) steadily decreases. This divergent behavior in the first scenario indicates that the structural mapping module (MLP) is not converging effectively during training and deployment. Similar observations persist across other transfer learning scenarios in tgbl-flight, tgbl-wiki, tgbl-review, and tgbl-coin. In the experiments, α represents the weight of the StructMap loss in the total loss, i.e., total loss = α * StructMap loss + TLP model loss.</figDesc><graphic coords="9,167.40,403.68,252.44,117.25" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: Sensitivity of Loss to Random Seed in Transfer Learning.In a transfer learning setting on tgbl-flight from Asia (AS) to AF (Africa), we observe that both the total loss (i.e., the sum of the TGN model loss and the structural mapping loss) (green lines) and the TGN-only loss (blue lines) exhibit substantial variation when the random seeds for torch and numpy are changed. This highlights potential concerns regarding the robustness and stability of the TGN model and underscores the need for further investigation into TLP model consistency.</figDesc><graphic coords="10,160.90,201.32,336.59,107.66" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>+ Validation on Asia. Test of Africa. Train + Validation on Oceania. Test of Asia. Train + Validation on Oceania. Test of South America. Train + Validation on Oceania. Test of Africa.</figDesc><table /><note><p><p>TGN Structural Map under different transfer learning scenarios. Training and validation graphs are derived from flights and airports within a specific continent, while test graphs are based on a different continent, ensuring that the training and validation airports remain disjoint from those in the test set. Notably, TGN Structural Map demonstrates comparable or lower model loss than the fine-tuned TGN on the test dataset, consistently across all four transfer learning scenarios.</p>Train</p></note></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_0"><p>Preprint. Preliminary work.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgments</head><p>We want to acknowledge <rs type="person">Google DeepMind</rs> for allowing us to conceive the project and for providing the necessary resources for its execution. We also thank <rs type="funder">Northeastern University</rs> for providing its Research Computing infrastructure.</p></div>
+			</div>
+			<listOrg type="funding">
+			</listOrg>
+
+			<div type="availability">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Code availability</head><p>The codes that support the findings of this study are openly available on the Anonymous GitHub at https://github.com/google-research/google-research/tree/master/fm4tlp.</p></div>
+			</div>
+
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Author Contributions</head><p>A.C. contributed to conceiving the project, conducting the literature study, designing the experimental system, developing the structural map model, and writing the manuscript. B.I. contributed to implementing multiple temporal link prediction models, improving the structural mapping module, and writing the manuscript. B.R. contributed to the literature study, running multiple experiments, and writing the manuscript. J.P. contributed to mentoring the project, conceiving it, conducting the literature study, designing the experimental system, developing the structural map model, and writing the manuscript.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Competing interests</head><p>A.C. is the founder of BioClarity AI LLC., a company utilizing graph machine learning for applications in gene therapy.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">A survey of link prediction algorithms</title>
+		<author>
+			<persName><forename type="first">Vivian</forename><surname>Feng</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2306.12970.1" />
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">A survey of link prediction in complex networks</title>
+		<author>
+			<persName><forename type="first">Víctor</forename><surname>Martínez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fernando</forename><surname>Berzal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juan-Carlos</forename><surname>Cubero</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3012704</idno>
+		<ptr target="https://doi.org/10.1145/3012704.1" />
+	</analytic>
+	<monogr>
+		<title level="j">ACM Comput. Surv</title>
+		<idno type="ISSN">0360-0300</idno>
+		<imprint>
+			<biblScope unit="volume">49</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<date type="published" when="2016-12">dec 2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Temporal link prediction: A survey</title>
+		<author>
+			<persName><forename type="first">Aswathy</forename><surname>Divakaran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anuraj</forename><surname>Mohan</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/s00354-019-00065-z</idno>
+		<ptr target="http://dx.doi.org/10.1007/s00354-019-00065-z.1" />
+	</analytic>
+	<monogr>
+		<title level="j">New Generation Computing</title>
+		<idno type="ISSN">1882-7055</idno>
+		<imprint>
+			<biblScope unit="volume">38</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="213" to="258" />
+			<date type="published" when="2019-08">aug 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Temporal link prediction: A unified framework, taxonomy, and review</title>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dit-Yan</forename><surname>Yeung</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3625820</idno>
+		<ptr target="https://doi.org/10.1145/3625820" />
+	</analytic>
+	<monogr>
+		<title level="j">ACM Comput. Surv</title>
+		<idno type="ISSN">0360-0300</idno>
+		<imprint>
+			<biblScope unit="volume">56</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page">2</biblScope>
+			<date type="published" when="2023-11">nov 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Temporal graph neural networks for social recommendation</title>
+		<author>
+			<persName><forename type="first">Ting</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Youjie</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bin</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian-Yun</forename><surname>Nie</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/BigData50022.2020.9378444.1</idno>
+	</analytic>
+	<monogr>
+		<title level="m">2020 IEEE International Conference on Big Data (Big Data)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="898" to="903" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Temporal networks in biology and medicine: a survey on models, algorithms, and tools. Network Modeling Analysis in Health Informatics and</title>
+		<author>
+			<persName><forename type="first">Mohammad</forename><surname>Mehdi Hosseinzadeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mario</forename><surname>Cannataro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>Hiram Guzzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Riccardo</forename><surname>Dondi</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/s13721-022-00406-x</idno>
+		<ptr target="http://dx.doi.org/10.1007/s13721-022-00406-x.1" />
+	</analytic>
+	<monogr>
+		<title level="j">Bioinformatics</title>
+		<idno type="ISSN">2192-6670</idno>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<date type="published" when="2022-12">dec 2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Temporal graph networks for graph anomaly detection in financial networks</title>
+		<author>
+			<persName><forename type="first">Yejin</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Youngbin</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minyoung</forename><surname>Choe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sungju</forename><surname>Oh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yongjae</forename><surname>Lee</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2404.00060.1" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Temporal link prediction by integrating content and structure information</title>
+		<author>
+			<persName><forename type="first">Sheng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ludovic</forename><surname>Denoyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Gallinari</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2063576.2063744</idno>
+		<ptr target="https://doi.org/10.1145/2063576.2063744.1" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th ACM International Conference on Information and Knowledge Management, CIKM &apos;11</title>
+		<meeting>the 20th ACM International Conference on Information and Knowledge Management, CIKM &apos;11<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="1169" to="1174" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Learning-based link anomaly detection in continuous-time dynamic graphs</title>
+		<author>
+			<persName><surname>Anonymous</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/" />
+	</analytic>
+	<monogr>
+		<title level="m">Submitted to Transactions on Machine Learning Research</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note>forum?id=8imVCizVEw. Under review</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Contact-based model for epidemic spreading on temporal networks</title>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Koher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">K</forename><surname>Hartmut</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><forename type="middle">P</forename><surname>Lentz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Gleeson</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hövel</surname></persName>
+		</author>
+		<idno type="DOI">10.1103/PhysRevX.9.031017</idno>
+		<ptr target="https://link.aps.org/doi/10.1103/PhysRevX.9.031017.1" />
+	</analytic>
+	<monogr>
+		<title level="j">Phys. Rev. X</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page">31017</biblScope>
+			<date type="published" when="2019-08">Aug 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Improving the generalizability of protein-ligand binding predictions with ai-bind</title>
+		<author>
+			<persName><forename type="first">Ayan</forename><surname>Chatterjee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robin</forename><surname>Walters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zohair</forename><surname>Shafi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shafi</forename><surname>Omair</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Deisy</forename><surname>Sebek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rose</forename><surname>Gysi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tina</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Albert-László</forename><surname>Eliassi-Rad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giulia</forename><surname>Barabási</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Menichetti</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41467-023-37572-z</idno>
+		<ptr target="http://dx.doi.org/10.1038/s41467-023-37572-z.1" />
+	</analytic>
+	<monogr>
+		<title level="j">Nature Communications</title>
+		<idno type="ISSN">2041-1723</idno>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<date type="published" when="2023-04">apr 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Inductive link prediction in static and temporal graphs for isolated nodes</title>
+		<author>
+			<persName><forename type="first">Ayan</forename><surname>Chatterjee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robin</forename><surname>Walters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giulia</forename><surname>Menichetti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tina</forename><surname>Eliassi-Rad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Temporal Graph Learning Workshop@ NeurIPS 2023</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Topology-driven negative sampling enhances generalizability in protein-protein interaction prediction</title>
+		<author>
+			<persName><forename type="first">Ayan</forename><surname>Chatterjee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Babak</forename><surname>Ravandi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Parham</forename><surname>Haddadi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naomi</forename><forename type="middle">H</forename><surname>Philip</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mario</forename><surname>Abdelmessih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Piero</forename><surname>William R Mowrey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yupu</forename><surname>Ricchiuto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juan</forename><forename type="middle">C</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tina</forename><surname>Mobarec</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Eliassi-Rad</surname></persName>
+		</author>
+		<idno type="DOI">10.1093/bioinformatics/btaf148</idno>
+		<ptr target="http://dx.doi.org/10.1093/bioinformatics/btaf148.1" />
+	</analytic>
+	<monogr>
+		<title level="j">Bioinformatics</title>
+		<idno type="ISSN">1367-4811</idno>
+		<imprint>
+			<date type="published" when="2025-04">April 2025</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Ambiguity in social network data for presence, sensitive-attribute, degree and relationship privacy protection</title>
+		<author>
+			<persName><forename type="first">Mehri</forename><surname>Rajaei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mostafa</forename><forename type="middle">S</forename><surname>Haghjoo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eynollah</forename><surname>Khanjari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Miyaneh</forename></persName>
+		</author>
+		<idno type="DOI">10.1371/journal.pone.0130693</idno>
+		<ptr target="http://dx.doi.org/10.1371/journal.pone.0130693.1" />
+	</analytic>
+	<monogr>
+		<title level="j">PLOS ONE</title>
+		<idno type="ISSN">1932-6203</idno>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page">130693</biblScope>
+			<date type="published" when="2015-06">jun 2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Privacy protection of medical data in social network</title>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuehui</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yahui</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinming</forename><surname>Song</surname></persName>
+		</author>
+		<idno type="DOI">10.1186/s12911-021-01645-0</idno>
+		<idno>12911-021-01645-0. 1</idno>
+		<ptr target="http://dx.doi.org/10.1186/s" />
+	</analytic>
+	<monogr>
+		<title level="j">BMC Medical Informatics and Decision Making</title>
+		<idno type="ISSN">1472-6947</idno>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="issue">S1</biblScope>
+			<date type="published" when="2021-04">apr 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Graph transfer learning</title>
+		<author>
+			<persName><forename type="first">Andrey</forename><surname>Gritsenko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kimia</forename><surname>Shayestehfard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Armin</forename><surname>Moharrer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jennifer</forename><surname>Dy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stratis</forename><surname>Ioannidis</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/ICDM51629.2021.00024.1</idno>
+	</analytic>
+	<monogr>
+		<title level="m">2021 IEEE International Conference on Data Mining (ICDM)</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="141" to="150" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Inductive representation learning on large graphs</title>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rex</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 31st International Conference on Neural Information Processing Systems, NIPS&apos;17</title>
+		<meeting>the 31st International Conference on Neural Information Processing Systems, NIPS&apos;17<address><addrLine>Red Hook, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Curran Associates Inc</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1025" to="1035" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Inductive relation prediction by subgraph reasoning</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Komal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Etienne</forename><surname>Teru</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">L</forename><surname>Denis</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hamilton</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1911.06962.2" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Generating graph snapshots from streaming edge data</title>
+		<author>
+			<persName><forename type="first">Sucheta</forename><surname>Soundarajan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Acar</forename><surname>Tamersoy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elias</forename><forename type="middle">B</forename><surname>Khalil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tina</forename><surname>Eliassi-Rad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Duen Horng</forename><surname>Chau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brian</forename><surname>Gallagher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Roundy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th International Conference Companion on World Wide Web</title>
+		<meeting>the 25th International Conference Companion on World Wide Web</meeting>
+		<imprint>
+			<publisher>WWW</publisher>
+			<biblScope unit="page">16</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Republic and Canton of Geneva</title>
+		<author>
+			<orgName type="collaboration">Companion</orgName>
+		</author>
+		<idno type="DOI">10.1145/2872518.2889398</idno>
+		<ptr target="https://doi.org/10.1145/2872518.2889398.2" />
+	</analytic>
+	<monogr>
+		<title level="m">International World Wide Web Conferences Steering Committee. ISBN 9781450341448</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="109" to="110" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">evren korpeoglu, sushant kumar, and kannan achan. Inductive representation learning on temporal graphs</title>
+		<author>
+			<persName><surname>Da Xu</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=rJeW1yHYwH.2" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Dnformer: Temporal link prediction with transfer learning in dynamic networks</title>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhengxin</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Hai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongbo</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xindong</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Ward</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3551892</idno>
+		<ptr target="https://doi.org/10.1145/3551892.2" />
+	</analytic>
+	<monogr>
+		<title level="j">ACM Trans. Knowl. Discov. Data</title>
+		<idno type="ISSN">1556-4681</idno>
+		<imprint>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<date type="published" when="2023-02">feb 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Graph transfer learning</title>
+		<author>
+			<persName><forename type="first">Andrey</forename><surname>Gritsenko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kimia</forename><surname>Shayestehfard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Armin</forename><surname>Moharrer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jennifer</forename><surname>Dy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stratis</forename><surname>Ioannidis</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/s10115-022-01782-6</idno>
+		<idno>10115-022-01782-6. 2</idno>
+		<ptr target="http://dx.doi.org/10.1007/s" />
+	</analytic>
+	<monogr>
+		<title level="j">Knowledge and Information Systems</title>
+		<idno type="ISSN">0219-3116</idno>
+		<imprint>
+			<biblScope unit="volume">65</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="1627" to="1656" />
+			<date type="published" when="2022-12">dec 2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Semi-Supervised Classification with Graph Convolutional Networks</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Deep inductive graph representation learning</title>
+		<author>
+			<persName><forename type="first">Ryan</forename><forename type="middle">A</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rong</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nesreen</forename><forename type="middle">K</forename><surname>Ahmed</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/TKDE.2018.2878247.2</idno>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Knowledge and Data Engineering</title>
+		<imprint>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="438" to="452" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Haitao</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhikai</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenzhuo</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianan</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neil</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mikhail</forename><surname>Galkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note>Graph foundation models</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Towards graph foundation models for personalization</title>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Damianou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francesco</forename><surname>Fabbri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Gigioli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marco</forename><forename type="middle">De</forename><surname>Nadai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alice</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Enrico</forename><surname>Palumbo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mounia</forename><surname>Lalmas</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3589335.3651980</idno>
+		<ptr target="https://doi.org/10.1145/3589335.3651980.2" />
+	</analytic>
+	<monogr>
+		<title level="m">Companion Proceedings of the ACM Web Conference 2024, WWW &apos;24, page 1798-1802</title>
+		<meeting><address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">Self-supervised learning on graphs: Deep insights and new direction</title>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tyler</forename><surname>Derr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haochen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yiqi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suhang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zitao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+		</author>
+		<idno>ArXiv, abs/2006.10141</idno>
+		<ptr target="https://api.semanticscholar.org/CorpusID:219792818.2" />
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Continuous-time dynamic network embeddings</title>
+		<author>
+			<persName><forename type="first">Giang</forename><surname>Hoang Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><forename type="middle">Boaz</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ryan</forename><forename type="middle">A</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nesreen</forename><forename type="middle">K</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eunyee</forename><surname>Koh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sungchul</forename><surname>Kim</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3184558.3191526</idno>
+		<ptr target="http://dx.doi.org/10.1145/3184558.3191526.2" />
+	</analytic>
+	<monogr>
+		<title level="m">Companion of the The Web Conference 2018 on The Web Conference 2018 -WWW &apos;18, WWW &apos;18</title>
+		<imprint>
+			<publisher>ACM Press</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="969" to="976" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title level="m" type="main">Temporal graph networks for deep learning on dynamic graphs</title>
+		<author>
+			<persName><forename type="first">Emanuele</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabrizio</forename><surname>Frasca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Davide</forename><surname>Eynard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Federico</forename><surname>Monti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Bronstein</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Temporal graph benchmark for machine learning on temporal graphs</title>
+		<author>
+			<persName><forename type="first">Shenyang</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Farimah</forename><surname>Poursafaei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Danovitch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emanuele</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Bronstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Rabusseau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Reihaneh</forename><surname>Rabbany</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page">7</biblScope>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Stacking models for nearly optimal link prediction in complex networks</title>
+		<author>
+			<persName><forename type="first">Amir</forename><surname>Ghasemian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Homa</forename><surname>Hosseinmardi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aram</forename><surname>Galstyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Edoardo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Airoldi</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Clauset</surname></persName>
+		</author>
+		<idno type="DOI">10.1073/pnas.1914950117</idno>
+		<ptr target="https://www.pnas.org/doi/pdf/10.1073/pnas.1914950117.5" />
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the National Academy of Sciences</title>
+		<imprint>
+			<biblScope unit="volume">117</biblScope>
+			<biblScope unit="page" from="23393" to="23400" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Sequential stacking link prediction algorithms for temporal networks</title>
+		<author>
+			<persName><forename type="first">Xie</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amir</forename><surname>Ghasemian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eun</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Clauset</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><forename type="middle">J</forename><surname>Mucha</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41467-024-45598-0</idno>
+		<idno>41467-024-45598-0. 5</idno>
+		<ptr target="http://dx.doi.org/10.1038/s" />
+	</analytic>
+	<monogr>
+		<title level="j">Nature Communications</title>
+		<idno type="ISSN">2041-1723</idno>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<date type="published" when="2024-02">feb 2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">PACER: Network embedding from positional to structural</title>
+		<author>
+			<persName><forename type="first">Yuchen</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yongyi</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qinghai</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lihui</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhichen</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuzhong</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Menghai</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huiyuan</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mahashweta</forename><surname>Das</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanghang</forename><surname>Tong</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=oIpgmhIV8r.5" />
+	</analytic>
+	<monogr>
+		<title level="m">The Web Conference 2024</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title level="m" type="main">Improving graph neural network expressivity via subgraph isomorphism counting</title>
+		<author>
+			<persName><forename type="first">Giorgos</forename><surname>Bouritsas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabrizio</forename><surname>Frasca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefanos</forename><surname>Zafeiriou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">M</forename><surname>Bronstein</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=LT0KSFnQDWF.5" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Interpretable graph reservoir computing with the temporal pattern attention</title>
+		<author>
+			<persName><forename type="first">Xinyu</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Zhao</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/TNNLS.2022.3231620.5</idno>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Neural Networks and Learning Systems</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="issue">7</biblScope>
+			<biblScope unit="page" from="9198" to="9212" />
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Fast unfolding of communities in large networks</title>
+		<author>
+			<persName><forename type="first">Jean-Loup</forename><surname>Vincent D Blondel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Renaud</forename><surname>Guillaume</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Etienne</forename><surname>Lambiotte</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lefebvre</surname></persName>
+		</author>
+		<idno type="DOI">10.1088/1742-5468/2008/10/P10008</idno>
+		<ptr target="http://dx.doi.org/10.1088/1742-5468/2008/10/P10008.6" />
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Statistical Mechanics: Theory and Experiment</title>
+		<idno type="ISSN">1742-5468</idno>
+		<imprint>
+			<biblScope unit="issue">10</biblScope>
+			<biblScope unit="page">10008</biblScope>
+			<date type="published" when="2008-10">2008. oct 2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Dyrep: Learning representations over dynamic graphs</title>
+		<author>
+			<persName><forename type="first">Rakshit</forename><surname>Trivedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mehrdad</forename><surname>Farajtabar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prasenjeet</forename><surname>Biswal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyuan</forename><surname>Zha</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=HyePrhR5KX.8" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Predicting dynamic embedding trajectory in temporal interaction networks</title>
+		<author>
+			<persName><forename type="first">Srijan</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xikun</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the 25th ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page">10</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Temporal graph networks for deep learning on dynamic graphs</title>
+		<author>
+			<persName><forename type="first">Emanuele</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabrizio</forename><surname>Frasca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Davide</forename><surname>Eynard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Federico</forename><surname>Monti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Bronstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML 2020 Workshop on Graph Representation Learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Associative long short-term memory</title>
+		<author>
+			<persName><forename type="first">Ivo</forename><surname>Danihelka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Greg</forename><surname>Wayne</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benigno</forename><surname>Uria</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nal</forename><surname>Kalchbrenner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Graves</surname></persName>
+		</author>
+		<ptr target="https://proceedings.mlr.press/v48/danihelka16.html.10" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of The 33rd International Conference on Machine Learning</title>
+		<editor>
+			<persName><forename type="first">Maria</forename></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Florina</forename><surname>Balcan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kilian</forename><forename type="middle">Q</forename><surname>Weinberger</surname></persName>
+		</editor>
+		<meeting>The 33rd International Conference on Machine Learning<address><addrLine>New York, New York, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="1986">1986-1994. 20-22 Jun 2016</date>
+			<biblScope unit="volume">48</biblScope>
+		</imprint>
+	</monogr>
+	<note>Proceedings of Machine Learning Research</note>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Link prediction with persistent homology: An interactive view</title>
+		<author>
+			<persName><forename type="first">Zuoyu</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tengfei</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liangcai</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhi</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Chen</surname></persName>
+		</author>
+		<ptr target="https://api.semanticscholar.org/CorpusID:235422112.11" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<monogr>
+		<title level="m" type="main">Phlp: Sole persistent homology for link prediction -interpretable feature extraction</title>
+		<author>
+			<persName><forename type="first">Junwon</forename><surname>You</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eunwoo</forename><surname>Heo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jae-Hun</forename><surname>Jung</surname></persName>
+		</author>
+		<idno>ArXiv, abs/2404.15225</idno>
+		<ptr target="https://api.semanticscholar.org/CorpusID:269302811.11" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">An embedding-based distance for temporal graphs</title>
+		<author>
+			<persName><forename type="first">Lorenzo</forename><surname>Dall</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">'</forename><surname>Amico</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alain</forename><surname>Barrat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ciro</forename><surname>Cattuto</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41467-024-54280-4</idno>
+		<ptr target="http://dx.doi.org/10.1038/s41467-024-54280-4.11" />
+	</analytic>
+	<monogr>
+		<title level="j">Nature Communications</title>
+		<idno type="ISSN">2041-1723</idno>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<date type="published" when="2024-11">nov 2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

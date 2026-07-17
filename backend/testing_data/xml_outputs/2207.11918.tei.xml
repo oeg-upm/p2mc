@@ -1,0 +1,2000 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Analysis and Optimization of GNN-Based Recommender Systems on Persistent Memory</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Yuwei</forename><surname>Hu</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Cornell University</orgName>
+								<address>
+									<settlement>Ithaca</settlement>
+									<region>New York</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Jiajie</forename><surname>Li</surname></persName>
+							<affiliation key="aff1">
+								<orgName type="institution">Cornell University</orgName>
+								<address>
+									<settlement>Ithaca</settlement>
+									<region>New York</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Zhongming</forename><surname>Yu</surname></persName>
+							<affiliation key="aff2">
+								<orgName type="institution">UCSD San Diego</orgName>
+								<address>
+									<region>California</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author role="corresp">
+							<persName><forename type="first">Zhiru</forename><surname>Zhang</surname></persName>
+							<email>zhiruz@cornell.edu</email>
+							<affiliation key="aff3">
+								<orgName type="institution">Cornell University</orgName>
+								<address>
+									<settlement>Ithaca</settlement>
+									<region>New York</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Analysis and Optimization of GNN-Based Recommender Systems on Persistent Memory</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="MD5">F8DF021DBE9ADED3E3DC5DF8C41A63E1</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:37+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Graph neural networks (GNNs), which have emerged as an effective method for handling machine learning tasks on graphs, bring a new approach to building recommender systems, where the task of recommendation can be formulated as the link prediction problem on user-item bipartite graphs. Training GNN-based recommender systems (GNNRecSys) on large graphs incurs a large memory footprint, easily exceeding the DRAM capacity on a typical server. Existing solutions resort to distributed subgraph training, which is inefficient due to the high cost of dynamically constructing subgraphs and significant redundancy across subgraphs.</p><p>The emerging persistent memory technologies provide a significantly larger memory capacity than DRAMs at an affordable cost, making single-machine GNNRecSys training feasible, which eliminates the inefficiencies in distributed training. One major concern of using persistent memory devices for GNNRecSys is their relatively low bandwidth compared with DRAMs. This limitation can be particularly detrimental to achieving high performance for GNNRecSys workloads since their dominant compute kernels are sparse and memory access intensive. To understand whether persistent memory is a good fit for GNNRecSys training, we perform an in-depth characterization of GNNRecSys workloads and a comprehensive analysis of their performance on a persistent memory device, namely, Intel Optane. Based on the analysis, we provide guidance on how to configure Optane for GNNRecSys workloads. Furthermore, we present techniques for large-batch training to fully realize the advantages of single-machine GNNRecSys training. Our experiment results show that with the tuned batch size and optimal system configuration, Optane-based single-machine GNNRecSys training outperforms distributed training by a large margin, especially when handling deep GNN models.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Graph neural networks (GNNs) have emerged as a promising approach to building recommender systems, where the task of recommendation can be formulated as the link prediction problem on user-item bipartite graphs <ref type="bibr" target="#b9">[11,</ref><ref type="bibr" target="#b55">57,</ref><ref type="bibr" target="#b57">59,</ref><ref type="bibr" target="#b62">64]</ref>. More concretely, a GNN model generates a dense vector representation for each vertex (namely, the embedding vector), and a pair of vertex embeddings are used to carry out the per-edge prediction <ref type="bibr" target="#b22">[24,</ref><ref type="bibr" target="#b45">47,</ref><ref type="bibr" target="#b49">51]</ref>. GNNs can generate high-quality vertex embeddings by incorporating multi-hop neighborhood information through iterative message passing <ref type="bibr" target="#b7">[9,</ref><ref type="bibr" target="#b20">22,</ref><ref type="bibr" target="#b36">38]</ref>. For these reasons, recent years have seen a rapid surge of development on GNN-based recommender systems (GNNRecSys) in both academia and industry <ref type="bibr" target="#b9">[11,</ref><ref type="bibr" target="#b16">18,</ref><ref type="bibr" target="#b26">28,</ref><ref type="bibr" target="#b34">36,</ref><ref type="bibr" target="#b55">57,</ref><ref type="bibr" target="#b62">64,</ref><ref type="bibr" target="#b66">68]</ref>.</p><p>One major challenge faced by GNNRecSys workloads is that they consume a large amount of memory. First, realworld user-item bipartite graphs are large. For example, the Pinterest graph <ref type="bibr" target="#b62">[64]</ref> has three billion vertices and eighteen billion edges. Second and more importantly, the memory footprint of GNNs is incurred not only by the graph structure but also by embeddings on vertices and messages on edges. As a result, GNNs consume 2-3 orders of magnitude more memory than traditional graph processing workloads such as PageRank, where each vertex/edge is associated with a scalar. Even on a medium-size graph with three hundred million edges, training a three-layer GNN model with the embedding length set to 128 would require 500 GB of memory, easily exceeding the DRAM capacity on a typical server.</p><p>To tackle the memory capacity bottleneck, existing efforts resort to distributed GNN training <ref type="bibr" target="#b17">[19,</ref><ref type="bibr" target="#b44">46,</ref><ref type="bibr" target="#b65">67]</ref>, among which DistDGL <ref type="bibr" target="#b65">[67]</ref> is the only open-source framework. DistDGL adopts a subgraph training approach -on each machine, it selects a batch of target vertices, constructs a subgraph containing all the vertices/edges required to compute the embeddings for the target vertices, and then performs training on the subgraph. This subgraph training approach, however, is inefficient because (1) the cost of dynamically constructing subgraphs for every batch is high, and (2) different subgraphs have overlaps, causing redundancy in both computation and memory consumption.</p><p>Persistent memory technologies offer an alternative solution for large-scale GNNRecSys training by providing a significantly larger memory capacity than DRAMs. For example, Intel Optane, which is a persistent memory product released in 2019, allows a single machine to have up to 6 TB of memory at an affordable cost, thus making single-machine full-graph GNN training feasible. Single-machine full-graph GNN training eliminates the aforementioned inefficiencies in distributed subgraph GNN training, and also avoids substantial reworking of implementations needed by distributed processing. One major concern of using persistent memory devices for GNNRecSys is their relatively low bandwidth To answer the question, we perform an in-depth characterization of GNNRecSys workloads and a comprehensive analysis of their performance on persistent memory. We conduct experiments on twelve variants of two representative GNN models across a wide collection of datasets, taking into consideration different configurations of Optane. 2  Our analysis reveals that although the performance of GNNRecSys is negatively impacted by the relatively low bandwidth of Optane, using Optane together with DRAMs can largely recover the performance. Furthermore, managing the hybrid Optane+DRAM memory system at a granularity of pages through the OS (in AppDirect Mode) works better than managing it at a granularity of cache lines by the hardware (in Memory Mode). This is because GNNRec-Sys workloads have a large memory access size due to the embedding vectors.</p><p>Besides, this work provides guidance on how to configure Optane for GNNRecSys. More concretely, both the memory consumption and execution time of GNNRecSys workloads are dominated by two types of sparse tensor compute kernels, namely, sampled dense-dense matrix multiplication (SDDMM) and sparse-dense matrix multiplication (SpMM). These two types of compute kernels require different settings for optimal performance, including the NUMA data 1 Our measurement shows that the read bandwidth of Optane is 40% that of DRAM and the write bandwidth of Optane is only 20% that of DRAM. This result is consistent with prior studies <ref type="bibr" target="#b33">[35,</ref><ref type="bibr" target="#b61">63]</ref>. 2 We focus on the use of Optane as large volatile memory. placement policy, the number of threads, and whether to use non-temporal write instructions.</p><p>In addition, we identify that a large batch size is crucial to realizing the advantages of full-graph GNNRecSys training, and manage to increase the batch size without incurring accuracy loss by linear learning rate scaling and a warm-up training strategy. With the tuned batch size and optimal system configuration, Optane-based single-machine GNNRecSys training demonstrates a significant speedup over distributed subgraph training when handling deep GNN models (with at least two layers). The speedup mainly comes from the ability of single-machine training to avoid cross-batch redundant computation that is pervasive in distributed training.</p><p>The rest of the paper is organized as follows. Section 2 reviews the background of GNNRecSys, explains the inefficiencies of distributed subgraph GNN training, and introduces Optane. Section 3 describes the experiment setup. Section 4 presents workload characterization of the GNN models that we use for the experiments. Section 5 reports bandwidth measurements of Optane and discusses potential implications. Section 6 and 7 present kernel-level and end-to-end results, respectively. Section 8 discusses opportunities for further optimizations as well as how the findings of this work might generalize beyond Optane. We survey related work in Section 9 and summarize in Section 10.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Background</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">GNN-Based Recommender Systems</head><p>Recommender systems are crucial to the business of online services in the era of information explosion. Authors in <ref type="bibr" target="#b58">[60]</ref> reported that up to 75% of movies watched on Netflix and 60% of videos consumed on YouTube come from their recommender systems.</p><p>The conventional approach to building recommender systems is collaborative filtering through matrix factorization <ref type="bibr" target="#b28">[30,</ref><ref type="bibr" target="#b37">39]</ref>. Figure <ref type="figure" target="#fig_0">1a</ref> illustrates an example of a user-item bipartite graph where an edge can represent a click, a purchase, etc. The matrix factorization method encodes each user/item into an embedding vector such that the dot product between the embeddings of a &lt;user, item&gt; pair can indicate the user's preference for the item; it updates the embeddings based on observed user-item interactions using gradient descent and then uses the obtained embeddings to predict missing interactions.</p><p>Recently, GNNs <ref type="bibr" target="#b23">[25,</ref><ref type="bibr" target="#b36">38,</ref><ref type="bibr" target="#b53">55]</ref> are gaining popularity as an effective method for learning high-quality vertex embeddings, thus offering a new approach to building recommender systems. Unlike the matrix factorization method that directly feeds the user/item embeddings into the prediction function (e.g., dot product), GNNs refine the embeddings through message passing on the user-item interaction graph. More concretely, in the message passing paradigm, each vertex computes a new representation by aggregating messages from its incoming edges. Let 𝐺 (𝑉 , 𝐸) denote a graph with a set of vertices 𝑉 and a set of edges 𝐸, (𝑠𝑟𝑐, 𝑒, 𝑑𝑠𝑡) denote an edge 𝑒 pointing from vertex 𝑠𝑟𝑐 to 𝑑𝑠𝑡, and x 𝑣 denote the initial embedding vector associated with vertex 𝑣. The message passing paradigm carries out the following computations:</p><formula xml:id="formula_0">m 𝑒 = 𝜙 (x 𝑠𝑟𝑐 , x 𝑑𝑠𝑡 ), (𝑠𝑟𝑐, 𝑒, 𝑑𝑠𝑡) ∈ 𝐸<label>(1)</label></formula><formula xml:id="formula_1">h 𝑑𝑠𝑡 = m 𝑒 , (𝑠𝑟𝑐, 𝑒, 𝑑𝑠𝑡) ∈ 𝐸<label>(2)</label></formula><p>x 𝑛𝑒𝑤 𝑑𝑠𝑡 = 𝜓 (h 𝑑𝑠𝑡 )</p><p>Here 𝜙, , and 𝜓 are customizable functions for generating messages, aggregating messages, and updating the embedding, respectively. A GNN model iteratively applies Equations (1) (2) (3) -we call one such iteration a messagepassing layer as shown in Figure <ref type="figure" target="#fig_0">1c</ref> -so that a vertex can incorporate its multi-hop neighborhood information into its embedding. Prior studies <ref type="bibr" target="#b26">[28,</ref><ref type="bibr" target="#b55">57]</ref> and our experiments show that increasing the number of message-passing layers improves the performance of GNNRecSys. 3 When auxiliary attributes are available, such as the user's age, gender, etc., GNNs can utilize them to augment the initial embeddings. We refer interested readers to <ref type="bibr" target="#b57">[59]</ref> for a comprehensive survey on the landscape of GNNRecSys research.</p><p>GNNRecSys workloads demand a large amount of memory. More concretely, the memory consumption of Equation (1) is</p><formula xml:id="formula_3">𝑙𝑒𝑛(m) × |𝐸|, of Equation (2) is 𝑙𝑒𝑛(h) × |𝑉 |, and of Equation (3) is 𝑙𝑒𝑛(x) × |𝑉 |.</formula><p>The above analysis only considers the forward propagation; training would double the memory consumption. Our profiling shows that on a graph with one million vertices and three hundred million edges, training a three-layer GNN model with 𝑙𝑒𝑛(m), 𝑙𝑒𝑛(h), and 𝑙𝑒𝑛(x) all set to 128 requires 500 GB of memory, easily exceeding the DRAM capacity on a typical server. In comparison, running PageRank on the same graph only requires 3 GB of memory. 3 Matrix factorization can be viewed as a zero-layer GNN model. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Distributed Subgraph GNN Training</head><p>To tackle the memory capacity bottleneck in large-scale GNN training, existing efforts resort to distributed GNN training frameworks, such as DistGNN <ref type="bibr" target="#b44">[46]</ref>, P3 <ref type="bibr" target="#b17">[19]</ref>, and DistDGL <ref type="bibr" target="#b65">[67]</ref>, among which only DistDGL is open-source. DistDGL builds upon DGL <ref type="bibr" target="#b54">[56]</ref>, a widely-used GNN framework. Figure <ref type="figure" target="#fig_1">2</ref> illustrates the subgraph training approach adopted by DistDGL. Let us assume the GNN model has two layers; there are two machines, and the batch size on each machine is one (the aggregate batch size is therefore two). On machine 1, DistDGL selects 𝑖2 as the target vertex and constructs a subgraph consisting of 𝑖2 and its one-and two-hop neighborswe can apply two message-passing layers on the subgraph to compute the embedding for 𝑖2. Similarly, on machine 2, Dist-DGL constructs a subgraph for 𝑖4. One can immediately see the issue of redundancy, in both computation and memory consumption, across these two subgraphs.</p><p>In addition, because of the exponential growth of the subgraph size, only a limited batch size is allowed. For faster training convergence, a large batch size is desired <ref type="bibr" target="#b21">[23,</ref><ref type="bibr" target="#b63">65]</ref> since fewer steps are needed to iterate the data points (i.e., one epoch). One method to reduce the subgraph size is sampling <ref type="bibr" target="#b10">[12,</ref><ref type="bibr" target="#b11">13,</ref><ref type="bibr" target="#b23">25]</ref>, i.e., picking a small number of neighbors for each vertex instead of considering all the neighbors. Sampling, however, incurs accuracy loss <ref type="bibr" target="#b35">[37,</ref><ref type="bibr" target="#b52">54]</ref>. Besides, sampling is less effective in reducing the subgraph size for deep GNN models <ref type="bibr" target="#b39">[41,</ref><ref type="bibr" target="#b40">42]</ref>.</p><p>Furthermore, DistDGL suffers communication overhead. DistDGL distributes the graph data across multiple machines, launches a subgraph builder (either with or without sampling) and a trainer on each machine, and performs synchronous training. Inter-machine communication is needed for subgraph builders to fetch data located on a different machine, and for trainers to exchange gradients.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3">Intel Optane Persistent Memory</head><p>The long-awaited persistent memory became commercially available with the release of Intel Optane in 2019. Optane comes in the same form factor as DDR4 DRAM modules but with a higher memory density, allowing up to 6 TB of memory on a single machine. This large capacity makes Optane attractive for data-intensive applications <ref type="bibr" target="#b10">[12,</ref><ref type="bibr" target="#b14">16,</ref><ref type="bibr" target="#b30">32]</ref>. Optane can be configured in the following two modes. Memory Mode. In this configuration, Optane is used as volatile main memory, and DRAM serves as a direct-mapped cache with a cache line size of 64 bytes. The CPU's memory controller manages the cache transparently. Software simply sees a large pool of volatile memory over which it has no explicit control. This configuration allows the execution of existing code without any modifications.</p><p>AppDirect Mode. In this configuration, Optane appears as a separate memory device. There are two common ways to manage the hybrid Optane+DRAM memory system. The first approach is to expose Optane as a NUMA node and rely on existing NUMA memory management utilities, e.g., numactl. Here the memory management granularity is a page, i.e., 4 KB, instead of a cache line as in Memory Mode. This approach requires no code modifications and at the same time gives programmers flexibility to try different NUMA memory management policies. The second approach is to expose Optane as a file system. Applications can then map files to memory to access them via load/store instructions. This approach gives programmers explicit control over memory allocations, thus allowing for exploring application-specific memory management policies. Specialized systems and libraries such as PMDK <ref type="bibr" target="#b2">[4]</ref>, libmemkind <ref type="bibr" target="#b1">[3]</ref>, X-Mem <ref type="bibr" target="#b15">[17]</ref>, and HeMem <ref type="bibr" target="#b50">[52]</ref> follow this approach.</p><p>Table <ref type="table" target="#tab_0">1</ref> summarizes the different ways of using Optane. This work focuses on the first two, i.e., using Optane in Memory Mode and in AppDirect Mode through NUMA utilities. We discuss potential performance gains by specializing the memory management policy for GNNRecSys workloads and leave it for future research.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Experiment Setup</head><p>Datasets. Table <ref type="table" target="#tab_1">2</ref> lists the datasets that we use for the experiments. movielens-10m <ref type="bibr" target="#b24">[26]</ref>, gowalla <ref type="bibr" target="#b13">[15]</ref>, and amazon-book <ref type="bibr" target="#b25">[27]</ref> are real-world datasets for recommending movies, locations, and books, respectively. They have been widely used in GNNRecSys research <ref type="bibr" target="#b9">[11,</ref><ref type="bibr" target="#b26">28,</ref><ref type="bibr" target="#b55">57]</ref>. To work around the issue that industry-scale datasets for recommender systems are not publicly available, we follow the Kronecker expansion method proposed in <ref type="bibr" target="#b8">[10]</ref> to synthetically generate large datasets by expanding existing small ones. Kronecker expansion can preserve the original graph's characteristics such as power-law degree distribution, community structure, item popularity, etc. We expand movielens-10m, gowalla, and amazon-book to three medium-size graphs (around 300M edges) and three large-size graphs (around one  Software. We use DGL v0.7.2 with PyTorch v1.7 backend to implement GNN models. Transparent Huge Pages (THP) are enabled (default in Linux). We use PyTorch Profiler <ref type="foot" target="#foot_0">4</ref> to get execution time breakdown and mprof<ref type="foot" target="#foot_1">5</ref> to measure memory consumption.</p><formula xml:id="formula_4">-10m 70K 11K 10M 1.34% gowalla 30K 41K 1M 0.08% amazon-book 53K 92K 3M 0.06% m-x25 349K 53K 250M 1.34% g-x256 478K 656K 263M 0.08% a-x100 526K 916K 298M 0.06% m-x100 699K 107K 1000M 1.34% g-x1024 955K 1311K 1052M 0.08% a-x400 1053K 1832K 1194M 0.06% Socket 1 Socket 2 UPI</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Workload Characterization</head><p>We choose NGCF <ref type="bibr" target="#b55">[57]</ref> and LightGCN <ref type="bibr" target="#b26">[28]</ref> for the experiments, both of which are representative GNN models that have been widely used in recommender systems. Both NGCF and LightGCN follow the message-passing paradigm described in Section 2.1. Compared with NGCF, LightGCN is less compute intensive due to a simplified architecture. </p><formula xml:id="formula_5">m 𝑒 = (x 𝑠𝑟𝑐 ⊙ x 𝑑𝑠𝑡 ) × 𝑊 1 + x 𝑠𝑟𝑐 × 𝑊 2, (𝑠𝑟𝑐, 𝑒, 𝑑𝑠𝑡) ∈ 𝐸 (4) h 𝑑𝑠𝑡 = 𝑠𝑢𝑚(m 𝑒 ), (𝑠𝑟𝑐, 𝑒, 𝑑𝑠𝑡) ∈ 𝐸 (5) x 𝑛𝑒𝑤 𝑑𝑠𝑡 = h 𝑑𝑠𝑡<label>(6)</label></formula><p>We care about two parameters in the architecture: the embedding length 𝑙𝑒𝑛(x), and the number of message-passing layers. Increasing either one of these two parameters typically improves the model accuracy, but at the cost of higher memory consumption and computational complexity. Specifically, for full-graph training, the memory consumption and computational complexity grow linearly with both the embedding length and the number of layers; for subgraph training, the growth is linear with the embedding length but exponential with the number of layers. In the experiments, we vary these two parameters -setting the number of layers to one or two or three, setting the embedding length to 128 or 256 -to create six variants of NGCF. We use NGCF-1L-128E to denote an NGCF model with one layer and the embedding length set to 128.</p><p>We recognize several inefficiencies in the original implementation of NGCF in DGL and apply a set of optimizations. Figure <ref type="figure" target="#fig_10">4a</ref> illustrates the dataflow graph (one message-passing layer) of the original implementation for computing user embeddings; the dataflow graph for computing item embeddings is symmetric. Our first optimization is to switch the execution order between multiplying weight matrices and aggregating messages, that is, we convert 𝑠𝑢𝑚(( <ref type="figure" target="#fig_10">4b</ref>. This optimization reduces the computational complexity of multiplying weight matrices from 𝑂 (|𝐸|) to 𝑂 (|𝑈 |), where |𝐸| is the number of edges and |𝑈 | is the number of users. Our second optimization is to replace less-efficient scatter and sum operations with sparse tensor compute kernels that have been highly optimized by the DGL framework. Concretely, we use generalized SDDMM (sampled dense-dense matrix multiplication) and SpMM (sparse-dense matrix multiplication) to implement message generation and aggregation, respectively, as illustrated in Figure <ref type="figure" target="#fig_10">4c</ref>. While the standard SDDMM performs dot product in its inner most loop, a generalized one supports element-wise add, which is required by NGCF. For SpMM, while the standard one performs add reduction, a generalized one supports max reduction among others. <ref type="foot" target="#foot_2">6</ref> Moreover, the gradient calculation of (generalized) SDDMM and SpMM are also mapped to these two kernels. We refer interested readers to <ref type="bibr" target="#b32">[34]</ref> for a thorough description on the connection between message passing and SDDMM/SpMM kernels. Our last optimization is to reuse the SDDMM results obtained during computing user embeddings to compute item embeddings (since x 𝑠𝑟𝑐 ⊙ x 𝑑𝑠𝑡 = x 𝑑𝑠𝑡 ⊙ x 𝑠𝑟𝑐 ), instead of calculating SDDMM twice as in the original implementation.</p><formula xml:id="formula_6">x 𝑠𝑟𝑐 ⊙x 𝑑𝑠𝑡 ) × 𝑊 1+x 𝑠𝑟𝑐 ×𝑊 2) into 𝑠𝑢𝑚(x 𝑠𝑟𝑐 ⊙ x 𝑑𝑠𝑡 ) ×𝑊 1+𝑠𝑢𝑚(x 𝑠𝑟𝑐 ) ×𝑊 2, as illustrated in Figure</formula><p>Figure <ref type="figure">5</ref> shows that combining the three optimizations accelerates the inference of NGCF-3L-128E by 8.3× and training by 8.0× on the movielens-10m dataset. We will use the  optimized implementation for performance analysis on Optane. Figure <ref type="figure" target="#fig_4">6</ref> shows the execution time breakdown. SDDMM and SpMM together take 91% of the total time for inference and 75% for training. Besides, the add operation takes 17% of the training time, which is mainly used for updating trainable weights with gradients during backpropagation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">LightGCN</head><p>LightGCN follows the overall architecture of NGCF but simplifies message generation by removing 𝑊 1 and 𝑊 2 in Equation <ref type="bibr" target="#b2">(4)</ref>. The second and third optimizations presented in the previous subsection are also applied to LightGCN. Our experiment results show that LightGCN is 10-30% faster than NGCF (see <ref type="bibr">Section 7)</ref>. Furthermore, LightGCN spends a larger fraction of execution time on SDDMM and SpMM -up to 95% for inference and 85% for training -because it gets rid of multiplication with 𝑊 1 and 𝑊 2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Optane Bandwidth Measurements</head><p>Since GNNRecSys workloads are memory bandwidth bound and less sensitive to the memory latency <ref type="bibr" target="#b17">[19,</ref><ref type="bibr" target="#b56">58]</ref>, we focus on bandwidth measurements. Specifically, we measure the bandwidth of Optane under both sequential and random memory access patterns for both remote (i.e., cross-socket) and local accesses.</p><p>Figure <ref type="figure">7a</ref> shows that for sequential memory accesses, the peak read bandwidth of Optane (with 28 threads) is 39.2 GB/s, which is 37% of what DRAM offers; the peak write bandwidth of Optane (with 2 threads) is 3.5 GB/s, which is 7% of that of DRAM; when using non-temporal write (nt write), the peak write bandwidth of Optane (with 8 threads) is 11.3 GB/s, which is 18% of that of DRAM. Compared to a normal write, an nt write achieves a higher bandwidth by bypassing the cache hierarchy and thus preventing the cache eviction mechanism from converting sequential stores into random stores <ref type="bibr" target="#b10">[12]</ref>.</p><p>Figure <ref type="figure">7b</ref> shows that for random memory accesses, the bandwidth utilization of Optane increases as the access size increases. Specifically, the write bandwidth utilization saturates at an access size of 256 bytes; the read bandwidth utilization is not saturated even at 4096 bytes. For GNNRec-Sys, the access size is typically hundreds of bytes depending on the embedding length, whereas for traditional graph processing workloads such as PageRank, it is only four bytes.</p><p>Figure <ref type="figure">7c</ref> shows that the remote read bandwidth of Optane is comparable to that of DRAM (34.5 vs. 35.8 GB/s); both are limited by the UPI bandwidth. The remote nt write bandwidth of DRAM is even higher than the local nt write bandwidth of Optane, indicating that it could be beneficial to allocate memory on all the sockets to utilize more DRAMs even when the data can fit into Optane on a single socket.</p><p>To understand the implications of Optane on the performance of GNNRecSys workloads, we have the following questions to be answered:</p><p>1. To what extent does the relatively low memory bandwidth (especially write) of Optane hurt the performance of GNNRecSys workloads?</p><p>2. Is it beneficial to use nt write?</p><p>3. What is the optimal NUMA configuration?</p><p>4. What is the tradeoff between accuracy and efficiency with different embedding lengths?</p><p>6 Kernel-Level Analysis and Optimization</p><p>In this section, we aim to (1) understand the implications of Optane on the performance of SDDMM and SpMM, the two dominant compute kernels in NGCF and LightGCN, and</p><p>(2) give suggestions on how to configure Optane to achieve high performance. Figure <ref type="figure" target="#fig_8">8</ref> shows the execution time of SDDMM and SpMM using Optane vs. DRAM, tested on the three synthetic millionedge graphs, i.e., m-x25, g-x256, and a-x100. Using Optane alone gives a lower bound for the achievable performance since in practice we always use Optane together with DRAM. The main results are: (1) When using normal write, the performance of SDDMM on Optane is 7.7-7.8× lower than that on DRAM; for SpMM, this number is 2.2-3.0×. SDDMM has a severe slowdown on Optane because SDDMM is write intensive and the write bandwidth of Optane is less than 10% that of DRAM (see Figure <ref type="figure">7a</ref>). In comparison, SpMM is read intensive and therefore sees a more modest slowdown on Optane. (2) When switching from normal write to nt write, the performance of SDDMM improves by 1.1× on DRAM and 1.4× on Optane; the performance of SpMM, however, degrades significantly -more than 20× for both DRAM and Optane. This is because SpMM has a large degree of temporal locality due to its aggregation computation pattern; hence, using nt write that bypasses the cache hierarchy only hurts its performance. In comparison, SDDMM has no temporal locality in accessing its outputs and therefore can benefit from the higher write bandwidth brought by nt write. (3) Among the three datasets, which have a similar number of edges, SpMM runs fastest on m-x25 for both Optane and DRAM. This is because m-x25 has a higher density, leading to a higher degree of locality and consequently higher cache utilization. In remaining experiments, we use nt write for SDDMM and normal write for SpMM. Figure <ref type="figure" target="#fig_6">9</ref> shows the impact of the number of threads on the performance of SDDMM and SpMM, tested on the m-x25 dataset. For SDDMM, the optimal performance is achieved with 4 threads on Optane and 28 threads on DRAM. This result is consistent with the observation we made in Figure 7a that the nt write bandwidth of Optane saturates at 4-8 threads. For SpMM, the optimal performance is achieved 28 threads for both Optane and DRAM, which is consistent with the observation that the read bandwidth of both Optane and DRAM keeps increasing with the number of threads up to 28. Results on g-x256 and a-x100 show the same trend. Ideally, we should set the number of threads to 4 for SDDMM and 28 for SpMM. However, the DGL framework does not support tuning the number of threads per compute kernel. In remaining experiments, we still use 28 threads (per socket) for both kernels, which is optimal for SpMM but leads to around 20% performance drop for SDDMM on Optane compared with using 4 threads.</p><p>Figure <ref type="figure" target="#fig_0">10</ref> shows the impact of different Optane configurations, tested on the three synthetic billion-edge graphs, i.e., m-x100, g-x1024, and a-x400. Data exceeds the DRAM capacity but fits into Optane on a single socket. The main results are: (1) AppDirect Mode performs better than Memory Mode. Specifically, for SpMM, using Optane+DRAM in AppDirect Mode is 1.2-1.6× faster than Memory Mode; for SDDMM, even using Optane alone is 2× faster than Memory Mode. This result indicates that managing DRAM as a cache by the hardware at a granularity of 64 bytes is not suitable for GNNRecSys workloads whose memory access size is hundreds of bytes. Overhead associated with cache metadata management <ref type="bibr" target="#b29">[31]</ref> could also have contributed to the inferior performance of Memory Mode. (2) Compared with using Optane alone, using Optane+DRAM (in AppDirect Mode) improves the performance by 1.5× for SDDMM and 1.3× for SpMM. ( <ref type="formula" target="#formula_2">3</ref>) Using the DRAM located on the remote socket further improves the performance by 1.2-1.8× for SDDMM and 1.3-1.6× for SpMM. This result is consistent with the observation we made in Figure <ref type="figure">7c</ref> that the remote nt write bandwidth of DRAM is higher than the local nt write bandwidth of Optane. This result suggests that we should allocate memory on all the sockets to utilize more DRAMs even when data fits into Optane on a single socket. In the remaining experiments, we use AppDirect Mode and first allocate memory on DRAMs.</p><p>Figure <ref type="figure" target="#fig_0">11</ref> shows the impact of NUMA data placement policies. We consider two policies: (1) interleaving the pages across socket in a round-robin fashion and (2) blocking the pages and distributing the blocks among sockets. We find that for SDDMM, blocked data placement works better; for SpMM, interleaved data placement works better. SDDMM and SpMM prefer different NUMA data placement policies because of their different computation patterns. For SDDMM, each thread writes to a contiguous range of memory locations; therefore, blocked data placement can guarantee that each thread only needs to access its local socket. For SpMM, each thread gathers values from incontiguous memory locations and aggregates the values; although interleaved data placement can not fully eliminate cross-NUMA accesses, it incurs fewer than blocked data placement. For end-to-end experiments, we use blocked NUMA data placement for optimal overall performance.</p><p>The above results provide the following guidelines: (1) using nt write for SDDMM and normal write for SpMM; <ref type="bibr" target="#b0">(2)</ref> preferring AppDirect Mode over Memory Mode; (3) preferring blocked NUMA data placement over interleaved. We adopt the three guidelines when doing end-to-end experiments. Tuning the number of threads for SDDMM and SpMM separately can also be beneficial, but we did not explore this optimization as it is not supported by the DGL framework.</p><p>7 End-To-End Analysis and Optimization</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.1">Model Accuracy</head><p>In this subsection, we first present techniques for large-batch training. Then we study the model accuracy of multiple variants of NGCF and LightGCN that have different embedding length and number of layers. We also evaluate the impact of sampling.</p><p>The training setup is as follows. We split the edges of a graph into 90% for training and 10% for testing. We train the model for 100 epochs. The evaluation metric is recall@20, i.e., recall calculated based on the top-20 recommended items. The loss function is Bayesian personalized ranking (BPR) <ref type="bibr" target="#b51">[53]</ref>, which assumes that observed interactions should be assigned higher prediction values than unobserved ones. To calculate the BPR loss requires a tuple of a user, one of the user's interacted items, and one un-interacted item. The original implementation of NGCF and LightGCN computes 1K tuples at each step (hence a batch size of 1K) with a learning rate of 0.0001.</p><p>For faster training, especially on large graphs, we need to increase the batch size and scale the learning rate accordingly. We tried both square root scaling <ref type="bibr" target="#b38">[40]</ref> and linear scaling <ref type="bibr" target="#b21">[23]</ref>, and found the latter works better. Furthermore, inspired by the observation made by McCandlish et al. <ref type="bibr" target="#b43">[45]</ref> that a large batch size makes training less stable during the first few epochs, we adopt a warm-up training strategy. Figure <ref type="figure" target="#fig_9">12</ref> shows that using a batch size of 15K for the first two epochs and 150K for the remaining epochs achieves a higher recall@20 than using a batch size of 150K throughout all the epochs. Using a too small batch size for the warm-up stage (1K in this case), however, hurts the model accuracy. Our empirical study suggests setting the warm-up batch size  Table <ref type="table">3</ref>. Recall@20 of different model variants -The dataset is amazon-book; a higher recall is better.  to 1/10th of the large batch size. With the aforementioned techniques, we managed to increase the batch size to 150K while achieving the same or even better recall@20 as using the original 1K batch size.</p><p>Table <ref type="table">3</ref> reports recall@20 of multiple NGCF and Light-GCN variants on the amazon-book dataset. With the same embedding length and number of layers, NGCF outperforms LightGCN. For both NGCF and LightGCN, increasing either the embedding length or the number of layers leads to improved recall@20. We see the same trend on movielens-10m and gowalla as well, confirming that a larger GNN model is desired for building higher-quality recommender systems. Table <ref type="table">5</ref>. Maximum aggregate batch size allowed by the memory capacity when using DistDGL -The sampling factor is 100; "/" means out-of-memory even at a batch size of one per machine. Table <ref type="table">4</ref> reports recall@20 degradation due to sampling for NGCF-3L-256E. When the sampling factor is 10 (i.e., sampling 10 neighbors for each vertex), the recall@20 of NGCF-3L-256E degrades from 0.078 to 0.072, which is even worse than the recall@20 of NGCF-2L-256E without sampling. When the sampling factor is 100, which is larger than the average degree of amazon-book <ref type="foot" target="#foot_3">7</ref> , still, a degradation of 0.001 is incurred. The reason is that amazon-book, as well as other user-item interaction graphs, has a power-law degree distribution where a small portion of vertices have a degree significantly larger than the average, as shown in Figure <ref type="figure" target="#fig_11">13</ref>. Those high-degree vertices (either popular items or active users) tend to be more important for the task of recommendation, but they also suffer more severe information loss from sampling.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.2">Comparison With DistDGL</head><p>In this subsection, we compare Optane-based single-machine training with distributed training using DistDGL, in terms of hardware cost ($) and performance. We perform experiments on m-x25, g-x256, and a-x100 datasets.</p><p>We run DistDGL on an in-house cluster of six servers. Each server is a two-socket 32-core 2.8 GHz Intel Xeon Gold 6242 machine with 384 GB DDR4 memory. The servers are in the same rack and connect to 10 Gigabit Ethernet. The aggregate memory capacity of the cluster is 2304 GB, which is 20% larger than the memory capacity of the Optane machine (1536 GB of Optane plus 384 GB of DRAM). For the cluster, the total price of the DRAMs is $27K; for the Optane machine, the price of Optane+DRAM is $11K <ref type="bibr" target="#b0">[2]</ref>.</p><p>Table <ref type="table">5</ref> reports the maximum aggregate batch size that is allowed by the memory capacity when using DistDGL. An aggregate batch size of six means a batch size of one per machine. The batch size quickly decreases as the number of layers increases. Specifically, without sampling, NGCF(LightGCN)-1L-128E allows a batch size of 24K, while NGCF(LightGCN)-2L-128E only allows 384; further increasing the number of layers to three would run out of memory even at a batch size of one per machine. Sampling increases the batch size and makes three-layer NGCF and LightGCN models possible to train. For NGCF(LightGCN)-1L-128E and NGCF(LightGCN)-1L-256E, we set the batch size to 150K not because of the memory capacity limit, but to ensure training convergence. All Optane experiments use a batch size of 150K.  Table <ref type="table" target="#tab_4">6</ref> reports the performance comparison between Optane-based single-machine training and DistDGL, measured by the execution time for processing 150K edges. The key observation is that Optane-based single-machine training achieves significant speedup over DistDGL on deep NGCF and LightGCN models (with two or three layers), because the execution time of Optane-based single-machine training increases roughly linearly with the number of layers while that of DistDGL exponentially. For example, on m-x25, using Optane takes 100 seconds for NGCF-1L-128E and 287 seconds for NGCF-3L-128E, while DistDGL with sampling takes 7 seconds for NGCF-1L-128E and 9219 seconds for NGCF-3L-128E. On NGCF-2L-128E and LightGCN-2L-128E, using Optane brings 43-356× speedup over DistDGL without sampling. On NGCF-3L-128E and LightGCN-3L-128E, even with sampling, using Optane still brings up to 85× speedup. The results demonstrate the advantages of Optane-based single-machine training for handling deep GNN models.</p><p>To further examine the inefficiencies of DistDGL, we plot its execution time breakdown in Figure <ref type="figure" target="#fig_12">14</ref>. Building subgraph takes 16-32% of the total time, even higher than the forward propagation, which takes only about 10%. The backward propagation takes more than 60% of the total time, which is 6× higher than the forward propagation. In comparison, for Optane-based single-machine training, the execution time of backward propagation is only 2-3× higher than forward propagation. The slowness of the backward propagation in DistDGL is due to two factors: (1) exchanging gradients across machines incurs communication overhead; (2) since DistDGL performs synchronous training, the execution time is determined by the slowest machine.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8">Discussion</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8.1">Optimization Opportunities</head><p>Cache Optimization for SDDMM and SpMM. There have been attempts to improve cache utilization of SDDMM and SpMM compute kernels through locality-enhancing scheduling. For example, FeatGraph <ref type="bibr" target="#b32">[34]</ref> combines graph partitioning with embedding tiling to strike a balance between efficiency of accessing the graph structure and efficiency of accessing embeddings. Hong et al. <ref type="bibr" target="#b31">[33]</ref> propose an adaptive tiling strategy that takes into account the degree of each vertex. Various graph reordering methods have also been proposed <ref type="bibr" target="#b5">[7,</ref><ref type="bibr" target="#b6">8,</ref><ref type="bibr" target="#b47">49]</ref>. All these techniques, however, are evaluated on DRAM-only machines, and it is unclear how effective they are on Optane. Specifically, these techniques are unaware of the asymmetric read and write bandwidth of Optane. We envision that to achieve optimal performance on Optane, a partitioning or reordering technique should prioritize high cache utilization for write, instead of treating read and write equally.</p><p>Hybrid Memory Management Tailored to GNNRecSys. Although this work focused on using Optane in Memory Mode and in AppDirect Mode through existing NUMA utilities, we envision there is room for performance improvement by tailoring the hybrid memory management policy to GNNRec-Sys. We observed that turning off NUMA page migration achieves performance comparable to that with NUMA page migration on, or even 5% higher in certain cases likely due to less time in kernel space. This observation indicates that managing the hybrid Optane+DRAM memory system through existing NUMA utilities is far from optimal for GNNRecSys. AutoTM <ref type="bibr" target="#b30">[32]</ref> analyzed inefficiencies of the NUMA approach in training convolutional neural networks (CNNs) and proposed to optimize the location and movement of tensors between DRAM and Optane based on an integer linear programming (ILP) formulation. AutoTM requires each tensor to fit into DRAM, which is not guaranteed for GNNRecSys when the graph is large. It is a promising avenue for future research to extend AutoTM to support hybrid memory management at a sub-tensor granularity.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8.2">Beyond Optane</head><p>To our knowledge, Optane is the only commercially-available persistent memory when we conduct this research. In this work, we use the first generation of Optane (100 Series) to perform the evaluation. The second generation (200 Series) provides 32% higher memory bandwidth; we expect higher performance of GNNRecSys workloads on it.</p><p>Although Intel recently announced the discontinuation of future Optane products <ref type="bibr" target="#b3">[5]</ref>, upcoming persistent memory devices from Kioxia and Everspin <ref type="bibr" target="#b4">[6]</ref> may become suitable alternatives. On these emerging devices, the key finding of this work should remain valid, that is, single-machine full-graph GNNRecSys training enabled by a large memory capacity outperforms distributed subgraph training. The techniques for large-batch training also remain useful. The observations we made in Section 6 do not necessarily hold, since they depend on the bandwidth characteristics of the specific persistent memory device and how it interacts with DRAMs in the system. Nevertheless, we can follow the same methodology of this work to analyze and optimize GNNRec-Sys workloads on new types of persistent memory devices; we will open-source the code to facilitate such process.</p><p>Besides persistent memory, Compute Express Link (CXL) [1] provides another solution for expanding the memory capacity. CXL is an open, industry-backed interconnect standard based on PCIe. With PCIe 5.0, CXL bandwidth is comparable to the cross-socket interconnect on a dual-socket machine. Since there are no commercially-available CXL memory devices yet, researchers have been using remote NUMA nodes to emulate them <ref type="bibr" target="#b41">[43,</ref><ref type="bibr" target="#b42">44]</ref>. We can view the use of Optane in AppDirect Mode through NUMA utilities as an emulation for CXL memory devices. We expect that CXL memory devices can bring similar advantages to GNNRecSys training as Optane.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="9">Related Work</head><p>GNN Characterization and Acceleration. Prior efforts for characterizing and accelerating GNN workloads mainly focus on GNN models that are used in vertex classification tasks <ref type="bibr" target="#b18">[20,</ref><ref type="bibr" target="#b19">21,</ref><ref type="bibr" target="#b32">34,</ref><ref type="bibr" target="#b35">37,</ref><ref type="bibr" target="#b52">54,</ref><ref type="bibr" target="#b60">62]</ref>, most notably the GCN model <ref type="bibr" target="#b36">[38]</ref>. Compared with GCN, NGCF and LightGCN consume much more memory for two reasons. First, GCN has a simpler message generation function -just multiplying the embedding vector of the source vertex with a normalization value, which is a constant scalar. As a result, for GCN, message generation and aggregation can be fused into a single SpMM kernel. In contrast, NGCF and LightGCN require both SpMM and SDDMM. Second, GCN typically has two layers, whereas NGCF and LightGCN have more layers (the default setting in their papers <ref type="bibr" target="#b26">[28,</ref><ref type="bibr" target="#b55">57]</ref> is three). Hence, NGCF and LightGCN, as well as other GNN models for recommender systems in general, have a more urgent demand for a high memory capacity than GCN.</p><p>GNN Dataflow Optimization. In this work, we manually optimized the dataflow of NGCF and LightGCN. Recently, Graphiler <ref type="bibr" target="#b59">[61]</ref> is proposed to optimize GNN dataflow at the compiler level. Graphiler iteratively traverses the dataflow graph to match subgraphs with predefined patterns and replace them with optimized ones. Graphiler currently has limited coverage on possible dataflow optimizations; for example, it does not support the optimization of reusing SD-DMM results that we applied to NGCF and LightGCN. It is worth further research towards automatic and intelligent GNN dataflow optimization.</p><p>Deep Learning for Recommender Systems. Prior to GNNs, neural networks such as multi-layer perceptrons (MLPs) have been applied to recommender systems to replace the hard-coded prediction function (typically dot product). Efforts along this direction include Wide &amp; Deep <ref type="bibr" target="#b12">[14]</ref>, NCF <ref type="bibr" target="#b27">[29]</ref>, DLRM <ref type="bibr" target="#b48">[50]</ref>, to name a few. GNNRecSys is complementary to these models, that is, the embeddings that a GNN model generates through message passing can be fed into these models as (part of) the input. Like GNNRecSys workloads, these models also demand a large amount of memory; existing solutions <ref type="bibr" target="#b46">[48,</ref><ref type="bibr" target="#b64">66]</ref>  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="10">Conclusion</head><p>This work analyzes and optimizes GNNRecSys training on persistent memory. Our experiments show that the large capacity of persistent memory makes it a good fit for GN-NRecSys. With the tuned batch size and optimal system configuration, single-machine GNNRecSys training on persistent memory outperforms distributed training by a large margin, especially when handling deep GNN models. It is our hope that this paper provides practical guidelines for running GNNRecSys on Optane as well as inspiring future research towards more efficient GNNRecSys on emerging memory devices.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 .</head><label>1</label><figDesc>Figure 1. Matrix factorization vs. GNNs for recommender systems -(a) A user-item bipartite graph. (b) Matrix factorization encodes each user/item into an embedding vector such that the dot product between the embeddings of a &lt;user, item&gt; pair can indicate the user's preference for the item. (c) GNNs improve upon matrix factorization by learning higher-quality embeddings through iterate message passing. compared with DRAMs. 1 This limitation can be particularly detrimental to achieving high performance for GNNRecSys workloads since their dominant compute kernels are sparse and memory access intensive. Hence, this work seeks to better understand the following: Can single-machine full-graph GNNRecSys training on persistent memory outperform distributed subgraph GNNRecSys training despite the relatively low memory bandwidth?</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 .</head><label>2</label><figDesc>Figure 2. Redundancy across subgraphs.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 .</head><label>3</label><figDesc>Figure 3. A two-socket Intel Cascade Lake machine.billion edges); m-x25 denotes a graph that is expanded from movielens-10m by a factor of 25 in terms of the number of edges. We use movielens-10m, gowalla, and amazon-book to verify the GNN model's accuracy, and the six synthetic datasets for performance benchmarking.Optane Machine. Figure3depicts the architecture of the Optane machine. It is a 2.2 GHz Intel Xeon Platinum 8276L machine with two sockets connected by the Intel Ultra Path Interconnect (UPI). Each socket has 28 physical cores, two integrated memory controllers (iMCs), six DRAM DIMMs, and six Optane DIMMs. Each DRAM DIMM is 32 GB; each Optane DIMM is 128 GB. The total DRAM capacity is 384 GB (32 × 6 × 2); the total Optane capacity is 1536 GB (128 × 6 × 2).Software. We use DGL v0.7.2 with PyTorch v1.7 backend to implement GNN models. Transparent Huge Pages (THP) are enabled (default in Linux). We use PyTorch Profiler 4 to get execution time breakdown and mprof 5 to measure memory consumption.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 .</head><label>4</label><figDesc>Figure 4. NGCF optimizations -(a) The original implementation in DGL. (b) Reducing the computational complexity of multiplying weight matrices from 𝑂 (|𝐸|) to 𝑂 (|𝑈 |) by switching the execution order. (c) Replacing less-efficient scatter and sum operations with highly-optimized tensor compute kernels, i.e., SDDMM and SpMM. The last optimization (reusing the SDDMM results) is not shown.4.1 NGCF NGCF's message generation function, message aggregation function, and embedding update function are defined as follows. Here ⊙ denotes element-wise multiply and 𝑊 1 and 𝑊 2 are trainable weight matrices. m 𝑒 = (x 𝑠𝑟𝑐 ⊙ x 𝑑𝑠𝑡 ) × 𝑊 1 + x 𝑠𝑟𝑐 × 𝑊 2, (𝑠𝑟𝑐, 𝑒, 𝑑𝑠𝑡) ∈ 𝐸 (4)</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 6 .</head><label>6</label><figDesc>Figure 6. Execution time breakdown of the optimized NGCF.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 7 .Figure 8 .</head><label>78</label><figDesc>Figure 7. Bandwidth measurements.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 9 .</head><label>9</label><figDesc>Figure 9. Impact of the number of threads -The dataset is m-x25; the embedding length is 128.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 10 .Figure 11 .</head><label>1011</label><figDesc>Figure 10. Impact of Optane configurations -The embedding length is 128; experiments run on a single socket using 28 threads.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>8</head><label>8</label><figDesc></figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 12 .</head><label>12</label><figDesc>Figure 12. Training curve of LightGCN-2L-128E.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Table 4 .</head><label>4</label><figDesc>Recall@20 degradation due to sampling -The dataset is amazon-book; the model is NGCF-3L-256E.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head>Figure 13 .</head><label>13</label><figDesc>Figure 13. Degree distribution of amazon-book.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head>Figure 14 .</head><label>14</label><figDesc>Figure 14. Execution time breakdown of DistDGL -The dataset is m-x25; w/o sampling; execution time of each part is averaged over six machines.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_13"><head></head><label></label><figDesc>leverage SSD+DRAM. It remains to be explored what a role Optane or CXL can play there.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 .</head><label>1</label><figDesc>Different ways of using Optane.</figDesc><table><row><cell></cell><cell>Memory Mode</cell><cell cols="2">AppDirect Mode NUMA file system</cell></row><row><cell>managed by</cell><cell>hardware</cell><cell>OS</cell><cell>programmer</cell></row><row><cell>granularity</cell><cell>cache line</cell><cell>page</cell><cell>arbitrary size</cell></row><row><cell>flexibility</cell><cell>low</cell><cell>medium</cell><cell>high</cell></row><row><cell>code modification?</cell><cell>no</cell><cell>no</cell><cell>yes</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 .</head><label>2</label><figDesc>Datasets.    </figDesc><table /><note><p><p>dataset</p># users # items # interactions density movielens</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head></head><label></label><figDesc>Figure 5. Effects of NGCF optimizations -The dataset is movielens-10m; the model is NGCF-3L-128E; experiments run without using Optane; time is for one epoch.</figDesc><table><row><cell></cell><cell cols="2">40</cell><cell cols="2">original impl. + opt. 1</cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell cols="2">+ opt. 1,2</cell><cell></cell><cell></cell></row><row><cell>time (sec)</cell><cell cols="2">20 30</cell><cell cols="2">+ opt. 1,2,3</cell><cell>2.6x</cell><cell></cell></row><row><cell></cell><cell cols="2">0 10</cell><cell cols="2">inference 2.4x 4.9x 8.3x</cell><cell cols="2">training 6.8x 8.0x</cell></row><row><cell></cell><cell></cell><cell></cell><cell cols="2">others</cell><cell></cell><cell cols="2">others</cell></row><row><cell cols="2">SDDMM</cell><cell>60%</cell><cell>31% 9%</cell><cell>SpMM</cell><cell>SDDMM 54%</cell><cell>21% 17% 8%</cell><cell>SpMM add</cell></row><row><cell></cell><cell></cell><cell cols="2">(a) inference</cell><cell></cell><cell cols="2">(b) training</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 6 .</head><label>6</label><figDesc>Speedup of Optane-based single-machine training over DistDGL -Time (unit: sec) is for processing 150K edges.</figDesc><table><row><cell></cell><cell></cell><cell cols="3">DistDGL w/o DistDGL w/ Optane sampling sampling</cell><cell cols="2">speedup over speedup over w/o sampling w/ sampling</cell></row><row><cell></cell><cell>m-x25</cell><cell>139</cell><cell>7</cell><cell>100</cell><cell>1.4×</cell><cell>0.07×</cell></row><row><cell>NGCF-1L-128E</cell><cell>g-x256</cell><cell>41</cell><cell>13</cell><cell>103</cell><cell>0.4×</cell><cell>0.13×</cell></row><row><cell></cell><cell>a-x100</cell><cell>45</cell><cell>14</cell><cell>155</cell><cell>0.3×</cell><cell>0.09×</cell></row><row><cell></cell><cell>m-x25</cell><cell>66651</cell><cell>92</cell><cell>187</cell><cell>355.7×</cell><cell>0.5×</cell></row><row><cell>NGCF-2L-128E</cell><cell>g-x256</cell><cell>20434</cell><cell>234</cell><cell>228</cell><cell>89.8×</cell><cell>1.0×</cell></row><row><cell></cell><cell>a-x100</cell><cell>18626</cell><cell>272</cell><cell>308</cell><cell>60.5×</cell><cell>0.9×</cell></row><row><cell></cell><cell>m-x25</cell><cell>/</cell><cell>9219</cell><cell>287</cell><cell>/</cell><cell>32.1×</cell></row><row><cell>NGCF-3L-128E</cell><cell>g-x256</cell><cell>/</cell><cell>27209</cell><cell>335</cell><cell>/</cell><cell>81.2×</cell></row><row><cell></cell><cell>a-x100</cell><cell>/</cell><cell>36054</cell><cell>425</cell><cell>/</cell><cell>84.9×</cell></row><row><cell></cell><cell>m-x25</cell><cell>72</cell><cell>5</cell><cell>60</cell><cell>1.2×</cell><cell>0.09×</cell></row><row><cell>LightGCN-1L-128E</cell><cell>g-x256</cell><cell>24</cell><cell>12</cell><cell>70</cell><cell>0.3×</cell><cell>0.16×</cell></row><row><cell></cell><cell>a-x100</cell><cell>29</cell><cell>13</cell><cell>124</cell><cell>0.2×</cell><cell>0.11×</cell></row><row><cell></cell><cell>m-x25</cell><cell>36847</cell><cell>60</cell><cell>106</cell><cell>347.1×</cell><cell>0.6×</cell></row><row><cell>LightGCN-2L-128E</cell><cell>g-x256</cell><cell>11331</cell><cell>119</cell><cell>140</cell><cell>81.1×</cell><cell>0.9×</cell></row><row><cell></cell><cell>a-x100</cell><cell>10649</cell><cell>137</cell><cell>251</cell><cell>42.5×</cell><cell>0.6×</cell></row><row><cell></cell><cell>m-x25</cell><cell>/</cell><cell>5440</cell><cell>170</cell><cell>/</cell><cell>31.9×</cell></row><row><cell>LightGCN-3L-128E</cell><cell>g-x256</cell><cell>/</cell><cell>15264</cell><cell>197</cell><cell>/</cell><cell>77.5×</cell></row><row><cell></cell><cell>a-x100</cell><cell>/</cell><cell>21233</cell><cell>357</cell><cell>/</cell><cell>59.4×</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_0"><p>https://pytorch.org/tutorials/recipes/recipes/profiler_recipe.html</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_1"><p>https://github.com/pythonprofilers/memory_profiler</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="6" xml:id="foot_2"><p>https://docs.dgl.ai/api/python/dgl.ops.html</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="7" xml:id="foot_3"><p>When the number of neighbors for a vertex is smaller than the sampling factor, all the neighbors are selected, hence effectively no sampling for the vertex.</p></note>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<ptr target="https://thememoryguy.com/intels-optane-dimm-price-model" />
+		<title level="m">Optane DIMM Price Model</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Memkind</surname></persName>
+		</author>
+		<ptr target="https://github.com/memkind/memkind" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Pmdk</surname></persName>
+		</author>
+		<ptr target="https://github.com/pmem/pmdk" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<ptr target="https://www.tomshardware.com/news/intel-kills-optane-memory-business-for-good" />
+		<title level="m">Intel Kills Optane Memory Business, Pays $559 Million Inventory Write-Off</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title/>
+		<ptr target="https://www.theregister.com/2022/08/02/kioxia_everspin_persistent_memory" />
+	</analytic>
+	<monogr>
+		<title level="j">Last Week Intel Killed Optane. Today, Kioxia and Everspin Announced Comparable Tech</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Rabbit Order: Just-in-Time Parallel Reordering for Fast Graph Analysis</title>
+		<author>
+			<persName><forename type="first">Junya</forename><surname>Arai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hiroaki</forename><surname>Shiokawa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Takeshi</forename><surname>Yamamuro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Makoto</forename><surname>Onizuka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sotetsu</forename><surname>Iwamura</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int&apos;l Parallel and Distributed Processing Symp. (IPDPS)</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">When is Graph Reordering an Optimization? Studying the Effect of Lightweight Graph Reordering Across Applications and Input Graphs</title>
+		<author>
+			<persName><forename type="first">Vignesh</forename><surname>Balaji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brandon</forename><surname>Lucia</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Int&apos;l Symp. on Workload Characterization (IISWC)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<author>
+			<persName><forename type="first">Jessica</forename><forename type="middle">B</forename><surname>Peter W Battaglia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Victor</forename><surname>Hamrick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alvaro</forename><surname>Bapst</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vinicius</forename><surname>Sanchez-Gonzalez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mateusz</forename><surname>Zambaldi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrea</forename><surname>Malinowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Tacchetti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Raposo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ryan</forename><surname>Santoro</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Faulkner</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1806.01261</idno>
+		<title level="m">Relational Inductive Biases, Deep Learning, and Graph Networks</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<author>
+			<persName><forename type="first">Francois</forename><surname>Belletti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karthik</forename><surname>Lakshmanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Walid</forename><surname>Krichene</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi-Fan</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Anderson</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1901.08910</idno>
+		<title level="m">Scalable Realistic Recommendation Datasets through Fractal Expansions</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Graph Convolutional Matrix Completion</title>
+		<author>
+			<persName><forename type="first">Rianne</forename><surname>Van Den</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1706.02263</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Stochastic Training of Graph Convolutional Networks with Variance Reduction</title>
+		<author>
+			<persName><forename type="first">Jianfei</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Le</forename><surname>Song</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int&apos;l Conf. on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">FastGCN: Fast Learning with Graph Convolutional Networks via Importance Sampling</title>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tengfei</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cao</forename><surname>Xiao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Int&apos;l Conf. on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Wide &amp; Deep Learning for Recommender Systems</title>
+		<author>
+			<persName><forename type="first">Heng-Tze</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Levent</forename><surname>Koc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeremiah</forename><surname>Harmsen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tal</forename><surname>Shaked</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tushar</forename><surname>Chandra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hrishi</forename><surname>Aradhye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Glen</forename><surname>Anderson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Greg</forename><surname>Corrado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Chai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mustafa</forename><surname>Ispir</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Workshop on Deep Learning for Recommender Systems</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Friendship and Mobility: User Movement in Location-Based Social Networks</title>
+		<author>
+			<persName><forename type="first">Eunjoon</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seth</forename><forename type="middle">A</forename><surname>Myers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int&apos;l Conf. on Knowledge Discovery and Data Mining (KDD)</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Maximizing Persistent Memory Bandwidth Utilization for OLAP Workloads</title>
+		<author>
+			<persName><forename type="first">Björn</forename><surname>Daase</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lars</forename><forename type="middle">Jonas</forename><surname>Bollmeier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lawrence</forename><surname>Benson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tilmann</forename><surname>Rabl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int&apos;l Conf. on Management of Data (SIGMOD)</title>
+		<imprint>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<author>
+			<persName><forename type="first">Amitabha</forename><surname>Subramanya R Dulloor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheguang</forename><surname>Roy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Narayanan</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nadathur</forename><surname>Sundaram</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rajesh</forename><surname>Satish</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeff</forename><surname>Sankaran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karsten</forename><surname>Jackson</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Schwan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">European Conf. on Computer Systems (EuroSys)</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Wenqi</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qing</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dawei</forename><surname>Yin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Graph Neural Networks for Social Recommendation. Int&apos;l World Wide Web Conf</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<publisher>WWW</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<author>
+			<persName><forename type="first">Swapnil</forename><surname>Gandhi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anand Padmanabha</forename><surname>Iyer</surname></persName>
+		</author>
+		<title level="m">Distributed Deep Graph Learning at Scale. USENIX Symp. on Operating Systems Design and Implementation</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Understanding the Design Space of Sparse/Dense Multiphase Dataflows for Mapping Graph Neural Networks on Spatial Accelerators</title>
+		<author>
+			<persName><forename type="first">Raveesh</forename><surname>Garg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francisco</forename><surname>Muñoz-Martínez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Guirado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Akshay</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergi</forename><surname>Abadal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manuel</forename><forename type="middle">E</forename><surname>José L Abellán</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eduard</forename><surname>Acacio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sivasankaran</forename><surname>Alarcón</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Rajamanickam</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2103.07977</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">AWB-GCN: A Graph Convolutional Network Accelerator with Runtime Workload Rebalancing</title>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>Geng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Runbin</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chunshu</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianqi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanfei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pouya</forename><surname>Haghi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antonino</forename><surname>Tumeo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuai</forename><surname>Che</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steve</forename><surname>Reinhardt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Int&apos;l Symp. on Microarchitecture (MICRO)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Neural Message Passing for Quantum Chemistry</title>
+		<author>
+			<persName><forename type="first">Justin</forename><surname>Gilmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Samuel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><forename type="middle">F</forename><surname>Schoenholz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Riley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><forename type="middle">E</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Dahl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int&apos;l Conf. on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<author>
+			<persName><forename type="first">Priya</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Piotr</forename><surname>Dollár</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ross</forename><surname>Girshick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pieter</forename><surname>Noordhuis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lukasz</forename><surname>Wesolowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aapo</forename><surname>Kyrola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Tulloch</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1706.02677</idno>
+		<title level="m">Yangqing Jia, and Kaiming He. Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">node2vec: Scalable Feature Learning for Networks</title>
+		<author>
+			<persName><forename type="first">Aditya</forename><surname>Grover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int&apos;l Conf. on Knowledge Discovery and Data Mining</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Inductive Representation Learning on Large Graphs</title>
+		<author>
+			<persName><forename type="first">Will</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhitao</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conf. on Neural Information Processing Systems (NIPS)</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Maxwell</forename><surname>Harper</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joseph</forename><forename type="middle">A</forename><surname>Konstan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The MovieLens Datasets: History and Context. ACM Trans. on Interactive Intelligent Systems</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Ups and Downs: Modeling the Visual Evolution of Fashion Trends with One-Class Collaborative Filtering</title>
+		<author>
+			<persName><forename type="first">Ruining</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julian</forename><surname>Mcauley</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Int&apos;l World Wide Web Conf</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<publisher>WWW</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">LightGCN: Simplifying and Powering Graph Convolution Network for Recommendation</title>
+		<author>
+			<persName><forename type="first">Xiangnan</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kuan</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yongdong</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int&apos;l Conf. on Research and Development in Information Retrieval (SIGIR)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Xiangnan</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lizi</forename><surname>Liao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanwang</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liqiang</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xia</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tat-Seng</forename><surname>Chua</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neural Collaborative Filtering. Int&apos;l World Wide Web Conf</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<publisher>WWW</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Xiangnan</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanwang</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Min-Yen</forename><surname>Kan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tat-Seng</forename><surname>Chua</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Fast Matrix Factorization for Online Recommendation with Implicit Feedback. Int&apos;l Conf. on Research and Development in Information Retrieval</title>
+		<imprint>
+			<biblScope unit="issue">SIGIR</biblScope>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">A Case Against Hardware Managed DRAM Caches for NVRAM Based Systems</title>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Hildebrand</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julian</forename><forename type="middle">T</forename><surname>Angeles</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Lowe-Power</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Venkatesh</forename><surname>Akella</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int&apos;l Symp. on Performance Analysis of Systems and Software (ISPASS)</title>
+		<imprint>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">AutoTM: Automatic Tensor Movement in Heterogeneous Memory Systems using Integer Linear Programming. Architectural Support for Programming Languages and Operating Systems (ASPLOS)</title>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Hildebrand</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jawad</forename><surname>Khan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanjeev</forename><surname>Trika</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Lowe-Power</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Venkatesh</forename><surname>Akella</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Adaptive Sparse Tiling for Sparse Matrix Multiplication</title>
+		<author>
+			<persName><forename type="first">Changwan</forename><surname>Hong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aravind</forename><surname>Sukumaran-Rajam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Israt</forename><surname>Nisa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kunal</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sadayappan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGPLAN Conf. on Principles and Practice of Parallel Programming (PPoPP)</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">FeatGraph: A Flexible and Efficient Backend for Graph Neural Network Systems</title>
+		<author>
+			<persName><forename type="first">Yuwei</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zihao</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiali</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Da</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mu</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiru</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yida</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int&apos;l Conf. on High Performance Computing, Networking, Storage and Analysis (SC)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">Basic Performance Measurements of the Intel Optane DC Persistent Memory Module</title>
+		<author>
+			<persName><forename type="first">Joseph</forename><surname>Izraelevitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lu</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juno</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amirsaman</forename><surname>Memaripour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yun</forename><forename type="middle">Joon</forename><surname>Soh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zixuan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Subramanya R Dulloor</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1903.05714</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title level="m" type="main">Food Discovery with Uber Eats: Using Graph Learning to Power Recommendations</title>
+		<author>
+			<persName><forename type="first">Ankit</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Isaac</forename><surname>Liu</surname></persName>
+		</author>
+		<ptr target="https://eng.uber.com/uber-eats-graph-learning" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note>Ankur Sarda, and Piero Molino</note>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Improving the Accuracy, Scalability, and Performance of Graph Neural Networks with Roc</title>
+		<author>
+			<persName><forename type="first">Zhihao</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sina</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mingyu</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matei</forename><surname>Zaharia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Aiken</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conf. on Machine Learning and Systems (MLSys)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<monogr>
+		<title level="m" type="main">Semi-Supervised Classification with Graph Convolutional Networks</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1609.02907</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Matrix Factorization Techniques for Recommender Systems</title>
+		<author>
+			<persName><forename type="first">Yehuda</forename><surname>Koren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Bell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Volinsky</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computer</title>
+		<imprint>
+			<biblScope unit="volume">42</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<monogr>
+		<title level="m" type="main">One Weird Trick for Parallelizing Convolutional Neural Networks</title>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Krizhevsky</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1404.5997</idno>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Training Graph Neural Networks with 1000 Layers</title>
+		<author>
+			<persName><forename type="first">Guohao</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Müller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernard</forename><surname>Ghanem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vladlen</forename><surname>Koltun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int&apos;l Conf. on Machine Learning (ICML)</title>
+		<imprint>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<author>
+			<persName><forename type="first">Guohao</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Muller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ali</forename><surname>Thabet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernard</forename><surname>Ghanem</surname></persName>
+		</author>
+		<title level="m">Deep-GCNs: Can GCNs Go As Deep As CNNs? Conf. on Computer Vision and Pattern Recognition (CVPR)</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">CXL-Based Memory Pooling Systems for Cloud Platforms</title>
+		<author>
+			<persName><forename type="first">Huaicheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><forename type="middle">S</forename><surname>Berger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stanko</forename><surname>Novakovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lisa</forename><surname>Hsu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Ernst</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pantea</forename><surname>Zardoshti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Monish</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ishwar</forename><surname>Agarwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Hill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marcus</forename><surname>Fontoura</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Architectural Support for Programming Languages and Operating Systems (ASPLOS)</title>
+		<imprint>
+			<biblScope unit="page">2023</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<monogr>
+		<author>
+			<persName><forename type="first">Al</forename><surname>Hasan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Maruf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhishek</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Dhanotia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niket</forename><surname>Weiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pallab</forename><surname>Agarwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Bhattacharya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mosharaf</forename><surname>Petersen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shobhit</forename><surname>Chowdhury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prakash</forename><surname>Kanaujia</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Chauhan</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2206.02878</idno>
+		<title level="m">TPP: Transparent Page Placement for CXL-Enabled Tiered Memory</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<monogr>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Mccandlish</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jared</forename><surname>Kaplan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dario</forename><surname>Amodei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Openai</forename><surname>Dota</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Team</forename></persName>
+		</author>
+		<idno type="arXiv">arXiv:1812.06162</idno>
+		<title level="m">An Empirical Model of Large-Batch Training</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">DistGNN: Scalable Distributed Training for Large-Scale Graph Neural Networks</title>
+		<author>
+			<persName><forename type="first">Vasimuddin</forename><surname>Md</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanchit</forename><surname>Misra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guixiang</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ramanarayan</forename><surname>Mohanty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evangelos</forename><surname>Georganas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Heinecke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dhiraj</forename><surname>Kalamkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nesreen K</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sasikanth</forename><surname>Avancha</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int&apos;l Conf. on High Performance Computing, Networking, Storage and Analysis</title>
+		<imprint>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<monogr>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Greg</forename><forename type="middle">S</forename><surname>Corrado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeff</forename><surname>Dean</surname></persName>
+		</author>
+		<title level="m">Distributed Representations of Words and Phrases and their Compositionality. Conf. on Neural Information Processing Systems (NIPS)</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Software-Hardware Co-design for Fast and Scalable Training of Deep Learning Recommendation Models</title>
+		<author>
+			<persName><forename type="first">Dheevatsa</forename><surname>Mudigere</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuchen</forename><surname>Hao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianyu</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhihao</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Tulloch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Srinivas</forename><surname>Sridharan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xing</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mustafa</forename><surname>Ozdal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jade</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jongsoo</forename><surname>Park</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Int&apos;l Symp. on Computer Architecture (ISCA)</title>
+		<imprint>
+			<biblScope unit="page">2022</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Exploiting Locality in Graph Analytics through Hardware-Accelerated Traversal Scheduling</title>
+		<author>
+			<persName><forename type="first">Anurag</forename><surname>Mukkara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nathan</forename><surname>Beckmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maleen</forename><surname>Abeydeera</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaosong</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Sanchez</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Int&apos;l Symp. on Microarchitecture (MICRO)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<author>
+			<persName><forename type="first">Maxim</forename><surname>Naumov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dheevatsa</forename><surname>Mudigere</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Hao-Jun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianyu</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Narayanan</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jongsoo</forename><surname>Sundaraman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Udit</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carole-Jean</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alisson</forename><forename type="middle">G</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Azzolini</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1906.00091</idno>
+		<title level="m">Deep Learning Recommendation Model for Personalization and Recommendation Systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">DeepWalk: Online Learning of Social Representations</title>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rami</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Skiena</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int&apos;l Conf. on Knowledge Discovery and Data Mining (KDD)</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">HeMem: Scalable Tiered Memory Management for Big Data Applications and Real NVM</title>
+		<author>
+			<persName><forename type="first">Amanda</forename><surname>Raybuck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Stamler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mattan</forename><surname>Erez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Peter</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM Symp. on Operating Systems Principles (SOSP)</title>
+		<imprint>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<monogr>
+		<author>
+			<persName><forename type="first">Steffen</forename><surname>Rendle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christoph</forename><surname>Freudenthaler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zeno</forename><surname>Gantner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lars</forename><surname>Schmidt-Thieme</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bpr</surname></persName>
+		</author>
+		<title level="m">Bayesian Personalized Ranking from Implicit Feedback. Conf. on Uncertainty in Artificial Intelligence (UAI)</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<monogr>
+		<author>
+			<persName><forename type="first">John</forename><surname>Thorpe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yifan</forename><surname>Qiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Eyolfson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shen</forename><surname>Teng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guanzhou</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhihao</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinliang</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Keval</forename><surname>Vora</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ravi</forename><surname>Netravali</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Miryung</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guoqing</forename><forename type="middle">Harry</forename><surname>Xu</surname></persName>
+		</author>
+		<title level="m">Dorylus: Affordable, Scalable, and Accurate GNN Training with Distributed CPU Servers and Serverless Threads. USENIX Symp. on Operating Systems Design and Implementation (OSDI)</title>
+		<imprint>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Petar</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillem</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arantxa</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adriana</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>Lio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Graph Attention Networks. Int&apos;l Conf. on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<monogr>
+		<title level="m" type="main">Deep Graph Library: A Graph-Centric, Highly-Performant Package for Graph Neural Networks</title>
+		<author>
+			<persName><forename type="first">Minjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Da</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zihao</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quan</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mufei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinjing</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lingfan</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Gai</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1909.01315</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiangnan</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fuli</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tat-Seng</forename><surname>Chua</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neural Graph Collaborative Filtering. Int&apos;l Conf. on Research and Development in Information Retrieval</title>
+		<imprint>
+			<biblScope unit="issue">SIGIR</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<monogr>
+		<author>
+			<persName><forename type="first">Yuke</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Boyuan</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gushu</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuangchen</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yufei</forename><surname>Ding</surname></persName>
+		</author>
+		<title level="m">{GNNAdvisor}: An adaptive and efficient runtime system for {GNN} acceleration on {GPUs}. USENIX Symp. on Operating Systems Design and Implementation (OSDI)</title>
+		<imprint>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<monogr>
+		<author>
+			<persName><forename type="first">Shiwen</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fei</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wentao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bin</forename><surname>Cui</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2011.02260</idno>
+		<title level="m">Graph Neural Networks in Recommender Systems: A Survey</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<monogr>
+		<author>
+			<persName><forename type="first">Xing</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianxun</forename><surname>Lian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiting</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fangzhao</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongwei</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhongxia</forename><surname>Chen</surname></persName>
+		</author>
+		<ptr target="https://www.microsoft.com/en-us/research/lab/microsoft-research-asia/articles/personalized-recommendation-systems" />
+		<title level="m">Personalized Recommendation Systems: Five Hot Research Topics You Must Know</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<analytic>
+		<title level="a" type="main">Graphiler: Optimizing Graph Neural Networks with Message Passing Data Flow Graph</title>
+		<author>
+			<persName><forename type="first">Zhiqiang</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zihao</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Fan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conf. on Machine Learning and Systems (MLSys)</title>
+		<imprint>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<monogr>
+		<author>
+			<persName><forename type="first">Mingyu</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xing</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ling</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yujing</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaochun</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhimin</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongrui</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Xie</surname></persName>
+		</author>
+		<title level="m">HyGCN: A GCN Accelerator with Hybrid Architecture. Int&apos;l Symp. on High-Performance Computer Architecture (HPCA)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<analytic>
+		<title level="a" type="main">An Empirical Guide to the Behavior and Use of Scalable Persistent Memory</title>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juno</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Morteza</forename><surname>Hoseinzadeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joseph</forename><surname>Izraelevitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steve</forename><surname>Swanson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">USENIX Conf. on File and Storage Technologies (FAST)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<analytic>
+		<title level="a" type="main">Graph Convolutional Neural Networks for Web-Scale Recommender Systems</title>
+		<author>
+			<persName><forename type="first">Rex</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruining</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kaifeng</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pong</forename><surname>Eksombatchai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int&apos;l Conf. on Knowledge Discovery and Data Mining (KDD)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b63">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>You</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jing</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sashank</forename><surname>Reddi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Hseu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanjiv</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Srinadh</forename><surname>Bhojanapalli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodan</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Demmel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kurt</forename><surname>Keutzer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cho-Jui</forename><surname>Hsieh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Large Batch Optimization for Deep Learning: Training BERT in 76 Minutes. Int&apos;l Conf. on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b64">
+	<monogr>
+		<author>
+			<persName><forename type="first">Weijie</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingyuan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Deping</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yulei</forename><surname>Qian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronglai</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ping</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Aibox</surname></persName>
+		</author>
+		<title level="m">CTR Prediction Model Training on a Single Node. Int&apos;l Conf. on Information and Knowledge Management (CIKM)</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b65">
+	<analytic>
+		<title level="a" type="main">DistDGL: Distributed Graph Neural Network Training for Billion-Scale Graphs</title>
+		<author>
+			<persName><forename type="first">Da</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinjing</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qidong</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quan</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Karypis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE/ACM Workshop on Irregular Applications: Architectures and Algorithms</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note>IA3</note>
+</biblStruct>
+
+<biblStruct xml:id="b66">
+	<analytic>
+		<title level="a" type="main">AliGraph: A Comprehensive Graph Neural Network Platform</title>
+		<author>
+			<persName><forename type="first">Rong</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kun</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongxia</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chang</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baole</forename><surname>Ai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yong</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingren</forename><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. VLDB Endow</title>
+		<meeting>VLDB Endow</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

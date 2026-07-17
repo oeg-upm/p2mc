@@ -1,0 +1,1470 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">SPARSETRANSX: EFFICIENT TRAINING OF TRANSLATION-BASED KNOWLEDGE GRAPH EMBEDDINGS USING SPARSE MATRIX OPERATIONS</title>
+				<funder ref="#_F8Fyr3C #_zDfAXkA">
+					<orgName type="full">National Science Foundation</orgName>
+					<orgName type="abbreviated">NSF</orgName>
+				</funder>
+				<funder ref="#_VznwtAx #_4zBjES7">
+					<orgName type="full">DOE</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2025-04-30">30 Apr 2025</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Md</forename><surname>Saidul</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Hoque</forename><surname>Anik</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Ariful</forename><surname>Azad</surname></persName>
+						</author>
+						<title level="a" type="main">SPARSETRANSX: EFFICIENT TRAINING OF TRANSLATION-BASED KNOWLEDGE GRAPH EMBEDDINGS USING SPARSE MATRIX OPERATIONS</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2025-04-30">30 Apr 2025</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">79816A8C7E719931F2DA4F0E218DA580</idno>
+					<idno type="arXiv">arXiv:2502.16949v3[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:23+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Knowledge graph (KG) learning offers a powerful framework for generating new knowledge and making inferences. Training KG embedding can take a significantly long time, especially for larger datasets. Our analysis shows that the gradient computation of embedding is one of the dominant functions in the translation-based KG embedding training loop. We address this issue by replacing the core embedding computation with SpMM (Sparse-Dense Matrix Multiplication) kernels. This allows us to unify multiple scatter (and gather) operations as a single operation, reducing training time and memory usage. We create a general framework for training KG models using sparse kernels and implement four models, namely TransE, TransR, TransH, and TorusE. Our sparse implementations exhibit up to 5.3x speedup on the CPU and up to 4.2x speedup on the GPU with a significantly low GPU memory footprint. The speedups are consistent across large and small datasets for a given model. Our proposed sparse approach can be extended to accelerate other translation-based (such as TransC, TransM, etc.) and non-translational (such as DistMult, ComplEx, RotatE, etc.) models as well. An implementation of the SpTransX framework is publicly available as a Python package in https://github.com/HipGraph/SpTransX.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>Knowledge Graphs (KGs) are structured as directed graphs containing entities as nodes and relations as edges. Each edge in a KG is typically stored as a triplet (head, relation, tail)-abbreviated as (h, r, t)-where head and tail are entities connected by a relation that denotes the nature of their interaction. Knowledge graph embedding (KGE) techniques map these entities and relations into a continuous vector space, enabling efficient computation and manipulation while preserving the underlying structural properties of the KG. The entity and relation embeddings are widely used in many downstream tasks, such as KG completion <ref type="bibr" target="#b2">(Bordes et al., 2013;</ref><ref type="bibr" target="#b5">Chen et al., 2020)</ref>, entity classification <ref type="bibr" target="#b26">(Nickel et al., 2012)</ref>, and entity resolution <ref type="bibr" target="#b3">(Bordes et al., 2014)</ref>.</p><p>Translational models <ref type="bibr" target="#b2">(Bordes et al., 2013;</ref><ref type="bibr" target="#b21">Lin et al., 2015)</ref> are a widely used and effective class of KGE methods. These models represent entities and relations in a continuous vector space, where relations are interpreted as translations applied to entity embeddings. However, training translational KGE models for large-scale KGs is computationally intensive and incurs high memory overhead, especially when large batches are used. These challenges are due in part to the fact that current KGE implementations 1 Department of Computer Science and Engineering, Texas A&amp;M University, USA. Correspondence to: Md Saidul Hoque Anik &lt;anik@tamu.edu&gt;.</p><p>Accepted in MLSys 2025 conference for presentation represent triplets as dense matrices and rely heavily on finegrained scatter-gather computations during training. This fine-grained computational model contributes to the following bottlenecks: (1) irregular memory access patterns from fine-grained operations on KGs and embeddings, which increase memory access costs, (2) increased backpropagation expenses due to more granular gradient computations, and (3) significant memory demands for dense matrices. In this paper, we address these issues by proposing a sparsematrix representation of the KG and utilizing highly optimized sparse-matrix operations to streamline KGE training, thereby reducing both computational and memory bottlenecks.</p><p>Expressing graph operations through sparse linear algebra has been highly effective for developing efficient and scalable graph neural networks (GNNs). As a result, popular graph machine learning libraries, such as PyTorch Geometric (PyG) <ref type="bibr" target="#b11">(Fey &amp; Lenssen, 2019)</ref> and DGL <ref type="bibr" target="#b37">(Wang, 2019)</ref>, utilize optimized implementations of sparse-dense matrix multiplication (SpMM). Despite the widespread success of sparse operations in GNNs, existing KGE libraries have yet to adopt sparse operations for training KGE models. Even models utilizing sparse embeddings, such as TranSparse <ref type="bibr" target="#b18">(Ji et al., 2016)</ref>, store embeddings as dense matrices, limiting their ability to fully leverage sparse matrix operations.</p><p>One of this paper's main contributions is the development of sparse formulations for several popular translation-based KGE models. Adapting different translation models to ) uses a single embedding space for both entities and relations, while TransR <ref type="bibr" target="#b21">(Lin et al., 2015)</ref> uses separate spaces. Despite these differences, we designed a unified framework that allows diverse translation models to be represented through sparse matrices and mapped to sparse matrix operations like SpMM. We collectively refer to these sparse variants of translation-based embedding methods as SpTransX.</p><p>We develop a comprehensive library based on our sparse formulation. This library consolidates most computations into several SpMM function calls, allowing optimized SpMM to directly accelerate the overall runtime of KGE training. We also discuss how to extend this concept to other nontranslational models such as DistMult <ref type="bibr">(Yang et al., 2014a)</ref> or ComplEx <ref type="bibr" target="#b35">(Trouillon et al., 2016)</ref>  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">BACKGROUND</head><p>Knowledge graph training is performed by learning the representations or embeddings of the entities and their corresponding relations on a set of training triplets or subgraphs. Each triplet or edge (in subgraph) contains a valid combination of subject (head), predicate (relation), and object (tail).</p><p>Once trained, the embeddings can illustrate their semantic meaning and structure, enabling them to effectively perform reasoning-based tasks such as link prediction and entity classification. The training typically uses machine learning techniques and involves a gradient descent algorithm.</p><p>The exact forward propagation process can vary depending on the model type. Translation-based models, such as TransE, TransR, etc, are widely used due to their simple yet effective way of capturing relations between entities. The training can also be done by using bilinear methods (Dist-Mult <ref type="bibr">(Yang et al., 2014b)</ref>, RESCAL <ref type="bibr">(Nickel et al., 2011b)</ref>), deep learning and convolution (ConvKB <ref type="bibr" target="#b23">(Nguyen et al., 2017)</ref>), or Graph Neural Networks (R-GCN <ref type="bibr" target="#b32">(Schlichtkrull et al., 2018)</ref>).</p><p>Training a translation-based knowledge graph embedding typically involves taking a list of triplets (head, tail, relation index) and optimizing their corresponding embeddings to minimize the distance between the ⃗ tail and ⃗ head+ ⃗ relation. The translational models vary based on (1) the linear transformation applied to the entities and relations and (2) the distance metric. The linear transformation can be applied to (a) individual entities/relations, (b) head -tail, or (c) the overall head -tail + relation. The measurement can be in a typical Euclidean space (L1 or L2) or a toroidal (wraparound) space distance (L1 torus or L2 torus) function.</p><p>The training is typically done in batches, where a 'batch' of head, tail, and relations are fetched for training instead of single ones. sition of the head, tail, and relation entities. In each epoch, embeddings are fetched from the indices, and linear transformation is applied to them to compute the final loss. This means the forward propagation involves several (typically three or more) 'gather' operations (see Figure <ref type="figure">1(a)</ref>) that collect the index batch's head, tail, and relation embeddings. Some models also require one or more transform matrices (may be based on the relation), which are also gathered in sthis step. Consequently, the backward propagation performs the opposite, the 'scatter' operations that distribute gradients across the corresponding indices (see Figure <ref type="figure">1(b)</ref>)</p><p>These individual operations, especially the gradient computations in the backward step, can take up around 40% of the CPU's training time (see Figure <ref type="figure">2</ref>). In particular, we observe that embedding gradient computation is among the top three CPU-intensive functions for most translational models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">RELATED WORK</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Translational Models for KGE</head><p>Translation-based models represent entities and relations in a continuous vector space, interpreting relations as translations operating on entity embeddings. Several well-known models follow this approach, including TransE <ref type="bibr" target="#b2">(Bordes et al., 2013)</ref>, TransR <ref type="bibr" target="#b21">(Lin et al., 2015)</ref>, TransH <ref type="bibr" target="#b38">(Wang et al., 2014)</ref>, TransD <ref type="bibr" target="#b17">(Ji et al., 2015)</ref>, TransA <ref type="bibr" target="#b39">(Xiao et al., 2015)</ref>, TransG <ref type="bibr" target="#b40">(Xiao et al., 2016)</ref>, TransC <ref type="bibr" target="#b22">(Lv et al., 2018)</ref>, TransM <ref type="bibr" target="#b10">(Fan et al., 2014)</ref>, TorusE <ref type="bibr" target="#b9">(Ebisu &amp; Ichise, 2018)</ref>, and KG2E <ref type="bibr" target="#b14">(He et al., 2015)</ref>. Each model varies in how it represents the head, relation, and tail embeddings to capture relational semantics effectively. For instance, TransE embeds entities and relations in the same vector space R d , assuming that relations can be modeled as a simple addition between the head and tail entities. In contrast, TransR utilizes distinct vector spaces for entities and relations, allowing it to better capture heterogeneous relation types, while TransE struggles with symmetric and one-to-many relations. Some models, like TransH, introduce translations on hyperplanes to address the limitations of basic Euclidean embeddings. More recently, models such as rotatE <ref type="bibr" target="#b33">(Sun et al., 2019)</ref> have enabled translations within hyperbolic space instead of Euclidean space, allowing for better representation of hierarchical structures commonly found in some knowledge graphs. It has been observed that translation-based models are typically more computationally efficient compared to semantic matching models that use a bilinear score function, such as DistMult <ref type="bibr">(Yang et al., 2014a)</ref>, RESCAL <ref type="bibr">(Nickel et al., 2011a)</ref>, and ComplEx <ref type="bibr" target="#b35">(Trouillon et al., 2016)</ref>. This efficiency, along with their adaptability across different KG structures, makes translation-based models a popular choice for large-scale knowledge graph applications.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">KGE frameworks</head><p>Several frameworks are available for training knowledge graphs (KGs). Some, like TorchKGE <ref type="bibr" target="#b4">(Boschin, 2020)</ref> and DGL-KE <ref type="bibr" target="#b45">(Zheng et al., 2020)</ref>, are specifically designed for this purpose. Others, such as PyTorch Geometric <ref type="bibr" target="#b11">(Fey &amp; Lenssen, 2019)</ref> and GraphStorm <ref type="bibr" target="#b46">(Zheng et al., 2024)</ref>, offer facilities for training KG models in addition to modules for training graph neural networks.</p><p>Many frameworks are built on top of the PyTorch Framework, including TorchKGE, PyKeen <ref type="bibr" target="#b0">(Ali et al., 2021)</ref>, Py-Torch Geometric, etc. AmpliGraph <ref type="bibr" target="#b7">(Costabello et al., 2019)</ref> has Tensorflow 2.0 backend. Some frameworks support hybrid backends, such as DGL-KE or OpenKE <ref type="bibr" target="#b13">(Han et al., 2018)</ref>. DGL-KE supports PyTorch and MXNet as the backend. OpenKE supports PyTorch, Tensorflow, and C++ as the backend. Most frameworks have support for Python. Some frameworks, such as Pykg2vec <ref type="bibr" target="#b44">(Yu et al., 2019)</ref> or DGL-KE, choose not to use the autograd feature of the backend ML, such as PyTorch, and implement their custom gradient update mechanism. PyKeen is designed to be highly extensible and uses a modular code base. It features automatic memory optimization support that generates sub-batches when the user-defined batch does not fit in the memory.</p><p>Most frameworks, such as TorchKGE, PyG, and PyKeen, use PyTorch's embedding module directly to store entity and relation embeddings. Others, such as DGL-KE, convert the training triplets into DGL graphs before training. DGL-KE, PyTorch BigGraph <ref type="bibr" target="#b20">(Lerer et al., 2019)</ref>, PyKeen, and several other frameworks allow multi-CPU and multi-GPU training using Python and distributed frameworks such as DGL or PyTorch Lightning.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Sparse Operations in Graph ML</head><p>Expressing graph operations through sparse linear algebra has proven highly effective for developing efficient and scalable graph learning algorithms. For example, the forward and backward propagation in graph convolutional networks (GCNs) and graph attention networks (GATs) can be optimized with sampled dense-dense matrix multiplication (SDDMM), sparse-dense matrix multiplication (SpMM), or their combination, known as FusedMM <ref type="bibr" target="#b11">(Fey &amp; Lenssen, 2019;</ref><ref type="bibr" target="#b37">Wang, 2019;</ref><ref type="bibr" target="#b30">Rahman et al., 2021)</ref>. Similarly, SpMM and sparse-sparse matrix multiplication (SpGEMM) are widely used in algorithms for graph embedding <ref type="bibr" target="#b31">(Ranawaka et al., 2024;</ref><ref type="bibr">Rahman et al., 2020b)</ref>, clustering <ref type="bibr" target="#b1">(Azad et al., 2018)</ref>, and visualization <ref type="bibr">(Rahman et al., 2020a)</ref>. Consequently, popular graph machine learning libraries, such as PyTorch Geometric (PyG) <ref type="bibr" target="#b11">(Fey &amp; Lenssen, 2019)</ref> and DGL <ref type="bibr" target="#b37">(Wang, 2019)</ref>, rely on optimized implementations of SpMM, SpGEMM, and SDDMM available in vendor-provided libraries like cuSparse, MKL, or open-source libraries such as iSpLib <ref type="bibr" target="#b15">(Hoque Anik et al., 2024)</ref>, FeatGraph <ref type="bibr" target="#b16">(Hu et al., 2020)</ref>, and SparseTIR <ref type="bibr" target="#b43">(Ye et al., 2023)</ref>. Despite the wide success of sparse operations in GNNs and graph embeddings, to the best of our knowledge, existing knowledge graph embedding libraries do not leverage sparse operations for training KGE models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">METHODOLOGY</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Sparse Approach</head><p>We observe that the embedding extraction operation and its gradient computation is a bottleneck in the training of many translational models (Figure <ref type="figure">2</ref>). We tackle this by replacing the typical embedding extraction process with Sparse-Dense Matrix Multiplication (SpMM). We form a sparse incidence matrix out of the training triplets so that multiplying it with the embedding matrix would directly generate at least a portion of the scores for each triplet.</p><p>The sparse approach unifies the embedding gather operations for entities in forward propagation and scatter operations for gradients in backward propagation. This unified framework enables us to leverage high-performance matrix multiplication techniques, such as loop unrolling, cache blocking, tiling, and WARP-level GPU primitives. Additionally, we can apply advanced parallelization methods, including dynamic load balancing across threads and code generation, as well as more efficient SIMD (Single Instruction, Multiple Data) vectorization.</p><p>In the following subsections, we briefly discuss how to perform training in a sparse approach using SpMM instead of regular embedding extraction for several translation-based models. Both forward and backward propagation of our approach benefit from the efficiency of a high-performance SpMM (proof shown in Appendix G). This concept also extends broadly to various other knowledge graph embedding (KGE) methods as well, including DistMult, ComplEx, and RotateE (detailed formulations are provided in Appendix D). The sparsity of our formulation and related computational complexity are discussed in Appendix B and C.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Adjacency Matrix Formulation</head><p>We analyze the score function of several translation-based models and observe that many models such as TransE, TransR, and TransH take head, tail, and relation -and compute either (a) (head -tail) or (b) (head -tail + relation) expression before applying additional linear projections as needed. For simplicity, we refer to these as 'ht' and 'hrt' expressions, respectively. Table <ref type="table" target="#tab_2">2</ref> lists a few of such models and their corresponding score functions. For some models, the expressions mentioned earlier are apparent, and for others, we need to perform minor algebraic rearrangements. These formulations are listed from subsection 4.3 to 4.6. </p><formula xml:id="formula_0">|| ⃗ h + ⃗ r -⃗ t|| TRANSH (WANG ET AL., 2014) || ⃗ h ⊥ + ⃗ dr -⃗ t ⊥ || TRANSR (LIN ET AL., 2015) ||Mr ⃗ h + ⃗ r -Mr ⃗ t|| TORUSE (EBISU &amp; ICHISE, 2018) || ⃗ h + ⃗ r -⃗ t|| TRANSA (XIAO ET AL., 2015) | ⃗ h + ⃗ r -⃗ t| T Wr | ⃗ h + ⃗ r -⃗ t| TRANSC (LV ET AL., 2018) || ⃗ h + ⃗ r -⃗ t|| 2 2 TRANSM (FAN ET AL., 2014) wr|| ⃗ h + ⃗ r -⃗ t||</formula><p>Instead of gathering head, tail, and relations individually from the indices and then computing the ht and hrt expressions, we can directly get this result by forming an incidence matrix. The following subsection describes how we can compute ht and hrt expressions using sparse-dense matrix multiplication.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.1">ht or (head -tail) computation</head><p>Let the knowledge graph contain N entities and M triples in the training data, with an embedding size (dimension) denoted by d. To compute the ht expression, we store entity embedding in a dense matrix E ∈ R N ×d , where each row stores the embedding of an entity. We store the training triples in a sparse incidence matrix A ∈ {-1, 0, 1} M ×N , where the rows represent the training triplets and the columns represent entities. For a triplet, the corresponding column of a head or tail index is filled with the coefficient of the head or tail. In the expression head -tail, the coefficient of the head is +1 and -1 for the tail. This implies that each row of the incidence matrix contains exactly two nonzero entries. Once we multiply this incident sparse matrix A with the embedding matrix e, we get the array of (head -tail) for the corresponding training triplets. Figure <ref type="figure">3</ref>(a) shows an example of this calculation. This computed expression can be used to complete the score calculation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.2">hrt or (head + relation -tail) computation</head><p>Evaluating this expression requires accessing two separate dense matrices when entity and relation embeddings are stored individually. We can still compute this expression in a single sparse-dense matrix multiplication if we stack the entity and relations horizontally in the incidence sparse matrix and vertically as an embedding dense matrix.</p><p>Let the knowledge graph contain R relations. To compute the hrt expression with a single SpMM operation, we store the entity and relation embeddings in the same dense matrix E ∈ R (N +R)×d , where the first N row stores the embeddings of entities and the last R rows store the embeddings of relations. For this computation, we store the training triples in a sparse incidence matrix +R) , where the rows represent the training triplets and the columns represent entities and relations. As before, we place the expressions' coefficients in the corresponding columns (+1 for head and relation, -1 for tail). The relation associated with each triple is represented by placing a +1 in the corresponding column for that relation. Note that we offset the relation index by the total number of entities in the incidence matrix A. This ensures that, when multiplied, the relation index aligns correctly with the corresponding relation embedding located just below the entity embeddings. Finally, we multiply the sparse matrix with the combined dense embedding matrix to get the hrt expression result. Figure <ref type="figure">3</ref>(b) shows an example of this computation.</p><formula xml:id="formula_1">A ∈ {-1, 0, 1} M ×(N</formula><p>The following subsections contain the implementation of four translational models using the sparse approach.</p><p>Throughout the rest of the paper, we refer to these four im-plementations collectively as SparseTransX, or SpTransX in short.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">TransE Formulation</head><p>For triplets ( ⃗ h, ⃗ r, ⃗ t), where ⃗ h is the head entity vector, ⃗ r is the relation entity vector, and ⃗ t is the tail entity vector, TransE tries to enforce the following for a training set U:</p><formula xml:id="formula_2">∀( ⃗ h, ⃗ t, ⃗ r) ∈ U, ⃗ h + ⃗ r ≈ ⃗ t =⇒ ⃗ h + ⃗ r -⃗ t ≈ ⃗ 0 (1)</formula><p>For TransE, a normalization function (L1 or L2) is typically applied to this expression to get the final score. We can directly obtain this expression using the hrt computation method discussed in subsection 4.2.2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">TransR Formulation</head><p>The TransR model applies a linear projection to the head and tail before computing the score. For a projection matrix M r corresponding to relation ⃗ r, TransR tries to enforce the following translation:</p><formula xml:id="formula_3">∀( ⃗ h, ⃗ t, ⃗ r) ∈ U, M r ⃗ h + ⃗ r ≈ M r ⃗ t =⇒ M r ⃗ h + ⃗ r -M r ⃗ t ≈ ⃗ 0 =⇒ M r ( ⃗ h -⃗ t) + ⃗ r ≈ ⃗ 0<label>(2)</label></formula><p>After rearrangement, we see that it contains the (head-tail) expression. This can be computed using the ht computation method discussed in subsection 4.2.1.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.5">TransH Formulation</head><p>TransH (Translating Embeddings on Hyperplanes) extends TransE by allowing each relation to have its hyperplane, addressing the limitation that a single translation vector cannot handle 1-to-N, N-to-1, and N-to-N relations effectively.</p><p>In TransH, each relation ⃗ r is associated with a hyperplane characterized by a normal vector ⃗ w r and a translation vector ⃗ d r . The projection of entities onto the hyperplane is then used in the translation. It tries to enforce the following:</p><formula xml:id="formula_4">∀( ⃗ h, ⃗ t, ⃗ r) ∈ U, ⃗ h ⊥ + ⃗ d r ≈ ⃗ t ⊥<label>(3)</label></formula><p>Where,</p><formula xml:id="formula_5">⃗ h ⊥ = ⃗ h -( ⃗ w r T • ⃗ h) ⃗ w r ⃗ t ⊥ = ⃗ t -( ⃗ w r T • ⃗ t) ⃗ w r</formula><p>Substituting these values in Equation <ref type="formula" target="#formula_4">3</ref>, we find that for every triplet, TransH is trying to enforce: </p><formula xml:id="formula_6">⃗ h -( ⃗ w r T • ⃗ h) ⃗ w r + ⃗ d r ≈ ⃗ t -( ⃗ w r T • ⃗ t) ⃗ w r =⇒ ⃗ h -( ⃗ w r T • ⃗ h) ⃗ w r + ⃗ d r -⃗ t + ( ⃗ w r T • ⃗ t) ⃗ w r ≈ ⃗ 0 =⇒ ⃗ h -⃗ t + ⃗ d r -( ⃗ w r T • ⃗ h) ⃗ w r + ( ⃗ w r T • ⃗ t) ⃗ w r ≈ ⃗ 0 =⇒ ( ⃗ h -⃗ t) + ⃗ d r -⃗ w r T • ( ⃗ h -⃗ t) ⃗ w r ≈ ⃗ 0</formula><p>We observe that the final arrangement contains two expressions of ht. This can be computed using the ht computation method discussed in subsection 4.2.1.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.6">TorusE Formulation</head><p>The TorusE model is very similar to TransE regarding the score function. It typically uses L1/L2 torus distance instead of regular L1/L2 norm and only works with the fractional components of the embeddings.</p><p>Just like TransE, it also tries to enforce the following:</p><formula xml:id="formula_7">∀( ⃗ h, ⃗ t, ⃗ r) ∈ U, ⃗ h + ⃗ r ≈ ⃗ t =⇒ ⃗ h + ⃗ r -⃗ t ≈ ⃗ 0<label>(4)</label></formula><p>We can directly obtain this expression using the hrt computation method discussed in subsection 4.2.2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.7">SparseTransX Framework</head><p>We develop a general framework for SpTransX model training to enable efficient translation-based model training for large KG datasets. The framework is implemented using Py-Torch 2.3 and consists of several modules, which are briefly described below.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.7.1">SparseTransX Models</head><p>This module contains the sparse implementations of the translational models. These implementations are agnostic to the sparse matrix library used underneath. The models have built-in support for streaming embeddings from disc storage when the embeddings are too large to fit in CPU memory. This streaming model support is implemented using PyTorch memory-mapped tensors. Researchers often use Large Language Model (LLM) embeddings such as BERT <ref type="bibr" target="#b8">(Devlin et al., 2019)</ref>, T5 <ref type="bibr" target="#b6">(Colin, 2020)</ref>, or GPT <ref type="bibr" target="#b27">(Radford, 2018)</ref> to perform knowledge graph completion <ref type="bibr" target="#b36">(Wang et al., 2022;</ref><ref type="bibr" target="#b19">Kim et al., 2020)</ref> and want to start with pre-trained embeddings that are typically too large to fit on CPU memory. Such training can be performed using this feature of the framework. Finally, this module also has functionalities for calculating scores, predicting links, and classifying entities in addition to the training loop.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.7.2">Dataloaders</head><p>Our framework contains various dataloaders for shared and distributed training. It supports several standard knowledge graph formats, such as TTL, RDF, and CSV. Additionally, it contains a streaming dataset module for datasets that are too large to fit in memory. When invoked, it creates an SQLite representation of the knowledge graph and stores the entity-index mapping in the database along with the triplets. All dataloaders connect to the sparse model input using a common interface.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.7.3">Utilities and Core Functions</head><p>This module consists of the sparse adjacency matrix builder described in subsection 4.2.1 and 4.2.2, an efficient sparse negative sampler, and the matrix multiplier interface.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">EXPERIMENTAL SETTING</head><p>We implement the SpTransX models using PyTorch Framework and compare their total training time and GPU memory allocation with other well-known KG frameworks. We run these experiments for 7 datasets consisting of various sizes on a single CPU and a single GPU system separately. We provide a guideline to reproduce the experiment for one of the datasets in Appendix A. Although our framework supports distributed training using standard PyTorch dataparallel libraries, this paper focuses on sparse techniques and presents experiments conducted on a single GPU only.</p><p>A preliminary result on distributed training of a large knowledge graph dataset, COVID-19 <ref type="bibr" target="#b34">(Tabassum et al., 2024)</ref>, is shown in Appendix F.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Datasets</head><p>Below are the 7 datasets used in the experiments. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Frameworks and Models</head><p>For comparison, we pick three popular KG frameworks: TorchKGE, PyTorch Geometric, and DGL-KE. PyTorch Geometric (or PyG) supports the TransE model, while DGL-KE supports the TransE and TransR models. TorchKGE supports all four models: TransE, TransR, TransH, TorusE.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Training Loop</head><p>We prepare 11 separate scripts (SpTransE, SpTransR, Sp-TransH, SpTorusE, transe-torchkge, transr-torchkge, transhtorchkge, toruse-torchkge, transe-dglke, transr-dglke, and transe-pyg) to train the models on various datasets. Each script receives the dataset name as a command-line argument. The dataset is loaded from a shared repository. All frameworks use the same training configuration (learning rate: 0.0004, margin: 0.5), dissimilarity function (L2 or L2 torus), and loss function (MarginRankingLoss), and run for 200 epochs. Batch size and embedding dimensions are selected to maximize accuracy while utilizing available GPU memory (see subsection 6.1). The following table lists the dimensions and batch sizes used for different models. The negative samples are generated once per positive sample and are pre-generated outside the training loop.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">System and Profiler Details</head><p>All experiments are run on the NERSC Perlmutter system.</p><p>The GPU experiments run on a single NVIDIA A100-SXM4 GPU with 40 GB VRAM. The CPU experiments run on an AMD EPYC 7763 (Milan) CPU with 64 cores and 512GB DDR4 memory.</p><p>We use Python's time module to measure training time and its breakdown. PyTorch's CUDA module is used to measure peak memory usage in GPU experiments. Finally, Linux's perf tool is used to measure the cache miss rate and FLOPs count for CPU experiments.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.5">SparseTransX Configuration</head><p>In the SparseTransX framework, users can choose to use any high-performance SpMM to perform model training.</p><p>We select iSpLib SpMM <ref type="bibr" target="#b15">(Hoque Anik et al., 2024)</ref> for CPU training and DGL g-SpMM <ref type="bibr" target="#b37">(Wang, 2019)</ref> for GPU training. CSR (Compressed Sparse Row) format is used for iSpLib, and COO (Coordinate) format is used for DGL as per the library requirement. The framework automatically generates sparse minibatches in the correct format when the user specifies the underneath SpMM library.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1">Hyperparameter Selection</head><p>Knowledge graphs are primarily used for link prediction tasks <ref type="bibr" target="#b12">(Gregucci et al., 2023)</ref>. Hits@10 is a popular measurement of link prediction accuracy. We train the KG models on various embedding sizes and plot the corresponding Hits@10 accuracy in Figure <ref type="figure">-5</ref>. We observe that accuracy increases as the entity embedding size grows. We keep the number of positive and negative edges equal within a batch for each model. Another significant hyperparameter is the batch size. We plot model training time and GPU memory allocation for various batch sizes in Figure <ref type="figure">6</ref>. We observe that maximum CUDA memory utilization is possible when the largest batch size is used. It also corresponds to the fastest training time.</p><formula xml:id="formula_8">4</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2">Training Performance</head><p>We measure the total training time, GPU memory allocation, CPU Cache miss, and FLOPs count for various datasets on the available models of the frameworks mentioned in subsection 5.2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2.1">Training Time</head><p>The total training time for various datasets on CPU and GPU are shown in Figure <ref type="figure">7</ref>. Our implementation outperforms all frameworks for both CPU and GPU. The speedup is consistent for both small and large datasets.</p><p>SpTransX models exhibit good speedup on CPU and GPU systems. The speedups are consistent across datasets for the same model. We observe the most speedup in the TransE model. This is because, for this model, the computational bottleneck is the embedding gradient computation (see Figure <ref type="figure">2</ref>). We eliminate this bottleneck by replacing fine-grained embedding scatter-gather with SpMM, which results in faster training time and efficient GPU memory usage (due to lower intermediate variable usage).</p><p>Although TorusE uses the same scoring function, we do not observe the same amount of speedup in this model compared to TransE. This is because the primary computational bottleneck in this model is not always the embedding computation but the torus L2 dissimilarity function (marked as yellow boxes in Figure <ref type="figure">2</ref>).</p><p>Among TransR and TransH, TransR is computationally more demanding. However, we still manage to perform better in TransR compared to TransH because the computational graph of TransH is much larger than TransR, and the embedding computation (or SpMM in our case) accounts for a lower percentage of system time compared to TransR. This means SpTransX has less impact on TransH compared to TransR.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2.2">GPU Memory Usage</head><p>Our implementations of the models take up significantly less CUDA memory than other frameworks. Table <ref type="table" target="#tab_7">5</ref> demonstrates the average CUDA memory allocation for various frameworks and our implementations.  SpTransX is optimized for GPU memory usage by limiting the model size to tensors only necessary during the training time. Furthermore, the SpMM accounts for fewer intermediate variables, reducing the memory footprint. We observe the highest GPU memory efficiency in the TransH model, around 11× more efficient than TorchKGE on average. This is because the training loop uses linear algebraic implementation (discussed in subsection 4.5) and reuses several expressions to reduce unnecessary GPU memory allocation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2.3">Breakdown of Training Time</head><p>Each model training epoch consists of loss calculation (forward propagation), gradient computation (backward call), and parameter update (optimizer step). The chart in Figure <ref type="figure">8</ref> shows the average breakdown of the three steps for the frameworks.</p><p>We observe that SparsTransX improves the average forward propagation time for both CPU and GPU.   Table <ref type="table" target="#tab_10">7</ref> lists the average cache miss rates. We observe that SpTransX performs better in all cases except for the TransH model. In this case, SparseTransX has a slightly higher cache miss rate than its peer, TorchKGE. This is because the impact of SpMM is small in the TransH model, and other operations overshadow the improved cache miss rate obtained by the efficient SpMM.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2.5">Model Accuracies</head><p>The sparse approach does not change the computational steps and thus does not affect the model accuracy. The accuracies of our implementations are consistent with that of other models, such as TorchKGE. For 100 epochs training on WN18 datasets with a fixed learning rate of 0.0004, Sp-TransX's TransE, TorusE, and TransH models receive 0.72, 0.63, and 0.59 Hits@10 scores, whereas TorchKG's models receive 0.74, 0.63, and 0.60. A more detailed evaluation (discussed in Appendix E) reveals that SpTransX achieves similar or better Hits@10 accuracy compared to TorchKGE when the training loop is equipped with a learning rate scheduler.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">CONCLUSION</head><p>Despite the inherent sparsity of knowledge graphs and their embedding algorithms, existing frameworks often do not leverage sparse matrix operations to accelerate the training of KGE models. We develop sparse formulations of translation-based KGE models that significantly outperform established knowledge graph frameworks, such as TorchKGE and DGL-KE, particularly regarding training time and GPU memory usage. Our findings demonstrate that the proposed approach consistently achieves improved performance across a range of both small and large datasets.</p><p>We design a PyTorch-based library named SparseTransX that incorporates the sparse formulation methods for Knowledge Graph models and can demonstrate the aforementioned performance gains. The design of the library is flexible, and it can potentially perform distributed training once coupled with PyTorch Distributed Data Parallel (DDP) and Fully Sharded Data Parallel (FSDP) wrappers.</p><p>Our sparse approach has multiple benefits. By using sparse representations, we reduce memory usage during training, which allows us to work with larger knowledge graphs without exhausting GPU resources. The efficiency improvements in training time come from optimizing matrix operations. Given the extensive research in parallel sparse matrix operations and the availability of highly optimized libraries, our approach paves the way for faster computations and enhanced scalability for larger knowledge graphs. We believe this work will inspire further advancements in the development of robust and scalable knowledge graph frameworks. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.6 Evaluation and Expected Result</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.7 Notes</head><p>Please note that SpTransX is referred to as FastKG (former name) in the workflow.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B APPLICABILITY OF SPARSETRANSX FOR DENSE GRAPHS</head><p>Even for fully dense graphs, our KGE computations remain highly sparse. This is because our SpMM leverages the incidence matrix for triplets, rather than the graph's adjacency matrix. In the paper, the sparse matrix A ∈ {-1, 0, 1} M ×(N +R) represents the triplets, where N is the number of entities, R is the number of relations, and M is the number of triplets. This representation remains extremely sparse, as each row contains exactly three non-zero values (or two in the case of the "ht" representation). Hence, the sparsity of this formulation is independent of the graph's structure, ensuring computational efficiency even for dense graphs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C COMPUTATIONAL COMPLEXITY</head><p>For a sparse matrix A with m × k having nnz(A) = number of non zeros and dense matrix X with k × n dimension, the computational complexity of the SpMM is O(nnz(A) • n) since there are a total of nnz(A) number of dot products each involving n components. Since our sparse matrix contains exactly three non-zeros in each row, nnz(A) = 3m. Therefore, the complexity of SpMM is O(3m • n) or O(m • n), meaning the complexity increases when triplet counts or embedding dimension is increased. Memory access pattern will change when the number of entities is increased and it will affect the runtime, but the algorithmic complexity will not be affected by the number of entities/relations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D APPLICABILITY TO NON-TRANSLATIONAL MODELS</head><p>Our paper focused on translational models using sparse operations, but the concept extends broadly to various other knowledge graph embedding (KGE) methods. Neural network-based models, which are inherently matrix-multiplication-based, can be seamlessly integrated into this framework. Additionally, models such as DistMult, ComplEx, and RotatE can be implemented with simple modifications to the SpMM operations. Implementing these KGE models requires modifying the addition and multiplication operators in SpMM, effectively changing the semiring that governs the multiplication.</p><p>In the paper, the sparse matrix A ∈ {-1, 0, 1} M ×(N +R) represents the triplets, and the dense matrix E ∈ R (N +R)×d represents the embedding matrix, where N is the number of entities, R is the number of relations, and M is the number of triplets. TransE's score function, defined as h + r -t, is computed by multiplying A and E using an SpMM followed by the L2 norm. This operation can be generalized using a semiring-based SpMM model: Zij = n k=1 (A ik ⊗ E kj ) Here, ⊕ represents the semiring addition operator, and ⊗ represents the semiring multiplication operator. For TransE, these operators correspond to standard arithmetic addition and multiplication, respectively. . Loss curve for sparse and non-sparse approach. The sparse approach eventually reaches the same loss value with similar Hits@10 test accuracy.</p><p>Hits@10 achieved by TorchKGE.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>F PRELIMINARILY EXPERIMENT ON SCALING</head><p>Communication can be a significant bottleneck in distributed KGE training when using sparse-dense matrix multiplication (SpMM) kernels. We perform a preliminary experiment to observe the scaling capacity of SparseTransX for the TransE model using a large knowledge graph dataset, COVID-19 <ref type="bibr" target="#b34">(Tabassum et al., 2024)</ref>. We wrap the model in the Data Distributed Parallel (DDP) wrapper provided by PyTorch and train the model to 64 NVIDIA A100 GPUs to observe scaling behaviour. DDP (Distributed Data Parallel) trains a model by replicating it across multiple GPUs, synchronizing gradients during backpropagation to ensure consistent updates.</p><p>The training times for various GPUs are reported in Table <ref type="table" target="#tab_12">9</ref>. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>G BACKPROPAGATION OF SPMM</head><p>Our main computational kernel is the sparse-dense matrix multiplication (SpMM). The computation of backpropagation of an SpMM w.r.t. the dense matrix is also another SpMM. To see how, let's consider the sparse-dense matrix multiplication AX = C which is part of the training process. As long as the computational graph reduces to a single scaler loss L, it can be shown that ∂C ∂X = A T . Here, X is the learnable parameter (embeddings), and A is the sparse matrix. Since A T is also a sparse matrix and ∂L ∂C is a dense matrix, the computation ∂L ∂X = ∂C ∂X × ∂L ∂C = A T × ∂L ∂C is an SpMM. This means that both forward and backward propagation of our approach benefit from the efficiency of a high-performance SpMM.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Proof that ∂C ∂X = A T</head><p>To see why ∂C ∂X = A T is used in the gradient calculation, we can consider the following small matrix multiplication without loss of generality.</p><formula xml:id="formula_9">A = a1 a2 a3 a4 X = x1 x2 x3 x4 C = c1 c2 c3 c4</formula><p>Where C = AX, thus- </p><formula xml:id="formula_10">c1 = f (x1, x3) c2 = f (x2, x4) c3 = f (x1, x3) c4 = f (x2,</formula></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 .Figure 2 .</head><label>12</label><figDesc>Figure 1. Scatter and Gather operation in translational KG training</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 4 .</head><label>4</label><figDesc>Figure 4. SparseTransX Framework</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 7 .Figure 8 .</head><label>78</label><figDesc>Figure 7. Total training time for CPU and GPU for various datasets. The slowdown factors of each framework compared to SpTransX are shown along the bars.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head></head><label></label><figDesc>Figure9. Loss curve for sparse and non-sparse approach. The sparse approach eventually reaches the same loss value with similar Hits@10 test accuracy.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 .</head><label>1</label><figDesc>200 epoch training time breakdown of a TransE model using the sparse approach compared to a non-sparse approach. The time shown is the average training time taken for 7 datasets listed in Table3. The GPU is a single NVIDIA A100-SXM4 with 40 GB VRAM. The CPU is an AMD EPYC 7763 (Milan) CPU with 64 cores and 512GB DDR4 memory.</figDesc><table><row><cell></cell><cell></cell><cell cols="2">Sparse Non-Sparse</cell></row><row><cell></cell><cell></cell><cell></cell><cell>(TorchKGE)</cell></row><row><cell></cell><cell>Forward</cell><cell>74.86</cell><cell>299.2</cell></row><row><cell>CPU</cell><cell cols="2">Backward 166.59</cell><cell>919.17</cell></row><row><cell></cell><cell>Step</cell><cell>15.4</cell><cell>15.95</cell></row><row><cell></cell><cell>Forward</cell><cell>18.2</cell><cell>48.8</cell></row><row><cell>GPU</cell><cell>Backward</cell><cell>17.49</cell><cell>89.51</cell></row><row><cell></cell><cell>Step</cell><cell>0.4</cell><cell>0.45</cell></row><row><cell cols="4">sparse operations presents unique challenges, as each model</cell></row><row><cell cols="4">interprets translations differently. For instance, TransE (Bor-</cell></row><row><cell cols="2">des et al., 2013</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 .</head><label>2</label><figDesc>Translational models with common expressions in score function fr(h, t)    </figDesc><table><row><cell>MODEL</cell><cell>SCORING FUNCTION</cell></row><row><cell>TRANSE (BORDES ET AL., 2013)</cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head></head><label></label><figDesc>(h + rt) Computation. All cells in the highlighted row are zero except h-idx, t-idx, and r-idx + entity-count. For the highlighted row, h-idx = 5, t-idx = 15, entity-count = 20, r-idx = 2. Figure 3. Computing common expressions using SpMM. Only the highlighted row is populated for demonstration.</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="5">Embedding Size</cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="4"># of Entities</cell><cell></cell><cell></cell><cell></cell><cell cols="5">Embedding Size</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="5"># of Entities</cell><cell></cell><cell cols="5"># of Relations</cell><cell>0</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell># of Samples</cell><cell>0 1 2 … 88 89</cell><cell>0</cell><cell>…</cell><cell>5 1</cell><cell>6</cell><cell>…</cell><cell>15 -1</cell><cell>…</cell><cell>21</cell><cell>0 1 … 5 … 15 … 21</cell><cell>.32 .92</cell><cell>.21 .83</cell><cell>.67 .03</cell><cell>.12 .37</cell><cell>.93 .84</cell><cell># of Entities</cell><cell>Samples # of</cell><cell>0 1 2 … 88 89</cell><cell>0</cell><cell>…</cell><cell>5 1</cell><cell>6</cell><cell>…</cell><cell>15 -1</cell><cell>…</cell><cell>21</cell><cell>22 1</cell><cell>23</cell><cell>…</cell><cell>29</cell><cell>… 5 … 15 … 22 … 29</cell><cell>.32 .92 .62</cell><cell>.21 .83 .85</cell><cell>.67 .03 .65</cell><cell>.12 .37 .26</cell><cell>.93 .84 .96</cell><cell># of Entities # of Relations</cell></row><row><cell></cell><cell></cell><cell cols="8">Incidence Sparse Matrix</cell><cell cols="7">Embedding Dense Matrix</cell><cell></cell><cell></cell><cell></cell><cell cols="9">Incidence Sparse Matrix</cell><cell></cell><cell></cell><cell cols="7">Embedding Dense Matrix</cell></row><row><cell cols="17">(a) (h -t) Computation. All cells in the highlighted row are</cell><cell>(b)</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="17">zero except h-idx and t-idx. For the highlighted row, h-idx</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="11">= 5, t-idx = 15, entity-count = 22.</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 3 .</head><label>3</label><figDesc>Knowledge graph datasets</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell>TRAINING</cell></row><row><cell>DATASET</cell><cell cols="3">ENTITY RELATIONS TRIPLETS</cell></row><row><cell>FB15K</cell><cell>14951</cell><cell>1345</cell><cell>483142</cell></row><row><cell>FB15K237</cell><cell>14541</cell><cell>237</cell><cell>272115</cell></row><row><cell>WN18</cell><cell>40943</cell><cell>18</cell><cell>141442</cell></row><row><cell>WN18RR</cell><cell>40943</cell><cell>11</cell><cell>86835</cell></row><row><cell>FB13</cell><cell>67399</cell><cell>15342</cell><cell>316232</cell></row><row><cell cols="2">YAGO3-10 123182</cell><cell>37</cell><cell>1079040</cell></row><row><cell>BIOKG</cell><cell>93773</cell><cell>51</cell><cell>4762678</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 4 .</head><label>4</label><figDesc>Training configuration for CPU and GPU. Reduced embedding and batch size for TransR and TransH due to memory limitation.</figDesc><table><row><cell>MODEL</cell><cell>EMBEDDING</cell><cell>BATCH</cell></row><row><cell>TRANSE</cell><cell>1024</cell><cell>12 × 32768</cell></row><row><cell>TORUSE</cell><cell>1024</cell><cell>12 × 32768</cell></row><row><cell>TRANSR</cell><cell>128</cell><cell>2 × 32768</cell></row><row><cell cols="2">TRANSH ENT=128,REL=128</cell><cell>32768</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 5 .</head><label>5</label><figDesc>Average</figDesc><table><row><cell></cell><cell cols="4">CUDA memory allocation for various models (in</cell></row><row><cell>GB)</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>MODEL</cell><cell cols="3">SPTRANSX TORCHKGE DGL-KE</cell><cell>PYG</cell></row><row><cell>TRANSE</cell><cell>5.61</cell><cell>13.55</cell><cell>11.37</cell><cell>13.54</cell></row><row><cell>TRANSR</cell><cell>13.65</cell><cell>20.42</cell><cell>30.73</cell><cell>-</cell></row><row><cell>TRANSH</cell><cell>0.28</cell><cell>3.1</cell><cell>-</cell><cell>-</cell></row><row><cell>TORUSE</cell><cell>12.03</cell><cell>15.87</cell><cell>-</cell><cell>-</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head></head><label></label><figDesc>It also outperforms backward computation for all cases except in TransR with DGL-KE for both GPU and CPU. DGL-KE uses the heterograph data structure instead of a regular triplet array and updates the backward gradients manually through the DGL graph API. This results in an unusually long parameter update time for DGL-KE in the CPU. This issue is not present in GPU since DGL-KE has a separate GPU implementation. Despite the slower backward time, SpTransX outperforms DGL-KE in terms of overall training time.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 6 .</head><label>6</label><figDesc>Average FLOPs count of 7 datasets (factor of ×10 10 )We measure the FLOPs count for our CPU implementation and the cache miss rate. SpTransX exhibits a lower FLOP count than other frameworks for all models on average, as shown in Table6. It uses high-performance SpMM that typically uses fewer floating-point operations than regular non-sparse implementations. This results in the lowest average FLOP count for SpTransX compared to all frameworks for all models.</figDesc><table><row><cell>MODEL</cell><cell cols="3">SPTRANSX TORCHKGE DGL-KE</cell><cell>PYG</cell></row><row><cell>TRANSE</cell><cell>220</cell><cell>483.87</cell><cell>293.06</cell><cell>483.82</cell></row><row><cell>TRANSR</cell><cell>567.37</cell><cell>1157.94</cell><cell>874.67</cell><cell>-</cell></row><row><cell>TRANSH</cell><cell>9.66</cell><cell>19.58</cell><cell>-</cell><cell>-</cell></row><row><cell>TORUSE</cell><cell>289.99</cell><cell>387.93</cell><cell>-</cell><cell>-</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 7 .</head><label>7</label><figDesc>Average cache miss rate of 7 datasets (in %)</figDesc><table><row><cell>MODEL</cell><cell cols="3">SPTRANSX TORCHKGE DGL-KE</cell><cell>PYG</cell></row><row><cell>TRANSE</cell><cell>26.54</cell><cell>29.37</cell><cell>29.99</cell><cell>29.04</cell></row><row><cell>TRANSR</cell><cell>17.02</cell><cell>19.20</cell><cell>29.54</cell><cell>-</cell></row><row><cell>TRANSH</cell><cell>10.43</cell><cell>9.75</cell><cell>-</cell><cell>-</cell></row><row><cell>TORUSE</cell><cell>21.53</cell><cell>22.94</cell><cell>-</cell><cell>-</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_11"><head></head><label></label><figDesc>To generate the table of Figure7(for FB15K) in the paper, execute the Jupyter Notebook 2.validation.ipynb. It will parse the generated text files and produce the tables for CPU and GPU for the FB15k dataset. The table includes the total training time and the slowdown factors of each framework compared to SpTransX.</figDesc><table><row><cell>It is expected that SpTransX is up to 5× and 4× faster in CPU and</cell></row><row><cell>GPU, respectively, compared to other frameworks. The Jupyter</cell></row><row><cell>Notebook contains the expected tables for both CPU and GPU</cell></row><row><cell>from past experiments.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_12"><head>Table 9 .</head><label>9</label><figDesc>Scaling TransE model on COVID-19 dataset with 60,820 entities, 62 relations, and 1,032,939 triplets<ref type="bibr" target="#b34">(Tabassum et al., 2024)</ref> It indicates that communication is not a bottleneck up to 64 GPUs. If communication becomes a performance bottleneck at larger scales, we plan to explore alternative communication-reducing algorithms, including 2D and 3D matrix distribution techniques, which are known to minimize communication overhead at extreme scales. Additionally, we will incorporate model parallelism alongside data parallelism for large-scale knowledge graphs.</figDesc><table><row><cell cols="2">Number of GPUs 500 epoch time (seconds)</cell></row><row><cell>4</cell><cell>706.38</cell></row><row><cell>8</cell><cell>586.03</cell></row><row><cell>16</cell><cell>340.00</cell></row><row><cell>32</cell><cell>246.02</cell></row><row><cell>64</cell><cell>179.95</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_13"><head></head><label></label><figDesc>x4) SparseTransX: Efficient Training of Translation-Based Knowledge Graph Embeddings Using Sparse Matrix Operations By comparing the individual partial derivatives computed earlier, we can say-</figDesc><table><row><cell>Similarly-</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>∂L ∂x2</cell><cell></cell><cell cols="2">= a1 ×</cell><cell cols="2">∂L ∂c2</cell><cell cols="3">+ a3 ×</cell><cell>∂L ∂c4</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>∂L ∂x3</cell><cell></cell><cell cols="2">= a2 ×</cell><cell cols="2">∂L ∂c1</cell><cell cols="3">+ a4 ×</cell><cell>∂L ∂c3</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>∂L ∂x4</cell><cell></cell><cell cols="2">= a2 ×</cell><cell cols="2">∂L ∂c2</cell><cell cols="3">+ a4 ×</cell><cell>∂L ∂c4</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="12">This can be expressed as a matrix equation in the following</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>manner-</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell cols="2">∂L ∂X</cell><cell>=</cell><cell cols="2">∂C ∂X</cell><cell>×</cell><cell cols="2">∂L ∂C</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>=⇒</cell><cell>∂L ∂x 1 ∂L ∂x 3</cell><cell></cell><cell cols="2">∂L ∂x 2 ∂L ∂x 4</cell><cell>=</cell><cell cols="2">∂C ∂X</cell><cell>×</cell><cell cols="2">∂L ∂c 1 ∂L ∂c 3</cell><cell>∂L ∂c 2 ∂L ∂c 4</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>∂L ∂x 1 ∂L ∂x 3</cell><cell cols="2">∂L ∂x 2 ∂L ∂x 4</cell><cell>=</cell><cell cols="4">a1 a3 a2 a4</cell><cell>×</cell><cell>∂L ∂c 1 ∂L ∂c 3</cell><cell>∂L ∂c 2 ∂L ∂c 4</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>∂L</cell><cell></cell><cell>∂L</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">∂L</cell><cell>∂L</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>=⇒</cell><cell>∂x 1 ∂L</cell><cell cols="2">∂x 2 ∂L</cell><cell cols="4">= A T ×</cell><cell cols="2">∂c 1 ∂L</cell><cell>∂c 2 ∂L</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>∂x 3</cell><cell cols="2">∂x 4</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">∂c 3</cell><cell>∂c 4</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>=⇒</cell><cell></cell><cell>∂L ∂X</cell><cell cols="4">= A T ×</cell><cell>∂L ∂C</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell cols="2">∴</cell><cell>∂C ∂X</cell><cell cols="2">= A T</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="3">Therefore-</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>∂L ∂x1</cell><cell>=</cell><cell>∂L ∂c1</cell><cell cols="2">×</cell><cell cols="2">∂c1 ∂x1</cell><cell>+</cell><cell>∂L ∂c2</cell><cell>×</cell><cell>∂c2 ∂x1</cell><cell>+</cell><cell>∂L ∂c3</cell><cell>×</cell><cell>∂c3 ∂x1</cell><cell>+</cell><cell>∂L ∂c4</cell><cell>×</cell><cell>∂c4 ∂x1</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>=</cell><cell>∂L ∂c1</cell><cell cols="2">×</cell><cell cols="2">∂c1 ∂x1</cell><cell>+ 0 +</cell><cell>∂L ∂c3</cell><cell>×</cell><cell>∂c3 ∂x1</cell><cell>+ 0</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="3">= a1 ×</cell><cell cols="2">∂L ∂c1</cell><cell>+ a3 ×</cell><cell>∂L ∂c3</cell></row></table></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGEMENTS</head><p>This research is supported by the <rs type="funder">NSF</rs> <rs type="grantNumber">OAC-2112606</rs> and <rs type="grantNumber">OAC-2339607</rs> grants and <rs type="funder">DOE</rs> <rs type="grantNumber">DE-SC0022098</rs> and <rs type="grantNumber">DE-SC0023349</rs> awards.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_F8Fyr3C">
+					<idno type="grant-number">OAC-2112606</idno>
+				</org>
+				<org type="funding" xml:id="_zDfAXkA">
+					<idno type="grant-number">OAC-2339607</idno>
+				</org>
+				<org type="funding" xml:id="_VznwtAx">
+					<idno type="grant-number">DE-SC0022098</idno>
+				</org>
+				<org type="funding" xml:id="_4zBjES7">
+					<idno type="grant-number">DE-SC0023349</idno>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A ARTIFACT EVALUATION A.1 Abstract</head><p>We provide a guideline to reproduce the training times for one of the datasets reported in this paper. We share a publicly available GitHub repository (https://github.com/OnixHoque/sptransx-mlsys2025reproduce) containing two bash scripts and a Jupyter Notebook that generate the workflow. The first bash script installs the frameworks needed to compare the performance with SpTransX and generates the environments required to run them. Another bash script runs the actual CPU and GPU experiments and stores the training times into text files. We include a validation Jupyter Notebook that performs processing on these text files and generates tables that depict Figure <ref type="figure">7</ref> of the paper (for FB15K dataset). The experiments are run on one of the seven datasets (FB15K). The training time is computed for a single minibatch to keep the workflow short. The validation notebook approximates the total training time by multiplying the number of batches with the calculated training time. We further discuss how to run the workflow and perform validation from the generated results (also available in the Readme file of the GitHub repository). Please note that SpTransX is referred to as FastKG (former name) in the workflow.</p><p>A.2 Artifact check-list (meta-information) </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3.3 Software dependencies</head><p>The experiments were tested on the following configuration.</p><p>• GCC 12.2</p><p>• Conda 24.9.1</p><p>• Python 3.9 (3.8 for DGLKE)</p><p>• PyTorch 2.3.1 (1.7.1 for DGLKE)</p><p>• CUDAToolKit 12.1 (11.0 for DGLKE)</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3.4 Datasets</head><p>FB15K dataset is used in the workflow. It is one of the seven datasets used in the paper. It is included in the repository.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.4 Environment Installation</head><p>To set up the environments, clone the GitHub repository and run the following command. It will create two virtual environments. One specific to DGLKE, and another for the rest.</p><p>./0.setup_environments.sh</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.5 Experiment Workflow</head><p>To run the experiments, execute the following command.</p><p>./1.run_experiments.sh It will generate the training time of a single minibatch training for various models and frameworks of the FB15K dataset. The outputs will be saved in cpu.txt and gpu.txt.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>DistMult</head><p>DistMult's score function has the expression h ⊙ r ⊙ t. To adapt SpMM for this model, two key adjustments are required: The sparse matrix A stores +1 at the positions corresponding to hidx, tidx, and ridx. Both the semiring addition and multiplication operators are set to arithmetic multiplication. These changes enable the use of SpMM for the DistMult score function.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>ComplEx</head><p>ComplEx's score function has h ⊙ r ⊙ t, where embeddings are stored as complex numbers (e.g., using PyTorch). In this case, the semiring operations are similar to DistMult, but with complex number multiplication replacing real number multiplication.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>RotatE</head><p>RotatE's score function has h ⊙ r -t. For this model, the semiring requires both arithmetic multiplication and subtraction for ⊕. With minor modifications to our SpMM implementation, the semiring addition operator can be adapted to compute h ⊙ r -t.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Support from other libraries</head><p>Many existing libraries, such as GraphBLAS <ref type="bibr">(Kimmerer, Raye, et al., 2024</ref><ref type="bibr">), Ginkgo (Anzt, Hartwig, et al., 2022)</ref>, and Gunrock <ref type="bibr">(Wang, Yangzihao, et al., 2017)</ref>, already support custom semirings in SpMM. We can leverage C++ templates to extend support for KGE models with minimal effort. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E MODEL PERFORMANCE EVALUATION AND CONVERGENCE</head><p>SpTransX follows a slightly different loss curve (see Figure <ref type="figure">9</ref>) and eventually converges with the same loss as other non-sparse implementations such as TorchKGE. We test SpTransX with the WN18 dataset having embedding size 512 (128 for TransR and TransH due to memory limitation) and run 200-1000 epochs. We compute average Hits@10 of 9 runs with different initial seeds and a learning rate scheduler. The results are shown below. We find that Hits@10 is generally comparable to or better than the</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Pykeen 1.0: a python library for training and evaluating knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ali</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Berrendorf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">T</forename><surname>Hoyt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Vermue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sharifzadeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lehmann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="issue">82</biblScope>
+			<biblScope unit="page" from="1" to="6" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Hipmcl: a high-performance parallel implementation of the markov clustering algorithm for large-scale networks</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Azad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">A</forename><surname>Pavlopoulos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">A</forename><surname>Ouzounis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">C</forename><surname>Kyrpides</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">¸</forename><surname>Buluc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nucleic Acids Research</title>
+		<imprint>
+			<biblScope unit="volume">46</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="33" to="e33" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multi-relational data</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">C</forename><surname>Burges</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">L</forename><surname>Bottou</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Z</forename><surname>Ghahramani</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Weinberger</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">26</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">A semantic matching energy function for learning with multirelational data: Application to word-sense disambiguation</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Glorot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Machine Learning</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="volume">94</biblScope>
+			<biblScope unit="page" from="233" to="259" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><surname>Boschin</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2009.02963</idno>
+		<title level="m">TorchKGE: knowledge graph embedding in python and pytorch</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Knowledge graph completion: A review</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Duan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Access</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page" from="192435" to="192456" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Exploring the limits of transfer learning with a unified text-to-text transformer</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Colin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Mach. Learn. Res</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="page" from="140" to="141" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">AmpliGraph: a Library for Representation Learning on Knowledge Graphs</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Costabello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bernardi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Janik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Creo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">L</forename><surname>Van</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Mcgrath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Mccarthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Tabacof</surname></persName>
+		</author>
+		<idno type="DOI">10.5281/zenodo.2595043</idno>
+		<ptr target="https://doi.org/10.5281/zenodo.2595043" />
+		<imprint>
+			<date type="published" when="2019-03">March 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M.-W</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bert</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N19-1423</idno>
+		<ptr target="https://aclanthology.org/N19-1423" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long and Short Papers</title>
+		<editor>
+			<persName><forename type="first">J</forename><surname>Burstein</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">C</forename><surname>Doran</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">T</forename><surname>Solorio</surname></persName>
+		</editor>
+		<meeting>the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Minnesota</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019-06">June 2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="4171" to="4186" />
+		</imprint>
+	</monogr>
+	<note type="report_type">Minneapolis</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding on a lie group</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ebisu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ichise</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Toruse</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI conference on artificial intelligence</title>
+		<meeting>the AAAI conference on artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Transitionbased knowledge graph embedding with relational mapping properties</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Zheng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th Pacific Asia conference on language, information and computing</title>
+		<meeting>the 28th Pacific Asia conference on language, information and computing</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="328" to="337" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Fast graph representation learning with pytorch geometric</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">E</forename><surname>Lenssen</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1903.02428</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Link prediction with attention applied on multiple knowledge graph embedding models</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Gregucci</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nayyeri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Hernández</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Staab</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the ACM Web Conference 2023</title>
+		<meeting>the ACM Web Conference 2023</meeting>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="2600" to="2610" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">An open toolkit for knowledge embedding</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Xin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Openke</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of EMNLP</title>
+		<meeting>EMNLP</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Learning to represent knowledge graphs with gaussian embedding</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 24th ACM international on conference on information and knowledge management</title>
+		<meeting>the 24th ACM international on conference on information and knowledge management</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="623" to="632" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">iSpLib: a library for accelerating graph neural networks using auto-tuned sparse operations</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">S</forename><surname>Hoque Anik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Badhe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gampa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Azad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Companion Proceedings of the ACM on Web Conference 2024</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+			<biblScope unit="page" from="778" to="781" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">FeatGraph: a flexible and efficient backend for graph neural network systems</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SC20: International Conference for High Performance Computing, Networking, Storage and Analysis</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1" to="13" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding via dynamic mapping matrix</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 53rd annual meeting of the association for computational linguistics</title>
+		<meeting>the 53rd annual meeting of the association for computational linguistics</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="687" to="696" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Knowledge graph completion with adaptive sparse transfer matrix</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">30</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Multi-task learning for knowledge graph completion with pre-trained language models</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Ko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Seo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th international conference on computational linguistics</title>
+		<meeting>the 28th international conference on computational linguistics</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1737" to="1743" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Pytorch-biggraph: A large scale graph embedding system</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wehrstedt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bose</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Peysakhovich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of Machine Learning and Systems</title>
+		<meeting>Machine Learning and Systems</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="120" to="131" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Learning entity and relation embeddings for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI conference on artificial intelligence</title>
+		<meeting>the AAAI conference on artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">29</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<author>
+			<persName><forename type="first">X</forename><surname>Lv</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Hou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1811.04588</idno>
+		<title level="m">Differentiating concepts and instances for knowledge graph embedding</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">A novel embedding model for knowledge base completion based on convolutional neural network</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">Q</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">D</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">Q</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Phung</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1712.02121</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">A three-way model for collective learning on multi-relational data</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H.-P</forename><surname>Kriegel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="page" from="3104482" to="3104584" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">A three-way model for collective learning on multi-relational data</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H.-P</forename><surname>Kriegel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="page" from="3104482" to="3104584" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Factorizing yago: scalable machine learning for linked data</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H.-P</forename><surname>Kriegel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 21st international conference on World Wide Web</title>
+		<meeting>the 21st international conference on World Wide Web</meeting>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="271" to="280" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">Improving language understanding by generative pre-training</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Radford</surname></persName>
+		</author>
+		<ptr target="https://openai.com/index/language-unsupervised/" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Batchlayout: A batch-parallel force-directed graph layout algorithm in shared memory</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">K</forename><surname>Rahman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">H</forename><surname>Sujon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Azad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2020 IEEE Pacific Visualization Symposium (PacificVis)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="16" to="25" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Force2vec: Parallel force-directed graph embedding</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">K</forename><surname>Rahman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">H</forename><surname>Sujon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Azad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2020 IEEE International Conference on Data Mining (ICDM)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="442" to="451" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">FusedMM: A unified SDDMM-SpMM kernel for graph embedding and graph neural networks</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">K</forename><surname>Rahman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">H</forename><surname>Sujon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Azad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2021 IEEE International Parallel and Distributed Processing Symposium (IPDPS)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="256" to="266" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Distributed-memory parallel algorithms for sparse matrix and sparse tall-and-skinny matrix multiplication</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Ranawaka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">T</forename><surname>Hussain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Block</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Gerogiannis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Torrellas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Azad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SC24: International Conference for High Performance Computing, Networking, Storage and Analysis</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2024">2024</date>
+			<biblScope unit="page" from="1" to="17" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Modeling relational data with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Bloem</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Van Den</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Titov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The semantic web: 15th international conference</title>
+		<meeting><address><addrLine>Heraklion, Crete, Greece</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018-06-03">2018. June 3-7, 2018. 2018</date>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="page" from="593" to="607" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z.-H</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-Y</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1902.10197</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title level="m" type="main">Knowledge graph embedding using large language models for covid-19</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Tabassum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kannan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S.-H</forename><surname>Lim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hasan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Patton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">E</forename><surname>Potok</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+			<pubPlace>Oak Ridge, TN, USA</pubPlace>
+		</imprint>
+		<respStmt>
+			<orgName>Oak Ridge National Laboratory (ORNL)</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">Technical report</note>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Complex embeddings for simple link prediction</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">É</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Bouchard</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2071" to="2080" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<monogr>
+		<title level="m" type="main">SimKGC: simple contrastive knowledge graph completion with pre-trained language models</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Liu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2203.02167</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Deep graph library: Towards efficient and scalable deep learning on graphs</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">Y</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR workshop on representation learning on graphs and manifolds</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding by translating on hyperplanes</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI conference on artificial intelligence</title>
+		<meeting>the AAAI conference on artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="volume">28</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<author>
+			<persName><forename type="first">H</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Hao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1509.05490</idno>
+		<title level="m">Transa: An adaptive approach for knowledge graph embedding</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">TransG: a generative model for knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2316" to="2325" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<monogr>
+		<title level="m" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W.-T</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Deng</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6575</idno>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<monogr>
+		<title level="m" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W.-T</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Deng</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6575</idno>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Composable abstractions for sparse compilation in deep learning</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Lai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Ceze</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sparsetir</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th ACM International Conference on Architectural Support for Programming Languages and Operating Systems</title>
+		<meeting>the 28th ACM International Conference on Architectural Support for Programming Languages and Operating Systems</meeting>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="660" to="678" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<monogr>
+		<title level="m" type="main">Pykg2vec: A python library for knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">Y</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rokka Chhetri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Canedo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">A A</forename><surname>Faruque</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1906.04239</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">DGL-KE: training knowledge graph embeddings at scale</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Karypis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 43rd international ACM SIGIR conference on research and development in information retrieval</title>
+		<meeting>the 43rd international ACM SIGIR conference on research and development in information retrieval</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="739" to="748" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">GraphStorm: all-in-one graph machine learning framework for industry applications</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Vasiloudis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Adeshina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Nisa</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining</title>
+		<meeting>the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+			<biblScope unit="page" from="6356" to="6367" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

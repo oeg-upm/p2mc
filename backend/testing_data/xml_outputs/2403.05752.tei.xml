@@ -1,0 +1,1502 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Task-Oriented GNNs Training on Large Knowledge Graphs for Accurate and Efficient Modeling</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-03-22">22 Mar 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Hussein</forename><surname>Abdallah</surname></persName>
+							<email>hussein.abdallah@mail.concordia.ca</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Concordia University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Waleed</forename><surname>Afandi</surname></persName>
+							<email>waleed.afandi@concordia.ca</email>
+							<affiliation key="aff1">
+								<orgName type="institution">Concordia University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Essam</forename><surname>Mansour</surname></persName>
+							<email>essam.mansour@concordia.ca</email>
+							<affiliation key="aff2">
+								<orgName type="institution">Concordia University</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Task-Oriented GNNs Training on Large Knowledge Graphs for Accurate and Efficient Modeling</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-03-22">22 Mar 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">88E2C65F061F56E7AE4CEFC97327F515</idno>
+					<idno type="arXiv">arXiv:2403.05752v2[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:07+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>A Knowledge Graph (KG) is a heterogeneous graph encompassing a diverse range of node and edge types. Heterogeneous Graph Neural Networks (HGNNs) are popular for training machine learning tasks like node classification and link prediction on KGs. However, HGNN methods exhibit excessive complexity influenced by the KG's size, density, and the number of node and edge types. AI practitioners handcraft a subgraph of a KG G relevant to a specific task. We refer to this subgraph as a task-oriented subgraph (TOSG), which contains a subset of taskrelated node and edge types in G. Training the task using TOSG instead of G alleviates the excessive computation required for a large KG. Crafting the TOSG demands a deep understanding of the KG's structure and the task's objectives. Hence, it is challenging and time-consuming. This paper proposes KG-TOSA, an approach to automate the TOSG extraction for task-oriented HGNN training on a large KG. In KG-TOSA, we define a generic graph pattern that captures the KG's local and global structure relevant to a specific task. We explore different techniques to extract subgraphs matching our graph pattern: namely (i) two techniques sampling around targeted nodes using biased random walk or influence scores, and (ii) a SPARQL-based extraction method leveraging RDF engines' built-in indices. Hence, it achieves negligible preprocessing overhead compared to the sampling techniques. We develop a benchmark of real KGs of large sizes and various tasks for node classification and link prediction. Our experiments show that KG-TOSA helps state-of-the-art HGNN methods reduce training time and memory usage by up to 70% while improving the model performance, e.g., accuracy and inference time.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>A knowledge graph (KG) is a heterogeneous graph that includes nodes representing different entities (V) of |C| classes, e.g., Paper and Author and edge types representing |R| relations, e.g., publishedIn and write, between these entities. C and R are the sets of node and edge types in the KG, respectively. Real-world KGs, such as Yago <ref type="bibr" target="#b0">[1]</ref> and Wikidata <ref type="bibr" target="#b1">[2]</ref>, have hundreds to thousands of node/edge types. Heterogeneous graph neural networks (HGNNs) have emerged as a powerful tool for analyzing KGs by defining real-world problems as node classification, such as recommender systems <ref type="bibr" target="#b2">[3]</ref>, and entity alignment <ref type="bibr" target="#b3">[4]</ref>, or link prediction, such as drug discovery <ref type="bibr" target="#b4">[5]</ref> and fraud detection <ref type="bibr" target="#b5">[6]</ref> tasks.</p><p>HGNN methods adopt mechanisms from GNNs designed for homogeneous graphs, such as multi-layer graph convolutional networks (GCNs) and sampling in mini-batch training <ref type="bibr" target="#b6">[7]</ref>- <ref type="bibr" target="#b11">[12]</ref>. Unlike GNNs on homogeneous graphs, the number of GCN layers in HGNNs is associated with the number of edge types or metapaths in the heterogeneous graph to model the distinct relationships effectively. A metapath captures distinct semantic relationships (edge types) between node types. For example, the metapath Author-(write)-Paper-(publishedIn)-Venue (APV) describes the semantic relationships of an author who published a paper in a particular venue. In mini-batch HGNN training, the incorporated sampling mechanisms aim to obtain a subgraph (a subset of nodes and edges) that captures the representative structure of the original KG in general. The sampling is performed without considering node and edge types, where some specific types may have negligible or no effect in training a particular task. For example, a DBPedia 1 subgraph, including instances of APV does not contribute to training a model predicting a movie genre. Hence, HGNN methods are not optimized for identifying subgraphs of a smaller subset of types to reduce the number of GCN layers in training a specific task.</p><p>The space complexity of training HGNNs includes the memory required to store the graph structures, associated features, and multi-layer GCNs. Additionally, the time complexity includes the sampling process, in the case of minibatch training, and the message-passing iterations needed to aggregate the embeddings of neighbouring nodes in each GCN. That leads to computationally expensive memory usage and training time with large KGs, where the complexity 2 is influenced by the KG's size, density, |R|, and |C| <ref type="bibr" target="#b6">[7]</ref>, <ref type="bibr" target="#b7">[8]</ref>, <ref type="bibr" target="#b12">[13]</ref>. To alleviates the excessive computation on a large KG, AI practitioners manually handcraft a subgraph of a subset of R and C from a given KG for training HGNNs <ref type="bibr" target="#b13">[14]</ref>, <ref type="bibr" target="#b14">[15]</ref>. We refer to this subgraph as a task-oriented subgraph (TOSG). Training the task using TOSG instead of the original KG helps HGNN methods reduce training time and memory usage. For example, the open graph benchmark (OGB) <ref type="bibr" target="#b13">[14]</ref>, <ref type="bibr" target="#b15">[16]</ref> provided OGBN-MAG, a subgraph of 21M triples out of 8.4B triples ≈ 0.2% that is extracted from the Microsoft Academic Graph (MAG) <ref type="bibr" target="#b16">[17]</ref> and is relevant to the node classification task for predicting a paper venue (P V ). OGBN-MAG contains nodes and edges of only four types.</p><p>To demonstrate the effectiveness of this methodology, we trained the P V task on a super-set of OGBN-MAG that contains 166M triples ≈ 2% of MAG KG with 42M vertices, 58 node types and 62 edge types; we refer to it as (M AG-42M ). 1 The DBPedia KG contains information about movies and academic work. 2 The actual complexity varies depending on the specific implementation.</p><p>The OGBN -M AG <ref type="bibr" target="#b13">[14]</ref> is a subgraph of M AG-42M relevant to P V , i.e., task-oriented subgraph for P V . We used the state-of-the-art GNN methods, namely ShaDowSAINT <ref type="bibr" target="#b7">[8]</ref> and SeHGNN <ref type="bibr" target="#b12">[13]</ref>. As shown in Figure <ref type="figure" target="#fig_0">1</ref>, OGBN -M AG trades the accuracy to help both methods reduce time and memory usage in training the task. Furthermore, crafting the TOSG demands a deep understanding of the KG's structure and the task's objectives. Hence, the TOSG extraction is a challenging and time-consuming process and does not guarantee to improve the model performance.</p><p>This paper proposes KG-TOSA <ref type="foot" target="#foot_0">3</ref> , an approach to automate the TOSG extraction for task-oriented HGNN training on a large KG. In KG-TOSA, we define a generic graph pattern that effectively captures both the local and global structure of a KG for a specific task. Our definition is grounded in the theoretical foundation of training HGNNs and considering crucial factors, such as data sufficiency and graph topology. The objective of our graph pattern is to maximize the diversity of neighbour node types while minimizing the average depth between non-target and target vertices. We preserve the local context by identifying an initial set of nodes targeted by the task. Then, we expand our selection to include neighbouring nodes within a specified distance of h hops. Our graph pattern interlinks the local context around each target node to generate a larger subgraph of node and edge types globally related to the task. This approach allows us to effectively capture the intricate relationships and dependencies between different entities in the KG to enhance the representation of the task-specific knowledge captured in the TOSG.</p><p>We explore different techniques to extract subgraphs matching our graph pattern. Two techniques sample around targeted nodes using biased random walk or influence scores. We also propose a SPARQL-based extraction method leveraging RDF engines' built-in indices. Our biased random walk sampling performs random walks starting from nodes that match the target vertices in the task. In our influence-based sampling approach, we utilize a Personalized PageRank (PPR) score to measure the relevance or importance of nodes in the KG to the task. However, it is essential to note that these sampling methods can incur a significant extraction overhead, particularly with a large KG. This excessive overhead may overshadow the potential time savings in training using the TOSG generated by both sampling methods instead of the original KG. To mitigate this overhead, we propose a SPARQL-based method that leverages built-in indices in RDF engines. Hence, our SPARQL-based method automates the TOSG extraction with negligible preprocessing overhead. Figure <ref type="figure" target="#fig_0">1</ref> motivates the need for our KG-TOSA approach, which helps both ShaDowSAINT and SeHGNN (i) reduce the overall maintenance cost of the multi-layer GCNs, and (ii) improve the modelling performance, including accuracy and inference time.</p><p>For evaluating GNN methods on node classification and link prediction tasks, existing benchmarks, such as OGB  Training a node classification task (P V ) to predict the paper venue using ShaDowSAINT <ref type="bibr" target="#b7">[8]</ref> and SeHGNN <ref type="bibr" target="#b12">[13]</ref> on a MAG graph with 42M vertices (M AG-42M ). The handcrafted task-oriented subgraph (OGBN -M AG) from M AG-42M trades accuracy to reduce time and memory usage. Our KG-TOSA d1h1 task-oriented subgraph is extracted automatically from M AG-42M for P V to reduce time and memory consumption while improving accuracy.</p><p>[14], OGB-LSC <ref type="bibr" target="#b15">[16]</ref>, and Open-HGNN <ref type="bibr" target="#b17">[18]</ref>, include KGs of few node/edge types. Unlike these benchmarks, we develop a benchmark of real KGs of large sizes, up to hundred millions of triples and hundreds of node and edge types with various tasks for node classification and link prediction. Hence, our benchmark presents challenging settings for the state-of-the-art (SOTA) HGNN methods. Our benchmark encompasses KGs from the academic domain, such as MAG <ref type="bibr" target="#b16">[17]</ref> and DBLP <ref type="bibr" target="#b18">[19]</ref>, as well as two versions of YAGO as a general-purpose KG of different sizes, namely YAGO-4 <ref type="bibr" target="#b0">[1]</ref> and YAGO-3 <ref type="bibr" target="#b19">[20]</ref>. We integrated KG-TOSA with SOTA GNN methods, namely SeHGNN <ref type="bibr" target="#b12">[13]</ref>, GraphSAINT <ref type="bibr" target="#b6">[7]</ref>, ShaDowSAINT <ref type="bibr" target="#b7">[8]</ref>, RGCN <ref type="bibr" target="#b20">[21]</ref>, MorsE <ref type="bibr" target="#b10">[11]</ref> , and LHGNN <ref type="bibr" target="#b11">[12]</ref>. Our comprehensive evaluation using large real KGs and various ML tasks shows that KG-TOSA enables GNN methods to converge faster and use less memory for training. Moreover, KG-TOSA empowers GNN methods to enhance and attain comparable levels of accuracy.</p><p>In summary, our contributions are:</p><p>• the first approach (KG-TOSA) for task-oriented HGNN training based on our generic graph pattern identifying a KG's local and global context related to a specific task, Section III. • three mechanisms for automating the TOSG extraction using our generic graph pattern based on task-oriented sampling and SPARQL-based query extraction. Our SPARQL-based method outperforms the task-oriented sampling in time and memory usage, Section IV. • a comprehensive evaluation using our KG benchmark and six SOTA GNN methods. Our KG benchmark includes four real KGs, six node classification tasks, and three link-prediction tasks. The KGs have up to 42 million nodes and 400 million edges. KG-TOSA achieves up to 70% memory and time reduction while improving the model performance for better accuracy, smaller model size, and less inference time, Section V, II. BACKGROUND A Knowledge Graph (KG) is a graph representation of heterogeneous information defined as: Definition 2.1 (Knowledge Graph): Let V be a set of vertices representing entities, C be a set of classes (node types) that correspond to the entities in V, R be a set of relations, and L be a set of literal values. The knowledge graph (KG) is a directed multigraph KG = (V, C, L, R, T ), where V = {v : type(v) ∈ C} and</p><formula xml:id="formula_0">T = {(s, p, o) : s ∈ V, p ∈ R, o ∈ V ∨ o ∈ L}. Each (s, p, o) in T</formula><p>represents an edge between a subject s and an object o via a predicate p.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. HGNNs on KGs</head><p>Existing HGNN methods build upon GNN techniques designed for homogeneous graphs by incorporating multi-layer GCNs and employing sampling in mini-batch training <ref type="bibr" target="#b6">[7]</ref>- <ref type="bibr" target="#b10">[11]</ref>. In HGNNs, the number of GCN layers is associated with the number of metapaths in the heterogeneous graph. Metapaths can range from a single edge type and one-hop to paths with multiple hops and edge types <ref type="bibr" target="#b11">[12]</ref>, <ref type="bibr" target="#b12">[13]</ref>. For a KG = (V, C, L, R, T ), a metapath is defined as a sequence of relations across node types in C in the form of</p><formula xml:id="formula_1">c 1 r1 -→ c 2 r2 -→ ... r h -→ c h+1</formula><p>. This leads to composite relations (metapaths), which construct all possible combinations of C and R for hop h based on the KG schemas.</p><p>Relational Graph Convolutional Network (RGCN) <ref type="bibr" target="#b20">[21]</ref> is based on a metapath of one hop and edge type. RGCN uses a stack of GCNs, where each GCN is dedicated to a metapath involving one specific edge type. Various GNN methods, such as GraphSAINT <ref type="bibr" target="#b6">[7]</ref>, Shadow-GNN <ref type="bibr" target="#b7">[8]</ref>, MorsE <ref type="bibr" target="#b10">[11]</ref>, and FastGCN <ref type="bibr" target="#b8">[9]</ref>, have adapted RGCN to support heterogeneous graphs. We refer to this category of methods as RGCNbased HGNN methods. Another category of HGNN methods supports metapaths involving multiple hops of different edge types, e.g., SeHGNN <ref type="bibr" target="#b12">[13]</ref>, MHGCN <ref type="bibr" target="#b9">[10]</ref>, and FastGTN <ref type="bibr" target="#b21">[22]</ref>. We refer to this category as metapath-based methods <ref type="bibr" target="#b22">[23]</ref>.</p><p>In both categories, the initial node embeddings are iteratively aggregated with embeddings received from neighboring nodes connected to a specific relation until the embeddings of all nodes converge. For instance, in RGCN-based methods, the final embedding of a node is obtained through two aggregations: an outer aggregation over each relation type and an inner aggregation over neighbouring nodes of a specific relation and defined by RGCN <ref type="bibr" target="#b20">[21]</ref> as follows:</p><formula xml:id="formula_2">h (l+1) i = σ( r∈R j∈N r i 1 c i,r W (l) r h (l) j + W (l) 0 h (l) j )<label>(1)</label></formula><p>where l is an RGCN layer, h (l+1) j</p><p>is the hidden embedding of node j at layer l + 1, σ is element-wise activation function, N r i denotes the set of neighbour indices of node i under relation r ∈ R, c i,r is a problem-specific normalization constant that can either be learned or chosen in advance (such as</p><formula xml:id="formula_3">c i,r = |N r i |), W (l) r</formula><p>is the weight matrix for relation r at layer l, and W l 0 is the initial weight matrix at layer l.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Sampling Techniques Adapted in HGNNs</head><p>HGNN mini-batch sampling methods perform sampling method on a KG then train on a set of sampled subgraphs <ref type="bibr" target="#b23">[24]</ref>. Sampling in RGCN-based Methods: Several RGCN-based GNN Methods in <ref type="bibr" target="#b6">[7]</ref>, <ref type="bibr" target="#b7">[8]</ref>, <ref type="bibr" target="#b10">[11]</ref>, adopt different sampling techniques. These techniques are originally designed for homogeneous graphs to reduce only the number of nodes. Hence, they do not guarantee to reduce node and edge types, which is required in extracting the TOSG. These sampling techniques can be classified into three main groups: node-wise, layerwise, and recently subgraph sampling. As Node-wise and Layer-wise sampling techniques suffer from scalability to large KGs <ref type="bibr" target="#b23">[24]</ref>. Recent GNN methods, such as GraphSAINT <ref type="bibr" target="#b6">[7]</ref>, Shadow-GNN <ref type="bibr" target="#b7">[8]</ref>, utilize subgraph-based sampling techniques to sample a subgraph from the original graph G in each epoch. The sampling method ensures that the sampled subgraph G ′ preserves the general structure of G. GraphSAINT subgraph sampler uses a uniform random-walk sampler (URW) by default to randomly select a set of initial root nodes and performs a random walk of length h from each root node to its neighbours. URW collects all the nodes and edges that are reached in the whole process that forms a sample graph G ′ (V ′ , R ′ ). Through URW the high degree nodes have higher probability to be visited without consideration for node/edge types <ref type="bibr" target="#b24">[25]</ref>. GraphSAINT further applies normalization techniques during the training to prevent the bias in the induced sub-graphs. Sampling for Metapaths: The idea is to keep balanced nodes count per node type c while generating the metapaths instances w.r.t the high variability of KG nodes/edges types. Importance-sampling strategy as in <ref type="bibr" target="#b25">[26]</ref> is used to reduce the variance in metapaths instances and reduce the number of sampled nodes/edges. Constructing subgraphs for all possible metapaths is a time-intensive process <ref type="bibr" target="#b26">[27]</ref>. Additionally, aggregating these metapaths into a metapath graph also incurs a significant amount of memory overhead <ref type="bibr" target="#b9">[10]</ref>. SeHGNN <ref type="bibr" target="#b12">[13]</ref> optimizes the metapath sampling and features aggregation cost by performing the GNN neighbour aggregation only once in the pre-processing stage.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. GNN Tasks on KGs</head><p>GNNs are particularly well adapted in real-world applications for node classification (NC) and link prediction (LP) tasks <ref type="bibr" target="#b27">[28]</ref>. Examples of NC tasks are predicting the community to which a node belongs in a social network <ref type="bibr" target="#b28">[29]</ref> or a venue for publishing a paper <ref type="bibr" target="#b13">[14]</ref>.</p><p>Definition 2.2 (Node Classification): For a given KG = (V, C, L, R, T ), a node classification task N C(KG, V T , c T ) aims to predict labels for each target vertex v t ∈ V T , where v t has the node type c T . The predicted labels can be either a single-label or a multi-label, depending on the problem setting.</p><p>A single-label NC task predicts only one label from a set of mutually exclusive labels. The task objective is to predict the most appropriate label for each node, e.g., a venue of a paper is predicted from a set of venues. In contrast, a multi-label NC task predicts multiple labels simultaneously. The task Target Vertex The same colour means the same vertex or edge type. This sampling method does not guarantee to (i) include enough representation of target vertices (V T ) and (ii) exclude vertices disconnected from V T as these vertices do not contribute to the embeddings of V T .</p><p>aims to predict the presence or absence of multiple labels for each node <ref type="bibr" target="#b28">[29]</ref>, e.g., predicting keywords of a paper. LP tasks predict the potential or missing link between existing nodes in a graph, e.g., affiliations of an author. LP is formalized either as predicting the missing entities (vertices) or predicting the missing relations <ref type="bibr" target="#b29">[30]</ref>. In this paper, we consider the missing entities task where we predict the correct vertex that completes 〈v t ,p,?〉 or 〈?,p,v t 〉. We refer to the known vertex as the target vertex and perform link prediction as follows:</p><p>Definition 2.3 (Link Prediction): For a given KG = (V, C, L, R, T ) and for every predicate (edge type) p T ∈ R, a link prediction task LP (KG, V T , C T , p T ) aims to predict a set of potential vertices that could be connected to the vertex v t ∈ V T via the predicate p T , where v t belongs to the vertex set V T and has the type c T ∈ C T .</p><p>Existing benchmarks for HGNN methods, such as <ref type="bibr" target="#b13">[14]</ref>- <ref type="bibr" target="#b15">[16]</ref>, <ref type="bibr" target="#b30">[31]</ref>, use heterogeneous graphs of a few node/edge types. For example, the subgraph MAG240M in OGB <ref type="bibr" target="#b15">[16]</ref> includes three node and edge types. These benchmarks defined different NC and LP tasks to be modelled on these graphs. Real KGs contain hundreds to thousands of node and edge types such as Wikidata <ref type="bibr" target="#b1">[2]</ref> containing 1,301 and 10,012 node and edge types and Yago <ref type="bibr" target="#b0">[1]</ref> containing 8,902 and 156 node and edge types, respectively. There is a need to benchmark using heterogeneous graphs with up to hundreds of types.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. THE KG-TOSA EXTRACTION APPROACH</head><p>The core contribution of our approach is based on our comprehensive study of data sufficiency and graph topology on HGNNs training. Our findings enable us to discover and design a generic graph pattern for extracting a TOSG from a KG for a specific task. This section highlights these findings and the graph pattern.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Characteristics of Effective HGNNs Training</head><p>Our study explored the factors contributing to good performance and strong generalization in training HGNNs for a specific task. We focused on understanding the characteristics of the graph structure that enable HGNNs to generate distinguished embeddings for vertices targeted by a graphrelated task. The learned embeddings are then utilized in a downstream task, such as node classification or link prediction. Our study included two main characteristics, namely data sufficiency and graph topology. In our study, we used GraphSAINT and its Uniform Random Walk (URW) sampler to investigate the quality of the sampled subgraph using three different tasks in three different KGs, as shown in Figure <ref type="figure" target="#fig_1">2.(a,</ref><ref type="figure">b,</ref><ref type="figure">c</ref>). URW samples these subgraphs with a walk-length (no. of hops) of h = 2 and an initial set of nodes of 20 for training a GNN task. Data Sufficiency: Adequate and representative data is essential for training HGNNs effectively <ref type="bibr" target="#b31">[32]</ref>, <ref type="bibr" target="#b32">[33]</ref>. Sufficient data ensures that the model has access to diverse graph structures and informative node/edge attributes relevant to the task at hand. This allows the training process to capture meaningful patterns and relationships. Existing HGNN methods consider the whole KG in training or sample uniformly a representative graph structure. Suppose the training data includes an insufficient number or low ratio of target vertices. This leads to training batches (subgraphs) with a few target vertices (black vertices shown in Figure <ref type="figure" target="#fig_1">2</ref>). The subgraphs in Figure <ref type="figure" target="#fig_1">2</ref>.(a) and Figure <ref type="figure" target="#fig_1">2</ref>.(b) are examples of this case. This limited representation of target vertices adversely impacts the model performance with a slower convergence rate, i.e., increases the training time. Figure <ref type="figure" target="#fig_1">2</ref> shows that these methods do not guarantee a diverse graph structure around the target vertices. For example, the target vertices are connected to a limited number of vertices of other types. Graph Topology: We also investigate the graph topology. The arrangement and connectivity patterns of nodes and edges profoundly impact the quality of embeddings and the efficiency of generating them in HGNNs. The graph topology determines how information propagates and diffuses across the graph during message passing. It influences the reachability of nodes, the diversity of neighbour node types, and the local/global context available for each vertex. By considering the graph topology, HGNNs can effectively capture and leverage the structural dependencies to generate embeddings that encapsulate the relevant information for the given task.</p><p>Suppose the training data includes vertices disconnected from the target vertices. Then, a GNN method will consume unnecessary aggregation iterations to calculate embeddings that will not affect the final embeddings of the target vertices.</p><formula xml:id="formula_4">?v T ?O 1-1 ?O 1-k ?O 1-2 ... ?O 2-1 ?O 2-k ?O 2-2 ... h c T</formula><p>Fig. <ref type="figure">3</ref>: The TOSG's generic graph pattern is based on two parameters: (i) the direction (outgoing and incoming) predicates, and (i) the number of hops.</p><p>For example, subgraphs in Figure <ref type="figure" target="#fig_1">2</ref>.(a) and (b) include several vertices that are disconnected from target vertices. Moreover, the training data may include vertices that are far from the target vertices. For example, the subgraph in Figure <ref type="figure" target="#fig_1">2</ref>.(c) includes distanced vertices, e.g., up to 4 hops, from a target vertex. This leads to the over-smoothing problem <ref type="bibr" target="#b33">[34]</ref>, <ref type="bibr" target="#b34">[35]</ref>, i.e., generating indistinguishable embeddings. Irrelevant or less related vertices have a diminished impact on model generalization and potentially hinder performance. Furthermore, including node/edge types unrelated to the task's target nodes can introduce unnecessary complexity to the GNN model layers. This increased complexity contributes to more model parameters and prolongs the training and inference time.</p><p>Diverse node neighborhoods help improve the efficacy of GNNs <ref type="bibr" target="#b35">[36]</ref>. To assess graph structural diversity, we employ Shannon Entropy <ref type="bibr" target="#b36">[37]</ref> to measure the variability in the number of neighbor node types per node, as follows:</p><formula xml:id="formula_5">H(N t ) = - n i=1 P(N t (i)) • log 2 (P(N t (i)))<label>(2)</label></formula><p>where P(N t (i)) represents the probability of the count of neighbour node types for a node i in a subgraph with n nodes.</p><p>A higher H(N t ) indicates increased diversity in the type of neighbouring nodes. This diversity enhances the graph's structure to enable more effective learning of node representations. Even methods that utilize full-batch approaches, such as RGCN, train on the whole KG and treat all vertices equally in the training process. These methods do not exploit the potential benefits of data sufficiency and the inherent structure of the graph topology. Consequently, these methods allocate resources toward vertices that have no or little impact on the desired task. That leads to wasted computational time and memory usage. Hence, training using the TOSG is crucial for optimizing model complexity, and improving training and inference efficiency for both mini-and full-batch training methods.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. The KG-TOSA's Graph Pattern</head><p>We introduce a graph pattern for a TOSG that is carefully designed based on our study of data sufficiency and graph topology. We define the TOSG as follows: is a task-oriented subgraph of KG, denoted as</p><formula xml:id="formula_6">KG ′ = (V ′ , C ′ , L ′ , R ′ , T ′ ).</formula><p>KG ′ is a compact subset preserving the local and global graph structure of KG relevant to A. KG ′ aims to maximize the neighbour node type entropy, where every non-target vertex is reachable to a vertex in V T , and minimize the average depth between non-target to target vertices.</p><p>In our graph pattern, we expand each vertex in V T to its neighbouring vertices connected via incoming or outgoing predicates in a range of h hops. Figure <ref type="figure">3</ref> illustrates our graph pattern. This graph pattern helps to guarantee a high quality of the final embeddings generated for V T . These embeddings are obtained by aggregating the initial embeddings of V T with those of its neighbouring vertices up to a specified hop distance h, where each iteration of aggregation reflects embeddings of neighbouring vertices at hop h + 1 (e.g., neighbours of neighbours).</p><p>Our graph pattern preserves the local structure for target nodes by considering the reachable incoming or outgoing neighbours to a certain depth h. Merging the V T neighbours to construct the KG ′ will preserve the global structure for V T by including the links between their neighbours which results in a deeper graph with node/edge distribution close to the original KG. Figure <ref type="figure" target="#fig_2">4</ref> shows an end-to-end workflow of TOSG (KG ′ ) extraction, transformation, and HGNN training. Figure <ref type="figure" target="#fig_3">5</ref> illustrates examples of the subgraphs extracted using our graph pattern for the same tasks and KGs used in Figure <ref type="figure" target="#fig_1">2</ref>. In these subgraphs, all non-target vertices are reachable to at least one target vertex, and the target vertices are surrounded by more diverse sets of vertices and edges of different types.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. OUR GRAPH PATTERN IN PRACTICE: ALGORITHMS</head><p>This section introduces three techniques for extracting subgraphs matching our graph pattern: biased random walk (BRW), influenced-based sampling (IBS), and a SPAQRLbased method. Each technique achieves this goal through different mechanisms (random walks, influence-based sampling, and SPARQL Basic Graph Pattern (BGP) matching), contributing to the overall objective outlined in Definition 3.1. We adapted our graph pattern to extend the recent approaches applied to homogeneous graphs to develop our two main baselines: BRW and IBS. These baselines play a crucial role in evaluating the effectiveness of our SPARQL-based method. Node and edge types are colour-coded. Our approach leads to a higher ratio of target vertices w.r.t. RW in Figure <ref type="figure" target="#fig_1">2</ref> while the non-target vertices of different node/edge types are reachable to at least one vertex in V T .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Biased Random Walk Sampling</head><p>We developed the BRW technique, whose pseudocode is illustrated in Algorithm 1. Our technique biases the random walk expansion toward graph regions centered around the target vertices within a given walk length. We adopt the widely studied URW <ref type="bibr" target="#b6">[7]</ref> to choose an initial set of vertices randomly from the set of V T . This adoption maintains taskrelevant nodes by excluding the task targets' disconnected nodes, as shown in Figure <ref type="figure" target="#fig_3">5.(a,b,</ref> and<ref type="figure">c</ref>). It also increases the number of target nodes to allow data sufficiency. The randomness in the walk, when biased towards the target vertices, contributes to maximizing neighbor node type entropy and ensuring reachability, i.e., better graph topology.</p><p>In Algorithm 1, the function getInitialVertices randomly selects bs vertices from V T , as shown in line 2. Then, a random walk sampler expands these initial vertices V initial in h hops to finally select a set of nodes V s as shown in lines 3-6. The KG ′ subgraph is constructed in line 7 by including all edges between V s nodes in the original KG. The BRW sampler preserves the local graph structure relevant to the task by considering connected vertices to V T in performing the random walk. The subgraph extraction in line 7 interconnects all edges between these nodes to construct KG ′ . This helps BWR interlink between different vertices located across the KG and related to the task.</p><p>Two factors dominate the complexity of BRW. First, the random walk complexity O(h|V T |) in lines 4-6, where h is the walk length that controls how far neighbour nodes to include in the sampled subgraph. Second, the subgraph extraction in line 7 with complexity O(d|V s |), where d is the average degree of nodes in V s that depends on the structure of the graph. As d decreases, V s generally increases in size, leading to a higher extraction cost for KG ′ .Larger V T and h as well contributes to larger |V s |. Random walks are performed per v t . So it could be easily parallelized. However, the dominating factor of Algorithm 1 is the subgraph extraction at line 7. The main advantage of BRW is the lightweight sampling complexity.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Influenced-based Sampling</head><p>We also developed an influenced-based sampling (IBS) technique that expands from target vertices to neighbouring nodes based on an influenced-based score. This score is to reflect the importance of a node to a particular target vertex. V initial ← getInitialVertices(bs, A.VT )</p><formula xml:id="formula_7">3:</formula><p>Vs ← V initial 4:</p><formula xml:id="formula_8">for v ∈ V initial do 5:</formula><p>Vs ← Vs ∪ randomWalkSampler (KG, v, h)</p><formula xml:id="formula_9">6:</formula><p>end for 7:</p><p>KG ′ ← extractSubgraph(Vs, KG) 8: end function Our IBS technique adapts the PPR <ref type="bibr" target="#b37">[38]</ref> to approximate an influence score between the two nodes, where the influence score determines the local scope sensitivity of node v on node u as follows:</p><formula xml:id="formula_10">I(v, u) = i j | ∂h (L) ui ∂X vj |<label>(3)</label></formula><p>The equation <ref type="bibr" target="#b2">(3)</ref> represents the influence score between nodes v and u in a neural network model. In this equation, h</p><formula xml:id="formula_11">(L)</formula><p>ui refers to the i-th element in the embedding of node u at the last layer L, while X vj represents the j-th feature of node v. The partial derivative in equation (3) measures the contribution of node v to the embedding of node u in the final layer L. A higher value indicates that the update from node v has a more significant impact on node u. This influence measurement is crucial for filtering out irrelevant neighbour nodes in a given task. The influence score function can be implemented using various methods, such as a weighted random walk function with l steps or the shortest path distance. IBS potentially increases neighbour node type entropy by strategically selecting nodes based on their influence and ensures reachability by expanding from target vertices to the most influencing neighbour nodes.</p><p>Algorithm 2 is the pseudocode of IBS. The influence score between each target node in V T and all neighbour nodes is calculated using the approximate PPR in lines 2-3 on a homogeneous graph. The top-k pairs of target neighbour nodes are selected to construct a graph partition of bs target nodes in line 4. The functions at lines 2 to 4 are parallelized using multi-threading. The graph partition contains the neighbour KG ′ ← extractSubgraph(KG, gP artition) 6: end function nodes with high overlap between the bs nodes for efficient batches. The graph partition nodes and their in-between edges in the original KG are used to construct the KG ′ subgraphs. The IBS sampler preserves the local graph structure of the task by selecting nodes connected to V T with the highest influence scores. Simultaneously, it takes into account all edges among the chosen nodes to construct KG ′ , thereby preserving the global graph structure of the task. After the graph partition selection in line 4, we transform back the homogeneous subgraph into a heterogeneous subgraph by adding the node/edge types. The GCN layers are replaced with RGCN layers to learn the heterogeneous graph semantics effectively.</p><p>Two factors dominate the Complexity of IBS. Firstly the PPR to expand for neighbour nodes with complexity O( Nout ϵα ) where ϵ is the error value that goes to zero and α is the PPR teleport probability which is very small value in dense graphs (between 0.1-0.25). This complexity is dependent on the number of non-target nodes and the graph density. Secondly, the induced subgraph extraction in line 5 with complexity O(d|V s |), where d is the average degree of nodes in gP artition that depends on the structure of the graph. The large k and bs lead to a large subgraph size that requires larger training memory and time. Tuning these parameters helps achieve good balance based on the graph structure and density. However, the user should be aware of these factors for a given KG. Our IBS samples the neighbouring nodes based on their importance. Hence, it may lead to a better model's performance. However, its complexity will lead to excessive computation to extract the TOSG from a dense KG with a large number of vertices. Extracting the TOSG aims to reduce the overall training time and memory usage. Hence, it is necessary to optimize the cost of extracting the TOSG.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. A SPARQL-based Extraction Method</head><p>The SPARQL-based method is designed to offload the extraction of subgraphs matching our generic graph pattern to an RDF engine. This facilitates the integration of GNN training systems onto existing RDF engines, which are widely used to store KGs <ref type="bibr" target="#b38">[39]</ref>, <ref type="bibr" target="#b39">[40]</ref>. Our generic graph pattern for KG ′ , as illustrated in Figure <ref type="figure">3</ref>, could be formalized as a basic graph pattern (BGP), which could be performed as a SPARQL query. Hence, the SPARQL-based method efficiently leverages the built-in indices, which RDF engines construct by default. Moreover, unlike BRW and IBS, the SPARQL-based method eliminates the need for a complete migration of the KG outside the RDF engine. This full migration proves to be computationally expensive with large KGs <ref type="bibr" target="#b38">[39]</ref>, <ref type="bibr" target="#b39">[40]</ref> T riples + = sparqlExec(KGID, SP, QB[index++])</p><formula xml:id="formula_12">9:</formula><p>end while 10:</p><p>KG ′ csv ← dropDuplicates(T riples) 11: end function SPARQL-based method preserves: (i) the local graph structure by considering connected nodes to V T , and (ii) the global structure by merging the generated triples to construct KG ′ .</p><p>Our SPARQL-based method could be tuned to generate query variations by adjusting two main parameters: (i) predicate direction d and (ii) the number of hops h. These parameters control the average distance of nodes from the target nodes and incorporate various node/edge types. In KG-TOSA, the BGP query will include by default the outgoing predicates, i.e., d = 1, and one hop, h = 1 (KG-TOSA d1h1 ). TOSG can include three more variations: (i) (KG-TOSA d2h1 ) outgoing and incoming predicates, i.e., d = 2, and one hop, h = 1, (ii) (KG-TOSA d1h2 ) outgoing predicates, i.e., d = 1, and two hop, h = 2, and (iii) (KG-TOSA d2h2 ) outgoing and incoming predicates, i.e., d = 2, and two hop, h = 2. A SPARQL query (Q d2h1 ) for KG-TOSA d2h1 could be formulated as: where {?v a &lt;Node_Type_URI&gt;.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>7</head><p>?s ?p ?v.} } KG-TOSA supports all these variations. These four variations are used for node classification tasks. In the case of a link prediction task targeting vertices of two different types, we add the triple pattern ⟨?v T i , p T , ?v T j ⟩ between the two subgraphs extracted for ?v T i and ?v T j . Algorithm 3 is the pseudocode of our parallel SPARQL-based TOSG extraction. It formalizes a BGP for a given task based on a certain d direction and h hops in line 2. However, this query may target a large number of vertices, which can cause issues, e.g., network congestion or low bandwidth. To address this, KG-TOSA uses compression and pagination optimization techniques when dealing with query results of a large number of triples. Most RDF engines support compression. Hence, KG-TOSA sends an HTTP request to the SPARQL endpoint with a compression flag.</p><p>Existing RDF engines support pagination using LIMIT and OFFSET. By dividing the results into k mini-batches, most RDF engines will execute the query k times. This is inefficient as our queries are formulated with UNION, such as line 5 in The merging process at line 8 enables KG-TOSA to maintain longer metapaths. For example, for the metapath Author-Writes-Paper-Cites-Paper-PublishedIn-Venue in MAG, the subgraphs of common vertices will be interconnected. This process forms a larger sub-graph (TOSG) with longer metapaths while still maintaining a smaller number of hops (h) from the target vertices (in this case, vertices of type "Publication"). By using longer metapaths, the SPARQL-based method enables HGNNs to achieve better semantic attention. It also allows for constructing multi-layered GCNs with a limited number of hops. Compared to BRW and IBS, the SPARQL-based method has lower complexity since it does not require sampling on the entire graph and utilizes the RDF engine's builtin indices. Hence, The SPARQL-based method ensures a decrease in both training time and memory usage while extracting a TOSG of comparable graph quality to those obtained by BRW and IBS in terms of data sufficiency and graph topology.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>V. EXPERIMENTAL EVALUATION</head><p>A. Evaluation Setup 1) Our Benchmark (KG datasets and GNN tasks): Our KG datasets include real KGs, such as MAG, DBLP, YAGO and WikiKG. The datasets are extracted from real KGs of different application domains: general-fact KGs (YAGO4 and ogbl-wikikg2) , and academic KGs (MAG and DBLP). These KGs contain up to 42.4 million vertices, 400 million triples, and tens to thousands of node/edge types. Existing HGNN methods for LP tasks on large KGs require excessive computing resources. Hence, we also used YAGO3-10 , a  <ref type="table" target="#tab_5">I</ref> and<ref type="table" target="#tab_6">II</ref> summarize the details of the used KGs and our defined NC and LP tasks <ref type="foot" target="#foot_1">4</ref> , respectively. Our benchmark will be available for further study.</p><p>Our benchmark includes NC and LP tasks. In KGs, an NC task is categorized into single-or multi-label classifications, as defined in 2.2. Our benchmark followed existing datasets in <ref type="bibr" target="#b7">[8]</ref>, <ref type="bibr" target="#b12">[13]</ref>, <ref type="bibr" target="#b13">[14]</ref> and defined single-label NC tasks. We choose the accuracy metric for these NC tasks to evaluate the performance. The train-valid-test splits are either split using a logical predicate that depends on the task or stratified random split with 80% for training, 10% for validation and 10% for testing. Table <ref type="table" target="#tab_6">II</ref> summarizes the details of the split schema and ratio. Our benchmark includes two NC tasks per KG.</p><p>For LP tasks, KGs contain many edge types that vary in importance to a specific task. For example, a GNN task predicting the academic affiliation will benefit from the predicates (edge type) discipline and affiliation in Wikidata but not from predicates related to movies and films. Moreover, training HGNNs for an LP task on a large KG of many edge types is computationally expensive. Hence, we define our LP tasks for a specific predicate to enable the HGNN methods to train the models with our available computing resources: a Linux machine with 32 cores and 3TB RAM. We choose the Hits@10 metric to evaluate the predictions ranking performance following SOTA methods <ref type="bibr" target="#b7">[8]</ref>, <ref type="bibr" target="#b10">[11]</ref>, <ref type="bibr" target="#b13">[14]</ref>. The train-valid-test splits are either split using three versions of the KG based on time or randomly. The details of the LP tasks are summarized in Table <ref type="table" target="#tab_6">II</ref>.</p><p>2) Computing Infrastructure: Our experiments used two different settings: (i) VM GB : two Linux machines, each with dual 64-core Intel Xeon 2.4 GHz (Skylake, IBRS) CPUs and 256GB RAM, and (ii) VM T B : one Linux machine with 32 cores and 3TB RAM. We use the standard, unmodified installation of Virtuoso 07.20.3229. On VM GB , we installed one Virtuoso instance per KG. We run each method in VM T B for the NC task. We use VM GB for the LP task on Yago3-10 and VM T B for the LP task on DBLP and ogbl-wikikg2.</p><p>3) Compared GNN Methods: We evaluate KG-TOSA performance against our developed baselines BRW and IBS using the state-of-the-art (SOTA) GNN methods as follows: (i) </p><formula xml:id="formula_13">(A) (B) (C)</formula><p>FG (YAGO-30M) KG-TOSA d1h1 (KG' for NC task Place-Country)</p><p>Fig. <ref type="figure">6</ref>: Performance across NC tasks is based on three metrics: (A) Accuracy (higher is better), (B) Training-Time (lower is better), and (C) Memory (lower is better). The top and middle sections illustrate the results for the Paper-Venue task on MAG and DBLP, respectively. The bottom figures present the outcomes for the place-country task. With KG-TOSA, all methods experience improvements in accuracy in most cases while reducing memory and time, even with KG-TOSA's preprocessing time in yellow.</p><p>RGCN-based methods, such as ShaDowSAINT <ref type="bibr" target="#b7">[8]</ref> and Graph-SAINT <ref type="bibr" target="#b6">[7]</ref>, a metapath-based method, namely SeHGNN <ref type="bibr" target="#b12">[13]</ref>.</p><p>These SOTA methods are based on sampling and mini-batch training, (ii) RGCN<ref type="foot" target="#foot_2">5</ref>  <ref type="bibr" target="#b20">[21]</ref>, full-batch training (no sampling), and (iii) MorsE <ref type="bibr" target="#b10">[11]</ref> and LHGNN <ref type="bibr" target="#b11">[12]</ref>. We used the code available in the GitHub repositories provided by the authors of each method. The code of SeHGNN, ShaDowSAINT, and GraphSAINT support only node classification tasks. MorsE and LHGNN are the SOTA methods in link prediction, and their code does not support node classification tasks. The RGCN code supports both tasks. We used the default tuned training parameters provided by the authors of each method as indicated in their available code and paper and initialized node embeddings randomly using Xavier weight. MorsE-TransE version is used in the LP tasks. KG-TOSA utilizes by default the SPARQL-based method to extract KG ′ from KG for a specific task. Then, each HGNN method is tested twice: (i) using the original KG denoted as a full graph (FG), and (ii) using the KG ′ . We perform the three runs of each method on the exact VM and report the metric average value.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. The KG-TOSA Impact on HGNN Methods</head><p>We evaluate the performance of each method in terms of the model performance, training time, and memory consumption for each task. Below, we present our results by task type. KG-TOSA dihj has two primary parameters: d (1 or 2) and h (number of hops). For NC tasks, we utilized KG-TOSA with only outgoing predicates (d = 1) and one hop (h = 1), which we refer to as KG-TOSA d1h1 . For LP tasks, we utilized KG-TOSA with bidirectional predicates (d = 2) and one hop (h = 1), which we refer to as KG-TOSA d2h1 .</p><p>1) Node Classification Tasks: We utilized KG-TOSA d1h1 to extract KG ′ for each NC task/KG. Figure <ref type="figure">6</ref> presents the performance of each GNN method using the full KG (FG) and KG ′ . The preprocessing overhead associated with extracting and transforming the KG ′ , denoted in yellow in Figure <ref type="figure">6</ref>.(B), is negligible compared to the overall savings. Due to space constraints, we only show the results for three NC tasks 6 . In general, KG-TOSA enables all SOTA methods for the six NC tasks to decrease training time and memory usage while improving accuracy in most cases. The improvement achieved by KG-TOSA varies based on different factors, such as the sampling support and the size of KG ′ compared to FG. The latter depends on the diversity of FG and the number of target vertices in a task. For instance, MAG-42M and YAGO-30M are diverse KGs with around 60 to 100 node/edge types, while YAGO-30M and DBLP-15M are the largest in terms of triples, with 400M and 252M, respectively, as reported in Table <ref type="table" target="#tab_5">I</ref>. 6 The remaining tasks are available in the supplementary materials here. RGCN is a full-batch GNN method without performing any sampling unlike other methods, such as GraphSAINT, ShaDowSAINT, and SeHGNN. Hence, RGCN has the shortest training time, but it consumes excessive memory. As a result, KG-TOSA enables RGCN to significantly decrease its memory consumption, up to 63%, with DBLP-15M for the papervenue task. RGCN is the method that benefits the least from KG-TOSA in terms of training time. However, GraphSAINT, ShaDowSAINT, and SeHGNN significantly benefit from the extracted KG ′ by KG-TOSA, which empowers them to reduce their time and memory usage across all tasks and KGs with improving in accuracy by up to 11%.</p><p>2) Link Prediction Tasks: We utilized KG-TOSA d2h1 to extract KG ′ for each LP) task. Figure <ref type="figure" target="#fig_4">7</ref> shows the performance of RGCN, MorsE and LHGNN using the full KG (FG) and our KG ′ . The preprocessing overhead (denoted in yellow) of KG-TOSA d2h1 is reported in Figure <ref type="figure" target="#fig_4">7</ref>.(B). This preprocessing is very small w.r.t the training time. Hence, it is hard to be recognized. For the DBLP LP task, our preprocessing is 14 minutes, while training time is 10 hours. KG-TOSA enables RGCN, LHGNN, and MorsE to reduce the training time and memory consumption while improving the model's performance (higher Hits@10) in most cases, as shown in figure <ref type="figure" target="#fig_4">7</ref>. LHGGN achieved the highest score and consumed excessive time and memory. Hence, LHGGN did not finish training for other LP tasks on the larger KGs, i.e., wikikg2 and DBLP-15MK.</p><p>RGCN and MorsE consume more memory and time with large KGs, such as DBLP-15M, w.r.t smaller ones, e.g., YAGO3-10 and ogbl-wikikg2. RGCN failed to train the task on DBLP-15M using VM T B with 3TB RAM. However, KG-TOSA enabled RGCN to finish this task with only 35GB RAM. This is tremendous memory savings of more than 98%. Moreover, KG-TOSA empowered MorsE to improve the accuracy of DBLP from 0.77 to 0.83 and ogbl-wikikg2 from 0.58 to 0.77. This improvement demonstrates that as tasks' complexity and the size of KGs increase, KG-TOSA enables GNN methods to achieve more performance improvements (better Hits@10) while reducing time and memory usage.</p><p>Our defined LP tasks are based on one given predicate. Performing LP for all edge types, i.e., KG completion, consumes excessive computing resources. Hence, training HGNNs on large KGs might not be feasible due to a lack of resources. For example, performing KG completion using MorsE on DBLP-15M consumed 330GB memory and 124 training hours compared with 11 GB and 9.8 training hours using the KG' of KG-TOSA for affaliatedWith edge type only. This huge saving in memory and time (one order of magnitude less time and memory) enables users to perform LP on predicates of their interest. Moreover, we can efficiently train LP tasks on a set of individual predicates in parallel.</p><p>C. Analyzing KG-TOSA 1) Analyzing our Extraction Methods in Overall Performance: These experiments compare our SPARQL-based method against our developed baseline methods (BRW and IBS) for extracting the TOSG. Our BRW implementation adopts the GraphSAINT subgraph sampler <ref type="bibr" target="#b6">[7]</ref>. We replaced the RW subgraph sampler with our implemented BRW sampler. The parameters of BRW are the same for all tasks: bs = 20000, h = 3 and RGCN embedding-dim=128. For IBS, the parameters are the same for all tasks as follows: bs = 20000 and top -k = 16. The training parameters are α = 0.25, ϵ = 0.0002, and RGCN embedding-dim=128. Our SPARQL-based method is based on two parameters, d ∈ {1, 2} for edge direction and h ∈ {1, 2, ..., n} for the number of hops. We evaluated four variations of KG-TOSA where d and h ranged from 1 to 2, as shown in Figure <ref type="figure" target="#fig_5">8</ref>.</p><p>We used KG-TOSA dihj to extract KG ′ and compared its performance against BRW and IBS (our baselines). The parameters in KG-TOSA dihj determine the TOSG sampling scope around a target vertex, which affects the size of KG ′ depending on the KG structure. Among the six NC tasks, KG-TOSA d1h1 met all characteristics discussed in Section III-A while consuming the least time and memory with comparable accuracy. KG-TOSA based on the SPARQL-based variations managed to improve the accuracy in PV/MAG-42M and PV/DBLP-15M and maintain comparable accuracy on PC/YAGO-30M while reducing time and memory w.r.t BRW and IBS. YAGO-30 showcases diversity with 104 node types and 98 edge types (see Table <ref type="table" target="#tab_5">I</ref>). BRW and IBS employ aggressive sampling that improves the identification of critical features (nodes and edges). Our three methods extract TOSGs with varying ratios of V T and V s , as shown in Table <ref type="table" target="#tab_6">III</ref>. IBS, for YAGO-30 PC, yields a KG ′ with an average of 74.6% target vertices (25.4% V s ), while BRW produces a KG ′ with an average of 55.3% target vertices (54.7% V s ). Hence, IBS is faster on YAGO-30 PC compared to BRW, whereas BRW demonstrates faster performance than IBS on MAG and DBLP. On the one hand, BRW and IBS achieved TABLE III: Statistics of extracted subgraphs using URW, BRW, IBS, and KG-TOSA d1h1 on Yago-4, DBLP, and MAG KGs. The walk length h (no. of hops) is = 3 and the size of the initial set of target nodes is 20k. Our SPARQL-based method using d1h1 achieves similar statistics and comparable accuracy to BRW and IBS. However, BRW and IBS consume excessive computing resources w.r.t the SPARQL-based method as shown in Figure <ref type="figure" target="#fig_5">8</ref>.  better accuracy in the YAGO-30 PC task, but the sampling cost of both methods introduced excessive training time and memory consumption. On the other hand, KG-TOSA d1h1 introduces the best balance by achieving comparable or better accuracy in all tasks with negligible preprocessing cost. We break down the KG-TOSA preprocessing cost in table IV. We analyzed the sensitivity of these parameters on the LP tasks, where KG-TOSA d2h1 fulfils all our evaluation criteria.</p><formula xml:id="formula_14">Indicator</formula><p>2) Analyzing our Extraction Methods in terms of Data Sufficiency and Graph Topology: We analyzed the quality indicators of subgraphs generated using our sampling and SPARQL-based methods against the URW for four different tasks on three KGs, as shown in Table <ref type="table" target="#tab_6">III</ref>. The BRW, IBS, and KG-TOSA d1h1 subgraphs statistics consistently show better quality indicators, compared to URW. For data sufficiency, the percentage of target nodes is deficient in URW samples, which range from 1% to 30%. Our methods increased this ratio in most of the cases. KG-TOSA d1h1 maintained the highest balance between 35% and 40% in all cases. Our generic graph pattern helps the three methods to extract relevant node/edge types. However, URW may include irrelevant node/edge types. Hence, the number of |C ′ | and |R ′ | is decreased in most of the cases by our three methods. For graph topology, our methods excluded disconnected target nodes, reduced the average distance between non-target and target nodes, and enhanced the average entropy of neighbour node types as calculated by Equation <ref type="formula" target="#formula_5">2</ref>. This results in a subgraph with fewer hops and a greater diversity of node types compared to URW. Thus, training models using the KG ′ helps reduce GNN oversmoothing <ref type="bibr" target="#b33">[34]</ref>. Overall, our three methods outperform GraphSAINT, which uses URW by default, with up to 27% better accuracy. These results demonstrate that our methods allow the extraction of higherquality training subgraphs (mini-batches). However, IBS and BRW incur an excessive extraction overhead, particularly with a large KG that may overshadow the potential time savings.</p><p>3) Task-oriented sampling and Model Convergence Rate: To analyze the time reduction achieved by KG-TOSA, we tracked the accuracy achieved by GraphSAINT as a function of the number of training epochs while using FG and KG ′ . We run with 30 epochs each. However, the average time per epoch with KG ′ is much shorter. Thus, we report the time instead of the number of epochs in Figure <ref type="figure" target="#fig_6">9</ref>. Across all tasks, KG-TOSA enables GraphSAINT to achieve a faster convergence rate. KG-TOSA identifies a smaller subset of the KG, i.e., KG ′ , that helps GraphSAINT generate mini-batches of high-quality subgraphs, as shown in Table <ref type="table" target="#tab_6">III</ref>. Hence, the model attains optimal performance in fewer and faster iterations, which helps reduce training times and computational costs. We got similar results 7  with other GNN methods with an even better convergence rate.</p><p>4) The KG-TOSA Cost Breakdown in GNN Training: GNN methods require a KG to be provided as adjacency matrices. Thus, traditional GNN pipelines involve data transformation from RDF triples to adjacency matrices. For extracting KG ′ , KG-TOSA d1h1 used VM T B with P = 64 and a batch size bs of 1M tiples, see Algorithm 3. For the six NC tasks, Table <ref type="table" target="#tab_9">IV</ref> summarizes the cost breakdown, accuracy, model size, inference time, and memory usage for traditional GNN pipelines (FG) and the pipeline with KG-TOSA d1h1 (KG ′ ) for our NC tasks. KG-TOSA reduces training and data transformation time, which empowers GNN methods to achieve performance gains that outweigh its negligible preprocessing overhead. KG-TOSA identifies a subgraph, KG ′ , of smaller size and structure. That helps models trained using KG-TOSA exhibit a remarkable reduction in size, up to 34 times smaller, while demonstrating significantly faster inference times, up to 40 times faster, as shown in Table <ref type="table" target="#tab_9">IV</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VI. RELATED WORK</head><p>We developed KG-TOSA as part of our vision towards <ref type="bibr" target="#b38">[39]</ref>, <ref type="bibr" target="#b39">[40]</ref> an on-demand graph ML (GML) as a service on top of KG engines to support GML-enabled SPARQL queries. The KG-TOSA task-oriented sampling aims to prune the search space by identifying the minimal subgraph sg in a KG, where sg is related to the task at hand. Unlike our approach, IBMB <ref type="bibr" target="#b24">[25]</ref> introduced Personalized Pagerank (PPR) to calculate the influenced scores in homogeneous graphs to sample a representative graph that could be used to train different tasks. IBMB does not support KGs and task-oriented HGNNs training.</p><p>There is a growing effort to develop systems for training GNNs on large graphs at scale. These systems aim to (i) distribute the training across multiple GPUs or CPUs in a single machine (scale-up) <ref type="bibr" target="#b41">[42]</ref>, <ref type="bibr" target="#b42">[43]</ref>, or (ii) distribute the training across a cluster of machines with multiple GPUs or CPUs per machine (scale-out) <ref type="bibr" target="#b43">[44]</ref>- <ref type="bibr" target="#b47">[48]</ref>. KG-TOSA can be used with scale-out and scale-up systems to optimize 7 Results are shown in the supplementary materials due to the lack of space. the use of existing resources. All the used GNN methods in our evaluation are based on scale-up frameworks, such as the PYG <ref type="bibr" target="#b48">[49]</ref>. NeuGraph <ref type="bibr" target="#b41">[42]</ref> leverages multi-GPU in single-machine to improve training performance. Marius <ref type="bibr" target="#b49">[50]</ref> optimizes graph embedding learning by using partition caching and buffer-aware data ordering. There are several scale-out GNN frameworks, as follows. DistDGL <ref type="bibr" target="#b43">[44]</ref> uses partitioning with load balancing to achieve high scalability. SANCUS <ref type="bibr" target="#b45">[46]</ref> reduces communication overhead using a powerful parallel algorithm and abstracting GNN processing as sequential matrix multiplication. AliGraph <ref type="bibr" target="#b46">[47]</ref> also uses static cache but only supports CPU servers. DGL-Dist <ref type="bibr" target="#b43">[44]</ref> supports RGCN and different sampling techniques.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VII. CONCLUSION</head><p>Handcrafted task-oriented subgraphs (TOSG) help GNN methods reduce training and memory usage by trading accuracy for performance. Extracting a TOSG from an arbitrary KG is time-consuming and challenging for AI practitioners. In this paper, we conducted a comprehensive study to analyze these challenges. Based on our analysis, we discovered a generic graph pattern that captures local and global KG structures relevant to training a specific task. This paper proposes two task-oriented sampling techniques based on biased random walks and Personalized PageRank scores for extracting subgraphs matching our generic graph pattern. To address the computational overhead of the task-oriented sampling techniques, we propose a SPARQL-based method leveraging RDF engines for TOSG extraction. This method also avoids the full KG migration while achieving comparable or better modelling performance. This paper benchmarks our approach on large KGs, such as MAG, DBLP, YAGO, and Wikidata, with diverse node classification and link prediction tasks. Our comprehensive evaluation includes six state-of-theart GNN methods. Our results demonstrate that our approach significantly reduces training, inference time and memory footprint while improving performance metrics (e.g., accuracy, Hits@10). Our approach emerges as a cost-effective HGNN training approach, particularly beneficial for large KGs. This is a step forward to developing sustainable approaches and optimizations for data science.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 :</head><label>1</label><figDesc>Fig. 1: (A) Accuracy (higher is better), (B) Training-Time (lower is better), (C) Training-Memory (lower is better).Training a node classification task (P V ) to predict the paper venue using ShaDowSAINT<ref type="bibr" target="#b7">[8]</ref> and SeHGNN<ref type="bibr" target="#b12">[13]</ref> on a MAG graph with 42M vertices (M AG-42M ). The handcrafted task-oriented subgraph (OGBN -M AG) from M AG-42M trades accuracy to reduce time and memory usage. Our KG-TOSA d1h1 task-oriented subgraph is extracted automatically from M AG-42M for P V to reduce time and memory consumption while improving accuracy.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 2 :</head><label>2</label><figDesc>Fig.2: Examples of subgraphs generated by the uniform random walk (URW) sampler in GraphSAINT for different GNN tasks. The black vertices indicate the target vertices. The same colour means the same vertex or edge type. This sampling method does not guarantee to (i) include enough representation of target vertices (V T ) and (ii) exclude vertices disconnected from V T as these vertices do not contribute to the embeddings of V T .</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 4 :</head><label>4</label><figDesc>Fig. 4: The KG-TOSA generic workflow. The TOSG (KG ′ ) of Task A is extracted and transformed into an adjacency matrix. Then, the HGNN training performs either mini-batch or fullbatch training. The size of KG ′ is proportional to V T , the average degree of V T , and the average distance to V T . The smaller KG ′ , the faster the training pipeline.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 5 :</head><label>5</label><figDesc>Fig.5: The subgraphs (a, b, and c) are generated by our biased random walk sampler. The black vertices indicate the target vertices. Node and edge types are colour-coded. Our approach leads to a higher ratio of target vertices w.r.t. RW in Figure2while the non-target vertices of different node/edge types are reachable to at least one vertex in V T .</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Fig. 7 :</head><label>7</label><figDesc>Fig. 7: Performance of RGCN, MorsE, and LHGNN in the LP tasks. (A) Hits@10 (higher is better), (B) Training-Time, (C) Training-Memory. RGCN exceeded the 3TB RAM in VM T B .</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Fig. 8 :</head><label>8</label><figDesc>Fig. 8: (A) Accuracy, (B) Extraction, Transformation, and Training Time, (C) Memory. GraphSAINT+BRW on FG v.s. Our SPARQL-based method with different parameters (KG-TOSA dihj ). PV/MAG-42M at the top, PV/DBLP-15M in the middle, and PC/YAGO-30M at the bottom. KG-TOSA dihj achieves comparable accuracy to BRW and IB while enabling HGNN methods to reduce training time and memory usage.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Fig. 9 :</head><label>9</label><figDesc>Fig.9: Convergence rate analysis. GraphSAINT while training the six NC tasks using the full graph (FG) and KG ′ extracted by KG-TOSA. KG-TOSA enables the GNN method to generalize faster with comparable accuracy.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>Algorithm 1 Biased Random Walk Sampling Input: Knowledge graph KG; GML task A; Walk length h; batch size bs. Output: Knowledge graph KG ′ .</figDesc><table /><note><p>1: function BRW MS(KG, A, h, bs) 2:</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head></head><label></label><figDesc>Algorithm 2 Influence-based Sampling Input: Knowledge graph KG; GML task A;batch size bs; top-k k; Output: Knowledge graph KG ′ . 1: function IBS(KG, A, pn, k):</figDesc><table><row><cell>2:</cell><cell>Inf-mat ←getInfluenceScore(KG, A.VT )</cell></row></table><note><p><p><p><p>3:</p>topk pairs ← SelectTopK-Nodes(A.VT , Inf-mat, k)</p>4:</p>gP artition ← getPartition(KG, topk pairs, bs) 5:</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head></head><label></label><figDesc>. The Algorithm 3 SPARQL-based TOSG Extraction Input: KG ID KGID; GML task A; Number of Direction d hops h; SPARQL Endpoint SP ; batch size: bs, number of threads: P Output: Knowledge graph KG ′ .</figDesc><table><row><cell>3:</cell><cell cols="2">count ← getGraphSize(KGID, SP, BGP )</cell></row><row><cell>4:</cell><cell cols="2">QB ← executionP lanner(KGID, SP, BGP, count, bs)</cell></row><row><cell>5:</cell><cell cols="2">index = 0 and initializeWorkers(P)</cell></row><row><cell>6:</cell><cell>Worker [RequestHandler]:</cell><cell></cell></row><row><cell>7:</cell><cell>while i &lt; QB.size() do</cell><cell>▷ loop over the query batches</cell></row><row><cell>8:</cell><cell></cell><cell></cell></row></table><note><p>1: function SPARQL MS(KGID, A, d, h, SP ,bs,P): 2: BGP ← getBGP(A, d, h).</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>TABLE I :</head><label>I</label><figDesc>Our Benchmark Statistics. The number of nodes and edges (RDF triples) is in millions. The number of node types (n-type) and edge types (e-type) is tens to thousands. The algorithm gets as input the batch size per HTTP request. These optimizations are performed in lines 3 to 10. The complexity of KG-TOSA is dominated by QB size in line 7 and the average execution time per query. Also, the drop duplicates step at line 10 is performed in O(|KG ′ |) which is dominated by the small size of |KG ′ |. The d and h parameters contribute to the average query execution time and as well the size of KG ′ .</figDesc><table><row><cell>KG-Dataset</cell><cell cols="4">#nodes #edges #n-type #e-type</cell></row><row><cell>MAG-42M</cell><cell>42.4M</cell><cell>166M</cell><cell>58</cell><cell>62</cell></row><row><cell>YAGO-30M</cell><cell>30.7M</cell><cell>400M</cell><cell>104</cell><cell>98</cell></row><row><cell>DBLP-15M</cell><cell>15.6M</cell><cell>252M</cell><cell>42</cell><cell>48</cell></row><row><cell>ogbl-wikikg2</cell><cell>2.5M</cell><cell>17M</cell><cell>9.3K</cell><cell>535</cell></row><row><cell>YAGO3-10</cell><cell>123K</cell><cell>1.1M</cell><cell>23</cell><cell>37</cell></row><row><cell cols="5">Q d1h1 . Repeating the UNION query k time is time-consuming</cell></row><row><cell cols="5">due to duplicate elimination. Thus, Algorithm 3 paginates each</cell></row><row><cell cols="5">subquery independently. Each subquery will benefit from the</cell></row><row><cell cols="5">RDF built-in indices, as the query targets a vertex of a known</cell></row><row><cell cols="5">type. Existing RDF engines support six indexing schemes for</cell></row><row><cell cols="5">traditional lookup on any subject, predicate or object in a</cell></row><row><cell cols="5">SPARQL query [41]. Thus, our SPARQL-based queries are</cell></row><row><cell cols="5">executed efficiently by leveraging the indices existing in RDF</cell></row><row><cell cols="5">engines. Algorithm 3 collects in P parallel threads the set</cell></row><row><cell cols="5">of triples in a Pandas DataFrame (DF) and finally uses DF to</cell></row><row><cell>eliminate duplicates.</cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>TABLE II :</head><label>II</label><figDesc>A summary of our GNN tasks: Task Types (TT) are single-label node classification (NC) or missing entity link prediction (LP).</figDesc><table><row><cell>TT</cell><cell>Name</cell><cell>KG</cell><cell>Split</cell><cell>Ratio</cell><cell>Metric</cell></row><row><cell>NC</cell><cell>PV</cell><cell>MAG-42M</cell><cell>Time</cell><cell>84/9/7</cell><cell>Accuracy</cell></row><row><cell>NC</cell><cell>PD</cell><cell>MAG-42M</cell><cell>Time</cell><cell>87/8/5</cell><cell>Accuracy</cell></row><row><cell>NC</cell><cell>PC</cell><cell>YAGO-30M</cell><cell>Random</cell><cell>80/10/10</cell><cell>Accuracy</cell></row><row><cell>NC</cell><cell>CG</cell><cell>YAGO-30M</cell><cell>Random</cell><cell>80/10/10</cell><cell>Accuracy</cell></row><row><cell>NC</cell><cell>PV</cell><cell>DBLP-15M</cell><cell>Time</cell><cell>79/10/11</cell><cell>Accuracy</cell></row><row><cell>NC</cell><cell>AC</cell><cell>DBLP-15M</cell><cell>Time</cell><cell>80/10/10</cell><cell>Accuracy</cell></row><row><cell>LP</cell><cell>AA</cell><cell>DBLP-15M</cell><cell>Time</cell><cell>99/0.7/0.3</cell><cell>Hits@10</cell></row><row><cell>LP</cell><cell>PO</cell><cell>ogbl-wikikg2</cell><cell>Time</cell><cell>94/2.5/3.5</cell><cell>Hits@10</cell></row><row><cell>LP</cell><cell>CA</cell><cell>YAGO3-10</cell><cell cols="2">Random 99/0.5/0.5</cell><cell>Hits@10</cell></row><row><cell cols="6">smaller version of YAGO, and ogbl-wikikg2 [14], a dataset</cell></row><row><cell cols="6">extracted from Wikidata. It contains 2.5M entities and 535</cell></row><row><cell cols="3">edge types. Tables</cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>TABLE IV :</head><label>IV</label><figDesc>A breakdown of the cost involved in training a GNN task: (i) KG-TOSA d1h1 to extract KG ′ from FG (optional), (ii) transforming the RDF triples into adjacency matrices (mandatory), and (iii) training the task using GraphSaint.</figDesc><table><row><cell></cell><cell cols="2">PV/MAG-42M</cell><cell cols="2">PD/MAG-42M</cell><cell cols="2">PV/DBLP-15M</cell><cell cols="2">AC/DBLP-15M</cell><cell cols="2">PC/YAGO-30M</cell><cell cols="2">CG/YAGO-30M</cell></row><row><cell>Step</cell><cell>FG</cell><cell>KG'</cell><cell>FG</cell><cell>KG'</cell><cell>FG</cell><cell>KG'</cell><cell>FG</cell><cell>KG'</cell><cell>FG</cell><cell>KG'</cell><cell>FG</cell><cell>KG'</cell></row><row><cell>KG Extraction Time (mins)</cell><cell>-</cell><cell>18</cell><cell>-</cell><cell>16</cell><cell>-</cell><cell>19</cell><cell>-</cell><cell>1</cell><cell>-</cell><cell>22</cell><cell>-</cell><cell>3</cell></row><row><cell>Transformation Time (mins)</cell><cell>46</cell><cell>22</cell><cell>41</cell><cell>19</cell><cell>30</cell><cell>11</cell><cell>9</cell><cell>1</cell><cell>52</cell><cell>10</cell><cell>60</cell><cell>3</cell></row><row><cell>GNN Training Time (mins)</cell><cell>274</cell><cell>135</cell><cell>290</cell><cell>129</cell><cell>112</cell><cell>85</cell><cell>170</cell><cell>13</cell><cell>439</cell><cell>105</cell><cell>292</cell><cell>23</cell></row><row><cell>Total Time (mins)</cell><cell>320</cell><cell>175</cell><cell>331</cell><cell>164</cell><cell>142</cell><cell>115</cell><cell>179</cell><cell>15</cell><cell>491</cell><cell>137</cell><cell>352</cell><cell>29</cell></row><row><cell>Accuracy(%)</cell><cell>74</cell><cell>81</cell><cell>67</cell><cell>74</cell><cell>82</cell><cell>90</cell><cell>81</cell><cell>79</cell><cell>79</cell><cell>90</cell><cell>15</cell><cell>37</cell></row><row><cell>Model Size (#Params (M))</cell><cell>5349</cell><cell>1415</cell><cell>5348</cell><cell>1408</cell><cell>3301</cell><cell>1477</cell><cell>3306</cell><cell>96</cell><cell>3656</cell><cell>1085</cell><cell>3933</cell><cell>1038</cell></row><row><cell>Inference Time (sec)</cell><cell>89</cell><cell>52</cell><cell>87</cell><cell>52</cell><cell>678</cell><cell>454</cell><cell>1003</cell><cell>28</cell><cell>1265</cell><cell>368</cell><cell>1283</cell><cell>32</cell></row><row><cell>Training Memory (GB)</cell><cell>155</cell><cell>57</cell><cell>139</cell><cell>57</cell><cell>47</cell><cell>36</cell><cell>80</cell><cell>3</cell><cell>130</cell><cell>30</cell><cell>90</cell><cell>3</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_0"><p>KG-TOSA stands for KG Task Oriented Sampling. It is available at https: //github.com/CoDS-GCS/KGTOSA</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_1"><p>Detailed explanation for our benchmark datasets/tasks are available here.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_2"><p>RGCN+ implementation used for NC and RGCN-PYG implementation used for LP.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><p>Acknowledgement. We express our gratitude to <rs type="person">Dr. Nesreen K. Ahmed</rs> for her valuable feedback on our approach and conducted experiments. Additionally, we extend our thanks to <rs type="person">Dr. Mikhail Galkin</rs> for his thorough review of an earlier version of this paper.</p></div>
+			</div>			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">YAGO 4: A reason-able knowledge base</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">P</forename><surname>Tanon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Weikum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">M</forename><surname>Suchanek</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/978-3-030-49461-2_34</idno>
+		<ptr target="https://doi.org/10.1007/978-3-030-49461-234" />
+	</analytic>
+	<monogr>
+		<title level="m">The Semantic Web -17th International Conference, ESWC, ser</title>
+		<title level="s">Lecture Notes in Computer Science</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">12123</biblScope>
+			<biblScope unit="page" from="583" to="596" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Wikidata: a free collaborative knowledge base</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Vrandecic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Krötzsch</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2629489</idno>
+		<ptr target="https://doi.org/10.1145/2629489" />
+	</analytic>
+	<monogr>
+		<title level="j">Commun. ACM</title>
+		<imprint>
+			<biblScope unit="volume">57</biblScope>
+			<biblScope unit="issue">10</biblScope>
+			<biblScope unit="page" from="78" to="85" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Graph neural networks in recommender systems: A survey</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Cui</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3535101</idno>
+		<ptr target="https://doi.org/10.1145/3535101" />
+	</analytic>
+	<monogr>
+		<title level="j">ACM Comput. Surv</title>
+		<imprint>
+			<biblScope unit="volume">55</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="1" to="97" />
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Cross-lingual knowledge graph alignment via graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Lv</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Lan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<ptr target="https://aclanthology.org/D18-1032" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="349" to="357" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Kgnn: Knowledge graph neural network for drug-drug interaction prediction</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Quan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zeng</surname></persName>
+		</author>
+		<idno type="DOI">10.24963/ijcai.2020/380</idno>
+		<ptr target="https://doi.org/10.24963/ijcai.2020/380" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Joint Conference on Artificial Intelligence (IJCAI)</title>
+		<meeting>the International Joint Conference on Artificial Intelligence (IJCAI)</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="2739" to="2745" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Enhancing graph neural network-based fraud detectors against camouflaged fraudsters</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Dou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">S</forename><surname>Yu</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3340531.3411903</idno>
+		<ptr target="https://doi.org/10.1145/3340531.3411903" />
+	</analytic>
+	<monogr>
+		<title level="m">The ACM International Conference on Information and Knowledge Management (CIKM)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="315" to="324" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Graphsaint: Graph sampling based inductive learning method</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kannan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">K</forename><surname>Prasanna</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=BJe8pkHFwS" />
+	</analytic>
+	<monogr>
+		<title level="m">8th International Conference on Learning Representations, ICLR 2020</title>
+		<meeting><address><addrLine>Addis Ababa, Ethiopia</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020">April 26-30, 2020, 2020</date>
+		</imprint>
+	</monogr>
+	<note>GitHub Code</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Decoupling the depth and scope of graph neural networks</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<idno>abs/2201.07858</idno>
+		<ptr target="https://arxiv.org/abs/2201.07858" />
+	</analytic>
+	<monogr>
+		<title level="m">GitHub Code</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Fastgcn: Fast learning with graph convolutional networks via importance sampling</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Xiao</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=rytstxWAW" />
+	</analytic>
+	<monogr>
+		<title level="m">6th International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Multiplex heterogeneous graph convolutional network</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Dong</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3534678.3539482</idno>
+		<ptr target="https://doi.org/10.1145/3534678.3539482" />
+	</analytic>
+	<monogr>
+		<title level="m">KDD &apos;22: The 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining</title>
+		<meeting><address><addrLine>Washington, DC, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2022">August 14 -18, 2022. 2022</date>
+			<biblScope unit="page" from="2377" to="2387" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Meta-knowledge transfer for inductive knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Chen</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3477495.3531757</idno>
+		<ptr target="https://doi.org/10.1145/3477495.3531757" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 45th International ACM SIGIR Conference, ser. SIGIR &apos;22</title>
+		<meeting>the 45th International ACM SIGIR Conference, ser. SIGIR &apos;22</meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="927" to="937" />
+		</imprint>
+	</monogr>
+	<note>GitHub Code</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Link prediction on latent heterogeneous graphs</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Fang</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3543507.3583284</idno>
+		<ptr target="https://doi.org/10.1145/3543507.3583284" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the ACM Web Conference 2023</title>
+		<meeting>the ACM Web Conference 2023<address><addrLine>Austin, TX, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2023-04-30">30 April 2023 -4 May 2023. 2023</date>
+			<biblScope unit="volume">2023</biblScope>
+			<biblScope unit="page" from="263" to="273" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Simple and efficient heterogeneous graph neural network</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Fan</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2207.02547</idno>
+		<idno>abs/2207.02547</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2207.02547" />
+	</analytic>
+	<monogr>
+		<title level="j">AAAI</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Open graph benchmark: Datasets for machine learning on graphs</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Catasta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2005.00687" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>NeurIPS</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Are we really making much progress?: Revisiting, benchmarking and refining heterogeneous graph neural networks</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Lv</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ding</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3447548.3467350</idno>
+		<ptr target="https://doi.org/10.1145/3447548.3467350" />
+	</analytic>
+	<monogr>
+		<title level="m">KDD 21. ACM, 2021</title>
+		<imprint>
+			<biblScope unit="page" from="1150" to="1160" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">OGB-LSC: A largescale challenge for machine learning on graphs</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<ptr target="https://datasets-benchmarks-proceedings.neurips.cc/paper/2021/hash/db" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Neural Information Processing Systems Track on Datasets and Benchmarks 1, NeurIPS</title>
+		<meeting>the Neural Information Processing Systems Track on Datasets and Benchmarks 1, NeurIPS</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note>Available. 8e1af0cb3aca1ae2d0018624204529-Abstract-round2.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">The microsoft academic knowledge graph: A linked data source with 8 billion triples of scholarly data</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Färber</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/978-3-030-30796-7_8</idno>
+		<ptr target="https://doi.org/10.1007/978-3-030-30796-78" />
+	</analytic>
+	<monogr>
+		<title level="m">The Semantic Web -ISWC, Proceedings, Part II, ser</title>
+		<title level="s">Lecture Notes in Computer Science</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">11779</biblScope>
+			<biblScope unit="page" from="113" to="129" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">A survey on heterogeneous graph embedding: Methods, techniques, applications and sources</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">S</forename><surname>Yu</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/TBDATA.2022.3177455</idno>
+		<ptr target="https://doi.org/10.1109/TBDATA.2022.3177455" />
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Trans. Big Data</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="415" to="436" />
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">R</forename><surname>Ackermann</surname></persName>
+		</author>
+		<ptr target="https://blog.dblp.org/2022/03/02/dblp-in-rdf/" />
+		<title level="m">dblp in rdf</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+		<ptr target="https://www.aaai.org/ocs/index.php/AAAI/AAAI18/paper/view/17366" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirty-Second AAAI Conference on Artificial Intelligence,(AAAI-18)</title>
+		<meeting>the Thirty-Second AAAI Conference on Artificial Intelligence,(AAAI-18)</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1811" to="1818" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Modeling relational data with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">S</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">A</forename><surname>Peter Bloem</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/978-3-319-93417-4_38</idno>
+		<ptr target="https://doi.org/10.1007/978-3-319-93417-438" />
+	</analytic>
+	<monogr>
+		<title level="m">The Semantic Web -15th International Conference</title>
+		<meeting><address><addrLine>Heraklion, Crete, Greece</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018-06-03">2018. June 3-7, 2018. 2018</date>
+			<biblScope unit="volume">10843</biblScope>
+			<biblScope unit="page" from="593" to="607" />
+		</imprint>
+	</monogr>
+	<note>GitHub Code</note>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Graph transformer networks: Learning meta-path graphs to improve gnns</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Yun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Jeong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Yoo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">S</forename><surname>Yi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">J</forename><surname>Kim</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.neunet.2022.05.026</idno>
+		<ptr target="https://doi.org/10.1016/j.neunet.2022.05.026" />
+	</analytic>
+	<monogr>
+		<title level="j">Neural Networks</title>
+		<imprint>
+			<biblScope unit="volume">153</biblScope>
+			<biblScope unit="page" from="104" to="119" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Pathsim: Meta path-based top-k similarity search in heterogeneous information networks</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">S</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Wu</surname></persName>
+		</author>
+		<idno type="DOI">10.14778/3402707.3402736</idno>
+		<ptr target="https://doi.org/10.14778/3402707.3402736" />
+	</analytic>
+	<monogr>
+		<title level="m">Proc. VLDB Endow</title>
+		<meeting>VLDB Endow</meeting>
+		<imprint>
+			<date type="published" when="2020-06">jun 2020</date>
+			<biblScope unit="volume">4</biblScope>
+			<biblScope unit="page" from="992" to="1003" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Sampling methods for efficient training of graph convolutional networks: A survey</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Fan</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/JAS.2021.1004311</idno>
+		<ptr target="https://doi.org/10.1109/JAS.2021.1004311" />
+	</analytic>
+	<monogr>
+		<title level="j">IEEE CAA J. Autom. Sinica</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="205" to="234" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Influence-based minibatching for graph neural networks</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gasteiger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Qian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Günnemann</surname></persName>
+		</author>
+		<ptr target="https://proceedings.mlr.press/v198/gasteiger22a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Learning on Graphs Conference</title>
+		<imprint>
+			<date type="published" when="2022-12-12">9-12 December 2022. 2022</date>
+			<biblScope unit="volume">2022</biblScope>
+			<biblScope unit="page">9</biblScope>
+		</imprint>
+	</monogr>
+	<note>LoG</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Heterogeneous graph transformer</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Sun</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3366423.3380027</idno>
+		<ptr target="https://doi.org/10.1145/3366423.3380027" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of The Web Conference</title>
+		<meeting>The Web Conference<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2020">2020. 2020</date>
+			<biblScope unit="page" from="2704" to="2710" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Scalable graph neural networks for heterogeneous graphs</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lerer</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2011.09679" />
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Graph neural networks: Methods, applications, and opportunities</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Waikhom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Patgiri</surname></persName>
+		</author>
+		<idno>abs/2108.10733</idno>
+		<ptr target="https://arxiv.org/abs/2108.10733" />
+	</analytic>
+	<monogr>
+		<title level="j">CoRR</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Graph neural networks in node classification: survey and evaluation</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Guo</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/s00138-021-01251-0</idno>
+		<ptr target="https://link.springer.com/article/10.1007/s00138-021-01251-0" />
+	</analytic>
+	<monogr>
+		<title level="m">Machine Vision and Applications</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="1" to="19" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">A survey on knowledge graph embeddings for link prediction</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<ptr target="https://www.mdpi.com/2073-8994/13/3/485" />
+	</analytic>
+	<monogr>
+		<title level="j">Symmetry</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Openhgnn: An open source toolkit for heterogeneous graph neural network</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<idno type="DOI">10.1145/3511808.3557664</idno>
+		<ptr target="https://dl.acm.org/doi/pdf/10.1145/3511808.3557664" />
+	</analytic>
+	<monogr>
+		<title level="m">CIKM</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Measuring the effect of training data on deep learning predictions via randomized experiments</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lécuyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Panda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sen</surname></persName>
+		</author>
+		<ptr target="https://proceedings.mlr.press/v162/lin22h/lin22h.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 39th International Conference on Machine Learning</title>
+		<meeting>the 39th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="page" from="468" to="481" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Heterogeneous graph neural network</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Swami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">V</forename><surname>Chawla</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3292500.3330961</idno>
+		<ptr target="https://doi.org/10.1145/3292500.3330961" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining</title>
+		<meeting>the 25th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining<address><addrLine>Anchorage, AK, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2019-08-04">2019. August 4-8, 2019. 2019</date>
+			<biblScope unit="page" from="793" to="803" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Dropedge: Towards deep graph convolutional networks on node classification</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Rong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Huang</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=Hkx1qkrKPr" />
+	</analytic>
+	<monogr>
+		<title level="m">8th International Conference on Learning Representations, ICLR 2020</title>
+		<meeting><address><addrLine>Addis Ababa, Ethiopia</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020">April 26-30, 2020. 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Measuring and relieving the over-smoothing problem for graph neural networks from the topological view</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Sun</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1909.03211" />
+	</analytic>
+	<monogr>
+		<title level="m">The Thirty-Fourth AAAI Conference on Artificial Intelligence IAAI 2020</title>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="3438" to="3445" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<monogr>
+		<title level="m" type="main">Towards powerful graph neural networks: Diversity matters</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Bingbing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Cen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Cheng</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/references/pdf?id=5SP0-4MqUr" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">A survey of information entropy metrics for complex networks</title>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">M</forename><surname>Omar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Plapper</surname></persName>
+		</author>
+		<ptr target="https://www.mdpi.com/1099-4300/22/12/1417" />
+	</analytic>
+	<monogr>
+		<title level="j">Entropy</title>
+		<imprint>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="issue">12</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Local graph partitioning using pagerank vectors</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Andersen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">R K</forename><surname>Chung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">J</forename><surname>Lang</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/FOCS.2006.44</idno>
+		<ptr target="https://doi.org/10.1109/FOCS.2006.44" />
+	</analytic>
+	<monogr>
+		<title level="m">47th Annual IEEE Symposium on Foundations of Computer Science (FOCS 2006)</title>
+		<meeting><address><addrLine>Berkeley, California, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2006-10">October 2006. 2006</date>
+			<biblScope unit="page" from="475" to="486" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Towards a gml-enabled knowledge graph platform</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Abdallah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Mansour</surname></persName>
+		</author>
+		<ptr target="https://ieeexplore.ieee.org/document/10184515/" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Data Engineering (ICDE)</title>
+		<meeting>the International Conference on Data Engineering (ICDE)</meeting>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Demonstration of sparqlml: An interfacing language for supporting graph machine learning for rdf graphs</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Abdallah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Afandi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Mansour</surname></persName>
+		</author>
+		<idno type="DOI">10.14778/3611540.3611599</idno>
+		<ptr target="https://doi.org/10.14778/3611540.3611599" />
+	</analytic>
+	<monogr>
+		<title level="m">Proc. VLDB Endow</title>
+		<meeting>VLDB Endow</meeting>
+		<imprint>
+			<date type="published" when="2023-08">aug 2023</date>
+			<biblScope unit="volume">16</biblScope>
+			<biblScope unit="page" from="3974" to="3977" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Hexastore: sextuple indexing for semantic web data management</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Weiss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Karras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bernstein</surname></persName>
+		</author>
+		<ptr target="http://www.vldb.org/pvldb/vol1/1453965.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of VLDB Endowment, (PVLDB)</title>
+		<meeting>VLDB Endowment, (PVLDB)</meeting>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="1008" to="1019" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Neugraph: Parallel deep neural network computation on large graphs</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Miao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Xue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Dai</surname></persName>
+		</author>
+		<ptr target="https://www.usenix.org/conference/atc19/presentation/ma" />
+	</analytic>
+	<monogr>
+		<title level="m">2019 USENIX Annual Technical Conference, USENIX ATC 2019</title>
+		<meeting><address><addrLine>Renton, WA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">July 10-12, 2019. USENIX Association, 2019</date>
+			<biblScope unit="page" from="443" to="458" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">G3: When graph neural networks meet parallel graph processing systems on gpus</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>He</surname></persName>
+		</author>
+		<idno type="DOI">10.14778/3415478.3415482</idno>
+		<ptr target="https://dl.acm.org/doi/10.14778/3415478.3415482" />
+	</analytic>
+	<monogr>
+		<title level="m">PVLDB (Proceedings of the VLDB Endowment), demo paper</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Distdgl: Distributed graph neural network training for billion-scale graphs</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<idno type="DOI">10.1109/IA351965.2020.00011</idno>
+		<ptr target="https://doi.org/10.1109/IA351965.2020.00011" />
+	</analytic>
+	<monogr>
+		<title level="j">IEEE/ACM Workshop on Irregular Applications: Architectures and Algorithms</title>
+		<imprint>
+			<biblScope unit="page" from="36" to="44" />
+		</imprint>
+	</monogr>
+	<note>IA3. IEEE, 2020</note>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Dgcl: An efficient communication library for distributed gnn training</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yan</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiao</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<idno type="DOI">10.1145/3447786.3456233</idno>
+		<ptr target="https://doi.org/10.1145/3447786.3456233" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Sixteenth European Conference on Computer Systems</title>
+		<meeting>the Sixteenth European Conference on Computer Systems<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="130" to="144" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Sancus: Staleness-aware communicationavoiding full-graph decentralized training in large-scale graph neural networks</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<idno type="DOI">10.14778/3538598.3538614</idno>
+		<ptr target="https://doi.org/10.14778/3538598.3538614" />
+	</analytic>
+	<monogr>
+		<title level="m">Proc. VLDB Endow</title>
+		<meeting>VLDB Endow</meeting>
+		<imprint>
+			<date type="published" when="1937">1937-1950, 2022</date>
+			<biblScope unit="volume">15</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Aligraph: a comprehensive graph neural network platform</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Ai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1902.08730" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the VLDB Endowment</title>
+		<meeting>the VLDB Endowment</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="page" from="2094" to="2105" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">TF-GNN: graph neural networks in tensorflow</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Ferludin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Eigenwillig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Blais</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Et</forename></persName>
+		</author>
+		<idno>abs/2207.03522</idno>
+		<ptr target="http://arxiv.org/abs/2207.03522" />
+	</analytic>
+	<monogr>
+		<title level="j">CoRR</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<title level="m" type="main">Torch geometric documentation</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Team</surname></persName>
+		</author>
+		<ptr target="https://pytorch-geometric.readthedocs.io/en/latest/index.html" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Marius: Learning massive graph embeddings on a single machine</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Mohoney</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Waleffe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Rekatsinas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Venkataraman</surname></persName>
+		</author>
+		<ptr target="https://www.usenix.org/conference/osdi21/presentation/mohoney" />
+	</analytic>
+	<monogr>
+		<title level="m">15th USENIX Symposium on Operating Systems Design and Implementation</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="533" to="549" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

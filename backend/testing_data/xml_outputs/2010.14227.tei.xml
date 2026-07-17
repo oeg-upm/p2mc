@@ -1,0 +1,1959 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Efficient, Simple and Automated Negative Sampling for Knowledge Graph Embedding</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Yongqi</forename><surname>Zhang</surname></persName>
+							<email>zhangyongqi@4paradigm.com</email>
+						</author>
+						<author>
+							<persName><forename type="first">Quanming</forename><surname>Yao</surname></persName>
+							<email>yaoquanming@4paradigm.com</email>
+						</author>
+						<author>
+							<persName><forename type="first">Lei</forename><surname>Chen</surname></persName>
+							<email>leichen@cse.ust.hk</email>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Electronic Engineering</orgName>
+								<orgName type="institution">Tsinghua University Inc</orgName>
+								<address>
+									<postCode>4Paradigm</postCode>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">Hong Kong University of Science and Technology</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Efficient, Simple and Automated Negative Sampling for Knowledge Graph Embedding</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="MD5">F11D62D28BF5CF212EEF4BF21E26909C</idno>
+					<note type="submission">Received: date / Accepted: date</note>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T09:49+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>Knowledge Graph</term>
+					<term>Graph Embedding</term>
+					<term>Negative Sampling</term>
+					<term>Automated Machine Learning</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Negative sampling, which samples negative triplets from non-observed ones in knowledge graph (KG), is an essential step in KG embedding. Recently, generative adversarial network (GAN), has been introduced in negative sampling. By sampling negative triplets with large gradients, these methods avoid the problem of vanishing gradient and thus obtain better performance. However, they make the original model more complex and harder to train. In this paper, motivated by the observation that negative triplets with large gradients are important but rare, we propose to directly keep track of them with the cache. In this way, our method acts as a "distilled" version of previous GAN-based methods, which does not waste training time on additional parameters to fit the full distribution of negative triplets. However, how to sample from and update the cache are two critical questions. We propose to solve these issues by automated machine learning techniques. The automated version also covers GAN-based methods as special cases. Theoretical explanation of NSCaching is also provided, justifying the superior over fixed sampling scheme. Besides, we further extend NSCaching with skip-gram model for graph embedding. Finally, extensive experiments show that our method can gain significant improvements on various Yongqi Zhang 4Paradigm Inc.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Knowledge graph (KG) is a special kind of graph structure, with entities as nodes and relations as directed edges. Each edge (also called a fact) is represented as a triplet with the form (head entity, relation, tail entity), denoted as (h, r,t), indicating that two entities are connected by a specific relation, e.g. (Steve Jobs, founded, Apple Inc.) in the example in Figure <ref type="figure" target="#fig_0">1</ref>. These triplets are usually extracted manually or based on automatically constructed knowledge bases <ref type="bibr" target="#b46">[47]</ref>. KG is very general and useful. It has been used as fundamental building blocks for many applications like structured search <ref type="bibr" target="#b15">[16,</ref><ref type="bibr" target="#b38">39]</ref>, question answering <ref type="bibr" target="#b6">[7]</ref>, recommendation <ref type="bibr" target="#b41">[42,</ref><ref type="bibr" target="#b63">64]</ref> and medical diagnosis <ref type="bibr" target="#b62">[63]</ref>. This importance has also inspired many famous KG projects, such as FreeBase <ref type="bibr" target="#b5">[6]</ref>, DBpedia <ref type="bibr" target="#b1">[2]</ref>, and YAGO <ref type="bibr" target="#b46">[47]</ref>. As these triplets are hard to manipulate, how to find a good representation for entities and relations in the KG <ref type="bibr" target="#b40">[41]</ref> arXiv:2010.14227v2 [cs.LG] 14 Jul 2021 is a fundamental problem. Early works towards this goal lie in statistical relational learning by using the symbolic triplet data <ref type="bibr" target="#b28">[29,</ref><ref type="bibr" target="#b29">30,</ref><ref type="bibr" target="#b31">32]</ref>. However, these methods neither lead to good generalization performance, nor can they be applied for large scale knowledge graphs. In comparison, the embedding based methods have better generalization ability and inference efficiency <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b43">44,</ref><ref type="bibr" target="#b70">71]</ref>. Recently, graph embedding techniques <ref type="bibr" target="#b54">[55]</ref> have been introduced in KG learning. These methods attempt to encode entities and relations in KG into a low-dimensional vector space while capturing the original connection properties. They are scalable and have also shown promising performance in basic KG tasks, such as link prediction and triplet classification <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b54">55]</ref>.</p><p>In recent years, constructing new scoring functions that can better model the complex interactions between entities and relations has been the main focus for improving the performance of KG embedding approaches <ref type="bibr" target="#b24">[25,</ref><ref type="bibr" target="#b50">51,</ref><ref type="bibr" target="#b55">56,</ref><ref type="bibr" target="#b59">60]</ref>. However, another very important perspective of KG embedding, i.e., negative sampling, is not sufficiently emphasized. The need for negative sampling comes from the fact that there are usually only positive triplets in KG <ref type="bibr" target="#b29">[30,</ref><ref type="bibr" target="#b54">55]</ref>. First, to avoid trivial solutions of the embedding, a set that contains all the possible negative samples needs to be hand-made. Then, in consideration of both computation cost and memory space, stochastic training is needed in each iteration. Specifically, once we have picked up a positive triplet, we also need to sample some negative triplets from its corresponding negative sample set. Besides, the quality of these negative triplets does matter.</p><p>Due to its simplicity and efficiency, uniform sampling is broadly used in KG embedding <ref type="bibr" target="#b54">[55]</ref>. However, it is a fixed scheme and ignores changes in the distribution of negative triplets during the training process. As a result, it suffers seriously from the vanishing gradient problem <ref type="bibr" target="#b53">[54]</ref> and biased estimation problem <ref type="bibr" target="#b44">[45]</ref>. As observed in <ref type="bibr" target="#b53">[54]</ref>, most negative triplets in the sampling set can be easily classified. Since the scoring functions tend to give observed (positive) triplets large values, as training goes, most of the non-observed (probably negative) triplets will have smaller values. Thus, when negative triplets are uniformly sampled, it is very likely that we pick up one with zero gradients. As a result, the training process of KG embedding will be impeded by the vanishing gradients rather than by the optimization algorithm. This problem prevents KG embedding from getting the desired performance. A better sampling scheme, the Bernoulli sampling, is introduced in <ref type="bibr" target="#b55">[56]</ref>. It improves uniform sampling by considering one-to-many, many-to-one, and many-to-many mapping in the relations between entities. For example, given a one-to-many relation, replacing the tail entity will have a larger chance of getting a false negative triplet compared with replacing the head. However, it is still a fixed and biased sampling scheme. Therefore, dynamically sampling from the negative triplets' distribution to help the training process is important and non-trivial. To efficiently capture them during training, we have two main challenges for negative sampling: (i). How to capture and model the negative triplets' dynamic distribution? and (ii). How can we effectively sample the negative triplets? Recently, there are two pioneering works, i.e., IGAN <ref type="bibr" target="#b53">[54]</ref> and KBGAN <ref type="bibr" target="#b10">[11]</ref>, attempting to address these challenges. Their ideas are to replace the fixed sampling scheme with a generative adversarial network (GAN) <ref type="bibr" target="#b19">[20]</ref> based sampling scheme. However, GAN-based solutions still have many problems. First, GAN increases the number of training parameters because an extra generator should be learned as sampler. Second, the training of the GAN model usually suffers from instability and degeneracy <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b21">22]</ref>. The REINFORCE gradient <ref type="bibr" target="#b57">[58]</ref>, which is known to have high variance, should be used to train the generator. Besides, since only a few negative triplets can lead to large gradient, IGAN and KBGAN take a lot of effort to model the distributions of all the negative ones. These drawbacks lead to instable performance for different scoring functions, and hence pre-training becomes a must for both IGAN and KBGAN. Self adversarial sampling (Self-Adv) <ref type="bibr" target="#b47">[48]</ref> uses the self embedding model to replace the generator. It solves the problem of training GAN model, but it cannot guarantee to sample enough negative triplets with large gradient in each iteration.</p><p>In this paper, to address the challenges of capturing the dynamic and complex negative sampling distribution while avoid the problems of using GANs, we propose a simple and efficient negative sampling method based on the cache, called NSCaching. By empirically analyzing the gradient norm distribution of negative triplets, we find that the distribution is highly skewed. In other words, there are only a few pairs of training triplets (i.e., a positive triplet and a negative triplet) have large gradient and the others are useless. This observation motivates us to mainly maintain the negative triplets that lead to large gradients during the training, and dynamically update the maintained triplets. First, we use the cache to store large-gradient negative triplets. Then, we carefully design the updating and sampling rules for the cache. In detail, the cache-based sampling problem is formed as a hyper-parameter optimization (HPO) problem, and we use automated machine learning (AutoML) <ref type="bibr" target="#b60">[61]</ref> to efficiently solve it. In this way, we automatically take good care of "exploration and exploitation" (E&amp;E) <ref type="bibr" target="#b33">[34]</ref>, which balances exploring all possible high-quality negative triplets and sampling from a few of them in the cache. Contributions of our work are summarized as follows:</p><p>-We propose a simple, efficient and automated negative sampling algorithm NSCaching, which is a general negative sampling scheme and can be easily injected into many popularly used KG embedding models. NSCaching has fewer parameters than both IGAN <ref type="bibr" target="#b53">[54]</ref> and KBGAN <ref type="bibr" target="#b10">[11]</ref>. -We provide intuitions about how NSCaching helps the KG training under convex and non-convex cases. in the convex case, we show that the negative sampling scheme in NSCaching can lead to a smaller approximation error.</p><p>In the general non-convex case, we show that NSCaching can benefit from self-paced learning <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b30">31]</ref> by learning easy samples first and gradually switching to harder ones. -A critical issue in the NSCaching algorithm is how to balance "exploration and exploitation"(E&amp;E) in updating and sampling from the cache. Motivated by the success of automated machine learning <ref type="bibr" target="#b60">[61]</ref>, we propose an automated version of NSCaching, i.e., NSCaching (auto). The AutoML-based method has a unified view of the hyperparameters (related to E&amp;E) of NSCaching, and also covers IGAN/KBGAN as special cases. Thus, it enables us to automatically balance E&amp;E. -We conduct experiments on five popular data sets, i.e., WN18 and FB15K (and their variants WN18RR and FB15K237), and YAGO3-10. Experimental results demonstrate that the NSCaching algorithm is very efficient and is more effective than the baselines as well.</p><p>The automated version further improves NSCaching by balancing between exploration and exploitation better. -We extend the negative sampling algorithm from KG embedding to graph embedding. Random walk based graph embedding <ref type="bibr" target="#b20">[21]</ref>, which is trained with the widely used skip-gram model <ref type="bibr" target="#b35">[36]</ref>, is chosen as the testbed.</p><p>The cache-based negative sampling is used to replace the frequency-based negative sampling in skip-gram models. Experiments on the graph embedding show that NSCaching adapts well to the new task.</p><p>The preliminary version of this paper has been published in ICDE 2019 <ref type="bibr" target="#b68">[69]</ref>. Comparing with <ref type="bibr" target="#b68">[69]</ref>, we have made the following important improvements:</p><p>1. We systematically extend the algorithm by introducing AutoML to automatically balance E&amp;E by hyperparameter optimization (Section 3.4). The AutoML approach not only helps to improve the performance of NSCaching, but also offers insight on how GAN-based methods work; 2. We extend NSCaching to a new task, i.e., graph embedding based on the skip-gram model (Section 4). We show that NSCaching algorithm can be easily adopted into such a new application scenario and get good empirical performance (Section 5.7). 3. We add theoretical explanation of how NSCaching leads to a smaller approximation error when the objective is convex (Section 3.3.1). The new result provides intuitions about how NSCaching helps train embeddings. 4. Based on the theoretical analysis, we reform the problem from gradient point of view in Section 3.1, and added Notations. The mostly used symbols and their descriptions are given in Table <ref type="table" target="#tab_0">1</ref>. Vectors are denoted by lowercase boldface, and matrices by uppercase boldface. Re(•) takes the real part of complex numbers, con j(t) = t realit image is the conjugate of complex vectors</p><formula xml:id="formula_0">t = t real + it image ∈ C d . a, b, c = ∑ d i=1 a i • b i • c i is the inner product.</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Preliminaries and Related Works</head><p>In this section, we introduce the stochastic training algorithm for KG embedding in Section 2.1, current strategies for negative sampling in Section 2.2, and AutoML techniques in Section 2.3.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Knowledge Graph (KG) Embedding</head><p>To build a KG embedding model, we first need to pick up a scoring function f , which captures the similarities between two entities based on a relation <ref type="bibr" target="#b54">[55]</ref>. Different scoring functions have their own weaknesses and strengths in capturing the underneath interactions. Some popularly used scoring functions are presented in Table <ref type="table" target="#tab_1">2</ref>. Besides, the observed facts in KG are supposed to have larger scores than the non-observed ones <ref type="bibr" target="#b54">[55]</ref>. With the factual information, the </p><formula xml:id="formula_1">-h + r -t 1 tional TransH [56] -h -w r hw r + r-(t -w r tw r ) 1 distance TransD [25] -h + w r w h h + r-(t + w r w t t) 1</formula><p>semantic DistMult <ref type="bibr" target="#b59">[60]</ref> h, r, t</p><p>matching ComplEx <ref type="bibr" target="#b50">[51]</ref> Re ( h, r, conj(t) )</p><formula xml:id="formula_2">SimplE [27] h 1 , r 1 , t 2 + h 2 , r 2 , t 1</formula><p>embeddings are learned by solving the optimization problem that maximizes the scoring function for observed triplets and minimizes it for non-observed triplets at the same time.</p><p>Based on the properties of scoring functions, KG embedding models are generally divided into two categories.</p><p>-The translational distance model exploits the distancebased scoring functions. Inspired by the word analogy results in word embeddings <ref type="bibr" target="#b36">[37]</ref>, the similarity is measured by the distance between two entities, after a translation carried out by the relation. TransE <ref type="bibr" target="#b7">[8]</ref>, as a representative translational model, is defined by the (negative) distance between h + r and t, i.e., f (h, r,t) = -||h + r -t|| 1 . Other translational distance models like TransH <ref type="bibr" target="#b55">[56]</ref>, TransD <ref type="bibr" target="#b24">[25]</ref> enhance over TransE by introducing extra mapping matrices. The translational distance models are generally optimized by minimizing the ranking based loss function</p><formula xml:id="formula_3">∑ (h i ,r i ,t i )∈S ∑ ( hi ,r i ,t i )∈ Si γ -f (h i , r i ,t i ) + f ( hi , r i , ti ) + ,<label>(1)</label></formula><p>where γ &gt; 0 is the margin value for the loss function. -Scoring functions in semantic matching models exploit the similarity of a triplet by matching latent semantics of entities and relations embedied in their vector space representations. Bilinear models are the state-of-the-art among the semantic matching models and they share the form as f (h, r,t) = h Rt, where R ∈ R d×d is a matrix referring to the embedding of relation r <ref type="bibr" target="#b54">[55]</ref>. DistMult <ref type="bibr" target="#b59">[60]</ref> measures the similarity by directly computing the element-wise product of the embedding vectors, i.e., f (h, r,t) = h, r, t , which restricts R to be a diagonal matrix. However, it can not model asymmetric triplets since f (h, r,t) = f (t, r, h) is always satisfied. ComplEx <ref type="bibr" target="#b50">[51]</ref> and SimplE <ref type="bibr" target="#b26">[27]</ref> improve over DistMult by dealing with asymmetric triplets in different ways. Another type of models conducts semantic matching using neural networks. Multi-Layer Perceptron (MLP) is used in <ref type="bibr" target="#b14">[15]</ref> to measure the similarities. ConvE <ref type="bibr" target="#b12">[13]</ref> takes advantage of convolutional neural network to increase the interactions among different dimensions. Even though neural network models are more complex than the bilinear models, they empirically perform worse than the bilinear models <ref type="bibr" target="#b26">[27,</ref><ref type="bibr" target="#b50">51]</ref>. The semantic matching models are mainly optimized by minimizing the classification based loss function</p><formula xml:id="formula_4">∑ (h i ,r i ,t i )∈S ∑ ( hi ,r i ,t i )∈ Si (1, f (h i , r i ,t i ))+ -1, f ( hi , r i , ti ) ,<label>(2)</label></formula><p>where ( h, r, t) ∈ S is the hand-made negative triplet for (h, r,t) and (α, β ) = log (1 + exp(-αβ )).</p><p>Algorithm 1 Stochastic gradient descent for knowledge graph embedding <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b54">55]</ref>.</p><p>Require: training set S = {(h, r,t)}, embedding dimension d and scoring function f ; 1: initialize the embeddings for each e ∈ E and r ∈ R.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>2: for</head><formula xml:id="formula_5">i = 1, • • • , T do 3:</formula><p>sample an observed triplet (h i , r i ,t i ) ∈ S ; 4: sample the corresponding negative triplet ( hi , r i , ti ) ∈ Si ; // negative sampling 5:</p><p>update parameters of embeddings w.r.t. the gradients using (i). translational distance models:</p><formula xml:id="formula_6">∇ γ -f (h i , r i ,t i ) + f hi , r i , ti + ,<label>(3)</label></formula><p>or (ii). semantic matching models:</p><formula xml:id="formula_7">∇ (+1, f (h i , r i ,t i )) + -1, f ( hi , r i , ti ) ;<label>(4)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>6: end for</head><p>The above two objectives, i.e., (1) and ( <ref type="formula" target="#formula_4">2</ref>), can be optimized by using stochastic gradient descent in an unified manner (Algorithm 1). In each iteration, an observed (positive) triplet (h i , r i ,t i ) is firstly sampled from the training set S at step 3. Since there are no negative triplets in S , in step 4, a negative triplet of (h i , r i ,t i ) is sampled from the corresponding negative triplets set Si <ref type="bibr" target="#b7">[8]</ref>, i.e.,</p><formula xml:id="formula_8">Si = ( h, r i ,t i ) / ∈ S | h ∈ E ∪{(h i , r i , t) / ∈ S | t ∈ E } .<label>(5)</label></formula><p>Finally, embedding parameters are updated in step 5. Since the quality of negative triplets in Si is diverse, how to sample a proper ( hi , r i , ti ) has been developed as an important perspective affecting the performance of knowledge graph embedding <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b47">48,</ref><ref type="bibr" target="#b53">54,</ref><ref type="bibr" target="#b54">55]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Negative Sampling in KG Embedding</head><p>Negative sampling is important for improving learning models when there are only positive samples. The typical applications include natural language processing <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b32">33,</ref><ref type="bibr" target="#b37">38]</ref>,</p><p>computer vision <ref type="bibr" target="#b58">[59]</ref>, graph embedding <ref type="bibr" target="#b20">[21,</ref><ref type="bibr" target="#b43">44,</ref><ref type="bibr" target="#b48">49]</ref>, recommender system <ref type="bibr" target="#b13">[14,</ref><ref type="bibr" target="#b45">46,</ref><ref type="bibr" target="#b61">62,</ref><ref type="bibr" target="#b65">66]</ref>, and KG embedding <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b54">55]</ref> here. Existing works on negative sampling can be divided into two categories, i.e., sampling from fixed distribution and sampling from dynamic distribution. A uniform distribution over the negative samples in the candidate set is a simple yet efficient choice <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b45">46]</ref>. Whereas, many of the uniformly generated negative samples are not informative and too trivial to recognize <ref type="bibr" target="#b13">[14,</ref><ref type="bibr" target="#b32">33,</ref><ref type="bibr" target="#b37">38,</ref><ref type="bibr" target="#b58">59]</ref>. In order to generate more informative negative samples, important statistics in the data set can be used to define the distribution, such as the frequency of words <ref type="bibr" target="#b36">[37]</ref> and personalized PageRank score of items <ref type="bibr" target="#b64">[65]</ref>. However, the uniform sampling methods are biased-estimator of the full negative sampling distribution <ref type="bibr" target="#b44">[45]</ref>.</p><p>As the training goes on, the distributions of scores and gradients of negative samples keep changing. In order to capture the dynamic distribution of negative samples, several works are proposed to sample according to the scores <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b11">12,</ref><ref type="bibr" target="#b13">14,</ref><ref type="bibr" target="#b17">18,</ref><ref type="bibr" target="#b32">33,</ref><ref type="bibr" target="#b53">54,</ref><ref type="bibr" target="#b58">59]</ref>. There are two approaches in general. In one direction, the high-quality negative samples are selected based on the scores in a small pool sampled from all the candidates <ref type="bibr" target="#b32">[33,</ref><ref type="bibr" target="#b47">48]</ref>. This approach is efficient since only a small number of the scores need to be computed. In another, a distribution on all the candidates is modeled to generate the high-quality negative samples <ref type="bibr" target="#b17">[18,</ref><ref type="bibr" target="#b53">54]</ref>. Having an overall distribution of the negative samples makes these method more flexible.</p><p>In the following content, we discuss the sampling methods specifically used in KG embedding tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2.1">Sample from Fixed Distributions</head><p>In the early work <ref type="bibr" target="#b7">[8]</ref>, negative triplets are uniformly sampled from the set Si . This strategy is simple yet very efficient. Later, a better sampling scheme, i.e., Bernoulli sampling, is introduced in <ref type="bibr" target="#b55">[56]</ref>. It improves uniform sampling by reducing the appearance of false negative triplets existing in one-to-many, many-to-many, and many-to-one relations between head and tail entities. However, as mentioned in the introduction, the Bernoulli method still samples from fixed distributions, which can neither model the dynamic changes in distributions of negative triplets nor can it sample triplets with large gradient.</p><p>As introduced in Section 1, the vanishing gradient (or zero loss) problem <ref type="bibr" target="#b53">[54]</ref> means a certain number of negative triplets will lead to zero gradient and thus is not informative for training with gradient-based optimization algorithms. Taking the ranking based loss (3) for example, the score of negative triplets f ( hi , r i , ti ) are gradually minimized as training goes on. For most of the negative triplets, the score will be very small and the loss will decrease to zero soon, leading to zero gradients. The gradient on classification loss (4) will go close to zero if f ( hi , r i , ti ) is small. As a result, those negative triplets cannot provide enough gradient value to update the embeddings. Besides, the fixed sampling methods cannot capture the dynamic distribution of negative triplets, leading to a biased estimator.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2.2">Sample from Generative Adversarial Network (GAN)</head><p>GAN <ref type="bibr" target="#b19">[20]</ref> is originally introduced as a powerful model for image generation. It contains two modules: a generator that serves as the sampler, and a discriminator that measures the quality of generated samples. Under elaborate control on the training procedure of generator and discriminator, GAN has achieved significant success in many fields, e.g., computer vision <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b21">22]</ref>, natural language processing <ref type="bibr" target="#b16">[17]</ref>, information retrieval <ref type="bibr" target="#b52">[53]</ref> and graph mining <ref type="bibr" target="#b51">[52]</ref>. It has also been shown to generate negative samples with high-quality for knowledge graph embedding <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b47">48,</ref><ref type="bibr" target="#b53">54]</ref>.</p><p>When GAN is applied to negative sampling, the jointly trained generator can dynamically adapt to the new distributions by confusing the discriminator and keeping training. The discriminator, i.e., the KG embedding model, learns to distinguish between the positive triplets and the negative triplets sampled by the generator. Under an alternating training process, the generator dynamically approximates the negative sample distribution and the KG embedding model is improved by the negative triplets with relatively large gradient sampled by the generator.</p><p>Given a positive triplet (h, r,t), IGAN <ref type="bibr" target="#b53">[54]</ref> models the distribution h, t ∼ p(e|(h, r,t)) over all the entities to sample a negative triplet ( h, r, t). The gradient of ( h, r, t) is approximately measured by the discriminator, i.e., the loss function = γf (h, r,t) + f ( h, r, t) + of the target KG embedding model. By joint training, IGAN can dynamically capture the distribution of all negative triplets. Instead of modeling a distribution over the whole entity set, KBGAN <ref type="bibr" target="#b10">[11]</ref> learns to sample from a subset of random entities. A set of entities N = {( h, r, t)} is uniformly sampled first and then the negative triplet is picked up from N . KBGAN is more efficient than IGAN, but less effective since it is hard to guarantee the candidate set N to contain enough largegradient negative triplets.</p><p>Even though GAN provides a solution to model the dynamic negative sample distribution, it is famous for suffering from instability and degeneracy <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b21">22]</ref>. Besides, REINFORCE gradient <ref type="bibr" target="#b57">[58]</ref>, which is known to have high variance, has to be used to optimize the generator. Therefore, pretraining is a must for both IGAN and KBGAN. It increases the number of model's parameters and brings extra costs on training. A concurrent method Self-Adv <ref type="bibr" target="#b47">[48]</ref> adopts a similar approach as KBGAN. The differences are that (i) Self-Adv uses the self model embedding to measure the quality rather than training an extra generator; (ii) Self-Adv treats the probability as weights rather than the sampling procedure. However, it still cannot guarantee the candidate set N to contain large-gradient negative triplets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3">Automated Machine Learning (AutoML)</head><p>Automated machine learning (AutoML) <ref type="bibr" target="#b23">[24,</ref><ref type="bibr" target="#b60">61]</ref> has recently shown its power in easing the usage of and in designing better machine learning models. It can be regarded as a black-box optimization problem where we target at efficiently searching for better hyper-parameters or model structures. Regarding the success of AutoML, there are two important perspectives -Search space: This helps us to figure out important properties of the underlying learning model. The search space cannot be too general, otherwise the searching cost in such a space will be too expensive. -Search algorithm: Since the computation cost of evaluating the settings in search space is high, efficient algorithms should be designed to search efficiently. Taking hyper-parameter optimization (HPO) as an example, gird search or random search <ref type="bibr" target="#b4">[5]</ref> are the mostly used method due to their simplicity. However, the searching is usually inefficient and Bayesian optimization <ref type="bibr" target="#b3">[4,</ref><ref type="bibr" target="#b22">23]</ref> is a wellknown method to improve the efficiency in HPO.</p><p>Considering that the distribution of negative triplets is highly skewed, as will be discussed in Section 3, we should take the sampling distribution seriously. As will be shown in Section 3.4, the proposed NSCaching method naturally allows a search space to automatically balance the exploration and exploitation (E&amp;E) problem in negative sampling, which can further improve the quality of embeddings.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Proposed Model</head><p>In this section, we first describe our key observations regarding the negative sampling in Section 3.1, which are ignored by existing works but are the main motivations of our work. The proposed method is described in Section 3.2, where we show how to address the challenges in negative sampling by using cache. Then, we analyze the proposed method from theoretical perspectives in Section 3.3. In Section 3.4, we balance exploration and exploitation through AutoML techniques for the proposed method. Finally, we discuss the problem of false negative triplets in Section 3.5.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Revisiting Distribution of Training Pairs</head><p>Before introducing the proposed method, we analyze the distribution of gradients for training pairs here. This motivates us to use cache to efficiently approximate an unbiased distribution of the training pairs. Recall that the gradient at stochastic training of KG embedding is determined by a pair of triplets, i.e., a positive one (h i , r i ,t i ) from the training set and a negative one ( hi , r i , ti ) from negative set Si (step 3-4 in Algorithm 1). We show the distribution with the 2 -norm of all the training pairs' gradients for a positive (h i , r i ,t i ).</p><p>- </p><formula xml:id="formula_9">(h i , r i ,t i ) ∈ S .</formula><p>First, we can see that the distribution of training pairs' gradient are dynamic and highly skewed. Second, the training pairs with large gradients become rare along the iterating (epoch gets more), which is consistent with the observations in <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b53">54]</ref>. Besides, the distributions of training pairs' gradient for different positive triplets are various.</p><p>Even though GAN has strong ability in monitoring the full distribution of negative triplets, the GAN-based methods still have a lot of limitations. First, they waste a lot of parameters and computational costs on learning how negative triplets with small gradient norms are distributed. Second, reinforcement learning, which provides gradient to the generator but increases the training difficulties, should be applied in the GAN-based algorithms <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b53">54]</ref>.</p><p>Besides, the GAN-based methods ignore the distribution of positive triplets. Since each training pair is composed of a positive triplet and a negative triplet, the differences among positive triplets should also be considered. Some positive triplets can have more large gradient negative samples (see positive triplet 2 v.s. positive triplet 1 in Figure <ref type="figure" target="#fig_4">2(b)</ref>). Thus, we want to more frequently pick up the positive triplets with more large gradient negative samples over the others during the stochastic training, i.e., in step 3 of Algorithm 1. However, all existing works including <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b47">48,</ref><ref type="bibr" target="#b53">54,</ref><ref type="bibr" target="#b68">69]</ref> use uniform sampling over positive triplets. For methods sampling from fixed distributions <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b55">56]</ref>, they cannot model the difference of both positive and negative triplets. GAN-based ones are already too complex <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b53">54]</ref> to model the positive sampling. Capturing the difference of positive triplets will further increase the model's parameters and make the training even harder.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">NSCaching: the Proposed Method</head><p>From observations in Section 3.1, we have three questions on how to sample the training pairs (i.e., a positive and a negative triplet).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>1). Is it possible to directly keep track of negative triplets</head><p>which can give large gradient for a given positive triplet, rather than the whole negative triplets' distribution?  2). How can we adaptively sample positive triplets having more large-gradient training pairs?</p><p>Besides, considering the distribution is dynamic and hard to estimate,</p><p>3). how to balance exploring all the training pairs leading to large gradient and exploiting those that have the largest gradient norms?</p><p>In this section, we describe the proposed method to address these three questions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.1">Core Idea: Caching training pairs</head><p>As in Section 3.1, the total number of large-gradient negative triplets associated with a positive one is small. Therefore, we are motivated to use a small amount of extra memory, which caches negative samples with large gradient norms for each triplet (h i , r i ,t i ) ∈ S . The designed cache acts as a truncated representation of triplets' distribution ( hi , r i , ti ) ∈ Si . Such an idea is previously explored in Word2Vec <ref type="bibr" target="#b36">[37]</ref>, where the estimated distribution of negative samples is also truncated. This improves both the efficiency and quality of negative sampling.</p><p>Note that, as in (5), the negative triplet ( hi , r i , ti ) ∈ S is formed by either ( hi , r i ,t i ) or (h i , r i , ti ). Thus, we associate each (h i , r i ,t i ) with a cache C i , which keeps large-gradient triplets from Si , to store a set of ( hi , r i ,t i ) or (h i , r i , ti ) and the corresponding gradient norms g i (given by ( <ref type="formula" target="#formula_6">3</ref>) or ( <ref type="formula" target="#formula_7">4</ref>)).</p><p>However, since the size of Si is very large, evaluating all of them in Si to pick up the large-gradient triplets is intractable. The proposed method will adaptively sample a pair of positive and negative triplets directly through the cache. In the sequel, we show how the cache is updated and sampled.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.2">Algorithm Framework</head><p>Algorithm 2 shows the KG embedding framework based on our cache-based negative sampling scheme. Note that the proposed algorithm does not depend on the choice of scoring functions, all those in Table <ref type="table" target="#tab_1">2</ref> can be used here. In Algorithm 2: first, a pair of positive triplet and negative triplet is sampled in step 3; then, the cache is updated in step 5; finally, in step 7, the embeddings are updated based on the choice of scoring functions and loss functions. </p><formula xml:id="formula_10">for i = 1, • • • , T do 3:</formula><p>sample a pair of positive and negate triplet, i.e., (h, r,t) and ( h, r, t), using Algorithm 3; 4:</p><p>if i%(n + 1) == 0 then 5:</p><p>update the cache C i using Algorithm 4; 6:</p><p>end if 7:</p><p>update embeddings using (3) or (4); 8: end for An overview comparison of the proposed method with state-of-the-art negative sampling method is in Table <ref type="table" target="#tab_2">3</ref>. The main difference with general KG embedding framework in Algorithm 1 is step 3 in Algorithm 2, where the sampling scheme is based on the cache rather than a uniform Bernoulli sampling. Besides, compared with the complex </p><formula xml:id="formula_11">O( m n+1 (N 1 + N 2 )d) O(m(N 1 + N 2 )d) (|E | + |R|)d</formula><p>GAN-based works <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b53">54]</ref>, our method in Algorithm 2 acts like a discriminative and distilled model of GAN, and it only cares about negative triplets leading to large gradient norms during the training. Thus, the proposed NSCaching algorithm not only has fewer parameters, but also can be easily trained from randomly initialized models (from the scratch). Moreover, experimental results in Section 5 show that NSCaching achieves the best performance. However, in order to achieve a good performance, we need to carefully design how to sample from the cache (step 3) and how to update the cache (step 5). In these steps, "exploration and exploitation" (E&amp;E) <ref type="bibr" target="#b33">[34]</ref> is the main concern. Specifically, how to keep the balance between exploration (explore all the possible large-gradient negative triplets in S ) and exploitation (sample the training pair leading to the largest gradient norm in cache C ). 1). Sampling from the cache (step 3). Before describing the sampling scheme, we introduce some notations for subsequent usage. Let c (i) be a N 1 -dimensional vector containing gradient norms of ( hi j , r i , ti j ) ∈ C i , j = 1 . . . N 1 . Thus, if the j-th element c (i) j is larger, it means that the j-th negative triplet ( hi j , r i , ti j ) in cache is of higher quality. Finally, we further define a vector p, of which the length is the number of positive triplets S and each element p i = c (i) 2 . Intuitively, if p i is larger, then (h i , r i ,t i ) is more likely to have more large-gradient negative triplets.</p><p>As in Algorithm 2, we need to sample a pair of positive and negative triplets. Based on above notations, we can do it as follows. First, we can pick up a positive triplet (h i , r i ,t i ) ∈ S following a probability distribution given by</p><formula xml:id="formula_12">p((h i , r i ,t i )) = σ 1 (p i ; p),<label>(6)</label></formula><p>where the distribution σ 1 (p i ; p) satisfies that Algorithm 3 Sampling from the cache (step 3).</p><p>Require: Training set S and cache C . 1: sample a positive triplet (h i , r i ,t i ) ∈ S according to p ((h i , r i ,t i )) in ( <ref type="formula" target="#formula_12">6</ref>); 2: index the specific cache C i of (h i , r i ,t i ); 3: sample a negative triplet ( h j , r j , t j ) from C i according to p ( hi j , r i , ti j ) in <ref type="bibr" target="#b6">(7)</ref>.</p><p>-</p><formula xml:id="formula_13">∑ a σ 1 (p a ; p) = 1; and σ 1 (p a ; p) ≥ σ 1 (p b ; p) if p a ≥ p b .</formula><p>In this way, (h i , r i ,t i ) will be more frequently sampled if p i is larger. Then, after picking up the positive triplet (h i , r i ,t i ), we sample the negative triplet ( hi j , r i , ti j ) ∈ C i following</p><formula xml:id="formula_14">p ( hi j , r i , ti j ) = σ 2 (c (i) j ; c (i) ),<label>(7)</label></formula><p>where σ 2 (c) is defined in the same way as σ 1 (p). The full procedures are shown in Algorithm 3.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Remark 1</head><p>The choice of σ is important, as it greatly affects E&amp;E and how we can adapt to the sampling distributions.</p><p>Let us consider two extreme examples. First, if we pick σ 1 as an indicator function (as in Figure <ref type="figure" target="#fig_5">3</ref>(c)) where σ 1 (p i ; p) = 1 if p i is the largest and σ 1 (p j ; p) = 0 for j = i. Then, it is equal to deterministically select the negative triplet (h i , r i ,t i ) with the highest-quality. However, as the distribution can change during iterations of the algorithm, both of the embedding quality and the negative triplets in the cache may not be accurate enough for the sampling in the latest iteration. Besides, consistently sampling the largest one may make the algorithm only focus on a small amount of triplets, failing to capture the distribution well. Thus, we also need to consider the other candidates except the one with the largest p i . Second, if we take σ 1 (p i ; p) = 1/N for any i ∈ {1, . . . , N} (as in Figure <ref type="figure" target="#fig_5">3</ref>(a)) where N is the total number of training triplets (i.e., uniform sampling is used), then all triplets have equal possibilities to be sampled. However, this ignores the difference of candidates. The two cases also adapt to σ 2 when negative triplets are sampled from C i . In Section 3.4, we will propose a novel method to balance E&amp;E automatically.</p><p>2). Updating the cache (step 5). As mentioned in Section 3.1, the cache needs to be dynamically changed during iterations of the algorithm. Otherwise, the content in cache will not be changed and the sampling will be highly biased since most of the negative triplets will not be visited. Thus, we need to refresh the cache periodically. Moreover, the cache needs to be updated in an efficient way.</p><p>As in <ref type="bibr" target="#b4">(5)</ref>, the number of negative triplets in Si is quite large for a given positive triplet (h i , r i ,t i ). However, it is impossible for us to evaluate all the candidates in Si . Since Algorithm 4 Updating the cache (step 4).</p><formula xml:id="formula_15">Require: cache C i of size N 1 . 1: initialize Ĉi ← / 0, ĉ(i) = 0. 2: sample a subset N i ⊂ Si with N 2 triplets; 3: compute g k 2 for all ( h, r, t) ∈ N i ∪ C i ; 4: for j = 1, • • • , N 1 do 5:</formula><p>sample ( hi k , r i , ti k ) with probability in (8); 6:</p><p>remove</p><formula xml:id="formula_16">( hi k , r i , ti k ) from N i ∪ C i ; 7: Ĉi ← Ĉi ∪ {( hi k , r i , ti k )}; 8: ĉ(i) k = g k 2 ; 9: end for 10: update by C i ← Ĉi . 11: return C i ← Ĉi and c (i) ← ĉ(i) .</formula><p>we want to efficiently capture the large-gradient negative triplets in C i , we sample a small subset N i ⊂ Si of size N 2 , with N 2 Si . Then for each ( hi k , r i , ti k ) ∈ N i ∪ C i , we evaluate the gradient norm g k 2 by (3) or ( <ref type="formula" target="#formula_7">4</ref>). Then we construct a new set Ĉi ⊂ N i ∪ C i , whose components are sampled from N i ∪ C i without replacement N 1 times following the probability distribution</p><formula xml:id="formula_17">p ( hi k , r i , ti k ) = σ 3 (g k ; g) .<label>(8)</label></formula><p>Finally, Ĉi , which contains N 1 negative triplets and their corresponding gradient norms ĉ(i) , are returned.</p><p>Remark 2 Exploration and exploitation also need to be carefully balanced in Algorithm 4. As the cache needs to be updated, we have to sample from Si . The subset N i is chosen as a substitute of Si in consideration of efficiency. Therefore, a bigger N 1 implies more exploitation, while a larger N 2 leads to more exploration. In step 5, indeed, the choice of σ 3 is important under the same consideration as σ 1 and σ 2 . The balance of E&amp;E on N 1 , N 2 and σ 3 is further discussed in Section 3.4.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.3">Space and Time Complexities</head><p>In As for the space complexity, evaluating the gradients for N 1 + N 2 training pairs takes O((N 1 + N 2 )d) space. Since we only store indexes in the cache, it takes O(|S |N 1 ) space to store these indexes for negative triplets. Note that, N 1 is small since large-gradient negative triplets are rare. This is also verified in our experiments in Section 5.4.3.</p><p>In comparison, to generate a training pair, the generator in IGAN <ref type="bibr" target="#b53">[54]</ref> takes O(|E |d) time since it needs to compute the distribution over all entities. KBGAN <ref type="bibr" target="#b10">[11]</ref> needs O(N 1 d) time to measure a candidate set of N 1 triplets. The additional space cost for IGAN and KBGAN is also O(|E |d) and O(N 1 d) respectively. Finally, the comparison of space and time complexities is summarized in Table <ref type="table" target="#tab_2">3</ref> with TransE as the scoring function.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Theoretical Analysis</head><p>In this part, we theoretically analyze the convergence and learning performance of the proposed method.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.1">Convex Case: Faster convergence</head><p>Before presenting our analysis, we first simplify and take a uniform treatment over (1) and <ref type="bibr" target="#b1">(2)</ref>. Let w = {h, r, t}, then we can take the loss φ i (w) on a training pair for translational distance model as</p><formula xml:id="formula_18">φ i (w) = γ -f (h i , r i ,t i ) + f ( hi , r i , ti ) + ,<label>(9)</label></formula><p>and for semantic matching model as</p><formula xml:id="formula_19">φ i (w) = (1, f (h i , r i ,t i )) + -1, f ( hi , r i , ti ) .<label>(10)</label></formula><p>Thus, we can express (1) and (2) as</p><formula xml:id="formula_20">min w F(w) ≡ 1 n ∑ n i=1 φ i (w),<label>(11)</label></formula><p>where n is the number of all the training pair of positive and negative triplets. Using above notation, we can abstract NSCaching (Algorithm 2) as in Algorithm 5. Basically, the cache scheme is used to generate a probability distribution p t over all φ i , which changes over iterations.</p><p>Algorithm 5 Abstraction of NSCaching. The convergence of Algorithm 5 is in Theorem 1, which is inspired by some recent works in stochastic optimization <ref type="bibr" target="#b39">[40,</ref><ref type="bibr" target="#b69">70]</ref>.</p><p>Theorem 1 If F is smooth and convex, then</p><formula xml:id="formula_21">1 T ∑ T t=1 E F(w t ) -E [F(w * )] ≤ 2 ηT w * -w t 2 + η 2σ T ∑ T t=1 E ∇φ i t (w t ) /np t i t 2 , (<label>12</label></formula><formula xml:id="formula_22">)</formula><p>where w * = arg min w F, η is the step-size for stochastic optimization, and expectation is taken w.r.t. distribution p t .</p><p>The proof is in Appendix A. As we can see, how fast and well w t converges to the optimal solution depends on p t via the second term in <ref type="bibr" target="#b11">(12)</ref>. The solution which minimizes this term is offered in Proposition 1.</p><formula xml:id="formula_23">Proposition 1 ( [70]) E ∇φ i t (w t ) /np t i t</formula><p>2 is minimized when the possibility p t follows p t i = ∇φ i (w t ) /∑ n j=1 ∇φ j (w t ) .</p><p>Since the cache scheme is used to avoid vanishing gradient problem and distill the full sampling distribution, the samples with larger ∇φ i (w t ) should have higher possibility to be sampled. If the dynamic distribution p t is captured, we can then adaptively sample from it. In other words, the sample i t with larger p t i t has larger possibility to be sampled. As a result, the last term in <ref type="bibr" target="#b11">(12)</ref> in NSCaching can have smaller value compared with the uniform sampling. This indicates that NSCaching has both faster convergence speed and smaller approximation error. In practice, most of the existing embedding models are non-convex and stochastic optimization <ref type="bibr" target="#b27">[28]</ref> is used to update the parameters. However, the above bound still offers insights on how the proposed method works.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.2">Nonconvex Case: Self-paced learning</head><p>The main idea of self-paced learning (or curriculum learning) <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b30">31]</ref> is to pick up easy samples first, and then gradually switch to harder ones. In this way, the classifier can firstly identify the rough position where the decision boundary should locate. Then the boundary can be further refined by the hard examples. It is effective for complex and noncovex models. Recently, self-paced learning is also introduced into graph embedding and the improvement on the quality of embeddings has been reported <ref type="bibr" target="#b17">[18]</ref>. Besides, GAN is also used to monitor the distribution of edges in the network, and negative edges with scores above a given threshold are sampled from the generator in GAN. Self-paced learning is achieved by increasing the threshold during the training of embedding <ref type="bibr" target="#b17">[18]</ref>. As a comparison, the GAN models used in KBGAN and IGAN are not benefited from self-paced learning.</p><p>In contrast, our caching scheme can explicitly benefit from it. The reason is that the embedding model only has weak discriminative ability in the beginning of the training. Thus, while there exist a lot of negative triplets leading to large gradient norms, it is more likely that they are easy ones as most of the negative samples are easily classified.</p><p>As training process continuous, those easy samples will gradually have small gradients and are removed from the cache. These mean NSCaching will learn from easy samples first, but then gradually focus on hard ones, which is exactly the principle of self-paced learning. The above explanations are also verified by experiments, where we can see the negative triplets in the cache change from easy to hard ones (Section 5.6) and NSCaching (training from scratch) can already achieve better performance than IGAN and KBGAN with pretraining (Section 5.3).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4">Automatic Balancing Exploration and Exploitation</head><p>In previous parts, we have described the proposed framework (Section 3.2) and analyzed why it works (Section 3.3). Based on Proposition 1, we aim to capture the dynamic sampling distribution p t i = ∇φ i (w t ) /∑ n j=1 ∇φ j (w t ) . To guarantee efficiency, we design the sampling scheme (Algorithm 3) and updating scheme (Algorithm 4) to distill such a distribution. However, the distributions for different tasks and for different training status are different in practice. Therefore, we should carefully adjust the sampling and updating schemes. As mentioned in Section 3.2, to achieve better performance for different scenarios, the remained question is how can we carefully balance E&amp;E? Here, we show how AutoML techniques can be combined with the proposed framework to automatically balance E&amp;E.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4.1">Search Space from NSCaching</head><p>From Remarks 1, 2 and Proposition 1, we can see that σ (a i ; a) needs to cover three special cases, i.e., (i). uniformly sampling on all elements, (ii). deterministically sampling the max, and (iii). importance sampling as Proposition 1. Thus, we are motivated to choose the weighted softmax distribution as the probability function</p><formula xml:id="formula_24">σ (a i ; a) = exp(α•a i ) /∑ j exp(α•a j ),<label>(13)</label></formula><p>where α ≥ 0 is a hyper-parameter to be tuned. We can see α = 0 covers (i) as in Figure <ref type="figure" target="#fig_5">3</ref>(a), α = ∞ covers (ii) as in Figure <ref type="figure" target="#fig_5">3</ref>(c), and other values of α cover (iii) as in Figure <ref type="figure" target="#fig_5">3</ref>(b). Specifically, we use three different α's for ( <ref type="formula" target="#formula_12">6</ref>), ( <ref type="formula" target="#formula_14">7</ref>) and ( <ref type="formula" target="#formula_17">8</ref>) respectively.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4.2">Search by Bayesian Optimization</head><p>All hyper-parameters balancing E&amp;E are summarized in   </p><formula xml:id="formula_25">α 3 update C i exploitation N 1 size of cache C i exploitation N 2</formula><p>size of subset N i exploration choice of ( <ref type="formula" target="#formula_24">13</ref>), and the recent success of automated machine learning (AutoML) <ref type="bibr" target="#b60">[61]</ref>, especially hyper-parameter optimization, we use a versatile hyper-parameter optimization method, i.e., Sequential Model-based optimization for general Algorithm Configuration (SMAC) <ref type="bibr" target="#b22">[23]</ref>. SMAC allows efficiently and automatically tuning of both discrete (N 1 and N 2 ) and continuous (α 1 , α 2 and α 3 ) hyper-parameters.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4.3">Discussion: connection with existing methods</head><p>The hyper-parameters in Table <ref type="table" target="#tab_5">4</ref> can not only help us balance E&amp;E, but also give a unified view of the baselines, namely covering Bernoulli, KBGAN and IGAN as special cases. In this part, α 1 is always 0 since none of the three methods consider non-uniform positive sampling.</p><p>-Bernoulli <ref type="bibr" target="#b55">[56]</ref>: In Bernoulli sampling, negative samples are generated uniformly from the whole candidate space.</p><p>In this case, we can set both α 2 and α 3 to be 0. Then, the cache updating is never dependent on scores as well as the sampling schemes. Therefore, Bernoulli sampling is a special case of NSCaching when α 2 = α 3 = 0; -KBGAN <ref type="bibr" target="#b10">[11]</ref>: The key thought in KBGAN is to use a generator to pick up large-gradient negative samples in a random subset N i ∈ Si . Given a positive triplet (h i , r i ,t i ), the scores c (i) j stored in cache work as an alternative of the generator in KBGAN to measure the quality of ( h j , r j , t j ). Different from standard NSCaching, we use α 3 = 0, α 2 &gt; 0 and N 2 = max i | Si | so that the content in cache C i is similar as that in N i of KBGAN. </p><formula xml:id="formula_26">α 1 0 0 0 α 2 0 &gt; 0 &gt; 0 α 3 0 0 - N 1 - - max i | Si | N 2 - max i | Si | 0</formula><p>Self-Adv <ref type="bibr" target="#b47">[48]</ref> uses in the similar approach as KBGAN. Differently, Self-Adv uses the model's embedding itself to measure the quality of negative samples in N i . Compared with KBGAN and Self-Adv, NSCaching improves upon them by controlling the quality of negative triplets in N i .</p><p>-IGAN <ref type="bibr" target="#b53">[54]</ref>: When N 1 = max i | Si | and N 2 = 0, NSCaching resembles IGAN. In IGAN, the generator chooses large-gradient negative samples from the entire candidate set Si . Thus, we can set the cache size to be max i | Si | , and mask the positive positions. Besides, the cache does not need to be updated by setting N 2 = 0. We use α 2 &gt; 0 to select large-gradient negative samples from cache to replace the generator. In this way, NSCaching can also approximate the sampling procedure in IGAN.</p><p>We show the values of α's and N's in Table <ref type="table" target="#tab_7">5</ref> about how to cover the baselines by NSCaching. This finding also explains why NSCaching (auto) is better than the baselines. Besides, comparing with Bernoulli, KBGAN, IGAN and Self-Adv, NSCaching (auto) adapts the sampling distribution to approximate a relatively unbiased estimator for specific tasks.</p><p>3.5 Understanding the false negative triplets.</p><p>Since KG is incomplete <ref type="bibr" target="#b54">[55]</ref>, there exist triplets that do not appear in the training set but are not necessarily false. For example, the triplets in the valid or test set can be viewed as false negative triplets during training. From the literature <ref type="bibr" target="#b32">[33,</ref><ref type="bibr" target="#b54">55,</ref><ref type="bibr" target="#b58">59</ref>], the false negative samples will have larger scores but lower variance than the large-gradient negative samples.</p><p>We also have such an observation in Section 5.5.3. Thus, the false negative triplets may be detected by tracing the variance during the training. However, since the number of false negative triplets is small and evaluating the variance is expensive, we show in Section 5.5.3 that false negatives are empirically not a concern.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Extension to Skip-gram Model</head><p>The skip-gram model <ref type="bibr" target="#b35">[36]</ref> is a popular method originating from word embedding, which can explore surrounding words given the current embedded one. Due to its superior performance in natural language processing, two representative methods Deepwalk <ref type="bibr" target="#b43">[44]</ref> and Node2vec <ref type="bibr" target="#b20">[21]</ref> adopt the skip-gram model for graph embedding. And they have achieved significant improvements over previous works on the embedding quality <ref type="bibr" target="#b9">[10]</ref>. Moreover, motivated by the success of the skip-gram model on the graph and word embedding <ref type="bibr" target="#b20">[21,</ref><ref type="bibr" target="#b35">36,</ref><ref type="bibr" target="#b36">37,</ref><ref type="bibr" target="#b43">44]</ref>, we extend the NSCaching algorithm to the skip-gram model here. We first introduce the skipgram model <ref type="bibr" target="#b35">[36]</ref> in Section 4.1. Then, we adapt the cachebased negative sampling algorithm to the skip-gram model for graph embedding in Section 4.2. In this way, we show that the NSCaching algorithm (Algorithm 2) is not limited to KG embeddings.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Negative Sampling in Skip-gram Model</head><p>Skip-gram model is originally used to learn word embeddings <ref type="bibr" target="#b35">[36]</ref>. It aims at maximizing the co-occurrence probability among the words that appear within a window W . Given a positive word u, the training objective in skipgram model is to learn word embeddings that are good at predicting the words v ∈ W u , where W u is a set of nearby or context words of u. More formally, for a sequence of training words u 1 , u 2 , . . . , u L with length L, the objective is to maximize the average log probability</p><formula xml:id="formula_27">1 L ∑ L i=1 ∑ v j ∈W u i log p (v j |u i ) ,<label>(14)</label></formula><p>where</p><formula xml:id="formula_28">W u i = {v j | -c ≤ j ≤ c, j = 0}</formula><p>, c is a pre-defined window size. Basically, the probability p (v j |u i ) is defined as the softmax function</p><formula xml:id="formula_29">p (v j |u i ) = exp(v j u i)/∑ |V | k=1 exp(v k u i) ,<label>(15)</label></formula><p>where the boldface represents the embedding and |V | is the vocabulary size. However, since |V | is usually large, negative sampling is used to avoid computing the dot product similarity among all the words <ref type="bibr" target="#b36">[37]</ref>. In this way, the log probability log p (v</p><formula xml:id="formula_30">j |u i ) is computed based on log σ (v j u i ) + ∑ N n=1 log σ (-v n u i ),<label>(16)</label></formula><p>where σ (x) = 1 /1+exp(-x) is the sigmoid function and v n 's are the negative samples drawn from the noise distribution p(u i ). Generally, the noise distribution p(u i ) is a unigram distribution, or a weighted distribution proportional to the word frequency <ref type="bibr" target="#b36">[37]</ref>. Similar as the methods in Section 2.2.1, the negative sampling used for ( <ref type="formula" target="#formula_30">16</ref>) is also fixed. Hence, the quality of negative samples cannot be dynamically captured.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Graph Embedding with Skip-gram Model</head><p>In order to preserve the graph structure while make it easy for a machine learning model to process, random walks are widely used to learn graph embeddings <ref type="bibr" target="#b9">[10,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b43">44]</ref>. A graph is firstly represented as a set of random walk paths sampled from it. Then skip-gram model <ref type="bibr" target="#b35">[36]</ref> is applied to preserve graph properties carried by the paths <ref type="bibr" target="#b9">[10]</ref>. DeepWalk <ref type="bibr" target="#b43">[44]</ref>, as a representative random walk based graph embedding model, first samples a set of paths from the input graph. Then, the sampled paths are regarded as sentences that describe the graph, and the nodes are regarded as words. Skip-gram model is applied on the paths to maximize the probability of observing a node's neighborhood conditioned on its embedding. In this way, nodes with similar neighborhoods will have larger co-occurrence and more similar embeddings. Node2vec <ref type="bibr" target="#b20">[21]</ref> improves upon DeepWalk <ref type="bibr" target="#b43">[44]</ref> by using a biased random walk. Two parameters p and q are used to control breadth-first sampling or depth-first sampling, which is shown to better capture the local topologies <ref type="bibr" target="#b20">[21]</ref>.</p><p>Different from KG, skip-gram model does not have exact positive samples since the context in the window W u i = {v j |c ≤ j ≤ c, j = 0} does not necessarily to have strong connection with u i . Therefore, we build a cache C i for each word rather than each training sample. Then, the negative part in ( <ref type="formula" target="#formula_30">16</ref>) is sampled from the cache. We treat the number of negative samples N as a hyper-parameter and optimize it together with the cache-related hyper-parameters. In addition, we use all the nodes that are not in W u i as the negative samples. Therefore, balancing between E&amp;E is also important in this setting.</p><p>We use the Node2vec <ref type="bibr" target="#b20">[21]</ref> model as the testbed for skipgram model. In Node2vec, a biased random walk method is used to generate a sequence of walks from the graph. In this way, embeddings are updated through the cache-based skip-gram algorithm. The cache-based Node2vec method is given in Algorithm 6.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Algorithm 6 Node2vec (NSCaching).</head><p>Require: Graph G = (V, E), embedding dimension d, walks per node r, walk length l, window size w, p, q. 1: Initialize embeddings for each node v ∈ V . 2: computing the neighborhood sampling probability of each node based on p and q; 3: Initialize walks to empty 4:</p><formula xml:id="formula_31">for i = 1, • • • , r do 5:</formula><p>for all nodes v ∈ V do 6:</p><p>sample a walk starting from u with length l; 7:</p><p>append walk to walks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>8:</head><p>end for 9: end for 10: repeat 11:</p><p>sample a node u i and its context v j in the window W u i . 12:</p><p>sample a set of negative nodes vn 's from the cache C i . 13:</p><p>update embedding using the gradient of ( <ref type="formula" target="#formula_30">16</ref>). 14: until converge</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Experiments</head><p>In this section, we conduct empirical study of our method. All algorithms are written in Python with PyTorch framework <ref type="bibr" target="#b42">[43]</ref> and run on a TITAN Xp GPU with 12GB memory. Our code is public available in xxx.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Implementation Details</head><p>Since a lot of triplets share the same (head, relation) or (relation, tail) pairs, we use two caches, namely a head cache H (r,t) and a tail cache T (h,r) , to separately store negative triplets in {( h, r,t) / ∈ S | h ∈ E } and {(h, r, t) / ∈ S |t ∈ E }. Using two caches instead of one can help us to reduce the time and space cost. The value we stored in cache is the score of negative triplets according to the predefined scoring function f , instead of gradient norms. The main consideration is that gradient norms for each training pair can not be efficiently obtained through mini-batches, especially for complex scoring functions like TransD <ref type="bibr" target="#b24">[25]</ref>. Given a positive triplet (h i , r i ,t i ), the value p i is computed by the sum of scores stored in H (r,t) and T (h,r) .</p><p>In general, the training of KG embedding model is under the open world assumption, which means that KGs contain only positive triplets and non-observed triplets can be either false or just missing <ref type="bibr" target="#b54">[55]</ref>. To reduce sampling the negative examples that are just missing, we use the same scheme proposed in Bernoulli sampling <ref type="bibr" target="#b55">[56]</ref> to get the subset N i . Specifically, different probabilities are given when replacing the head or the tail for different relations. For each relation r, we compute and denote the average number of tail entities per head as t ph, and the average number of head entities per tail as hpt. Then the probabilities of replacing the head and the tail are t ph /t ph+hpt and hpt /t ph+hpt respectively.</p><p>To constrain values of α's in a certain range, we rescale the value of p i , c (i) j and g i to lie in the interval [0, 1] before computing the sampling probability σ (a i ; a). Specifically, given the vector a and let q low and q high be the quantiles of a, we choose q low to be 20 th and q high to be 80 th percentiles, respectively. Then the rescaling function r(a i ) is formed as:</p><formula xml:id="formula_32">r(a i ) =        1 a i &gt; q high 0 a i &lt; q low a i -q low q high -q low otherwise . (<label>17</label></formula><formula xml:id="formula_33">)</formula><p>The rescaling function can also help us to avoid the case that some samples have extremely large score. In this case, these samples will be selected for too many times.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Experiment Setup</head><p>Five datasets are used here, i.e., WN18, FB15K and their variants WN18RR, FB15K237, and YAGO3-10. WN18 and FB15K are firstly introduced in <ref type="bibr" target="#b7">[8]</ref>. They are widely tested in the literature <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b10">11,</ref><ref type="bibr" target="#b24">25,</ref><ref type="bibr" target="#b26">27,</ref><ref type="bibr" target="#b50">51,</ref><ref type="bibr" target="#b53">54,</ref><ref type="bibr" target="#b68">69]</ref>. WN18RR <ref type="bibr" target="#b12">[13]</ref> and FB15K237 <ref type="bibr" target="#b49">[50]</ref> are variants that remove near-duplicate or inverse-duplicate relations from WN18 and FB15K. The two variants are harder and more realistic. YAGO3-10 is much larger than the others and is a subset of YAGO <ref type="bibr" target="#b46">[47]</ref>.</p><p>Their statistics are shown in Table <ref type="table" target="#tab_8">6</ref>. Following previous KG embedding works <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b24">25,</ref><ref type="bibr" target="#b50">51,</ref><ref type="bibr" target="#b55">56</ref>] and the GAN-based works <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b53">54]</ref>, we mainly test the performance on link prediction task. This is also the testbed to measure KG embedding models. Link prediction aims to predict the missing entity h or t for a positive triplet (h, r,t). In this task, we measure the rank of head entity h and tail entity t among all the entities in E . Thus, link prediction emphasizes the rank of the correct entities rather than their concrete scores. Besides, to further verify the quality of the learned embedding, we test the learned embeddings on triplet classification task. This task is to confirm whether a given triplet (h, r,t) is correct or not, i.e., binary classification of triplet <ref type="bibr" target="#b55">[56]</ref>. In practice, it can help us to quickly answer the truth-or-false questions.</p><p>As in previous works <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b10">11,</ref><ref type="bibr" target="#b26">27,</ref><ref type="bibr" target="#b50">51,</ref><ref type="bibr" target="#b53">54]</ref>, we evaluate the link prediction performance based on the following two metrics MRR and Hit@10 measure the top rankings of positive entity in different levels. Hit@10 cares about general top rankings while the top 1 samples contribute most to MRR. The larger value of MRR and Hit@10 indicates better performance. To avoid underestimating the performance of different models, we report the performance in a "filtered" setting, i.e., all the corrupted triplets that exist in train, valid and test set are filtered out <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b53">54]</ref>. A large amount of scoring functions have been proposed in the literature, please see a recent survey <ref type="bibr" target="#b54">[55]</ref> for a review. In this part, following <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b53">54]</ref>, TransE <ref type="bibr" target="#b7">[8]</ref>, TransH <ref type="bibr" target="#b55">[56]</ref>, TransD <ref type="bibr" target="#b24">[25]</ref>, DistMult <ref type="bibr" target="#b59">[60]</ref> and ComplEx <ref type="bibr" target="#b50">[51]</ref> will be used as scoring functions for comparison; besides, the recently developed scoring function SimplE <ref type="bibr" target="#b26">[27]</ref> is also included (see Table <ref type="table" target="#tab_1">2</ref>).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Comparison with State-of-the-arts</head><p>In this section, we focus on the comparison between our proposed cache-based negative sampling with the other baseline sampling methods.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3.1">Compared Methods</head><p>Following methods for negative sampling in KG embedding are compared:</p><p>-Bernoulli <ref type="bibr" target="#b55">[56]</ref>: As an extension of the uniform sampling scheme used in TransE, Bernoulli sampling controls the probability for sampling ( h, r,t) or (h, r, t) in the one-to-many, many-to-one and many-to-many relations. Specifically, it samples ( h, r,t) or (h, r, t) under a fixed Bernoulli distribution for each r.</p><p>-KBGAN <ref type="bibr" target="#b10">[11]</ref> <ref type="foot" target="#foot_1">2</ref> : This method firstly samples a set N uniformly from the whole entity set E . Then the head or tail entity is replaced with the entities in N to form a set of candidate ( h, r,t) and (h, r, t). The generator in KBGAN tries to pick up one triplet among them. As proposed in <ref type="bibr" target="#b10">[11]</ref>, we choose the simplest model TransE as the generator. For a fair comparison, the size of set N is the same as our cache size N 1 . We use the published code and change the configure same as ours in the comparison. Self-Adv <ref type="bibr" target="#b47">[48]</ref> works similarly as KBGAN. The main difference is that Self-Adv uses the target embedding model itself as the generator. -NSCaching (Algorithm 2): As in Section 3 and 5.1, the negative triplets are formed by replacing the head entity h or tail entity t with the one sampled from headcache H or tail-cache T . The cache is updated as in Algorithm 4. Note that we can also lazily update the cache several iterations later to save time. We use n = 0 without lazy-update unless otherwise specified. Besides, we use AutoML to denote the improved version which tunes the hyper-parameters to balance E&amp;E.</p><p>As the source code of IGAN <ref type="bibr" target="#b53">[54]</ref> is not available, we do not compare with it here. Instead, we directly use the reported performance in the sequel. Finally, we also use Bernoulli sampling to choose between ( h, r,t) and (h, r, t) for KBGAN and NSCaching. Besides, as in <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b53">54]</ref>, two strategies are used for KBGAN and NSCaching:</p><p>-Scratch: The embedding of relations and entities are initialized by the Xavier uniform initializer <ref type="bibr" target="#b18">[19]</ref>, and the models (denoted as KBGAN + scratch and NSCaching + scratch) are directly applied to train the given KG; -Pretrain: Same as <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b53">54]</ref>, we firstly pretrain each scoring function with Bernoulli sampling, several epochs on the data sets. We denote it as pretrained. Then the obtained parameters are used to warm-start the given KG.</p><p>We keep training the warm-started KG embedding and evaluate the performance under different sampling methods, i.e., Bernoulli, KBGAN + pretrain and NSCaching + pretrain. Besides, the generator in KBGAN is warmstarted with corresponding TransE model.</p><p>Same as the KG embedding works in the literature <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b25">26,</ref><ref type="bibr" target="#b26">27]</ref>, we use grid search to select the KG embedding related hyper-parameters: hidden dimension d ∈ {50, 100, 200}, batch size m ∈ {1024, 2048, 4096}, learning rate η ∈ {0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1}. For translational distance models, we tune the margin value γ ∈ {1, 2, 3, 4}. And for semantic matching models, we tune the penalty value λ ∈ {0.001, 0.01, 0.1} <ref type="bibr" target="#b50">[51]</ref>. We use Adam <ref type="bibr" target="#b27">[28]</ref>, which is a popular variant of SGD algorithm for the training, and adopt its default settings except for the learning rate. The best hyper-parameters are tuned under Bernoulli sampling scheme and evaluated by the MRR metric on the valid set. We keep them fixed for the baselines Bernoulli, KBGAN and NSCaching here. Following <ref type="bibr" target="#b10">[11]</ref>, we save and record the pretrained model after initial training epochs. Then, Bernoulli method keeps training until 3000 epochs; and the results of KBGAN and NSCaching algorithm are evaluated within 1000 epochs, either from scratch or with pretraining. All the recorded results are tested based on Table <ref type="table">7</ref>: Comparison of various algorithms on the five data sets. Performance of the pretrained model is included as reference. As code of IGAN is not available, its performance is directly copied from <ref type="bibr" target="#b53">[54]</ref>. Note that MRR, and those on WN18RR, FB15K237, YAGO3-10 data sets are not reported as they are not shown in IGAN. Besides, KBGAN on YAGO3-10 is not reported since it easily runs out of memory. Bold number means the best performance, and underline means the second best under each setting.  the best hyper-parameters chosen by the MRR value on valid set. For cache related hyper-parameters, we choose α 1 = α 2 = 0, α 3 = 1 and N 1 = N 2 = 50 for NSCaching.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3.2">Results on Translational Distance Models</head><p>The performance on link prediction task is compared in Table <ref type="table">7</ref>. First, we can see that, for the translational distance models (TransE, TransH, TransD), KBGAN, NSCaching and IGAN (both pretrain and scratch) gain significant improvements upon the baseline scheme Bernoulli, especially for the performance gaining on the MRR metric, which is mainly influenced by the top rankings. This verifies the advantages of using large-gradient negative triplets during negative sampling and these methods can effectively pick up these negative triplets.</p><p>Then, IGAN and KBGAN with pretraining can perform better, indicated by MRR and Hit@10, than from scratch.    This shows that pretraining is helpful for the GAN-based methods. In comparison, NSCaching trained from either state (pretrain or scratch) can outperform IGAN and KB-GAN on all the scoring functions.</p><p>The learning curve of the testing performance for various algorithms is shown in Figure <ref type="figure" target="#fig_8">4</ref>. We use TransD here as the testbed. As can be seen, all algorithms will converge to some points with stable testing performance, which empirically verifies the convergence of Adam optimizer <ref type="bibr" target="#b27">[28]</ref>. Then, pretrain is a must for KBGAN to achieve good performance. When the generator is trained from scratch, the whole model will suffer from instability, especially at the initial training stages. As a result, it prevents the GAN-based models converging to some good local points. NSCaching can obtain good performance either from scratch or with pretrain. Note that, even through the updating and sampling scheme introduces extra training cost, we can achieve better performance with fewer iterations. As a result, in all cases, NSCaching has better anytime performance than both Bernoulli and KBGAN.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3.3">Results on Semantic Matching Models</head><p>The performance on semantic matching models is shown in the bottom rows of Table <ref type="table">7</ref>. Same as that on translational distance models, NSCaching outperforms baseline scheme Bernoulli significantly as indicated by the bold and underline numbers. However, KBGAN does not show a consistent performance. In most settings, KBGAN from scratch performs even worse than Bernoulli. This observation further verifies the fact that GAN-based methods usually suffer from instability and degeneracy. They need careful balance between the generator and the discriminator, i.e., the target KG embedding model. However, NSCaching works consistently and performs the best both with pretrain or from scratch.</p><p>The learning curve of the testing performance for various algorithms is shown in Figure <ref type="figure" target="#fig_10">5</ref>. SimplE is used in this part. As can be seen, both Bernoulli and NSCaching will converge to some stable points. In the contrast, KBGAN will turn down and overfit on FB15K237 data set. However, NSCaching, either with pretrain or from scratch, leads the performance and is well adopted on the semantic matching models without further tuning. Besides, as for NSCaching (auto), we find that even though the sampling cost is higher, the performance improvement is obvious and consistent on all these data sets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3.4">Results on Triplets Classification</head><p>We do triplets classification in the same way as <ref type="bibr" target="#b55">[56]</ref>. This task is to confirm whether a given triplet (h, r,t) is correct or not, i.e., do binary classification on the triplet. Compared with link prediction, triplets classification is more convenient in answering yes-or-no questions. The decision rule of classification is learned as follows: for each (h, r,t), if its score is no less than the relation-specific threshold σ r , then we predict it to be positive. Otherwise, negative. The threshold σ r is determined by maximizing the classification accuracy on the valid set. We test this task on WN18RR and FB15K237 data sets based on TransD and SimplE. As shown in Table <ref type="table" target="#tab_11">8</ref>, NSCaching still outperforms various baselines. This task further justifies that NSCaching can help learn a better embedding of the KG.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">Balancing E&amp;E</head><p>In this part, we analyze the designing concerns on the hyper-parameters regarding "exploration and exploitation" in Table <ref type="table" target="#tab_5">4</ref>. SimplE and WN18RR are used as the scoring function and data set respectively.  <ref type="figure" target="#fig_12">6</ref>(a). Since the content in cache is influenced by α 3 , we use 0 (low), 1 (middle), and 100 (high) as values of α 3 for the testing. As can be seen, when α 3 is small, different choices of α 1 perform relatively bad and does not have regular influence on embedding performance. As α 3 becomes larger, we see that a larger value of α 1 performs better, which verifies the better convergence property in Theorem 1. However, it will decrease with too large α 1 . Take the distribution in Figure <ref type="figure" target="#fig_5">3</ref>(c) as an example, some positive triplets will not be selected when α 1 is too large, leading to a problematic training process.</p><p>5.4.2 α 2 and α 3 : Sampling and updating cache Once a positive triplet (h i , r i ,t i ) is sampled, we can get its corresponding cache C i which stores the negative triplets.</p><p>The main parameters influencing the choice of negative triples are α 2 and α 3 , namely the temperature for sampling from cache and updating the cache. To show how α 2 and α 3 balance E&amp;E, we fix α 3 in certain ranges (low: 0, middle: 1 and high: 100) and change α 2 in Figure <ref type="figure" target="#fig_12">6</ref>(b), and then do it alternatively in Figure <ref type="figure" target="#fig_12">6</ref>(c).</p><p>From both Figure <ref type="figure" target="#fig_12">6</ref>(b) and 6(c), we can see that balancing α 2 and α 3 are of vital importance. When α 2 or α 3 has small value, increasing the other one will improve the performance since exploitation is limited at this stage. However, when α 2 or α 3 becomes larger, the other one should choose an appropriate value in order to avoid exploiting too much. The performance goes up at initial stage and turns down as the break up of balance. The reason is that too large values of α 2 and α 3 will limit exploration such that a few negative triplets will be selected too many times. Besides,   false negative triplets will be more frequently sampled. Fortunately, E&amp;E is well balanced under a wide range of α's values where NSCaching performs well without much effort in tuning α's.</p><p>Besides, when the cache is updated without referring to the gradient norms, i.e. α 3 = 0 and α 2 &gt; 0, NSCaching works as an alternative version of KBGAN and outperforms Bernoulli baseline approach. It works stabler than KBGAN which suffers from the instable training of the generator. However, the performance is still not the best since balance of E&amp;E is not in the best state when cache is updated without considering the negative triplets' qualities.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4.3">N 1 and N 2 : Cache size</head><p>Basically, N 1 is the size of cache C i . Then, N 2 is the size of randomly sampled subset R i of negative triplets from Si , which will later be used to update the cache. In this part, we show their impact on the performance of NSCaching.</p><p>The three temperature values are set as α 1 = α 2 = 0, α 3 = 1. Figure <ref type="figure" target="#fig_13">7</ref>(a) shows how performance changes by varying the cache size N 1 among {10, 30, 50, 70, 90} with fixed N 2 = 50. When the cache size is small, average quality of triplets stored in the cache should be larger than those in a cache with larger size. As a result, false negative triplets will be more likely to be sampled, which will influence the embedding quality. With the others values of N 1 , NSCaching performs quite stable. The convergence speed is similar, as well as the values in converged state. Thus, when we need to set appropriate cache size, the value of N 1 can be searched from smaller values to larger ones until the performance is stable.</p><p>Different performance of the random candidate subset size N 2 is shown in Figure <ref type="figure" target="#fig_13">7</ref>(b). The entities in cache will be updated more frequently when N 2 gets larger, which lead to better exploration. But the trade-off is that larger value of N 2 is more expensive. As shown by the colored lines in Figure <ref type="figure" target="#fig_13">7</ref>(b), NSCaching performs consistently when N 2 is larger than 10. However, if the random subset is small, the content in cache will be harder to be updated, thus leading to poor performance as the yellow dashed line (N 2 = 10). By combining together the influence of cache size N 1 and the random subset size N 2 in Figure <ref type="figure" target="#fig_13">7</ref>, we find that (i) NSCaching is not sensitive to the two sizes; (ii) both sizes can not be too small; (iii) N 1 = N 2 is a good balance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4.4">Automatically Balancing E&amp;E</head><p>In previous part, we have shown the importance of balancing between E&amp;E. Here, we use AutoML techniques <ref type="bibr" target="#b60">[61]</ref> to automatically balance E&amp;E and further improve the performance on five benchmarks.</p><p>For each dataset, we use the same value of learning rate, batch size, embedding dimension and regularizer penalty as the Bernoulli baseline to make a fair comparison. The other hyper-parameters related to the negative sampling algorithm are searched within the ranges given in Table <ref type="table" target="#tab_12">9</ref> by SMAC <ref type="bibr" target="#b22">[23]</ref>, a well-known AutoML algorithm for hyper-parameter optimization. The initial hyper-parameter setting is α 1 = α 2 = α 3 = 0 and N 1 = N 2 = 50, namely a setting similar to Bernoulli sampling. Besides, we take random search <ref type="bibr" target="#b4">[5]</ref> as a baseline rather than the grid search, as random search is generally more effective <ref type="bibr" target="#b4">[5]</ref>.</p><p>Figure <ref type="figure" target="#fig_15">8</ref> shows the MRR from the best (denoted by "top1") and top three (denoted as "top3") models obtained during the search procedure. Once the searching starts, the top performance will soon be boosted for both SMAC and random by exploring hyper-parameters with better balance of E&amp;E. Both of the two search algorithms find hyper-parameters that outperform the original NSCaching+scratch. However, with the help of Bayesian optimization, SMAC is more efficient and effective than random. This verifies the importance of introducing Au-toML into the framework of NSCaching. After searching and running for 50 hyper-parameter settings, we show the performance of the best hyper-parameter on testing data in Table <ref type="table">7</ref>. The hyper-parameter settings with best performance are given in Table <ref type="table" target="#tab_12">9</ref>.  5.5 Ablation study</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.5.1">Lazy update</head><p>In Section 3, we have introduced the lazy update parameter n to reduce the computation cost of NSCaching. In this part, we analyze the influence of n on the learning curve in Figure <ref type="figure">9</ref>. We run each model for 1,000 epochs, and report the best performance and running time. The relative time and MRR are divided by the corresponding values of n = 0 respectively. When n increases, the computation cost is reduced since less update operations are conducted. However, the performance is gradually decreasing since the cache will be less frequently updated, reducing the exploration. Fortunately, the decrease of performance is not obvious (less than 3%) when n ≤ 10. So the value of n can be regarded as a trade-off for time and performance, adapting to different application requirements.</p><p>Fig. <ref type="figure">9</ref>: Influence of different lazy update value n of NSCaching (SimplE is used as the testbed).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.5.2">Comparing with Self-adv</head><p>In this part, we compare NSCaching with the concurrent work Self-Adv by using the RotatE scoring function <ref type="bibr" target="#b47">[48]</ref>:</p><formula xml:id="formula_35">f (h, r,t) = -h • r -t 1 ,</formula><p>where h, r, t are complex embeddings and • is the Hadmard product in the complex space. As discussed in Section 5.3.1, Self-Adv relies on sampling a small subset N from E i and then sampling from N . A similar setting in NSCaching is when α 3 = 0, where the cache is updated without depending on the scores so that the cache can have the same distribution with R m . As shown in Figure <ref type="figure" target="#fig_17">10</ref>, both Self-Adv and NSCaching outperform Bernoulli sampling. This again demonstrates the universality of using large-gradient negative samples to improve the performance. Then, Self-Adv and NSCaching (α 3 = 0) have the similar best performance, but NSCaching (α 3 = 0) is a bit slower due to the updating procedure. Besides, NSCaching (auto) achieves the best performance by using the cache C i , which has more large-gradient samples than N in Self-Adv.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.5.3">Influence of false negatives</head><p>In Section 3.5, we show that variance can be used as a standard to detect the false negatives. In this part, we empirically analyze the potential influence of introducing variance into the sampling method with SimplE model and WN18RR data set. We use the valid and test set here as the set of false negative samples. First, we analyze the possibility of sampling the false negative triplets from the cache. In Figure <ref type="figure" target="#fig_19">11</ref>(a), we show the ratio of false negative triplets in the cache (denoted as cache) and the percentage of false negatives in the sampled negative triplets (denoted as sampled) during training. The cache does contain a few false negative triplets, but less than 0.03% contents are false negative. The ratio of false negatives among the sampled triplets is even smaller. Besides, we set N 1 = N 2 and use different values to show how the cache size influences the ratio of false negative triplets. When the cache size N 1 increases, the possibility of sampling the false negative triplets decreases. Since in each iteration, only one negative triplet is generated and the cache keeps updating, we can avoid frequently picking up the false negative samples.  Second, we show that variance can be used as a standard to detect false negatives. In Figure <ref type="figure" target="#fig_19">11</ref>(b), we plot the average variance of 5,000 false negative triplets and 5,000 largegradient negative triplets. The false negative triplets are sampled from the valid and test set. For the large-gradient negative triplets, we run NSCaching for 1,000 epochs first and then sample 5,000 triplets, which are not false negative, from the final cache. The scores of triplets are estimated per epoch, and the variances are computed based on the recorded scores. As shown in Figure <ref type="figure" target="#fig_19">11</ref>(b), the variance of large-gradient negative samples is larger than that of false negative ones. This indicates that the false negative triplets may be detected by tracing the variance during training. Finally, we show the influence of adding variance into the sampling method. We record the score measured by SimplE and std of the scores for the negative samples. To save the memory cost, we use the Welford's online algorithm <ref type="bibr" target="#b56">[57]</ref> to estimate the std of negative triplets. Then, we use score + νstd, where ν &gt; 0 is a weighting parameter, as the metric here to sample the large-gradient negative triplets. As shown in Figure <ref type="figure" target="#fig_20">12</ref>, when ν is given an appropriate value like ν ≤ 1, the best performance is almost the same, but the computation cost increases a lot. The training will be instable after adding the std term, especially when the value of ν is large. Therefore, it is not necessary to consider the variance to reduce the problem of false negative triplets in this work. Instead, we control α's to avoid frequently sampling the false negative triplets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.6">Theoretical Explanation</head><p>Here, we study the theoretical perspective of the proposed approach, which gives more insights and helps us understand NSCaching better.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.6.1">Illustration of Vanishing Gradients</head><p>To further clarity the vanishing gradient problem, we plot the average 2 -norm of gradients v.s. number of epochs in Figure <ref type="figure" target="#fig_22">13</ref>. Adam <ref type="bibr" target="#b27">[28]</ref>, a stochastic gradient descent algorithm, is used as the optimizer. First, we can see that while the norms of gradients for both NSCaching and Bernoulli become smaller, they will not decrease to zero since the sampling process of the mini-batch will introduce noise into gradients. However, the norm from NSCaching is larger than that from Bernoulli due to the usage of cache-based negative sampling scheme. Thus, we can see NSCaching can successfully avoid the problem of vanishing gradient. We also show the changes with different α's. When the value of α's increases, the gradient norm will become larger, especially after the warm-up procedure, i.e., after 400 epochs. For the TransD model, when α 2 = α 3 = 10, the training will become unstable. This also verifies that we should control the value of α through the AutoML technique.   Finally, we visualize the changes of content in the cache, which verifies the effects of self-paced learning introduced in Section 3.3.2. Following <ref type="bibr" target="#b53">[54]</ref>, we also use FB13 here, which has 75,043 entities, 13 relations and 316,232 training triplets, since triplets in this dataset are more interpretable than the five evaluated datasets. We pick up (manorama, pro f ession, actor) as the positive triplet, and the changes in its tail-cache T r,t are shown in Table <ref type="table" target="#tab_0">10</ref>. As can be seen, negative tails are firstly meaningless, e.g., ostrava and ben lilly, then they gradually changes to human jobs, e.g., artist and sex worker. -LINE <ref type="bibr" target="#b48">[49]</ref>: In this method, the embeddings are trained to preserve the first order, i.e., the direct connections, and second order, i.e., the neighborhood similarities, in graphs.  <ref type="bibr" target="#b17">[18]</ref> 0.8142±0.0033 0.8089±0.0023 0.8195±0.0024 0.8081±0.0030 0.8364±0.0047 0.8315±0.0024 NSCaching 0.8185±0.0031 0.8108±0.0028 0.8273±0.0039 0.8184±0.0043 0.8413±0.0019 0.8334±0.0027</p><p>Citeseer LINE <ref type="bibr" target="#b48">[49]</ref> 0.4984±0.0044 0.5488±0.0035 0.5074±0.0032 0.5754±0.0027 0.5175±0.0039 Node2vec 0.5755±0.0019 0.5253±0.0017 0.5793±0.0013 0.5357±0.0016 0.5936±0.0044 0.5410±0.0013 SeedNE <ref type="bibr" target="#b17">[18]</ref> 0.5762±0.0028 0.5279±0.0030 0.5918±0.0025 0.5369±0.0031 0.6059±0.0015 0.5552±0.0038 NSCaching 0.5864±0.0018 0.5297±0.0047 0.5982±0.0020 0.5531±0.0029 0.6120±0.0015 0.5712±0.0018 -Node2vec <ref type="bibr" target="#b20">[21]</ref>: Different from LINE, Node2vec uses biased random walk to preserve the topology information on graphs. The generated walks are regarded as sentences in the language model. In this way, skip-gram model is used to learn the embeddings. The distribution used to sample negative nodes is proportional to 3 /4 of the nodes' frequency.</p><p>-SeedNE <ref type="bibr" target="#b17">[18]</ref>: To improve the negative sampling in skipgram model, SeedNE selects the negative nodes whose similarities with the positive node are higher than an increasing threshold. Either the self-embedding or a learned generator can be used to indicate the similarities.</p><p>To guarantee stability, we use self-embedding in this part. This sampling method also has some connection with the self-paced learning, but the problem of E&amp;E is not well addressed.</p><p>In order to make a fair comparison with the baselines, we set the embedding dimension to be 100 for all the datasets as in <ref type="bibr" target="#b17">[18]</ref>. Similar as <ref type="bibr" target="#b20">[21]</ref>, 10 random walks are generated for each node with p = 0.25, q = 0.25, both of which are hyperparameters controlling the biased random walk. The window size |W u | is set to be 10 for each node in the walks. The walks are fixed when comparing different models. Finally, we use Adam <ref type="bibr" target="#b27">[28]</ref> as the optimizer. The learning rate is set as the default value 10 -3 and we use λ = 10 -7 as the weight decay value.</p><p>To measure the quality of the learned embeddings of different methods, we use node classification task as the testbed. After the embeddings are learned, a logistic regression model is learned as the classifier. Specifically, we use the cache-based skip-gram model to train the node embeddings. Then the embeddings and their corresponding labels are fed into the classifier. Following <ref type="bibr" target="#b17">[18,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b48">49]</ref>, we use F1-score, which considers both the precision and recall, to measure the test accuracy. It is a widely used metric in binary classification and is computed by F 1 = 2 • precision•recall /precision+recall. Considering that the problem here is a multi-class task, we use two variants -Micro-F1: the precision and recall are computed by ignoring the type, and then computing the F1-score.</p><p>-Macro-F1: the precision and recall are computed separately on each class, and return the average F1-score.</p><p>The larger values of the F1-scores indicate better performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.7.2">Empirical Results</head><p>We randomly select {30%, 50%, 70%} labeled nodes to train the classifier five times and evaluate the performance on the remaining nodes respectively. We report the average and the standard deviation on the node classification task in Table <ref type="table" target="#tab_13">11</ref>. Comparing with the frequency-based negative sampling method, i.e., Node2vec <ref type="bibr" target="#b20">[21]</ref>, the NSCaching based skip-gram method and SeedNE gain significant improvement since they are able to capture the dynamic distribution of negative samples. By comparing Node2vec (skip-gram) with LINE, we can see that the random walk based model is better than LINE, which only uses direct connection and neighbors to measure the similarity. Besides, NSCaching outperforms another self-paced negative sampling method SeedNE with better control of E&amp;E.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>In this paper, we propose NSCaching, a novel negative sampling method for knowledge graph embedding learning. The negative samples are sampled from a cache that can dynamically hold large-gradient negative samples. We theoretically understand the convergence and effectiveness from both convex and non-convex case. In order to balance exploration and exploitation during the sampling procedure, we use AutoML to automatically balance E&amp;E for NSCaching in regard of sampling and updating the cache. In addition, we extend NSCaching to skip-gram model, which is widely used in word embedding and graph embedding.</p><p>Experimentally, we test NSCaching on benchmark datasets and various scoring functions. Empirical results show that the method can generalize well under various settings and achieves state-of-the-arts performance. In future work, we will use AutoML technique to search for scoring functions <ref type="bibr" target="#b67">[68]</ref> and explore recurrent neural architectures to learn from relational paths in knowledge graphs <ref type="bibr" target="#b66">[67]</ref>.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 :</head><label>1</label><figDesc>Fig. 1: An example of knowledge graph.</figDesc><graphic coords="1,305.27,594.20,221.92,94.98" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 (</head><label>2</label><figDesc>a) shows changes of the training pair distribution for a fixed positive triplet (h i , r i ,t i ) in different epochs; and -Figure 2(b) shows the training pair distributions for five different positive triplets</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>(a) Grad norm v.s epoch. (b) Grad norm v.s pos-triplet.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 2 :</head><label>2</label><figDesc>Fig. 2: Distribution of training pairs' gradients on WN18 trained by Bernoulli-TransE (see Section 5.3.1). For a given triplet (h i , r i ,t i ), we fix the head entity h and relation r, and compute the 2 -norm of gradient g 2 in (3) for all t ∈ E . We measure the complementary cumulative distribution function (CCDF) F g 2 (x) = P( g 2 ≥ x) to show the proportion of negative triplets that satisfy g 2 ≥ x. (a) is the distribution of training pairs in 5 timestamp of a certain triplet (h i , r i ,t i ). (b) is the distribution of 5 different triplets (h i , r i ,t i ) after the pretraining stage.</figDesc><graphic coords="7,96.84,94.43,173.86,130.39" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Algorithm 2</head><label>2</label><figDesc>NSCaching: Cache-based KG embedding. Require: training set S = {(h, r,t)}, embedding dimension d, scoring function f . 1: initialize embeddings for each e ∈ E and r ∈ R, and cache C ; 2:</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Fig. 3 :</head><label>3</label><figDesc>Fig. 3: Example of the different distributions of σ , where x-axis indicates each dimension of a in (13) and y-axis is the sampling probability.</figDesc><graphic coords="11,375.36,94.43,147.91,85.72" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>1 :-</head><label>1</label><figDesc>Mean reciprocal ranking (MRR): It is computed by the average of the reciprocal ranks 1/|S | ∑ |S | i=1 1 rank i where rank i , i ∈ {1, . . . , |S |} is a set of ranking results; -Hit@10: The percentage of appearance in the top-10 ranking: 1/|S | ∑ |S | i=1 I(rank i ≤ 10), where I(•) is the indicator function;</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Fig. 4 :</head><label>4</label><figDesc>Fig. 4: Testing performance v.s. clock time (in seconds) based on TransD (best viewed in color).</figDesc><graphic coords="16,44.85,352.21,120.32,90.35" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Fig. 5 :</head><label>5</label><figDesc>Fig. 5: Testing performance v.s. clock time (in seconds) based on SimplE (best viewed in color).</figDesc><graphic coords="16,44.85,467.24,120.31,88.85" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head></head><label></label><figDesc>(a) Impact of α 1 (given α 3 ). (b) Impact of α 2 (given α 3 ). (c) Impact of α 3 (given α 2 ).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head>Fig. 6 :</head><label>6</label><figDesc>Fig. 6: Balancing on exploration and exploitation with different values of α 1 , α 2 and α 3 with SimplE on WN18RR.</figDesc><graphic coords="18,83.64,94.43,123.28,94.77" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_13"><head>Fig. 7 :</head><label>7</label><figDesc>Fig. 7: Comparison of different N 1 when random subset size N 2 is fixed to 50, and different N 2 when cache size N 1 is fixed to 50. Evaluated by SimplE model on WN18RR (best viewed in color).</figDesc><graphic coords="18,298.51,538.15,116.65,90.77" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_15"><head>Fig. 8 :</head><label>8</label><figDesc>Fig. 8: Performance comparison of SMAC and random search (top1 and top3 average). x-axis is number of running times for different hyper-parameter. y-axis is the mean MRR on validation set. The MRR peformance of NSCaching is given as the black-dashed line for a reference (best viewed in color).</figDesc><graphic coords="19,162.21,561.88,116.65,89.75" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_17"><head>Fig. 10 :</head><label>10</label><figDesc>Fig. 10: Learning curve of different negative sampling method on RotatE.</figDesc><graphic coords="20,162.21,94.43,116.65,89.67" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_18"><head></head><label></label><figDesc>(a) Ratio of FN in the cache. (b) Average variance.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_19"><head>Fig. 11 :</head><label>11</label><figDesc>Fig. 11: Understanding false negative (FN) triplets with SimplE on WN18RR.</figDesc><graphic coords="20,44.76,570.74,114.27,85.81" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_20"><head>Fig. 12 :</head><label>12</label><figDesc>Fig. 12: Adding variance with different γ with SimplE on WN18RR.</figDesc><graphic coords="20,357.31,245.48,117.83,87.43" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_22"><head>Fig. 13 :</head><label>13</label><figDesc>Fig. 13: Average 2 -norm of gradients within a mini-batch v.s. number of epochs for Bernoulli and NSCaching on WN18RR.</figDesc><graphic coords="21,162.21,262.77,116.65,87.70" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_23"><head>Fig. 14 :</head><label>14</label><figDesc>Fig. 14: Average training loss in one epoch v.s. number of epochs for Bernoulli and NSCaching.</figDesc><graphic coords="21,43.43,458.02,116.66,90.60" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_24"><head>Table 10 :</head><label>10</label><figDesc>Examples of negative entities in cache on FB13. Each line displays 5 random sampled negative entities from tail-cache of a positive fact (manorama, profession, actor) in different epochs.epoch entities in cache 0 allen clarke, jose gola, ostrava, ben lilly, hans zinsser 20 accountant, frank pais, laura marx, como, domitia lepida 100 artist, , aviator, hans zinsse, john h cough 200 physician, artist, raich carter, coach, mark shivas 500 artist, physician, cavan, sex worker, attorney at law5.7 Graph EmbeddingIn this part, we perform experiments with the skip-gram model on the task of graph embedding.5.7.1 Experiment SetupTwo famous graph data sets are used here: Cora and Citeseer, both of which are academic citation networks introduced in<ref type="bibr" target="#b34">[35]</ref>. Cora contains 2,708 papers with 5,429 connections in machine learning area. These papers belong to 7 different classes. Citeseer is formed by 3,312 papers in 6 areas. The total number of connections is 4,660. In this part we compare NSCaching (in Algorithm 6) with the following methods.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Symbols and notations.</figDesc><table><row><cell>Symbol</cell><cell>Description</cell></row><row><cell>E , R</cell><cell>the set of entities and set of relations</cell></row><row><cell>h,t ∈ E , r ∈ R</cell><cell>head and tail entity, relation</cell></row><row><cell>S ≡ {(h, r,t)}</cell><cell>the set of triplets</cell></row><row><cell>Si = {( hi , r i , ti )}</cell><cell>the set of negative triplets for (h i , r i ,t i )</cell></row><row><cell>h, t ∈ R d 1</cell><cell>embedding of head entity and tail entity</cell></row><row><cell>r ∈ R d 2</cell><cell>embedding of relation</cell></row><row><cell>C</cell><cell>the cache</cell></row><row><cell>f (h, r,t)</cell><cell>the scoring function of the triplet (h, r,t)</cell></row><row><cell>N i ⊂ Si</cell><cell>candidate subset of negative triplets</cell></row><row><cell>N 1 , N 2</cell><cell>cache size |C</cell></row></table><note><p><p>i |, candidate size |N i | α 1 , α 2 , α 3 &gt; 0</p>temperature values for softmax function positive sampling into the algorithm (Section 3.2.2). To our knowledge, the positive sampling problem has not been explored in KG embedding area. 5. Moreover, we have conducted more experiments with new data sets, scoring functions and tasks to show the effectiveness of our algorithm (Section 5.3), automated machine learning to further boost performance (Section 5.4), ablation study to analyze the design components (Section 5.5), synthetic setting to illustrate the convergence properties (Section 5.6.2), and graph embedding to verify the extension to the skip-gram model (Section 5.7).</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Definitions of some popular scoring functions. All model embeddings are real values, except that ComplEx has complex values. h 1 , r 1 , t 1 and h 2 , r 2 , t 2 are indexed from two different sets of embeddings.</figDesc><table><row><cell cols="2">model scoring function</cell><cell>definition</cell></row><row><cell>transna-</cell><cell>TransE [8]</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 :</head><label>3</label><figDesc>Comparison of the proposed approach with state-of-the-arts, which address the negative sample. Model parameters are based on TransE, m is the size of mini-batch, n is the epoch of lazy-update.</figDesc><table><row><cell></cell><cell cols="2">triplet sampling positive negative</cell><cell>training</cell><cell cols="2">mini-batch computation time space</cell><cell>model parameters</cell></row><row><cell>baseline</cell><cell cols="2">uniform random (UR)</cell><cell>gradient descent (from scratch)</cell><cell>O(md)</cell><cell>O(md)</cell><cell>(|E | + |R|)d</cell></row><row><cell>IGAN [54]</cell><cell>UR</cell><cell>GAN</cell><cell>reinforce learning (with pretraining)</cell><cell>O(m|E |d)</cell><cell>O(m|E |d)</cell><cell>3(|E | + |R|)d</cell></row><row><cell>KBGAN [11]</cell><cell>UR</cell><cell>GAN</cell><cell>reinforce learning (with pretraining)</cell><cell>O(mN 1 d)</cell><cell>O(mN 1 d)</cell><cell>2(|E | + |R|)d</cell></row><row><cell>NSCaching</cell><cell cols="2">using the cache</cell><cell>gradient descent (from scratch)</cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head></head><label></label><figDesc>this part, we analyze the space and time complexities of NSCaching (Algorithm 2). Comparing with basic training framework in Algorithm 1, the main additional cost by introducing cache comes from step 5 in Algorithm 2, i.e. updating the cache using Algorithm 4. In Algorithm 4, the main time cost comes from computing the gradients g k 2 for N 1 + N 2 training pairs, whose complexity is O((N 1 + N 2 )d). The cost of step 3 in Algorithm 2 is rather small, which comes from importance sampling according to the gradient norms. This part takes O(N 1 ) time. Hence, the total cost by introducing the cache is O((N 1 + N 2 )d) for a single training pair. In practice, we can lazily update the cache ev-</figDesc><table /><note><p>ery n epochs rather than do immediate updating, which can further reduce the updating complexity to O ( (N 1 +N 2 )d /(n+1)).</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 4</head><label>4</label><figDesc></figDesc><table /><note><p>. Manually tuning these hyper-parameters is time consuming. Simple search approaches such as grid search and random search are usually inefficient. Inspired by the</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 4 :</head><label>4</label><figDesc>How exploration and exploitation (E&amp;E) in Algorithm 2 are affected by hyper-parameters.</figDesc><table><row><cell>hyper-parameters</cell><cell>functionality</cell><cell>larger leads to</cell></row><row><cell>α 1</cell><cell>positive sample (h</cell><cell></cell></row></table><note><p><p>i , r i ,t i ) exploitation α 2</p>negative sample ( hi , r i , ti ) exploitation</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 5 :</head><label>5</label><figDesc>A unified view of the proposed method and the existing methods. "-" means not care.</figDesc><table><row><cell>hyper-parameters</cell><cell>Bernoulli [56]</cell><cell>KBGAN [11] / Self-Adv [48]</cell><cell>IGAN [54]</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 6 :</head><label>6</label><figDesc>Detailed information of the datasets used in KG embedding experiments.</figDesc><table><row><cell>Dataset</cell><cell cols="2">#entity #relation</cell><cell>#train</cell><cell>#valid #test</cell></row><row><cell>WN18</cell><cell>40,943</cell><cell>18</cell><cell cols="2">141,442 5,000 5,000</cell></row><row><cell cols="2">WN18RR 40,943</cell><cell>11</cell><cell>86,835</cell><cell>3,034 3,134</cell></row><row><cell>FB15K</cell><cell>14,951</cell><cell>1,345</cell><cell cols="2">484,142 50,000 59,071</cell></row><row><cell cols="2">FB15K237 14,541</cell><cell>237</cell><cell cols="2">272,115 17,535 20,466</cell></row><row><cell cols="2">YAGO3-10 123,188</cell><cell>37</cell><cell cols="2">1,079,040 5,000 5,000</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_11"><head>Table 8 :</head><label>8</label><figDesc>Comparison of various algorithms on triplet classification task. Bold number indicates the best performance.Given a set of training triplets and the cache, how to sample the positive triplet is the first question we care about. In Algorithm 3, the most related hyper-parameters are α 1 , which controls the distribution of positive samples in cache C , and α 3 , which controls the content in the indexed cache C i . The testing performance with different values of α 1 is compared in Figure</figDesc><table><row><cell>model</cell><cell cols="2">Dataset</cell><cell cols="2">WN18RR FB15K237</cell></row><row><cell></cell><cell cols="2">Bernoulli</cell><cell>86.81</cell><cell>78.24</cell></row><row><cell></cell><cell>KBGAN</cell><cell>pretrained</cell><cell>85.93</cell><cell>79.03</cell></row><row><cell>TransD</cell><cell></cell><cell>scratch</cell><cell>86.01</cell><cell>79.05</cell></row><row><cell></cell><cell cols="2">NSCaching pretrained</cell><cell>87.84</cell><cell>80.63</cell></row><row><cell></cell><cell></cell><cell>scratch</cell><cell>87.64</cell><cell>80.69</cell></row><row><cell></cell><cell cols="2">Bernoulli</cell><cell>84.48</cell><cell>77.64</cell></row><row><cell></cell><cell>KBGAN</cell><cell>pretrained</cell><cell>79.87</cell><cell>74.11</cell></row><row><cell>SimplE</cell><cell></cell><cell>scratch</cell><cell>71.73</cell><cell>72.61</cell></row><row><cell></cell><cell cols="2">NSCaching pretrained</cell><cell>84.96</cell><cell>79.88</cell></row><row><cell></cell><cell></cell><cell>scratch</cell><cell>84.83</cell><cell>80.21</cell></row><row><cell cols="3">5.4.1 α 1 : Sampling positive triplet</cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_12"><head>Table 9 :</head><label>9</label><figDesc>Searching range of hyper-parameters and searched best value for different data sets.</figDesc><table><row><cell>hyper-parameters</cell><cell>ranges</cell><cell>WN18</cell><cell>WN18RR</cell><cell cols="2">best searched FB15K FB15K237</cell><cell>YAGO3-10</cell></row><row><cell>α 1</cell><cell>[0, 1]</cell><cell>0.0668</cell><cell>0.013</cell><cell>0.0069</cell><cell>0</cell><cell>6.7e-4</cell></row><row><cell>α 2</cell><cell>[0, 100]</cell><cell>3.463</cell><cell>0</cell><cell>0</cell><cell>3.122</cell><cell>16.62</cell></row><row><cell>α 3</cell><cell>[0, 100]</cell><cell>24.25</cell><cell>2.759</cell><cell>1.848</cell><cell>2.579</cell><cell>0.2228</cell></row><row><cell>N 1</cell><cell>{10, 30, . . . , 90}</cell><cell>70</cell><cell>90</cell><cell>30</cell><cell>70</cell><cell>70</cell></row><row><cell>N 2</cell><cell>{10, 30, . . . , 90}</cell><cell>70</cell><cell>50</cell><cell>10</cell><cell>70</cell><cell>70</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_13"><head>Table 11 :</head><label>11</label><figDesc>Node classification results.</figDesc><table><row><cell>datasets</cell><cell>methods</cell><cell>Micro-F1</cell><cell>30%</cell><cell>Macro-F1</cell><cell>Micro-F1</cell><cell>50%</cell><cell>Macro-F1</cell><cell>Micro-F1</cell><cell>70%</cell><cell>Macro-F1</cell></row><row><cell></cell><cell>LINE [49]</cell><cell cols="9">0.8093±0.0027 0.8037±0.0021 0.8120±0.0025 0.8024±0.0029 0.8096±0.0043 0.8037±0.0057</cell></row><row><cell>Cora</cell><cell>Node2vec SeedNE</cell><cell cols="5">0.8130±0.0031 0.8061±0.0031 0.8142±0.0024</cell><cell>0.8064±0035</cell><cell cols="3">0.8376±0.0038 0.8323±0.0025</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>The mean rank (MR) metric, which is given in the conference version<ref type="bibr" target="#b68">[69]</ref>, is removed in the journal version since (i) space is limited. and (ii) the mean rank is easily influenced by low ranking samples.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>https://github.com/cai-lw/KBGAN</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgements</head><p>A Appendix: Proof of Theorem 1</p></div>
+			</div>			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Proof. Following <ref type="bibr" target="#b69">[70]</ref>, we consider a more general optimization formulation as min w F(w) ≡ 1 n ∑ n i=1 φ i (w) + λ r(w), which covers (11) as a special case with λ = 0. Then, the stochastic training gives w t+1 as</p><p>where B ψ is a Bregman distance function measuring the difference between w and w t . Based on (18), we state Theorem 3 in <ref type="bibr" target="#b69">[70]</ref> as</p><p>) Let w t be generated from <ref type="bibr" target="#b17">(18)</ref>. Assume B ψ is σstrongly convex w.r.t. a norm • , F and r are convex, if η t = η, the following inequality holds for any T ≥ 1</p><p>1</p><p>where the expectation is take with distribution p t .</p><p>In our Algorithm 5, we do not have r and thus λ = 0 in <ref type="bibr" target="#b10">(11)</ref>. Besides, B ψ (w, w t ) = 1 2 ww t 2 in our case, thus σ = 1. Above all, we have Theorem 1 which is derived from Theorem 2.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<author>
+			<persName><forename type="first">M</forename><surname>Arjovsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chintala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Bottou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gan</forename><surname>Wasserstein</surname></persName>
+		</author>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">DBpedia: A nucleus for a web of open data</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Auer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Bizer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Kobilarov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lehmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Cyganiak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ives</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Semantic Web</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="722" to="735" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Curriculum learning</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Louradour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Collobert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weston</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="41" to="48" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Algorithms for hyper-parameter optimization</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bergstra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Bardenet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Kégl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="2546" to="2554" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Random search for hyper-parameter optimization</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bergstra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">JMLR</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="page" from="281" to="305" />
+			<date type="published" when="2012-02">Feb. 2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Freebase: a collaboratively created graph database for structuring human knowledge</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Bollacker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Evans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Paritosh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Sturge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Taylor</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGMOD</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="1247" to="1250" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Question answering with subgraph embeddings</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chopra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weston</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conference on EMNLP</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="615" to="620" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multirelational data</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="2787" to="2795" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Adversarial contrastive estimation</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bose</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Cao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Long Papers)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="1021" to="1032" />
+		</imprint>
+	</monogr>
+	<note>ACL</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">A comprehensive survey of graph embedding: Problems, techniques, and applications</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE TKDE</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="issue">9</biblScope>
+			<biblScope unit="page" from="1616" to="1637" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">KBGAN: Adversarial learning for knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conference of NAACL</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="1470" to="1480" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Improving negative sampling for word representation using self-embedded features</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jose</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">WSDM</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="99" to="107" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Reinforced negative sampling for recommendation with exposure data</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Quan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Jin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IJCAI</title>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2230" to="2236" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Knowledge vault: A web-scale approach to probabilistic knowledge fusion</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Gabrilovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Heitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Horn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Lao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Strohmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGKDD</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="601" to="610" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Visweb-the visual semantic web: unifying human and machine knowledge representations with object-process methodology</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Dori</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The VLDB Journal</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="120" to="147" />
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Maskgan: better text generation via filling in the</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Fedus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Goodfellow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Dai</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Self-paced network embedding</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Huang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGKDD</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1406" to="1415" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Understanding the difficulty of training deep feedforward neural networks</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Glorot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="249" to="256" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Generative adversarial nets</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Goodfellow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pouget-Abadie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mirza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Warde-Farley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ozair</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Courville</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="2672" to="2680" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">node2vec: Scalable feature learning for networks</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Grover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGKDD</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="855" to="864" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Improved training of wasserstein gans</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Gulrajani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Arjovsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Dumoulin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Courville</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="5767" to="5777" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Sequential model-based optimization for general algorithm configuration</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Hutter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Hoos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Leyton-Brown</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLIO</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="507" to="523" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<author>
+			<persName><forename type="first">F</forename><surname>Hutter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Kotthoff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Vanschoren</surname></persName>
+		</author>
+		<title level="m">Automated Machine Learning: Methods, Systems, Challenges</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding via dynamic mapping matrix</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACL</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="687" to="696" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Knowledge base completion: Baselines strike back. In the 2nd Workshop on Representation Learning for NLP</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kadlec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Bajgar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kleindienst</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="69" to="74" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">SimplE embedding for link prediction in knowledge graphs</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kazemi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Poole</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="4289" to="4300" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">Adam: A method for stochastic optimization</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6980</idno>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">Technical report</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Statistical predicate invention</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kok</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Domingos</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="433" to="440" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title level="m" type="main">Introduction to statistical relational learning</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Koller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Friedman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Džeroski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Sutton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mccallum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pfeffer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Heckerman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Meek</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+			<publisher>The MIT Press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Self-paced learning for latent variable models</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Packer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Koller</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="1189" to="1197" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Random walk inference and learning in a large scale knowledge base</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Lao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Mitchell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Cohen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conference on EMNLP</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="529" to="539" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Sampling matters! an empirical study of negative sampling strategies for learning of matching models in retrieval-based dialogue systems</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Tao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Yan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 EMNLP-IJCNLP</title>
+		<meeting>the 2019 EMNLP-IJCNLP</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="1291" to="1296" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Exploration and exploitation in organizational learning</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>March</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Organization science</title>
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="71" to="87" />
+			<date type="published" when="1991">1991</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Automating the construction of internet portals with machine learning</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mccallum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Nigam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Rennie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Seymore</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Information Retrieval</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="127" to="163" />
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Efficient estimation of word representations in vector space</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Corrado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Dean</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">In ICLR</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Distributed representations of words and phrases and their compositionality</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Corrado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Dean</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="3111" to="3119" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Linguistic regularities in continuous space word representations</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zweig</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NAACL</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="746" to="751" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Exemplar queries: a new way of searching</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Mottin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lissandrini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Velegrakis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Palpanas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The VLDB Journal</title>
+		<imprint>
+			<biblScope unit="volume">25</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="741" to="765" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Stochastic gradient descent, weighted sampling, and the randomized algorithm</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Needell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ward</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Srebro</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1017" to="1025" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">A review of relational machine learning for knowledge graphs</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Gabrilovich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the IEEE</title>
+		<imprint>
+			<biblScope unit="volume">104</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="11" to="33" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Industry-scale knowledge graphs: lessons and challenges</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Noy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Narayanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Patterson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Taylor</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Queue</title>
+		<imprint>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="48" to="75" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<monogr>
+		<title level="m" type="main">Pytorch: An imperative style, high-performance deep learning library</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Paszke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Massa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bradbury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Chanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Killeen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Gimelshein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Antiga</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="8024" to="8035" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Deepwalk: Online learning of social representations</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Skiena</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGKDD</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="701" to="710" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Sampled softmax with random fourier features</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Rawat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Suresh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kumar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="13857" to="13867" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">BPR: Bayesian personalized ranking from implicit feedback</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rendle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Freudenthaler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Gantner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Schmidt-Thieme</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conference on UAI</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="452" to="461" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">YAGO: a core of semantic knowledge</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Suchanek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Kasneci</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Weikum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">WWW</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="697" to="706" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">In ICLR</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Line: Large-scale information network embedding</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Mei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">WWW</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="1067" to="1077" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Observed versus latent features for knowledge base and text inference</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Workshop on CVSMC</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="57" to="66" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Knowledge graph completion via complex tensor factorization</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Dance</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">É</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">JMLR</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="4735" to="4772" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Graphgan: Graph representation learning with generative adversarial nets</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">IRGAN: A minimax game for unifying generative and discriminative information retrieval models</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Gong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGIR</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="515" to="524" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Incorporating GAN for negative sampling in knowledge representation learning</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Pan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding: A survey of approaches and applications</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE TKDE</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">12</biblScope>
+			<biblScope unit="page" from="2724" to="2743" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding by translating on hyperplanes</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="page" from="1112" to="1119" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">Note on a method for calculating corrected sums of squares and products</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Welford</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Technometrics</title>
+		<imprint>
+			<biblScope unit="volume">4</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="419" to="420" />
+			<date type="published" when="1962">1962</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">Simple statistical gradient-following algorithms for connectionist reinforcement learning</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Williams</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Machine learning</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="issue">3-4</biblScope>
+			<biblScope unit="page" from="229" to="256" />
+			<date type="published" when="1992">1992</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<analytic>
+		<title level="a" type="main">Sampling matters in deep embedding learning</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Manmatha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Smola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Krahenbuhl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the ICCV</title>
+		<meeting>the ICCV</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="2840" to="2848" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<analytic>
+		<title level="a" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Deng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<monogr>
+		<title level="m" type="main">Taking human out of learning applications: A survey on automated machine learning</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Wang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<analytic>
+		<title level="a" type="main">Graph convolutional neural networks for web-scale recommender systems</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Eksombatchai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGKDD</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="974" to="983" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<analytic>
+		<title level="a" type="main">On the generative discovery of structured medical knowledge</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Yu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SIGKDD</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="2720" to="2728" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b63">
+	<analytic>
+		<title level="a" type="main">Collaborative knowledge base embedding for recommender systems</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Lian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Ma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGKDD</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="353" to="362" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b64">
+	<analytic>
+		<title level="a" type="main">Deep learning based recommender system: A survey and new perspectives</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Tay</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Computing Surveys</title>
+		<imprint>
+			<biblScope unit="volume">52</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="38" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b65">
+	<analytic>
+		<title level="a" type="main">Optimizing top-n collaborative filtering via dynamic negative item sampling</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Yu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGIR</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="785" to="788" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b66">
+	<monogr>
+		<title level="m" type="main">Neural recurrent structure search for knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Chen</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">Technical report</note>
+</biblStruct>
+
+<biblStruct xml:id="b67">
+	<analytic>
+		<title level="a" type="main">Autosf: Searching scoring functions for knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICDE</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="433" to="444" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b68">
+	<analytic>
+		<title level="a" type="main">NSCaching: Simple and efficient negative sampling for knowledge graph embedding</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Shao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICDE</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="614" to="625" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b69">
+	<analytic>
+		<title level="a" type="main">Stochastic optimization with importance sampling for regularized loss minimization</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="1" to="9" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b70">
+	<analytic>
+		<title level="a" type="main">Answering pattern match queries in large graph databases via graph embedding</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Özsu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zhao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The VLDB Journal</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="97" to="120" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

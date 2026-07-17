@@ -1,0 +1,2302 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">NuPS: A Parameter Server for Machine Learning with Non-Uniform Parameter Access</title>
+				<funder ref="#_PxC44A8">
+					<orgName type="full">German Ministry of Education and Research in the Software Campus</orgName>
+				</funder>
+				<funder ref="#_tQtsaEQ">
+					<orgName type="full">German Research Foundation</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher>ACM</publisher>
+				<availability status="unknown"><p>Copyright ACM</p>
+				</availability>
+				<date type="published" when="2022-03-28">28 Mar 2022</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Alexander</forename><surname>Renz-Wieland</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Rainer</forename><surname>Gemulla</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Zoi</forename><surname>Kaoudi</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Volker</forename><surname>Markl</surname></persName>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution">Technische Universität Berlin</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">Universität Mannheim</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff2">
+								<orgName type="institution">Technische Universität Berlin BIFOLD</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff3">
+								<orgName type="department">SIGMOD &apos;22</orgName>
+								<address>
+									<addrLine>June 12-17</addrLine>
+									<postCode>2022</postCode>
+									<settlement>Philadelphia</settlement>
+									<region>PA</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">NuPS: A Parameter Server for Machine Learning with Non-Uniform Parameter Access</title>
+					</analytic>
+					<monogr>
+						<title level="m">Proceedings of the 2022 International Conference on Management of Data</title>
+						<meeting>the 2022 International Conference on Management of Data						</meeting>
+						<imprint>
+							<publisher>ACM</publisher>
+							<biblScope unit="page" from="481" to="495"/>
+							<date type="published" when="2022-03-28">28 Mar 2022</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">D4ACFCAA922894A2FCED51428BA29FE1</idno>
+					<idno type="DOI">10.1145/3514221.3517860</idno>
+					<idno type="arXiv">arXiv:2104.00501v3[cs.DB]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:04+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>parameter servers</term>
+					<term>distributed machine learning</term>
+					<term>large-scale machine learning</term>
+					<term>skew</term>
+					<term>sampling</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Parameter servers (PSs) facilitate the implementation of distributed training for large machine learning tasks. In this paper, we argue that existing PSs are inefficient for tasks that exhibit non-uniform parameter access; their performance may even fall behind that of single node baselines. We identify two major sources of such nonuniform access: skew and sampling. Existing PSs are ill-suited for managing skew because they uniformly apply the same parameter management technique to all parameters. They are inefficient for sampling because the PS is oblivious to the associated randomized accesses and cannot exploit locality. To overcome these performance limitations, we introduce NuPS, a novel PS architecture that (i) integrates multiple management techniques and employs a suitable technique for each parameter and (ii) supports sampling directly via suitable sampling primitives and sampling schemes that allow for a controlled quality-efficiency trade-off. In our experimental study, NuPS outperformed existing PSs by up to one order of magnitude and provided up to linear scalability across multiple machine learning tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>CCS CONCEPTS</head><p>• Information systems → Parallel and distributed DBMSs; • Computer systems organization → Distributed architectures.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Run time (hours) Model quality (filtered MRR) Figure <ref type="figure">1</ref>: Parameter server (PS) performance for training large knowledge graph embeddings (ComplEx <ref type="bibr" target="#b64">[65]</ref>, dimension 500 on Wikidata5m data) on an 8-node cluster (8 worker threads per node). The performance of state-of-the-art PSs falls behind that of a single node (8 worker threads) due to communication overhead. NuPS improves performance by up to one order of magnitude. Details in Section 5. <ref type="bibr">1.</ref> training by performing distributed compute. Usually, each node accesses only its local part of the training data, but requires global read and write access to all model parameters. Parameter management is thus a key concern in distributed ML. Parameter servers (PS) ease distributed parameter management by providing primitives for reading and writing parameters, while transparently handling partitioning and synchronization across nodes <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b23">24,</ref><ref type="bibr" target="#b37">38,</ref><ref type="bibr" target="#b59">60</ref>]. Many ML system stacks employ a PS as a core component, e.g., TensorFlow <ref type="bibr" target="#b0">[1]</ref>, MXNet <ref type="bibr" target="#b7">[8]</ref>, PyTorch BigGraph <ref type="bibr" target="#b36">[37]</ref>, STRADS <ref type="bibr" target="#b32">[33]</ref>, STRADS-AP <ref type="bibr" target="#b31">[32]</ref>, or Project Adam <ref type="bibr" target="#b9">[10]</ref>, and there are many standalone PSs, e.g., Petuum <ref type="bibr" target="#b23">[24]</ref>, PS-Lite <ref type="bibr" target="#b37">[38]</ref>, Angel <ref type="bibr" target="#b29">[30]</ref>, FlexPS <ref type="bibr" target="#b25">[26]</ref>, Glint <ref type="bibr" target="#b26">[27]</ref>, PS2 <ref type="bibr" target="#b71">[72]</ref>, Lapse <ref type="bibr" target="#b56">[57]</ref>, and BytePS <ref type="bibr" target="#b30">[31]</ref>.</p><p>As cluster nodes access parameters over the network, distributed training induces communication overhead. For some ML tasks, this overhead causes the performance of distributed implementations to even fall behind that of single node baselines <ref type="bibr" target="#b56">[57]</ref>; Figure <ref type="figure">1</ref> depicts this exemplarily for a large knowledge graph embeddings task. We observe that a key cause for such poor performance can be nonuniform parameter access and focus on ML tasks where this is the case. We identify two main sources of non-uniformity: skew and sampling. First, in a workload that exhibits skew, a (typically small) subset of parameters is accessed frequently (e.g., up to 100 000 times per second), whereas a large part of the parameters is accessed rarely (e.g., only once every minute) <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b11">12,</ref><ref type="bibr" target="#b19">20,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b43">44,</ref><ref type="bibr" target="#b46">47]</ref>. The main reason for skew is that real-world datasets often have skewed frequency distributions (e.g., graphs <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b19">20,</ref><ref type="bibr" target="#b20">21]</ref>, texts <ref type="bibr" target="#b46">[47]</ref>, and others <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b43">44]</ref>), and many ML models associate specific parameters with specific data items (e.g., with the tokens in a text document or with the vertices of a graph) <ref type="bibr" target="#b34">[35,</ref><ref type="bibr" target="#b44">45,</ref><ref type="bibr" target="#b48">49]</ref>). The second source of nonuniformity is sampling: for a subset of parameter accesses, random sampling (rather than training data) determines which parameters are read and written <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b5">6,</ref><ref type="bibr" target="#b39">40,</ref><ref type="bibr" target="#b44">45,</ref><ref type="bibr" target="#b54">55,</ref><ref type="bibr" target="#b57">58,</ref><ref type="bibr" target="#b58">59]</ref>. One common reason for this access pattern is negative sampling <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b21">22,</ref><ref type="bibr" target="#b44">45,</ref><ref type="bibr" target="#b57">58</ref>], which, for example, is used to reduce the cost of many-class classification tasks or to mitigate an absence of negative training data (e.g., in recommender systems with only positive feedback or in knowledge graphs that contain only positive edges).</p><p>In this paper, we explore how to extend the scope of PSs to ML tasks that exhibit such non-uniform parameter access. To this end, we present NuPS, a novel non-uniform PS architecture. Figure <ref type="figure" target="#fig_1">2</ref> depicts an overview of this architecture. NuPS overcomes two key performance limitations of existing PSs. First, existing PSs are inefficient for managing skew because they employ one single management technique for all parameters. Using a single technique limits performance as none of the existing techniques is efficient for all access patterns. To overcome this limitation, NuPS introduces multi-technique parameter management, i.e., it integrates multiple parameter management techniques and chooses a suitable technique for each parameter. In particular, NuPS integrates both replication <ref type="bibr" target="#b13">[14,</ref><ref type="bibr" target="#b23">24]</ref> and relocation <ref type="bibr" target="#b56">[57]</ref>.</p><p>Second, existing PSs are inefficient for sampling because common parameter management techniques are ill-suited for randomly sampled access. To improve performance, applications can implement specialized sampling schemes manually, outside the PS <ref type="bibr" target="#b28">[29,</ref><ref type="bibr" target="#b36">37,</ref><ref type="bibr" target="#b61">62,</ref><ref type="bibr" target="#b72">73]</ref>, but this limits the efficiency of some schemes, potentially produces incorrect samples, and causes repeated implementation effort. NuPS overcomes this limitation by integrating sampling schemes directly into the PS. To do so, NuPS extends the PS API with a sampling primitive that allows applications to request samples from a specific sampling distribution (rather than accessing specific parameters directly). NuPS's sampling manager transparently chooses one of several sampling schemes to reduce communication overhead for sampling, according to a conformity level. Conformity levels provide a controlled trade-off between efficiency and sample quality.</p><p>In our experimental evaluation, NuPS outperformed state-of-theart PSs by up to one order of magnitude and provided up to linear scalability across multiple ML tasks. Figure <ref type="figure">1</ref> exemplarily shows its performance for the task of training knowledge graph embeddings.</p><p>In summary, our contributions are as follows: (i) we evaluate the suitability of existing PSs under skew (Section 3.1), (ii) we propose multi-technique parameter management to handle skew efficiently (Section 3.2), (iii) we develop a hierarchy of conformity levels (Section 4.1) and analyze properties of common sampling schemes (Section 4.2), (iv) we argue for and propose a PS API extension for sampling (Section 4.3) and present how NuPS implements several schemes behind this API (Section 4.4), and (v) we experimentally investigate how these changes affect PS performance (Section 5).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">NON-UNIFORM PARAMETER ACCESS</head><p>We study ML tasks that exhibit non-uniform parameter access. We identify two main sources of non-uniformity: skew (Section 2.1) and sampling (Section 2.2).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Skew</head><p>A workload exhibits skew non-uniformity when some parts of the model are accessed (much) more frequently than others. The main reason for this is that many real-world datasets have skewed frequency distributions <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b11">12,</ref><ref type="bibr" target="#b19">20,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b43">44,</ref><ref type="bibr" target="#b45">46,</ref><ref type="bibr" target="#b46">47]</ref>. For example, heavy skew is common in text corpora, because word frequencies are skewed <ref type="bibr" target="#b46">[47]</ref>, and in graph data, because in-and out-degree distributions are skewed <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b19">20,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b45">46]</ref>. As many ML models associate specific parameters with specific data items (e.g, with words in a text or with the nodes of a graph) <ref type="bibr" target="#b21">[22,</ref><ref type="bibr" target="#b34">35,</ref><ref type="bibr" target="#b44">45,</ref><ref type="bibr" target="#b48">49]</ref>, access to the parameters is heavily skewed, too: a small subset of hot spot parameters is accessed frequently, whereas the majority of parameters is accessed rarely. In the following, we will refer to the parameters that are not hot spots as long tail parameters.</p><p>We have measured the extent of skew for two real-world ML tasks: training knowledge graph embeddings and training word vectors. The left hand sides of Figures <ref type="figure" target="#fig_3">3a</ref> and<ref type="figure" target="#fig_3">3b</ref> show the number of reads per parameter over one epoch of these tasks, respectively. Access is heavily skewed: in the knowledge graph embeddings task, 18% of 12.9 trillion total reads go to only 0.02% of 4.8 billion parameters. In the word vectors task, 45% of 9 trillion total reads go to 0.17% of 1.9 billion parameters. Details on the tasks and datasets can be found in Section 5.1.</p><p>Note that skew is not always present in distributed training. For example, there is no skew in convolutional neural networks for image recognition <ref type="bibr" target="#b35">[36]</ref> because model access is dense, i.e., every update step writes to all parameters. In contrast, in common neural network models for natural language processing <ref type="bibr" target="#b15">[16,</ref><ref type="bibr" target="#b24">25,</ref><ref type="bibr" target="#b51">52]</ref>, access is partially dense, and partially sparse and skewed: access to the first (embedding) layer and sometimes the last (classification) layer is based on word or token frequency (and thus sparse and skewed), and access to other layers is dense. The share of parameters with frequency-based access depends on the model architecture, but can be high, e.g., around 90% in ELMo <ref type="bibr" target="#b51">[52]</ref>. In this paper, we investigate skew in shallow models, but conjecture that a non-uniform PS can also be beneficial for deeper models with partially skewed access.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Sampling</head><p>A workload exhibits sampling non-uniformity when, for a subset of parameter accesses, random sampling determines which parameters  are read and written <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b5">6,</ref><ref type="bibr" target="#b39">40,</ref><ref type="bibr" target="#b44">45,</ref><ref type="bibr" target="#b52">53,</ref><ref type="bibr" target="#b54">55,</ref><ref type="bibr" target="#b57">58,</ref><ref type="bibr" target="#b58">59]</ref>. I.e., the application randomly draws a parameter key from an application-specific sampling distribution over (all or a subset of) parameter keys. It then accesses the drawn parameter for training. We refer to such access as sampling access. In contrast, in direct access, the training data determines which parameters are accessed. Sampling access is common in many-class classification tasks, e.g., extreme classification <ref type="bibr" target="#b2">[3]</ref>, natural language processing <ref type="bibr" target="#b44">[45]</ref>, knowledge graph embeddings <ref type="bibr" target="#b39">[40,</ref><ref type="bibr" target="#b57">58]</ref>, graph representations <ref type="bibr" target="#b21">[22,</ref><ref type="bibr" target="#b68">69]</ref>, recommender systems <ref type="bibr" target="#b54">[55]</ref>, and when triplet loss is used <ref type="bibr" target="#b5">[6,</ref><ref type="bibr" target="#b58">59]</ref>.</p><p>For example, knowledge graph embeddings and word vectors training tasks often use negative sampling to enable efficient training <ref type="bibr" target="#b44">[45,</ref><ref type="bibr" target="#b52">53,</ref><ref type="bibr" target="#b57">58]</ref>. For each (positive) data point, a set of negative samples is drawn from a distribution. Each negative sample corresponds to a data item (e.g., a word) or a class. The corresponding parameters are subsequently accessed for training. For instance, the example knowledge graph embeddings task draws negative samples from a uniform distribution over all entities <ref type="bibr" target="#b39">[40,</ref><ref type="bibr" target="#b57">58]</ref>. The right hand side of Figure <ref type="figure" target="#fig_3">3a</ref> shows the frequency distributions of direct and sampling accesses separately for this task. In our implementation (based on <ref type="bibr" target="#b39">[40]</ref>) and with 200 negative samples for each subject-relation-object triple (100 negative samples for the subject and another 100 for the object), sampling accesses make up 31% of all accesses. In the word vectors task, negative samples correspond to words and the sampling distribution resembles the word frequencies in the training data <ref type="bibr" target="#b44">[45]</ref>, see Figure <ref type="figure" target="#fig_3">3b</ref>. In the plot for direct access, parameters that belong to the output layer of the task's neural network are visually distinct from the other parameters. The reason for this is that the task draws samples only from the output layer, and parameters in the plot are sorted by total access frequency. In our implementation (based on <ref type="bibr" target="#b44">[45]</ref>) and with 3 negative samples for each word-word pair, sampling accesses make up 56% of all parameter accesses in this task.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">MULTI-TECHNIQUE PARAMETER MANAGEMENT</head><p>In this section, we analyze the suitability of existing PSs for ML tasks with skewed parameter access (Section 3.1) and argue that existing PSs are inefficient for managing skew because they employ one single management technique for all parameters. Based on this analysis, we propose multi-technique parameter management and discuss NuPS's implementation (Section 3.2).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Analysis of Common Parameter Management Techniques</head><p>PSs <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b23">24,</ref><ref type="bibr" target="#b25">26,</ref><ref type="bibr" target="#b26">27,</ref><ref type="bibr" target="#b29">30,</ref><ref type="bibr" target="#b30">31,</ref><ref type="bibr" target="#b37">38,</ref><ref type="bibr" target="#b56">57,</ref><ref type="bibr" target="#b59">60,</ref><ref type="bibr" target="#b71">72]</ref> partition the model parameters across a set of servers. The PS provides pull and push primitives for global reads and writes to model parameters, respectively. In the data-parallel setting, the training data are partitioned to a set of workers. During training, each worker processes its local part of the training data (often multiple times) and continuously reads and updates model parameters. To coordinate parameter accesses across workers, each parameter is assigned a unique key.</p><p>Many PSs physically co-locate the (logically distinct) servers and workers on the same nodes for efficiency, either in multiple processes per node <ref type="bibr" target="#b26">[27,</ref><ref type="bibr" target="#b29">30,</ref><ref type="bibr" target="#b37">38]</ref> or within one process <ref type="bibr" target="#b23">[24,</ref><ref type="bibr" target="#b25">26,</ref><ref type="bibr" target="#b56">57]</ref>. Several techniques have been proposed for managing parameters among the cluster nodes in a PS. In the following, we discuss common techniques, briefly introducing each before analyzing its suitability for managing skew.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.1">Classic PS.</head><p>A classic PS allocates parameters to servers statically (e.g., via range partitioning of the parameter keys) and uses no replication <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b37">38,</ref><ref type="bibr" target="#b59">60]</ref>. Thus precisely one server holds the current value of a parameter, and this server is used for all pull and push operations on this parameter. Classic PSs typically guarantee sequential consistency for operations on the same key <ref type="bibr" target="#b56">[57]</ref>.</p><p>Analysis: The performance of a classic PS is limited for both hot spots and long tail parameters. The reason for this is that every parameter access uses the network: it incurs network latency for two messages (to and from the responsible server) and the parameter value is sent over the network once (from the server to the worker in a pull operation, in the other direction for a push operation). This network overhead is incurred for all parameters, i.e., hot spot and long tail ones. For hot spots, the overhead is incurred many times for a few parameters. In the long tail, the overhead is incurred a few times for each of many parameters.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.2">Replication PS.</head><p>A replication PS replicates parameters and tolerates some amount of staleness in the replicas <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b13">14,</ref><ref type="bibr" target="#b23">24,</ref><ref type="bibr" target="#b25">26,</ref><ref type="bibr" target="#b29">30]</ref>. Replication PSs provide weaker consistency guarantees, such as bounded staleness, and require applications to explicitly control staleness via special primitives (e.g., an "advance the clock" operation). There are two main protocols for creating and refreshing replicas in general-purpose PSs: SSP <ref type="bibr" target="#b23">[24]</ref> creates a replica when a parameter is accessed and uses this replica until the staleness bound is reached (at which point the replica is terminated). ESSP <ref type="bibr" target="#b13">[14]</ref> also creates a replica when a parameter is (first) accessed, but then maintains this replica throughout the entire training task (by repeatedly propagating updates). In both SSP and ESSP, nodes accumulate replica updates locally and propagate them to the responsible server at the subsequent "advance the clock" invocation. A subset of replication PSs specifically target deep learning workloads in which each node holds replicas of all parameters and replicas are updated synchronously after each step of mini-batch stochastic gradient descent <ref type="bibr" target="#b22">[23,</ref><ref type="bibr" target="#b27">28,</ref><ref type="bibr" target="#b30">31,</ref><ref type="bibr" target="#b69">70]</ref>. In contrast to NuPS, these PSs focus on workloads in which (i) the model size does not exceed the memory capacity of a single node and (ii) synchronous replica updates are not prohibitively slow w.r.t. to computational cost; some further apply only to GPU-based training <ref type="bibr" target="#b30">[31]</ref>.</p><p>Analysis: A replication PS is efficient for hot spots, but its benefit for the long tail is limited. Replication reduces network overhead (compared to a classic PS) if a replicated parameter value is used more than once and multiple updates can be sent to the PS in aggregated form. Replication further reduces access latency if a parameter value (within the acceptable staleness bound) is already locally available when a read operation is issued. Both is typically the case for hot spot parameters, even within relatively tight staleness bounds (because hot spot parameters are accessed frequently at each node). In contrast, long tail parameters are accessed infrequently. So it is unlikely that a long tail parameter is accessed more than once within reasonable staleness bounds (large staleness bounds commonly deteriorate model convergence <ref type="bibr" target="#b23">[24]</ref>). For the same reason, SSP (which creates replicas on demand) does not reduce access latency for long tail parameters, because replicas are mostly "cold". With its eager replica maintenance, ESSP ensures that replicas are always "warm" (after the first access to a parameter), but at the cost of significant over-communication: ESSP constantly updates all replicas, although replicas for long tail parameters are accessed rarely.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.3">Relocation PS.</head><p>A relocation PS asynchronously re-allocates parameters among nodes during run time so that access operations can be processed locally, without network communication <ref type="bibr" target="#b56">[57]</ref>. Relocation PSs require applications to control allocation via special primitives (e.g., a "localize" operation). As classic PSs, relocation PSs can provide per-key sequential consistency <ref type="bibr" target="#b56">[57]</ref>.</p><p>Analysis: A relocation PS is efficient for long tail parameters, but has limited benefit for hot spots. Relocation eliminates access latency if there is sufficient time to relocate a parameter between accesses at different nodes. It further reduces network overhead (compared to classic) if a parameter is accessed more than once between two relocations (which is common, most ML tasks at least read and write a parameter): a relocation takes three messages in Lapse <ref type="bibr" target="#b56">[57]</ref> (including the parameter value once), whereas each remote access in a classic PS sends two messages (including the parameter value once). There is typically sufficient time for relocating long tail parameters between accesses by different nodes, as they are accessed infrequently. Hot spot parameters, however, are frequently accessed at multiple nodes concurrently <ref type="bibr" target="#b55">[56]</ref>. Thus, there is not sufficient time for relocations between accesses, such that access latency is not eliminated. Further, a relocation PS incurs higher network overhead than a classic PS if a parameter is relocated so frequently that only one operation is processed locally. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Parameter Management in NuPS</head><p>From the above discussion, it follows naturally to explore whether combining multiple management techniques is beneficial for PS performance. The idea of combining multiple management techniques has been studied in other (non-PS) distributed data management systems, such as general-purpose distributed databases <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b16">17,</ref><ref type="bibr" target="#b18">19,</ref><ref type="bibr" target="#b66">67]</ref> and distributed graph processing systems <ref type="bibr" target="#b41">[42]</ref>. These systems combine static allocation with replication, but do not consider relocation.</p><p>To the best of our knowledge, integrating multiple management techniques in PSs has not been explored before. NuPS integrates two management techniques: replication and relocation. First, to manage hot spot parameters efficiently, NuPS integrates a lightweight variant of eager replication <ref type="bibr" target="#b13">[14]</ref>. NuPS eagerly creates replicas for hot spot keys on all nodes and provides time-based staleness bounds. Basing the staleness bound on time rather than clocks alleviates the need for adding "advance the clock" operations to application code, but potentially complicates the analysis of convergence properties. We discuss these implications below. Second, to manage long tail parameters efficiently, NuPS integrates relocation. As Lapse <ref type="bibr" target="#b56">[57]</ref>, NuPS asynchronously relocates these parameters before they are accessed. This guarantees per-key sequential consistency for long tail parameters. NuPS picks a technique for each key based on the key's access pattern: if the key is accessed frequently, NuPS replicates the key; if there are few accesses, NuPS employs relocation (see Section 5.1). The choice of management technique is transparent to the application, i.e., the application accesses all parameters in the same way, via the push and pull primitives. Our experimental evaluation shows that the combination of replication and relocation can be highly beneficial. Integrating other techniques (e.g., highly tailored ones) may further improve performance, but is beyond the scope of this paper. NuPS does not integrate the classic technique as it is dominated by replication for hot spots and by relocation for the long tail.</p><p>For efficiency, NuPS co-locates workers and servers in one process per node, and accesses replicas and locally allocated parameters via shared memory. Figure <ref type="figure">4</ref> depicts an overview. To access a key, a worker checks whether this key is managed by replication or relocation. If the key is managed by replication, the worker accesses the key via shared memory, without network communication. If the key is managed by relocation, the worker checks whether the key is currently allocated locally. If so, it accesses the key via shared memory. Otherwise, the worker accesses the parameter remotely, using the message protocol proposed in Lapse <ref type="bibr" target="#b56">[57]</ref>: a request to the node that knows where the parameter is currently allocated, which then forwards the request to this node, which in turn processes the request and sends a response to the worker.</p><p>NuPS is designed to minimize the run time overhead of providing multiple management techniques. To do so, NuPS integrates the check for the management technique and the check for local allocation into one latch acquisition (i.e., a lock held for the duration of the API call). Further, NuPS can be reduced to a single-technique PS with no measurable run time overhead for providing more than one management technique: If replication is not used for any key, the replica synchronization background thread exits immediately, without sending any messages. If relocation is not used for any key, no messages are sent for relocation.</p><p>NuPS bases its staleness bounds on time rather than logical clocks because this makes the PS easier to use: time-based bounds alleviate the need for adding "advance the clock" operations to application code and for timing them appropriately. NuPS synchronizes the replicas periodically, using sparse all-reduce operations (i.e., only updated parameters are exchanged <ref type="bibr" target="#b63">[64]</ref>). The synchronization is run by a background thread and uses the recursive doubling algorithm. However, time-based bounds potentially complicate the analysis of convergence properties. If only a bounded number of SGD steps can occur within one synchronization round, bounded staleness holds (as for clock-based staleness bounds) and the corresponding analysis carries over <ref type="bibr" target="#b23">[24]</ref>. However, if the number of SGD steps within one synchronization round cannot be bounded, convergence analyses for asynchronous SGD apply <ref type="bibr" target="#b38">[39,</ref><ref type="bibr" target="#b70">71]</ref>. In our experiments, the effect of time-based bounds on performance was minimal because we used replication only for a small number of parameters and synchronized replicas frequently (see Section 5.6 and Section 5.7).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">SAMPLING MANAGEMENT</head><p>Existing PSs provide no support for sampling. This means that applications manually sample keys and then access the corresponding parameters via direct access, which leads to significant communication overhead. To reduce this overhead, many applications implement a variety of sampling schemes <ref type="bibr" target="#b28">[29,</ref><ref type="bibr" target="#b36">37,</ref><ref type="bibr" target="#b61">62,</ref><ref type="bibr" target="#b72">73]</ref>. The key idea of such sampling schemes is that slightly (or sometimes rather significantly) deviating from the ideal of independent sampling from the desired target distribution might have only little or no effect on model quality, but can reduce communication overhead substantially (and consequently speed up model training). The lack of sampling support in PSs forces applications to implement such schemes in application code, outside the PS. This leads to repeated implementation effort and potentially produces incorrect samples. Further, this precludes schemes that require tight integration with parameter management.</p><p>In contrast to existing PSs, NuPS integrates sampling directly into the PS. In the following, we present the components of this integration. We first introduce a set of conformity levels that allow for a controlled trade-off between efficiency and sample quality (Section 4.1). We then analyze conformity and communication overhead of sampling schemes that are commonly used by applications (Section 4.2). Based on this analysis, we propose an API extension that enables sampling in PSs (Section 4.3) and discuss how NuPS implements several sampling schemes, within this API (Section 4.4).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Sampling Conformity Levels</head><p>Let 𝜋 be a target distribution over parameter keys. We assume that 𝜋 is specified by the application and remains fixed throughout run time. <ref type="foot" target="#foot_0">1</ref> For example, in the word vectors training task of Section 2.2, the target distribution 𝜋 roughly corresponds to relative word frequencies <ref type="bibr" target="#b44">[45]</ref>; cf. Figure <ref type="figure" target="#fig_3">3b</ref>. When training knowledge graph embeddings, 𝜋 is often a uniform distribution over all entities <ref type="bibr" target="#b57">[58]</ref>; cf. Figure <ref type="figure" target="#fig_3">3a</ref>. Denote by K the set of parameter keys and by 𝜋 𝑘 ≥ 0 the target probability for key 𝑘 ∈ K, where</p><formula xml:id="formula_0">|𝐾 | 𝑘=1 𝜋 𝑘 = 1.</formula><p>Workers repeatedly draw one or more samples from the target distribution 𝜋. Denote by 𝑋 𝑞𝑖 ∈ K a random variable for the 𝑖-th sample obtained at node 𝑞. <ref type="foot" target="#foot_1">2</ref> We write 𝑁 𝑞 for the number of samples drawn at node 𝑞 during the complete run time of some application. Set X 𝑞 = {𝑋 𝑞1 , . . . , 𝑋 𝑞𝑁 𝑞 } and X = 𝑞 X 𝑞 .</p><p>We propose a hierarchy of four sampling conformity levels to control the trade-off between sample quality and efficiency. From the top (L1) to the bottom (L4) of this hierarchy, sample quality decreases, and potential efficiency increases: (L1) CONFORM. The sampling scheme produces mutually independent samples from the target distribution 𝜋. I.e.,</p><formula xml:id="formula_1">𝑝 (𝑋 𝑞𝑖 = 𝑘 |S) = 𝜋 𝑘</formula><p>for all 𝑞, 𝑖, 𝑘 and S ⊆ X \ 𝑋 𝑞𝑖 . (L2) BOUNDED. The samples at each node have dependencies on past samples, but these dependencies are limited and samples at different nodes are independent. In more detail, given a dependency bound 𝐵 ∈ N, it holds 𝑝 (𝑋 𝑞𝑖 = 𝑘 |S -𝐵 𝑞 , S -𝑞 ) = 𝜋 𝑘 for all 𝑞, 𝑖, 𝑘, where S -𝑞 ⊆ X \ X 𝑞 refers to samples at other nodes and S -𝐵 𝑞 ⊆ {𝑋 𝑞1 , . . . , 𝑋 𝑞 (𝑖-𝐵-1) } refers to samples at node 𝑞 taken from all but the last 𝐵 samples taken so far. Note that first-order inclusion probabilities match the target probabilitiesi.e., 𝑝 (𝑋 𝑞𝑖 = 𝑘) = 𝜋 𝑘 -even though subsequent samples may be dependent. For example, a sampling scheme that internally draws independent samples from 𝜋 but uses each sample twice is BOUNDED with 𝐵 = 1. (L3) LONG-TERM. The mean first-order inclusion probabilities match the target probabilities asymptotically at each node, i.e., lim</p><formula xml:id="formula_2">𝑁 𝑞 →∞ 1 𝑁 𝑞 𝑁 𝑞 ∑︁ 𝑖=1 𝑝 (𝑋 𝑞𝑖 = 𝑘 |𝑋 𝑞1 , . . . , 𝑋 𝑞 (𝑖-1) ) = 𝜋 𝑘<label>(1)</label></formula><p>for all 𝑞, 𝑘. Note that this does not imply 𝑝 (𝑋 𝑞𝑖 = 𝑘) = 𝜋 𝑘 . Also, arbitrary dependencies between samples within one or across The levels are hierarchical in that L1 implies L2, and L2 implies L3.</p><p>The first implication follows since we can set S = S -𝐵 𝑞 ∪ S -𝑞 for any choice of S -𝐵 𝑞 and S -𝑞 .</p><p>Proof (L2 implies L3). Starting from some offset 1 ≤ 𝑜 ≤ 𝐵, fix some node 𝑞 and consider the subset 𝑋 𝑞 (𝑎𝐵+𝑜) 𝑎 ∈N of every 𝐵-th sample on node 𝑞, starting from the 𝑜-th sample. Using the definition of BOUNDED, we obtain</p><formula xml:id="formula_3">1 ⌊(𝑁 𝑞 -𝑜)/𝐵⌋ ⌊ (𝑁 𝑞 -𝑜)/𝐵 ⌋ ∑︁ 𝑎=1 𝑝 (𝑋 𝑞 (𝑎𝐵+𝑜) = 𝑘 |𝑋 𝑞1 , . . . , 𝑋 𝑞 (𝑎𝐵+𝑜-𝐵) ) = 𝜋 𝑘</formula><p>for any choice of 𝑁 𝑞 , i.e., the long-term relative frequencies of every 𝐵-th sample match if we start at offset 𝑜. Since this holds for every offset 𝑜, we conclude that Eq. ( <ref type="formula" target="#formula_2">1</ref>) holds and L2 implies L3.</p><p>Note that we defined L3 via Eq. ( <ref type="formula" target="#formula_2">1</ref>) rather than a simpler firstorder probability condition such as 𝑝 (𝑋 𝑞𝑖 = 𝑘) = 𝜋 𝑘 , because correct first-order conditions are not sufficient to ensure that a sampling scheme is useful in practice. For example, a sampling scheme that internally draws one independent sample 𝑋 from 𝜋, and then uses solely this sample throughout (i.e., 𝑋 𝑞𝑖 = 𝑋 for all 𝑞, 𝑖) satisfies such a condition, but is clearly unsuitable in practice.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Analysis of Common Sampling Schemes</head><p>ML applications employ a variety of sampling schemes. In the following, we analyze schemes that are common in distributed training <ref type="bibr" target="#b28">[29,</ref><ref type="bibr" target="#b33">34,</ref><ref type="bibr" target="#b36">37,</ref><ref type="bibr" target="#b61">62,</ref><ref type="bibr" target="#b72">73]</ref> w.r.t. their effect on (i) communication overhead and (ii) sampling quality, i.e., into which conformity level they fall. Table <ref type="table" target="#tab_1">1</ref> provides an overview of the latter.</p><p>Independent sampling. Ideally, applications draw iid. samples from the target distribution and use each sample once. This scheme is CONFORM, but can lead to significant communication overhead: for each sample, the corresponding parameter values need to be transferred to the node and, after an update is computed, updates need to be propagated to other nodes. Sample reuse. Sample reuse reduces communication overhead by using each sample multiple times <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b28">29,</ref><ref type="bibr" target="#b36">37,</ref><ref type="bibr" target="#b72">73]</ref>. For example, knowledge graph embeddings training can use shared sampling, i.e., reuse negative samples for all positive examples in a mini-batch <ref type="bibr" target="#b4">[5]</ref>. Reusing a sample multiple times avoids the transfer of parameter values for another, fresh sample: using a sample 𝑈 times can reduce the communication overhead by a factor of 𝑈 . We refer to this factor as the use frequency and to a sample reuse scheme that uses each sample 𝑢 times as U=u sample reuse. Sample reuse does not provide CONFORM since samples are not independent. However, it can provide BOUNDED. For example, if each fresh sample is sampled iid. from 𝜋 and then used exactly 𝑈 times, then the scheme is BOUNDED for all 𝐵 ≥ 𝑈 . Moreover, in mini-batch negative sample reuse as in <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b28">29,</ref><ref type="bibr" target="#b36">37]</ref>, BOUNDED also holds. Here samples are reused only within one mini-batch of gradient descent so that the minibatch size provides a bound on the sample dependency.</p><p>Local sampling. In many distributed ML architectures <ref type="bibr" target="#b13">[14,</ref><ref type="bibr" target="#b23">24,</ref><ref type="bibr" target="#b25">26,</ref><ref type="bibr" target="#b56">57]</ref>, at each node, a distinct subset of the model parameters-the local partition-can be accessed without network communication.</p><p>Local sampling restricts sampling accesses to this local partition <ref type="bibr" target="#b72">[73]</ref>. This scheme eliminates network overhead for sampling accesses entirely. However, local sampling is NON-CONFORM as nodes see only samples from the local partition. Some implementations repartition parameters periodically such that all nodes at least see all samples over time <ref type="bibr" target="#b72">[73]</ref>. Careful re-partitioning might satisfy Eq. ( <ref type="formula" target="#formula_2">1</ref>) for certain target distributions; e.g., if 𝜋 is uniform and parameters are allocated uniformly and at random. In general, however, local sampling cannot provide LONG-TERM. For example, consider any target distributions in which 𝜋 𝑘 &gt; 1/𝑄 for some 𝑘 (with 𝑄 being the number of nodes). Local sampling cannot satisfy Eq. ( <ref type="formula" target="#formula_2">1</ref>) for such a target since key 𝑘 is available for sampling at only one node at a time. This implies that there is at least one node at which the long-term frequency of 𝑘 is ≤ 1/𝑄.</p><p>Direct-access repurposing. Another sampling scheme is to repurpose direct-access parameters, i.e., to use them as negative samples. For example, DGL-KE <ref type="bibr" target="#b72">[73]</ref> generates some of the samples by repurposing parameters that occur as positives in other data points of an SGD mini-batch. This requires no additional communication for sampling accesses, as the values for the direct access parameters are transferred to the node either way. In this scheme, the relative frequency of a seeing a key in a sample depends on the occurrence frequency of the key in the training data. As the training data occurrence distribution can be (and typically is <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b44">45]</ref>) different from the target distribution, this scheme is NON-CONFORM.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">A Primitive for Sampling</head><p>It is impossible for PSs to integrate these sampling schemes within the push/pull API. The main problem is that sampling is done by application code: to conduct a sampling access, an ML application draws a sample of keys and accesses them via pull or push. For instance, this makes it impossible for the PS to restrict sampling to the local partition. Further, the PS cannot even distinguish between direct access (for which it cannot leverage sampling schemes) and sampling access (for which it can leverage sampling schemes).</p><p>To overcome these limitations, we propose to extend the PS API with a sampling primitive that allows applications to access a  sample from a target distribution, under a specific sampling conformity level. The sampling manager in NuPS transparently chooses a sampling scheme that conforms with the chosen conformity level and applies the scheme for all sampling accesses. We propose one operation dist = register_distribution(π, L) to register a specific sampling distribution 𝜋 under a specific sampling conformity level 𝐿, and a combination of two operations to draw samples:</p><formula xml:id="formula_4">handle = PrepareSample(dist, N) keys, values = PullSample(handle[, n j ])</formula><p>The argument 𝑁 is the number of desired samples. PrepareSample is intended to return instantaneously (and run preparatory work in the background), PullSample blocks if called synchronously. After PullSample returns, the corresponding keys are stored in keys and corresponding values are copied to values. Applications can call PullSample once to obtain all 𝑁 samples at once or multiple times to obtain the 𝑁 samples in smaller portions (by passing 𝑛 0 , 𝑛 1 , ... &lt; 𝑁 to multiple invocations of PullSample such that 𝑛 𝑗 = 𝑁 ). Such partial pulls give the PS more flexibility, and, thus, may result in better performance.</p><p>This extension provides sufficient flexibility for implementing a wide range of sampling schemes, as we describe in the following Section 4.4. The extension derives its flexibility from three key design choices. First, the extension transfers sampling from the application to the PS. Second, the extension provides the PS with a hook for doing preparatory work, such as pre-fetching parameter values, modifying partitions, or coordinating among nodes. Third, the extension does not force final decisions (e.g., about the sampled keys) before PullSample returns.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">The Sampling Manager in NuPS</head><p>The sampling manager is responsible for generating samples and managing the corresponding parameters. The sampling manager of NuPS currently supports four sampling schemes behind the sampling API. Figure <ref type="figure" target="#fig_4">5</ref> provides an overview. Schemes implement PrepareSample and PullSample, and optionally a background thread. From the four implemented schemes, the sampling manager picks a scheme that is suitable for the specified conformity level. We now discuss the schemes in turn.</p><p>Independent sampling (CONFORM). In this scheme, NuPS samples iid. from the target distribution and localizes the corresponding parameters in PrepareSample (such that they can be accessed locally when PullSample is called). In PullSample, NuPS accesses the parameters remotely if they have been relocated to another node in-between PrepareSample and PullSample (this can happen because other nodes can independently work on the same parameters). This approach is CONFORM because each worker samples iid. from 𝜋.</p><p>Sample reuse (BOUNDED). NuPS implements a sample reuse scheme that reuses pools of keys. The pooling increases the temporal distance between the reused samples and thereby increases randomness. For a given pool size 𝐺 and use frequency 𝑈 , NuPS repeatedly samples 𝐺 keys iid. from 𝜋 to form a sample pool and produces samples by traversing the sample pool 𝑈 times, each time in a random order. For example, consider 𝑈 = 2 and suppose that the iid. draws produce keys 𝑘 1 , 𝑘 2 , and 𝑘 3 , respectively. With 𝐺 = 1, we obtain sample sequence 𝑘 1 𝑘 1 𝑘 2 𝑘 2 𝑘 3 𝑘 3 . With 𝐺 = 3, a sequence such as 𝑘 1 𝑘 2 𝑘 3 𝑘 2 𝑘 1 𝑘 3 is possible. The pools are prepared by a background thread. When the background thread generates a new pool, it localizes the corresponding parameters. NuPS localizes the parameters again in PrepareSample if they have been relocated to another node since pool preparation. In PullSample, NuPS accesses the parameters remotely if necessary. This sample reuse scheme is BOUNDED because samples are drawn iid. from the target distribution 𝜋, inter-sample dependency is bounded by 𝑈 • 𝐺, and 𝑈 is identical for all samples.</p><p>The background thread determines automatically when to prepare a new pool. Adding a new pool takes time and (for good performance) the localization should be finished when PullSample is called. This time depends on the ML task, the used hardware, and the system configuration. To estimate this time, we use a heuristic. <ref type="foot" target="#foot_2">3</ref>In particular, the background thread keeps track of the duration of previous pool relocations. If the number of prepared, but unused samples is less than double of the current estimated relocation time, the preparation of another pool is triggered.</p><p>Sample reuse with postponing (LONG-TERM). NuPS additionally implements sample reuse with sample postponing. This is identical to the described sample reuse scheme, but adds sample postponing: if sample 𝑖 cannot be accessed locally in PullSample, NuPS re-localizes the corresponding parameters, postpones sample 𝑖 for later use, and uses sample 𝑖 + 1 instead. To achieve LONG-TERM, it is crucial that, at some point, samples are used (and not re-postponed indefinitely). <ref type="foot" target="#foot_3">4</ref> Thus, NuPS postpones only within the 𝑁 samples of one invocation of PrepareSample (in other words, only within the samples of one handle). I.e., when NuPS finds a non-local sample (in PullSample), it moves the sample to the end of the 𝑁 samples of this handle. NuPS postpones each sample maximally once. When it reaches samples that it has already postponed once (towards the end of the 𝑁 samples), it accesses them remotely if necessary. This implementation of postponing reduces communication overhead only if the samples of one handle are pulled in groups smaller than 𝑁 and there is some time between these partial pulls for the parameter relocation. Assuming that 𝑁 is bounded from above, it provides LONG-TERM. It does not provide BOUNDED because sampling probabilities depend on the current allocation of a key (i.e., keys can be postponed to a later sample if they are not local). Local sampling (NON-CONFORM). NuPS implements local sampling without active re-partitioning. Instead, NuPS relies on the application to relocate parameters: in a relocation PS, the local partition usually changes constantly, as workers relocate the parameters that they work with (in direct access). The effect of this local sampling variant heavily depends on the relocations of the application. Generally, this approach cannot give any guarantees, as, for example, an application might not relocate parameters at all. Thus, it generally falls into the NON-CONFORM level. In an ideal setting, however, this approach could provide LONG-TERM. For example, this can be the case if an application partitions its training data randomly and continuously relocates all parameters (such that a parameter is equally likely to be on all nodes) and samples uniformly (such that 𝜋 𝑘 ≪ 1 𝑄 for all 𝑘). To make local sampling efficient, NuPS employs a fast sampling implementation that does not sample independently.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">EXPERIMENTS</head><p>We conducted an experimental study to investigate whether and to what extent a non-uniform PS is beneficial for PS performance. Source code, datasets, and information for reproducibility are available online. <ref type="foot" target="#foot_4">5</ref>In our study, we compared the performance of NuPS to several state-of-the-art PSs on three large-scale ML tasks (Section 5.2). Further, we conducted an ablation study (Section 5.3), investigated scalability (Section 5.4), evaluated different sampling schemes (Section 5.5), and explored specific components of NuPS (Sections 5.6 and 5.7). Our major insights are: (i) NuPS was more than an order of magnitude faster than existing PSs. (ii) NuPS achieved best performance when it replicated a small fraction of the model parameters, and relocated all other parameters. (iii) Both sample reuse and local sampling significantly reduced communication overhead for sampling access. We conclude that a non-uniform PS is key for high performance in ML tasks with non-uniform parameter access.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Experimental Setup</head><p>We considered three popular ML tasks that require long training: knowledge graph embeddings, word vectors, and matrix factorization. These tasks are representatives for shallow models that exhibit sparse and skewed access. The tasks differ in multiple ways, including the number of parameters, parameter access distributions, sampling distribution, and frequency of sampling accesses. Table <ref type="table" target="#tab_3">2</ref> provides a summary. In the following, we briefly discuss each task.</p><p>Knowledge graph embeddings. Knowledge graph embedding (KGE) models learn algebraic representations of the entities and relations in a knowledge graph. For example, these representations have been applied successfully to infer missing links in knowledge graphs <ref type="bibr" target="#b47">[48]</ref>. This task, based on <ref type="bibr" target="#b39">[40]</ref>, trains ComplEx <ref type="bibr" target="#b64">[65]</ref> (one of the most popular KGE models) embeddings using SGD with Ada-Grad <ref type="bibr" target="#b17">[18]</ref> and negative sampling <ref type="bibr" target="#b39">[40,</ref><ref type="bibr" target="#b57">58]</ref>. Negative sampling creates sampling access in this task: to generate negative samples, both the subject and the object entity of a positive triple are perturbed 𝑛 neg times, by drawing random entities from a uniform distribution over all entities (we used a common setting of 𝑛 neg = 100 <ref type="bibr" target="#b57">[58]</ref>). We used the Wikidata5M dataset <ref type="bibr" target="#b65">[66]</ref>, a real-world knowledge graph with 4 818 679 entities and 828 relations, and a common embedding size of 500 <ref type="bibr" target="#b57">[58]</ref>. We partitioned the subject-relation-object triples of the dataset to the nodes randomly, as done in <ref type="bibr" target="#b33">[34]</ref>. We used LibKGE <ref type="bibr" target="#b4">[5]</ref> (commit 3146885) to evaluate models and report the mean reciprocal rank (filtered) (MRRF) as metric for model quality.</p><p>Word vectors. Word vectors (WV) are a language modeling technique in natural language processing: each word of a vocabulary is mapped to a vector of real numbers <ref type="bibr" target="#b44">[45,</ref><ref type="bibr" target="#b50">51,</ref><ref type="bibr" target="#b51">52]</ref>. These vectors are useful as input for many natural language processing tasks, for example, syntactic parsing <ref type="bibr" target="#b60">[61]</ref> or question answering <ref type="bibr" target="#b40">[41]</ref>. This task, based on <ref type="bibr" target="#b44">[45]</ref>, uses SGD and negative sampling to train the skip-gram Word2Vec <ref type="bibr" target="#b44">[45]</ref> model (dimension 1000) on the One Billion Word Benchmark <ref type="bibr" target="#b6">[7]</ref> dataset (with stop words of the Gensim <ref type="bibr" target="#b53">[54]</ref> stop word list removed). The negative sampling creates sampling accesses: in this task, for each word pair, 3 negative samples are drawn from a distribution that is based on word frequencies (see Section 2.2). We used common model parameters <ref type="bibr" target="#b44">[45]</ref> for window size <ref type="bibr" target="#b4">(5)</ref>, minimum count (1), and frequent word subsampling (0.01). We measured model accuracy using a common analogical reasoning task of 19 544 semantic and syntactic questions <ref type="bibr" target="#b44">[45]</ref>.</p><p>Matrix factorization. Low-rank matrix factorization (MF) is a common tool for analyzing and modeling dyadic data, e.g., in collaborative filtering for recommender systems <ref type="bibr" target="#b34">[35]</ref>. This task, based on <ref type="bibr" target="#b62">[63]</ref>, uses SGD to factorize a synthetic, zipf-1.1 distributed 10m × 1m dataset with 1b revealed cells, modeled after the Netflix Prize dataset. <ref type="foot" target="#foot_5">6</ref> Data points were partitioned to nodes by row and to workers within a node by column. Each worker visited its data points by column (to create locality in column parameter accesses), with random order of columns and of data points within a column. There is no sampling access in this task. We report the root mean squared error (RMSE) on the test set as metric for model quality.</p><p>Baselines. We compared performance to a classic PS, to Petuum (a state-of-the-art replication PS), to Lapse (a state-of-the-art relocation PS), and to a single node implementation. As classic PS, we used Lapse with relocation disabled, which, according to <ref type="bibr" target="#b56">[57]</ref>, provides performance similar to PS-Lite. We ran both the SSP and  and Lapse (a state-of-the-art replication PS) by up to one order of magnitude and provided up to linear scalability over the single node. The gray shaded area indicates performance that is dominated by the single node. Error bars depict minimum and maximum measurements for run time and model quality (but are often not visible due to low variance). The dashed gray line depicts the model quality threshold at which effective speedups are computed (90% of the best observed single-node quality). <ref type="bibr" target="#b67">[68]</ref>, with different staleness thresholds. Petuum does not provide KGE or WV implementations. Thus, we implemented the KGE task described above in Petuum. We used version 1.1 of Petuum. We did not implement specific sampling schemes in application code, i.e., applications draw independent samples and access them via direct access. We used a shared memory implementation with 8 worker threads as single node baseline.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>ESSP protocols of Petuum</head><p>Implementation and cluster. We implemented NuPS in C++, using ZeroMQ and Protocol Buffers for communication, based on PS-Lite <ref type="bibr" target="#b37">[38]</ref>. We used a local cluster of up to 16 Lenovo ThinkSystem SR630 computers, running Ubuntu Linux 20.04, connected with 100 Gbit Infiniband. Each node was equipped with two Intel Xeon Silver 4216 16-core CPUs, 512 GB of main memory, and one 2 TB D3-S4610 Intel SSD. We compiled code with g++ 9.3.0, except for Petuum, which we compiled with g++ 7.5.0, as the compilation with g++ 9.3.0 failed. Unless specified otherwise, we used 8 nodes and 8 worker threads per node. In Lapse and NuPS, we additionally used 1 server and 3 ZeroMQ I/O threads per node. In Petuum, we used 4 communication channels per node. To prevent exploding gradients, we used gradient norm clipping as suggested in <ref type="bibr" target="#b49">[50]</ref> for replicated parameters in the WV and MF tasks (clipping updates that exceed the average norm by more than 2x). In the KGE task, the use of AdaGrad prevented exploding gradients. For each task, we tuned hyperparameters on the single node and used the best found hyperparameter setting in all systems and variants.</p><p>NuPS. We ran NuPS in two configurations: (i) a generally applicable untuned configuration that requires no task-specific tuning and (ii) a task-specific tuned configuration. The untuned configuration employs a heuristic to decide the management technique for each parameter: it replicates a parameter if its access frequency exceeds 100 times the mean access frequency. This heuristic is computed from dataset frequency statistics. The untuned configuration further employs sample reuse without postponing (BOUNDED) with a use frequency of U=16. To indicate the performance potential of task-specific insights, we included a tuned configuration by informing our configuration choices with the results of our detail experiments in Sections 5.5 and 5.6. The tuned configuration for KGE replicates the 900 most frequently accessed keys (the same as the untuned setting), but uses local sampling (NON-CONFORM). The tuned configuration for WV replicates the 209 k most frequently accessed keys (64x more keys than the untuned configuration), and employs local sampling (NON-CONFORM). For MF, the untuned configuration seemed to be near-optimal, such that we did not add a separate tuned configuration. Unless mentioned otherwise, we used the settings of the untuned configuration and a replica staleness threshold of 40 ms in all experiments. Throughout all experiments, we used a pool size of 250 in the sample reuse scheme.</p><p>Measures. Unless noted otherwise, we ran all variants with a fixed 6 h time budget. We measured model quality over time and over epochs within this time budget (using the quality metrics described above). We conducted 3 independent runs of each experiment, each starting from a distinct randomly initialized model, and report the mean. We depict error bars for model quality and run time; they present the minimum and maximum measurements. In some experiments, error bars are not clearly visible because of small variance. Gray dotted lines indicate the performance of the single node baseline. Gray shading indicates performance that is dominated by the single node baseline. We report two types of speedups: (i) raw speedup depicts the speedup in epoch run time, without considering model quality; (ii) effective speedup is calculated from the time that each variant took to reach 90% of the best model quality that the single node baseline achieved. Unless specified otherwise, we report effective speedups.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Overall Performance</head><p>We investigated the overall effect of a non-uniform PS on PS performance. To do so, we compared the performance of NuPS to existing PSs and to the single node baseline. We ran each variant for the fixed time budget and measured model quality over this time. Figures <ref type="figure" target="#fig_5">6a,</ref><ref type="figure" target="#fig_5">6b</ref>, and 6c show model quality over time, Figures <ref type="figure" target="#fig_5">6d,</ref><ref type="figure" target="#fig_5">6e</ref>, and 6f show model quality over epoch. In summary, NuPS was 31-36x faster than a state-of-the-art replication PS (Petuum), 6-46x faster than a state-of-the-art relocation PS (Lapse), and 2.3-10.3x faster than the single node baseline. <ref type="foot" target="#foot_7">7</ref>The classic PS was inefficient (with epochs over 7x slower than the single node) because it accesses parameters over the network, which induced significant access latency. Lapse was faster than Classic, but still slower than the single node, because Lapse relocates all parameters, including hot spots. Hot spot parameters, however, are frequently accessed by multiple nodes simultaneously <ref type="bibr" target="#b55">[56]</ref>, such that some of these nodes had to wait for the relocation to finish or access the parameter remotely, which induced access latency. The per-epoch model quality of Classic and Lapse was indistinguishable from the single node in KGE and WV, as these systems provide sequential consistency for all parameters and employ no specialized sampling schemes. In MF, all distributed variants provided lower per-epoch quality than the single node, an effect that has been observed before <ref type="bibr" target="#b42">[43]</ref>. The step pattern that is visible in MF training stems from the bold driver heuristic <ref type="bibr" target="#b3">[4]</ref> that the MF implementation <ref type="bibr" target="#b42">[43]</ref> that we adapted uses to tune the learning rate.</p><p>For KGE, we ran Petuum SSP and ESSP with staleness thresholds 1, 10, 100, 200, or 1000, and tried different frequencies for advancing the clock. <ref type="foot" target="#foot_8">8</ref> None of the configurations completed the first epoch within the time budget of 6 hours. We observed the best performance for ESSP with staleness 10, which finished the first epoch after 13h with a model quality (MRRF) of 0.11. The best SSP run (staleness 200) finished the first epoch after 15h with a model quality of 0.10. The reasons for this performance are that Petuum is inefficient for long tail parameters (as discussed in Section 3.1) and that Petuum's replica approach is inefficient for sampling because sampling access provides no locality: SSP replicas are mostly cold, ESSP over-communicates. Petuum's MF implementation ran out of memory, because it stores the training matrix in dense format.</p><p>The untuned NuPS configuration outperformed existing PSs across all three tasks. For KGE and MF, it was also clearly faster than the single node, with up to 6.7x effective speedups over the single node and minimal negative effect on (per-epoch) model quality.</p><p>For WV, however, it barely outperformed the single node (but still outperformed existing PSs). In contrast, the tuned configuration provided 4.6-10.3x effective speedups over the single node across all three tasks. For KGE, the tuned configuration of NuPS provided better per-epoch convergence than the single node. This was an effect of local sampling; see Section 5.5 for more details.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Ablation</head><p>NuPS introduces two novel features compared to existing PSs: (i) multi-technique parameter management and (ii) the integration of sampling into the PS. To investigate individual effects, we enabled each feature individually and measured model quality within the time budget. Figure <ref type="figure" target="#fig_6">7</ref> shows the results. We omit MF because there is no sampling access in MF, such that the entire performance improvement stems from multi-technique parameter management (which is visible in Figure <ref type="figure" target="#fig_5">6c</ref>). We found that both multi-technique parameter management and sampling integration can be beneficial individually, and the individual benefits compounded when both were combined.</p><p>We compared the performance of four variants: (i) Lapse, a relocation PS without sampling integration; (ii) Relocation + Replication, a PS with multi-technique parameter management but without sampling integration; (iii) Relocation + Sampling, a relocation-only PS with sampling integration; (iv) NuPS, a multi-technique PS with sampling integration. Going from a single-technique relocation PS to a multi-technique PS made an epoch 67-73% faster with only small effect on model quality. Adding sampling support to the relocation PS made an epoch 17-62% faster, with a small negative effect on model quality. The combination of both made an epoch 94% faster, with a small negative effect on per-epoch model quality.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">Scalability</head><p>To investigate scalability, we ran Lapse, the best Petuum SSP and ESSP configurations, and NuPS for one epoch on 1, 2, 4, 8, and 16 nodes and calculated the raw speedup. Figure <ref type="figure">8</ref> depicts the results. Further, we ran convergence experiments on 16 nodes for those systems that reached the 90% model quality threshold on 8 nodes. Figure <ref type="figure">9</ref> depicts the effective speedup for these systems. Overall, NuPS scaled more efficiently than other PSs, with up to nearlinear raw and up to superlinear effective speedups.</p><p>We first discuss raw scalability, i.e., the speedup w.r.t. epoch run time (Figure <ref type="figure">8</ref>). On a single node, NuPS and Lapse were faster than Petuum because NuPS and Lapse access local parameters via shared memory, whereas Petuum sends intra-process messages to do so. Lapse provided poor scalability because the more nodes are used, the higher the chance that multiple nodes access a parameter at the same time and, thus, that they have to wait for a relocation to finish or to access parameters remotely. Neither Petuum ESSP nor SSP outperformed the shared-memory single-node baseline, even on 16 nodes. ESSP scaled poorly even when compared to its own (inefficient) run time on a single node (4.8x faster on 16 nodes) because its eager replication protocol over-communicates: after a short warm-up period, each node holds a replica of the full model. The more nodes, the more replicas had to be synchronized, such that replica synchronization became a bottleneck. The lazy replication protocol of SSP scaled better than ESSP compared to its own (inefficient) run time on a single node (12x faster on 16 nodes), but its overall performance was poor because its replicas were cold most of the time (and thus required synchronous replica refreshes).</p><p>NuPS scaled more efficiently than existing PSs because it (i) limits the bottleneck of eager replication by replicating only a small subset of hot spot parameters, (ii) prevents the majority of relocation conflicts by employing relocation only for long tail parameters, and (iii) employs sampling schemes to reduce sampling communication overhead. With 16 nodes, it provided up to 13.4x raw speedups over the shared memory single node. NuPS further provided up to 20x effective speedups for KGE and 8x for MF (see Figure <ref type="figure">9</ref>). For WV, although the raw speedup on 16 nodes was 10.2x, the effective speedup was only 2.2x. The reason for this is that we used the hyperparameter configuration that worked best on the single node throughout all experiments. With other hyperparameters, we observed better effective speedups for WV.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.5">Effect of Sampling Schemes</head><p>We investigated the effect of different sampling schemes in NuPS on run time and model quality. To do so, we ran KGE and WV with different sampling schemes: independent sampling (CONFORM), U=16 and U=64 sample reuse without postponing (BOUNDED) and with postponing (LONG-TERM), and local sampling (NON-CONFORM).  <ref type="figure" target="#fig_7">10c</ref> and<ref type="figure" target="#fig_7">10d</ref> show model quality over epoch. We omit MF as it does not contain sampling access. We further omit the results from sample reuse with postponing as its results were within 10% of sample reuse without postponing. <ref type="foot" target="#foot_9">9</ref> We found that both sample reuse and local sampling led to significant speedups over independent sampling, with small negative or-in the case of local sampling-even positive effects on per-epoch model quality. Independent sampling provided per-epoch quality near-identical to the single node, but was slowest, because it induced high communication overhead for each sample. Sample reuse had lower communication overhead (and, thus, faster epoch run times), but at the cost of a (small) negative effect on per-epoch model quality. The higher the use frequency, the faster an epoch and the larger the negative effect on quality. The U=16 variant provided a good compromise, with minimal effect on model quality and fast run times.</p><p>Local sampling exhibited excellent performance, despite providing no guarantees on sampling quality: it was fast and per-epoch model quality was as good as the single node in WV, and was better in KGE. We hypothesize that this mainly is because NuPS combines local sampling with dynamic allocation: both tasks continuously relocate model parameters, such that the local parameter partitions contain many different parameters over time. To evaluate this hypothesis, we ran local sampling with static allocation in KGE. Figure <ref type="figure" target="#fig_7">10c</ref> includes the results: with static allocation, model quality deteriorated drastically. We further conjecture that the reason for the better-than-single-node quality of local sampling in KGE was that relocation led to local samples that were more informative than global samples. Similar effects have been observed previously <ref type="bibr" target="#b72">[73]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.6">Choice of Management Technique</head><p>We investigated how the choice of management technique, i.e., the choice of whether to replicate or relocate a key, affects the performance of NuPS. The NuPS untuned heuristic replicates the 900 most frequent keys in KGE, the 3272 most frequent keys in WV, and the 755 most frequent column keys in MF. We varied these numbers by factors 1  64 ,  <ref type="figure">11</ref> depicts the results. We found that it was crucial for performance to replicate "enough" parameters such that the set of hot spot parameters is managed by replication, but not too many parameters, as replication created significant over-communication for long tail parameters. This effect was visible for all tasks: starting from no replicated keys (i.e., all keys managed by relocation), increasing the number of replicated keys first improved run time, and had minimal effect on model quality. However, after some point, replicating more keys deteriorated model quality, and even slowed down run time for KGE and MF. The reason for the negative effect on model quality was that the replicas were stale, because the replica updates became too large to synchronize them frequently over the network of the cluster. We configured NuPS to provide the default 40 ms staleness bound (i.e., 25 synchronizations per second), but to not block operations when it did not reach this goal. Figure <ref type="figure">11</ref> includes the actual synchronization frequency if model quality was not within 10% of the model quality without replication. The middle columns of Table <ref type="table" target="#tab_6">3</ref> provide the size of the replicated values for all settings. For example, the 64x WV setting replicated 799 MB of parameter values. Large numbers of replicated keys led to slower epoch run times for KGE and MF, because relocation operations competed with replica synchronization for network bandwidth. This effect was not visible for WV because, in WV, the majority of accesses went to replicated keys (and, thus, were fast despite network congestion). The share of accesses that went to replicas is depicted in the rightmost columns of Table <ref type="table" target="#tab_6">3</ref>. For example, 88% of all accesses went to replicas in the 64x WV setting.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.7">Effect of Replica Staleness</head><p>We investigated the effect of replica staleness on epoch run time and model quality. To do so, we varied synchronization frequency: we synchronized replicas either 125, 25, 5, 1, or 0.2 times per second or not at all. We ran one epoch of each setting and measured epoch run time and model quality after this epoch. Note that without replica synchronization, nodes may hold different models. In these cases, we evaluated the model of the first node. Figure <ref type="figure" target="#fig_1">12</ref> reports the results. Overall, replication had only minimal effect on model quality when replica staleness was low.</p><p>Replication had only small effect on model quality when replicas were synchronized at least 5 times per second. In contrast, infrequent synchronization (less than once per second) deteriorated model quality drastically in KGE and WV. However, infrequent synchronization (or no synchronization at all) worked well in some settings (in particular in MF). We theorize that the reason for this was that NuPS employs replication for only a small subset of parameters, such that replication parameters are kept synchronized indirectly through the parameters that are managed by relocation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.8">Comparison to Task-Specific Implementations</head><p>In a general-purpose system, a performance overhead over optimized task-specific implementations is expected. To investigate the extent of this overhead in NuPS, we compared to specific implementations for each task. Each of these implementations is specialized and highly tuned for the respective task. In contrast to a generalpurpose PS such as NuPS, these implementations cannot be used to run other ML tasks. Note that some of these implementations use different, more complex training algorithms than the implementations in NuPS. Overall, we found that NuPS was competitive to specialized and tuned task-specific implementations.  For MF, we compared to the highly tuned MPI implementations of DSGD and DSGD++ <ref type="bibr" target="#b62">[63]</ref>. We ran convergence experiments on 8 and 16 nodes. We measured how long the implementations took to reach the 90% quality threshold. We used the same hyperparameters, model starting points, and learning rate schedule across DSGD, DSGD++, and NuPS. On 8 nodes, NuPS was 16% faster than DSGD and 15% slower than DSGD++. On 16 nodes, NuPS was 37% faster than DSGD and 16% faster than DSGD++.</p><p>For KGE, we compared to the highly specialized framework PyTorch-BigGraph <ref type="bibr" target="#b36">[37]</ref>. Note that PyTorch-BigGraph is designed for a different training algorithm, with different hyperparameters: to reduce communication overhead, it uses mini-batch SGD, whereas the KGE implementation in NuPS employs regular SGD (i.e., batch size 1). To minimize the impact of algorithm hyperparameters in our comparison, we compared epoch run times. NuPS ran an epoch in 12 minutes on 16 nodes (24 minutes on 8 nodes). In this setting (i.e., batch size 1), PyTorch-BigGraph was much slower than NuPS: it took more than 5 hours to run one epoch, both on 8 and 16 nodes. Using a very large batch size led to faster epochs in PyTorch-BigGraph (up to 3x faster with batch size 1000 than NuPS with batch size 1), but can also be implemented in NuPS.</p><p>For WV, we are not aware of a highly tuned and publicly available distributed implementation, so we compared to two highly tuned single-node implementations: the original C implementation of Word2Vec <ref type="bibr" target="#b44">[45]</ref> and Gensim <ref type="bibr" target="#b53">[54]</ref>. The implementation in Gensim and the one in NuPS are both based on the original C implementation. For both single-node implementations, we achieved the fastest epoch run times with 64 threads. Gensim completed an epoch in 15 minutes, the original implementation in 12 minutes. With 8x8 threads, NuPS took 13.5 minutes for one epoch; with 16x8 threads, it took 8 minutes. One factor that limits the performance of NuPS compared to these task-specific implementations is that-as other general-purpose PSs <ref type="bibr" target="#b56">[57]</ref>-NuPS provides per-key atomic updates. To achieve this, workers receive dedicated working copies of parameters. Creating these copies and writing updates back into the parameter store creates overhead compared to the task-specific WV implementations, which let workers read and write in the parameter store directly, without any consistency or isolation guarantees. Empirically, this works well for this particular task, but the effects for other tasks in a general-purpose system are unclear.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">CONCLUSION</head><p>We explored how to extend the scope of PSs to ML with non-uniform parameter access. To this end, we presented NuPS, a non-uniform PS that employs multi-technique parameter management to efficiently handle skew and integrates sampling schemes to efficiently handle sampling. We found that a non-uniform PS can be highly beneficial: in our experimental study, NuPS outperformed existing PSs by up to one order of magnitude. These results open up several research directions for further improving PS performance: integrating more management techniques (e.g., highly specialized ones), developing further sampling schemes, and devising fine-grained methods for picking management techniques for parameters.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>at io n PS (L ap se ) 7h 🠞 Re plic atio n PS (Pe tuu m) 13 h🠞 Classic PS (as PS-Lite) 38h🠞 0</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: NuPS architecture. NuPS differs from existing PSs in two main ways: it introduces (i) multi-technique parameter management to handle skew and (ii) a sampling manager and API to handle sampling.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Number of accesses per parameter in one epoch. Parameters are sorted by decreasing total number of accesses. See Section 5.1 for details on tasks and experimental setup.</figDesc><graphic coords="3,65.81,208.88,108.11,101.28" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Sampling scheme implementations in NuPS.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: End-to-end performance of different PSs on 8 nodes. NuPS outperformed Petuum (a state-of-the-art replication PS)and Lapse (a state-of-the-art replication PS) by up to one order of magnitude and provided up to linear scalability over the single node. The gray shaded area indicates performance that is dominated by the single node. Error bars depict minimum and maximum measurements for run time and model quality (but are often not visible due to low variance). The dashed gray line depicts the model quality threshold at which effective speedups are computed (90% of the best observed single-node quality).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: Ablation. Both (i) combining replication and relocation and (ii) integrating specialized sampling access management techniques improved performance individually, and it was beneficial to combine the two.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 10 :</head><label>10</label><figDesc>Figure 10: Performance of different sampling access management techniques. Both sample reuse and local sampling led to significant speedups over relocation.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head></head><label></label><figDesc>Figures 10a and 10b show model quality over time, Figures</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 11 :Figure 12 :</head><label>1112</label><figDesc>Figure 11: Impact of the management technique on epoch run time and model quality. The numbers in the plots depict model quality. A run is marked red if the resulting model quality was not within 10% of the model quality without replication. For these runs, the numbers in the plots additionally depict the actual synchronization frequency.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>Conformity levels of common sampling schemes. multiple nodes are accepted as long as the asymptotic relative frequencies of the samples match the target. For example, a sequential sampling scheme that selects a random key order for the |𝐾 | keys and then draws samples in a round-robin fashion satisfies LONG-TERM but not BOUNDED: each key is selected equally often in the long run, but the knowledge of the first |𝐾 | samples allows to uniquely determine all future samples, so that no dependency bound can be established. (L4) NON-CONFORM. No guarantees about the sampling probabilities or independence.</figDesc><table><row><cell></cell><cell>L1</cell><cell>L2</cell><cell>L3</cell></row><row><cell></cell><cell cols="3">CONFORM BOUNDED LONG-TERM</cell></row><row><cell>Independent sampling</cell><cell>✓</cell><cell>✓</cell><cell>✓</cell></row><row><cell>Sample reuse</cell><cell>×</cell><cell>✓</cell><cell>✓</cell></row><row><cell>Local sampling</cell><cell>×</cell><cell>×</cell><cell>×</cell></row><row><cell>Direct-access repurposing</cell><cell>×</cell><cell>×</cell><cell>×</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 2 :</head><label>2</label><figDesc>ML tasks, models, datasets, and share of direct and sampling access.</figDesc><table><row><cell>Task</cell><cell cols="2">Model parameters</cell><cell></cell><cell cols="2">Data</cell><cell></cell><cell cols="2">Parameter access</cell></row><row><cell></cell><cell>Model</cell><cell cols="2">Keys Values</cell><cell>Size Dataset</cell><cell>Data points</cell><cell cols="3">Size Direct Sampling</cell></row><row><cell cols="2">Knowledge graph embeddings ComplEx, dim. 500</cell><cell cols="3">4.8 M 4.8 B 35.9 GB Wikidata5M</cell><cell cols="2">21 M 317 MB</cell><cell>69%</cell><cell>31%</cell></row><row><cell>Word vectors</cell><cell>Word2Vec, dim. 1000</cell><cell cols="2">1.9 M 1.9 B</cell><cell>7.0 GB 1b word benchmark</cell><cell>375 M</cell><cell>3 GB</cell><cell>44%</cell><cell>56%</cell></row><row><cell>Matrix factorization</cell><cell cols="2">Latent Factors, rank 1000 11.0 M</cell><cell cols="5">11 B 82.0 GB 10m × 1m matrix, zipf 1.1 1000 M 31 GB 100%</cell><cell>0%</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head></head><label></label><figDesc>Raw scalability (logarithmic axes). The y-axis depicts raw speedup, i.e., speedup w.r.t. epoch run time over the shared-memory single-node baseline. NuPS scaled more efficiently than other PSs, with up to near-linear speedups.</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell cols="2">Linear scaling</cell><cell></cell><cell cols="3">Petuum (SSP)</cell><cell></cell><cell cols="4">Petuum (ESSP)</cell></row><row><cell></cell><cell></cell><cell></cell><cell>Lapse</cell><cell></cell><cell></cell><cell cols="3">NuPS (untuned)</cell><cell></cell><cell cols="2">NuPS</cell><cell></cell><cell></cell></row><row><cell></cell><cell>16</cell><cell></cell><cell></cell><cell>16</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>16</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>8</cell><cell></cell><cell></cell><cell>8</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>8</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Raw speedup</cell><cell>¹⁄₃₂ ¹/₁₆ ⅛ ¼ ½ 1 2 4</cell><cell></cell><cell></cell><cell>¹⁄₃₂ ¹/₁₆ ⅛ ¼ ½ 1 2 4</cell><cell></cell><cell>Petuum: no impl.</cell><cell></cell><cell></cell><cell>¹⁄₃₂ ¹/₁₆ ⅛ ¼ ½ 1 2 4</cell><cell cols="3">out of memory Petuum:</cell><cell></cell></row><row><cell></cell><cell>1</cell><cell>2</cell><cell>4</cell><cell>8 16</cell><cell>1</cell><cell>2</cell><cell>4</cell><cell>8</cell><cell>16</cell><cell>1</cell><cell>2</cell><cell>4</cell><cell>8</cell><cell>16</cell></row><row><cell></cell><cell cols="4">Number of nodes</cell><cell cols="5">Number of nodes</cell><cell cols="5">Number of nodes</cell></row><row><cell></cell><cell></cell><cell cols="2">(a) KGE</cell><cell></cell><cell></cell><cell cols="2">(b) WV</cell><cell></cell><cell></cell><cell></cell><cell cols="2">(c) MF</cell><cell></cell></row><row><cell cols="5">Figure 8: Linear scaling</cell><cell></cell><cell cols="4">NuPS (untuned)</cell><cell></cell><cell cols="2">NuPS</cell><cell></cell></row><row><cell>Effective speedup</cell><cell>½ 1 2 4 8 16</cell><cell></cell><cell></cell><cell>½ 1 2 4 8 16</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>½ 1 2 4 8 16</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>1</cell><cell>2</cell><cell>4</cell><cell>8 16</cell><cell>1</cell><cell>2</cell><cell>4</cell><cell>8</cell><cell>16</cell><cell>1</cell><cell>2</cell><cell>4</cell><cell>8</cell><cell>16</cell></row><row><cell></cell><cell cols="4">Number of nodes</cell><cell cols="5">Number of nodes</cell><cell cols="5">Number of nodes</cell></row><row><cell></cell><cell></cell><cell cols="2">(a) KGE</cell><cell></cell><cell></cell><cell cols="2">(b) WV</cell><cell></cell><cell></cell><cell></cell><cell cols="2">(c) MF</cell><cell></cell></row><row><cell cols="15">Figure 9: Effective scalability (logarithmic axes). The y-axis</cell></row><row><cell cols="15">depicts effective speedup, i.e., speedup w.r.t. reaching 90% of</cell></row><row><cell cols="12">the best model quality observed on a single node.</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 3 :</head><label>3</label><figDesc>Share of replicated keys, replica size, and share of accesses to replicas for different extents of replication. A cell is marked red if the resulting model quality was not within 10% of the quality without replication.</figDesc><table><row><cell></cell><cell></cell><cell>Replicated</cell><cell></cell><cell cols="3">Size of replicated</cell><cell>Accesses to</cell></row><row><cell></cell><cell></cell><cell>keys (%)</cell><cell></cell><cell cols="2">values (MB)</cell><cell></cell><cell>replicas (%)</cell></row><row><cell>Factor</cell><cell>KGE</cell><cell>WV</cell><cell cols="5">MF KGE WV MF KGE WV MF</cell></row><row><cell cols="4">0 0.0000 0.0000 0.0000</cell><cell>0</cell><cell>0</cell><cell>0</cell><cell>0</cell><cell>0</cell><cell>0</cell></row><row><cell cols="4">1/64 x 0.0003 0.0027 0.0001</cell><cell>0</cell><cell>0</cell><cell>0</cell><cell>23</cell><cell>7</cell><cell>3</cell></row><row><cell cols="4">1/16 x 0.0012 0.0108 0.0004</cell><cell>0</cell><cell>1</cell><cell>0</cell><cell>33 13</cell><cell>5</cell></row><row><cell cols="4">1/4 x 0.0047 0.0435 0.0017</cell><cell>2</cell><cell>3</cell><cell>1</cell><cell>38 25</cell><cell>9</cell></row><row><cell>1 x</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell cols="3">0.0187 0.1740 0.0069</cell><cell>7</cell><cell>12</cell><cell>6</cell><cell>41 45 14</cell></row><row><cell>(heuristic)</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="4">4 x 0.0747 0.6958 0.0275</cell><cell>27</cell><cell>50</cell><cell>23</cell><cell>44 67 19</cell></row><row><cell cols="4">16 x 0.2988 2.7832 0.1098</cell><cell cols="2">110 200</cell><cell>92</cell><cell>45 82 24</cell></row><row><cell cols="4">64 x 1.1951 11.1330 0.4393</cell><cell cols="3">439 799 369</cell><cell>47 88 30</cell></row><row><cell cols="7">256 x 4.7806 44.5319 1.7571 1758 3195 1475</cell><cell>52 92 37</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>This is mainly to facilitate analysis; an application may use multiple different sampling distributions, each of which can be analyzed separately.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>Depending on the implementation, there can be multiple workers on each node. We analyze sampling schemes at the node level to simplify exposition.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>Note that while the heuristic may affect performance, it does not affect correctness.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_3"><p>If samples could be re-postponed indefinitely, some samples may never be used because they are constantly being relocated. In such cases, Eq. (1) would not hold.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_4"><p>https://github.com/alexrenz/NuPS</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="6" xml:id="foot_5"><p>See https://netflixprize.com/. We use a synthetic dataset because the largest openly available dataset that we are aware of is only</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_6"><p>7.6 GB large.   </p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="7" xml:id="foot_7"><p>The comparisons to Petuum and Lapse report raw speedups, because Petuum and Lapse did not reach the 90% thresholds within the time budget.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="8" xml:id="foot_8"><p>We tried to advance the clock after every 1, every 10, and every 100 data points. We observed best performance for clocking after every 10th data point. Due to the high run times of Petuum, we ran each configuration only once.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="9" xml:id="foot_9"><p>Postponing made no measurable difference in KGE, and sped up WV run times by</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_10"><p>10%, with no measurable impact on model quality.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGMENTS</head><p>This work was supported by the <rs type="funder">German Ministry of Education and Research in the Software Campus</rs> (<rs type="grantNumber">01IS17052</rs>) and BIFOLD (<rs type="grantNumber">01IS18037A</rs>) programs and by the <rs type="funder">German Research Foundation</rs> in the moreEVS (<rs type="programName">410830482) program</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_PxC44A8">
+					<idno type="grant-number">01IS17052</idno>
+				</org>
+				<org type="funding" xml:id="_tQtsaEQ">
+					<idno type="grant-number">01IS18037A</idno>
+					<orgName type="program" subtype="full">410830482) program</orgName>
+				</org>
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">TensorFlow: A System for Large-scale Machine Learning</title>
+		<author>
+			<persName><forename type="first">Martín</forename><surname>Abadi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Barham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianmin</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhifeng</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andy</forename><surname>Davis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Dean</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthieu</forename><surname>Devin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanjay</forename><surname>Ghemawat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><surname>Irving</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Isard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manjunath</forename><surname>Kudlur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Josh</forename><surname>Levenberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rajat</forename><surname>Monga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sherry</forename><surname>Moore</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Derek</forename><surname>Murray</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benoit</forename><surname>Steiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Tucker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vijay</forename><surname>Vasudevan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pete</forename><surname>Warden</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Wicke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoqiang</forename><surname>Zheng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 12th Conference on Operating Systems Design and Implementation</title>
+		<meeting>the 12th Conference on Operating Systems Design and Implementation</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="265" to="283" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Scalable Inference in Latent Variable Models</title>
+		<author>
+			<persName><forename type="first">Amr</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Moahmed</forename><surname>Aly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joseph</forename><surname>Gonzalez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shravan</forename><surname>Narayanamurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Smola</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 5th ACM International Conference on Web Search and Data Mining (WSDM &apos;12)</title>
+		<meeting>the 5th ACM International Conference on Web Search and Data Mining (WSDM &apos;12)</meeting>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="123" to="132" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Extreme Classification via Adversarial Softmax Approximation</title>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Bamler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Mandt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 8th International Conference on Learning Representations</title>
+		<meeting>the 8th International Conference on Learning Representations</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note>ICLR &apos;20</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Accelerated Backpropagation Learning: Two Optimization Methods</title>
+		<author>
+			<persName><forename type="first">Roberto</forename><surname>Battiti</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Complex systems</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="331" to="342" />
+			<date type="published" when="1989">1989. 1989</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">LibKGE -A Knowledge Graph Embedding Library for Reproducible research</title>
+		<author>
+			<persName><forename type="first">Samuel</forename><surname>Broscheit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adrian</forename><surname>Kochsiek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Betz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rainer</forename><surname>Gemulla</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="165" to="174" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Large Scale Online Learning of Image Similarity Through Ranking</title>
+		<author>
+			<persName><forename type="first">Gal</forename><surname>Chechik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Varun</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Uri</forename><surname>Shalit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samy</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="page" from="1109" to="1135" />
+			<date type="published" when="2010">2010. 2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">One Billion Word Benchmark for Measuring Progress in Statistical Language Modeling</title>
+		<author>
+			<persName><forename type="first">Ciprian</forename><surname>Chelba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Schuster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Ge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thorsten</forename><surname>Brants</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Phillipp</forename><surname>Koehn</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1312.3005</idno>
+		<imprint>
+			<date type="published" when="2013">2013. 2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<author>
+			<persName><forename type="first">Tianqi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mu</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yutian</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Min</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naiyan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianjun</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bing</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chiyuan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1512.01274</idno>
+		<title level="m">MXNet: A Flexible and Efficient Machine Learning Library for Heterogeneous Distributed Systems</title>
+		<imprint>
+			<date type="published" when="2015">2015. 2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">On Statistical Characteristics of Real-Life Knowledge Graphs</title>
+		<author>
+			<persName><forename type="first">Wenliang</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengyu</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bing</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weining</forename><surname>Qian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aoying</forename><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Big Data Benchmarks, Performance Optimization, and Emerging Hardware</title>
+		<editor>
+			<persName><forename type="first">Jianfeng</forename><surname>Zhan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Rui</forename><surname>Han</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Roberto</forename><forename type="middle">V</forename><surname>Zicari</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="37" to="49" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Project Adam: Building an Efficient and Scalable Deep Learning Training System</title>
+		<author>
+			<persName><forename type="first">Trishul</forename><surname>Chilimbi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yutaka</forename><surname>Suzue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johnson</forename><surname>Apacible</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karthik</forename><surname>Kalyanaraman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 11th Conference on Operating Systems Design and Implementation</title>
+		<meeting>the 11th Conference on Operating Systems Design and Implementation</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="571" to="582" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Analysis of Replication in Distributed Database Systems</title>
+		<author>
+			<persName><forename type="first">Bruno</forename><surname>Ciciani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Dias</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philip</forename><surname>Yu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Knowledge &amp; Data Engineering</title>
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="247" to="261" />
+			<date type="published" when="1990-04">1990. April 1990</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Power-Law Distributions in Empirical Data</title>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Clauset</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cosma</forename><surname>Rohilla Shalizi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">E J</forename><surname>Newman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">SIAM Rev</title>
+		<imprint>
+			<biblScope unit="volume">51</biblScope>
+			<biblScope unit="page" from="661" to="703" />
+			<date type="published" when="2009">2009. 2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Exploiting Iterative-ness for Parallel ML Computations</title>
+		<author>
+			<persName><forename type="first">Henggang</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexey</forename><surname>Tumanov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinliang</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lianghong</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jesse</forename><surname>Haber-Kucharsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qirong</forename><surname>Ho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregory</forename><surname>Ganger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Phillip</forename><surname>Gibbons</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Garth</forename><surname>Gibson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Xing</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the ACM Symposium on Cloud Computing</title>
+		<meeting>the ACM Symposium on Cloud Computing</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note>SOCC &apos;14). Article 5</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">High-Performance Distributed ML at Scale through Parameter Server Consistency Models</title>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhimanu</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinliang</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qirong</forename><surname>Ho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Garth</forename><surname>Gibson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><forename type="middle">P</forename><surname>Xing</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 29th AAAI Conference on Artificial Intelligence (AAAI &apos;15)</title>
+		<meeting>the 29th AAAI Conference on Artificial Intelligence (AAAI &apos;15)</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="79" to="87" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Large Scale Distributed Deep Networks</title>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Dean</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Greg</forename><surname>Corrado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rajat</forename><surname>Monga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthieu</forename><surname>Devin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quoc</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc'aurelio</forename><surname>Ranzato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Senior</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Tucker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ke</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Ng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th International Conference on Neural Information Processing Systems (NIPS &apos;12)</title>
+		<meeting>the 25th International Conference on Neural Information Processing Systems (NIPS &apos;12)</meeting>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="1223" to="1231" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter</title>
+		<meeting>the 2019 Conference of the North American Chapter</meeting>
+		<imprint>
+			<publisher>Human Language Technologies</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="4171" to="4186" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Comparative Models of the File Assignment Problem</title>
+		<author>
+			<persName><forename type="first">Lawrence</forename><forename type="middle">W</forename><surname>Dowdy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Derrell</forename><forename type="middle">V</forename><surname>Foster</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Comput. Surv</title>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="287" to="313" />
+			<date type="published" when="1982-06">1982. June 1982</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Adaptive Subgradient Methods for Online Learning and Stochastic Optimization</title>
+		<author>
+			<persName><forename type="first">John</forename><surname>Duchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elad</forename><surname>Hazan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoram</forename><surname>Singer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="page" from="2121" to="2159" />
+			<date type="published" when="2011-07">2011. July 2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Adaptive protocols for managing replicated distributed databases</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">El</forename><surname>Abbadi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 3rd IEEE Symposium on Parallel and Distributed Processing</title>
+		<meeting>the 3rd IEEE Symposium on Parallel and Distributed Processing</meeting>
+		<imprint>
+			<date type="published" when="1991">1991</date>
+			<biblScope unit="page" from="36" to="43" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">On Power-Law Relationships of the Internet Topology</title>
+		<author>
+			<persName><forename type="first">Michalis</forename><surname>Faloutsos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Petros</forename><surname>Faloutsos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christos</forename><surname>Faloutsos</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Conference on Applications, Technologies, Architectures, and Protocols for Computer Communication (SIGCOMM &apos;99)</title>
+		<meeting>the Conference on Applications, Technologies, Architectures, and Protocols for Computer Communication (SIGCOMM &apos;99)</meeting>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+			<biblScope unit="page" from="251" to="262" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">PowerGraph: Distributed Graph-parallel Computation on Natural Graphs</title>
+		<author>
+			<persName><forename type="first">Joseph</forename><surname>Gonzalez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yucheng</forename><surname>Low</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haijie</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danny</forename><surname>Bickson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carlos</forename><surname>Guestrin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 10th Conference on Operating Systems Design and Implementation</title>
+		<meeting>the 10th Conference on Operating Systems Design and Implementation</meeting>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="17" to="30" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Node2vec: Scalable Feature Learning for Networks</title>
+		<author>
+			<persName><forename type="first">Aditya</forename><surname>Grover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</title>
+		<meeting>the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="855" to="864" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">TicTac: Accelerating Distributed Deep Learning with Communication Scheduling</title>
+		<author>
+			<persName><forename type="first">Sangeetha</forename><forename type="middle">Abdu</forename><surname>Sayed Hadi Hashemi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roy</forename><surname>Jyothi</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Campbell</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of Machine Learning and Systems (MLSys &apos;19</title>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Talwalkar</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">V</forename><surname>Smith</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Zaharia</surname></persName>
+		</editor>
+		<meeting>Machine Learning and Systems (MLSys &apos;19</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="418" to="430" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">More Effective Distributed ML via a Stale Synchronous Parallel Parameter Server</title>
+		<author>
+			<persName><forename type="first">Qirong</forename><surname>Ho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Cipar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Henggang</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jin</forename><forename type="middle">Kyu</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seunghak</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Phillip</forename><surname>Gibbons</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Garth</forename><surname>Gibson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregory</forename><surname>Ganger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Xing</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th International Conference on Neural Information Processing Systems (NIPS &apos;13</title>
+		<meeting>the 26th International Conference on Neural Information Processing Systems (NIPS &apos;13</meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="1223" to="1231" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Universal Language Model Finetuning for Text Classification</title>
+		<author>
+			<persName><forename type="first">Jeremy</forename><surname>Howard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Ruder</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (ACL &apos;18</title>
+		<meeting>the 56th Annual Meeting of the Association for Computational Linguistics (ACL &apos;18</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="328" to="339" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">FlexPS: Flexible Parallelism Control in Parameter Server Architecture</title>
+		<author>
+			<persName><forename type="first">Yuzhen</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tatiana</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yidi</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhenkun</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinfeng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuying</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Cheng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PVLDB</title>
+		<imprint>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="page" from="566" to="579" />
+			<date type="published" when="2018-01">2018. Jan. 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Computing Webscale Topic Models Using an Asynchronous Parameter Server</title>
+		<author>
+			<persName><forename type="first">Rolf</forename><surname>Jagerman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carsten</forename><surname>Eickhoff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maarten</forename><surname>De Rijke</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 40th International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR &apos;17)</title>
+		<meeting>the 40th International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR &apos;17)</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1337" to="1340" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Priority-based Parameter Propagation for Distributed DNN Training</title>
+		<author>
+			<persName><forename type="first">Anand</forename><surname>Jayarajan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinliang</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Garth</forename><surname>Gibson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandra</forename><surname>Fedorova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gennady</forename><surname>Pekhimenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of Machine Learning and Systems (MLSys &apos;19</title>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Talwalkar</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">V</forename><surname>Smith</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Zaharia</surname></persName>
+		</editor>
+		<meeting>Machine Learning and Systems (MLSys &apos;19</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="132" to="145" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Parallelizing Word2Vec in Shared and Distributed Memory</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Satish</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">K</forename><surname>Dubey</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Parallel and Distributed Systems</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="page" from="2090" to="2100" />
+			<date type="published" when="2019">2019. 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Heterogeneity-Aware Distributed Parameter Servers</title>
+		<author>
+			<persName><forename type="first">Jiawei</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bin</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ce</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lele</forename><surname>Yu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2017 ACM International Conference on Management of Data (SIGMOD &apos;17</title>
+		<meeting>the 2017 ACM International Conference on Management of Data (SIGMOD &apos;17</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="463" to="478" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">A Unified Architecture for Accelerating Distributed DNN Training in Heterogeneous GPU/CPU Clusters</title>
+		<author>
+			<persName><forename type="first">Yimin</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yibo</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chang</forename><surname>Lan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bairen</forename><surname>Yi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yong</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chuanxiong</forename><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">14th USENIX Symposium on Operating Systems Design and Implementation</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">20</biblScope>
+			<biblScope unit="page" from="463" to="479" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">STRADS-AP: Simplifying Distributed Machine Learning Programming without Introducing a New Programming Model</title>
+		<author>
+			<persName><forename type="first">Jin</forename><surname>Kyu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kim</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abutalib</forename><surname>Aghayev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Garth</forename><surname>Gibson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Xing</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 USENIX Annual Technical Conference (USENIX &apos;19)</title>
+		<meeting>the 2019 USENIX Annual Technical Conference (USENIX &apos;19)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="207" to="222" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">STRADS: A Distributed Framework for Scheduled Model Parallel Machine Learning</title>
+		<author>
+			<persName><forename type="first">Jin</forename><surname>Kyu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kim</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qirong</forename><surname>Ho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seunghak</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xun</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Garth</forename><surname>Gibson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Xing</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 11th European Conference on Computer Systems (EuroSys &apos;16)</title>
+		<meeting>the 11th European Conference on Computer Systems (EuroSys &apos;16)</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note>Article 5</note>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Parallel Training of Knowledge Graph Embedding Models: A Comparison of Techniques</title>
+		<author>
+			<persName><forename type="first">Adrian</forename><surname>Kochsiek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rainer</forename><surname>Gemulla</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PVLDB</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="page" from="633" to="645" />
+			<date type="published" when="2021-11">2021. Nov 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Matrix Factorization Techniques for Recommender Systems</title>
+		<author>
+			<persName><forename type="first">Yehuda</forename><surname>Koren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Bell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Volinsky</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computer</title>
+		<imprint>
+			<biblScope unit="volume">42</biblScope>
+			<biblScope unit="page" from="30" to="37" />
+			<date type="published" when="2009-08">2009. Aug. 2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lecun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Boser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">S</forename><surname>Denker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Henderson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">E</forename><surname>Howard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hubbard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">D</forename><surname>Jackel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Backpropagation Applied to Handwritten Zip Code Recognition. Neural Comput</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="541" to="551" />
+			<date type="published" when="1989-12">1989. Dec. 1989</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">PyTorch-BigGraph: A Large-scale Graph Embedding System</title>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ledell</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiajun</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothee</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Wehrstedt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhijit</forename><surname>Bose</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Peysakhovich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2nd SysML Conference</title>
+		<meeting>the 2nd SysML Conference</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note>SysML &apos;19</note>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Scaling Distributed Machine Learning with the Parameter Server</title>
+		<author>
+			<persName><forename type="first">Mu</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Andersen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><forename type="middle">Woo</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Smola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amr</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vanja</forename><surname>Josifovski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Long</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eugene</forename><surname>Shekita</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bor-Yiing</forename><surname>Su</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 11th Conference on Operating Systems Design and Implementation</title>
+		<meeting>the 11th Conference on Operating Systems Design and Implementation</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="583" to="598" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Asynchronous Parallel Stochastic Gradient for Nonconvex Optimization</title>
+		<author>
+			<persName><forename type="first">Xiangru</forename><surname>Lian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yijun</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuncheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ji</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th International Conference on Neural Information Processing Systems (NIPS&apos;15</title>
+		<meeting>the 28th International Conference on Neural Information Processing Systems (NIPS&apos;15</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="2737" to="2745" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Analogical Inference for Multirelational Embeddings</title>
+		<author>
+			<persName><forename type="first">Hanxiao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuexin</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yiming</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 34th International Conference on Machine Learning (ICML &apos;17</title>
+		<meeting>the 34th International Conference on Machine Learning (ICML &apos;17</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="2168" to="2178" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Stochastic Answer Networks for Machine Reading Comprehension</title>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yelong</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Duh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (ACL &apos;18</title>
+		<meeting>the 56th Annual Meeting of the Association for Computational Linguistics (ACL &apos;18</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1694" to="1704" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Distributed GraphLab: A Framework for Machine Learning and Data Mining in the Cloud</title>
+		<author>
+			<persName><forename type="first">Yucheng</forename><surname>Low</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danny</forename><surname>Bickson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joseph</forename><surname>Gonzalez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carlos</forename><surname>Guestrin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aapo</forename><surname>Kyrola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joseph</forename><surname>Hellerstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PVLDB</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="page" from="716" to="727" />
+			<date type="published" when="2012-04">2012. April 2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Shared-memory and shared-nothing stochastic gradient descent algorithms for matrix completion</title>
+		<author>
+			<persName><forename type="first">Faraz</forename><surname>Makari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christina</forename><surname>Teflioudi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rainer</forename><surname>Gemulla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Haas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Knowledge and Information Systems</title>
+		<imprint>
+			<biblScope unit="volume">42</biblScope>
+			<biblScope unit="page" from="493" to="523" />
+			<date type="published" when="2015-03-01">2015. 01 Mar 2015</date>
+		</imprint>
+	</monogr>
+	<note>and Yannis Sismanis</note>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Matrix Completion from Power-Law Distributed Samples</title>
+		<author>
+			<persName><forename type="first">Raghu</forename><surname>Meka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prateek</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Inderjit</forename><surname>Dhillon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems, Y. Bengio</title>
+		<editor>
+			<persName><forename type="first">D</forename><surname>Schuurmans</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">J</forename><surname>Lafferty</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">C</forename><surname>Williams</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Culotta</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="page" from="1258" to="1266" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Efficient Estimation of Word Representations in Vector Space</title>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Greg</forename><surname>Corrado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Dean</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 1st International Conference on Learning Representations (ICLR &apos;13)</title>
+		<meeting>the 1st International Conference on Learning Representations (ICLR &apos;13)</meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Popularity Agnostic Evaluation of Knowledge Graph Embeddings</title>
+		<author>
+			<persName><forename type="first">Aisha</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shameem</forename><surname>Parambath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zoi</forename><surname>Kaoudi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ashraf</forename><surname>Aboulnaga</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 36th Conference on Uncertainty in Artificial Intelligence (UAI &apos;20</title>
+		<meeting>the 36th Conference on Uncertainty in Artificial Intelligence (UAI &apos;20</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1059" to="1068" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Large-Scale Analysis of Zipf&apos;s Law in English Texts</title>
+		<author>
+			<persName><forename type="first">Isabel</forename><surname>Moreno-Sánchez</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Francesc Font-Clos, and Álvaro Corral</title>
+		<imprint>
+			<date type="published" when="2016-01-22">2016. 22 Jan 2016</date>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="page">1</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">A Review of Relational Machine Learning for Knowledge Graphs</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evgeniy</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gabrilovich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proc. IEEE</title>
+		<imprint>
+			<biblScope unit="volume">104</biblScope>
+			<biblScope unit="page" from="11" to="33" />
+			<date type="published" when="2016-01">2016. Jan 2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">A Three-way Model for Collective Learning on Multi-relational Data</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hans-Peter</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kriegel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th International Conference on Machine Learning (ICML &apos;11</title>
+		<meeting>the 28th International Conference on Machine Learning (ICML &apos;11</meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="809" to="816" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">On the Difficulty of Training Recurrent Neural Networks</title>
+		<author>
+			<persName><forename type="first">Razvan</forename><surname>Pascanu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 30th International Conference on Machine Learning (ICML &apos;13</title>
+		<meeting>the 30th International Conference on Machine Learning (ICML &apos;13</meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="1310" to="1318" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">GloVe: Global Vectors for Word Representation</title>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Pennington</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Manning</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP) (ACL &apos;14</title>
+		<meeting>the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP) (ACL &apos;14</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1532" to="1543" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Deep Contextualized Word Representations</title>
+		<author>
+			<persName><forename type="first">Matthew</forename><surname>Peters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Neumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohit</forename><surname>Iyyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matt</forename><surname>Gardner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Clark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (NAACL &apos;18</title>
+		<meeting>the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (NAACL &apos;18</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="2227" to="2237" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<monogr>
+		<title level="m" type="main">Disentangling Sampling and Labeling Bias for Learning in Large-Output Spaces</title>
+		<author>
+			<persName><forename type="first">Ankit</forename><surname>Singh Rawat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aditya</forename><surname>Krishna Menon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wittawat</forename><surname>Jitkrittum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sadeep</forename><surname>Jayasumana</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Felix</forename><forename type="middle">X</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sashank</forename><forename type="middle">J</forename><surname>Reddi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanjiv</forename><surname>Kumar</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2105.05736</idno>
+		<imprint>
+			<date type="published" when="2021">2021. 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Software Framework for Topic Modelling with Large Corpora</title>
+		<author>
+			<persName><forename type="first">Radim</forename><surname>Řehůřek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Petr</forename><surname>Sojka</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the LREC 2010 Workshop on New Challenges for NLP Frameworks (LREC &apos;10</title>
+		<meeting>the LREC 2010 Workshop on New Challenges for NLP Frameworks (LREC &apos;10</meeting>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="45" to="50" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">BPR: Bayesian Personalized Ranking from Implicit Feedback</title>
+		<author>
+			<persName><forename type="first">Steffen</forename><surname>Rendle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christoph</forename><surname>Freudenthaler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zeno</forename><surname>Gantner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lars</forename><surname>Schmidt-Thieme</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th Conference on Uncertainty in Artificial Intelligence (UAI &apos;09</title>
+		<meeting>the 25th Conference on Uncertainty in Artificial Intelligence (UAI &apos;09</meeting>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="452" to="461" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Just Move It! Dynamic Parameter Allocation in Action</title>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Renz-Wieland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tobias</forename><surname>Drobisch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zoi</forename><surname>Kaoudi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rainer</forename><surname>Gemulla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Volker</forename><surname>Markl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PVLDB</title>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="page" from="2707" to="2710" />
+			<date type="published" when="2021-07">2021. Jul 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">Dynamic Parameter Allocation in Parameter Servers</title>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Renz-Wieland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rainer</forename><surname>Gemulla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steffen</forename><surname>Zeuch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Volker</forename><surname>Markl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PVLDB</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="page" from="1877" to="1890" />
+			<date type="published" when="2020-07">2020. July 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">You CAN Teach an Old Dog New Tricks! On Training Knowledge Graph Embeddings</title>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samuel</forename><surname>Broscheit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rainer</forename><surname>Gemulla</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 8th International Conference on Learning Representations</title>
+		<meeting>the 8th International Conference on Learning Representations</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note>ICLR &apos;20</note>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<analytic>
+		<title level="a" type="main">FaceNet: A unified embedding for face recognition and clustering</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Schroff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kalenichenko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Philbin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2015 IEEE Conference on Computer Vision and Pattern Recognition (CVPR &apos;15</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="815" to="823" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<analytic>
+		<title level="a" type="main">An Architecture for Parallel Topic Models</title>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Smola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shravan</forename><surname>Narayanamurthy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PVLDB</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="703" to="710" />
+			<date type="published" when="2010-09">2010. Sept. 2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<analytic>
+		<title level="a" type="main">Parsing with Compositional Vector Grammars</title>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Bauer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Manning</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Ng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 51st Annual Meeting of the Association for Computational Linguistics (ACL &apos;13</title>
+		<meeting>the 51st Annual Meeting of the Association for Computational Linguistics (ACL &apos;13</meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="455" to="465" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<analytic>
+		<title level="a" type="main">Distributed Negative Sampling for Word Embeddings</title>
+		<author>
+			<persName><forename type="first">Stergios</forename><surname>Stergiou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zygimantas</forename><surname>Straznickas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rolina</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kostas</forename><surname>Tsioutsiouliklis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 31st AAAI Conference on Artificial Intelligence (AAAI &apos;17</title>
+		<meeting>the 31st AAAI Conference on Artificial Intelligence (AAAI &apos;17</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="2569" to="2575" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<analytic>
+		<title level="a" type="main">Distributed Matrix Completion</title>
+		<author>
+			<persName><forename type="first">Christina</forename><surname>Teflioudi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Faraz</forename><surname>Makari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rainer</forename><surname>Gemulla</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2012 IEEE 12th International Conference on Data Mining (ICDM &apos;12)</title>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="655" to="664" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b63">
+	<analytic>
+		<title level="a" type="main">Transparent Neutral Element Elimination in MPI Reduction Operations</title>
+		<author>
+			<persName><forename type="first">Jesper</forename><surname>Larsson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Träff</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Recent Advances in the Message Passing Interface</title>
+		<editor>
+			<persName><forename type="first">Rainer</forename><surname>Keller</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Edgar</forename><surname>Gabriel</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Michael</forename><surname>Resch</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jack</forename><surname>Dongarra</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="275" to="284" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b64">
+	<analytic>
+		<title level="a" type="main">Complex Embeddings for Simple Link Prediction</title>
+		<author>
+			<persName><forename type="first">Théo</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Éric</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 33rd International Conference on Machine Learning (ICML &apos;16</title>
+		<meeting>the 33rd International Conference on Machine Learning (ICML &apos;16</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2071" to="2080" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b65">
+	<monogr>
+		<title level="m" type="main">KEPLER: A Unified Model for Knowledge Embedding and Pre-trained Language Representation</title>
+		<author>
+			<persName><forename type="first">Xiaozhi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyu</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhaocheng</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juanzi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1911.06136</idno>
+		<imprint>
+			<date type="published" when="2019">2019. 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b66">
+	<analytic>
+		<title level="a" type="main">Distributed Algorithms for Dynamic Replication of Data</title>
+		<author>
+			<persName><forename type="first">Ouri</forename><surname>Wolfson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sushil</forename><surname>Jajodia</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 11fh ACM SIGACT-SIGMOD-SIGART Symposium on Principles of Database Systems (PODS &apos;92</title>
+		<meeting>the 11fh ACM SIGACT-SIGMOD-SIGART Symposium on Principles of Database Systems (PODS &apos;92</meeting>
+		<imprint>
+			<date type="published" when="1992">1992</date>
+			<biblScope unit="page" from="149" to="163" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b67">
+	<analytic>
+		<title level="a" type="main">Petuum: A New Platform for Distributed Machine Learning on Big Data</title>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Xing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qirong</forename><surname>Ho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jin-Kyu</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinliang</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seunghak</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xun</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pengtao</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhimanu</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaoliang</forename><surname>Yu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 21th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</title>
+		<meeting>the 21th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="1335" to="1344" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b68">
+	<analytic>
+		<title level="a" type="main">Understanding Negative Sampling in Graph Representation Learning</title>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chang</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongxia</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingren</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</title>
+		<meeting>the 26th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1666" to="1676" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b69">
+	<analytic>
+		<title level="a" type="main">Poseidon: An Efficient Communication Architecture for Distributed Deep Learning on GPU Clusters</title>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zeyu</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shizhen</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qirong</forename><surname>Ho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodan</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiting</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinliang</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pengtao</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><forename type="middle">P</forename><surname>Xing</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2017 USENIX Annual Technical Conference (ATC &apos;17)</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="181" to="193" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b70">
+	<monogr>
+		<title level="m" type="main">Taming Convergence for Asynchronous Stochastic Gradient Descent with Unbounded Delay in Non-Convex Learning</title>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jia</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhengyuan</forename><surname>Zhu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1805.09470</idno>
+		<imprint>
+			<date type="published" when="2018">2018. 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b71">
+	<analytic>
+		<title level="a" type="main">PS2: Parameter Server on Spark</title>
+		<author>
+			<persName><forename type="first">Zhipeng</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bin</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yingxia</forename><surname>Shao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lele</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiawei</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xupeng</forename><surname>Miao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 ACM International Conference on Management of Data (SIGMOD &apos;19)</title>
+		<meeting>the 2019 ACM International Conference on Management of Data (SIGMOD &apos;19)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="376" to="388" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b72">
+	<monogr>
+		<title level="m" type="main">DGL-KE: Training Knowledge Graph Embeddings at Scale</title>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Da Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zeyuan</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zihao</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jin</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Karypis</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2004.08532</idno>
+		<imprint>
+			<date type="published" when="2020">2020. 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

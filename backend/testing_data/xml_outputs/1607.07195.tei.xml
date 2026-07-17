@@ -1,0 +1,544 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Higher-Order Factorization Machines</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Mathieu</forename><surname>Blondel</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Communication Science Laboratories</orgName>
+								<orgName type="institution">NTT</orgName>
+								<address>
+									<country key="JP">Japan</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Akinori</forename><surname>Fujino</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Communication Science Laboratories</orgName>
+								<orgName type="institution">NTT</orgName>
+								<address>
+									<country key="JP">Japan</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Naonori</forename><surname>Ueda</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Communication Science Laboratories</orgName>
+								<orgName type="institution">NTT</orgName>
+								<address>
+									<country key="JP">Japan</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Masakazu</forename><surname>Ishihata</surname></persName>
+							<affiliation key="aff1">
+								<orgName type="institution">Hokkaido University</orgName>
+								<address>
+									<country key="JP">Japan</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Higher-Order Factorization Machines</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="MD5">494256A0D9AFD4B1D94B2B1BD417899D</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T09:08+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Factorization machines (FMs) are a supervised learning approach that can use second-order feature combinations even when the data is very high-dimensional. Unfortunately, despite increasing interest in FMs, there exists to date no efficient training algorithm for higher-order FMs (HOFMs). In this paper, we present the first generic yet efficient algorithms for training arbitrary-order HOFMs. We also present new variants of HOFMs with shared parameters, which greatly reduce model size and prediction times while maintaining similar accuracy. We demonstrate the proposed approaches on four different link prediction tasks.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Factorization machines (FMs) <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b13">14]</ref> are a supervised learning approach that can use second-order feature combinations efficiently even when the data is very high-dimensional. The key idea of FMs is to model the weights of feature combinations using a low-rank matrix. This has two main benefits. First, FMs can achieve empirical accuracy on a par with polynomial regression or kernel methods but with smaller and faster to evaluate models <ref type="bibr" target="#b3">[4]</ref>. Second, FMs can infer the weights of feature combinations that were not observed in the training set. This second property is crucial for instance in recommender systems, a domain where FMs have become increasingly popular <ref type="bibr" target="#b13">[14,</ref><ref type="bibr" target="#b15">16]</ref>. Without the low-rank property, FMs would fail to generalize to unseen user-item interactions.</p><p>Unfortunately, although higher-order FMs (HOFMs) were briefly mentioned in the original work of <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b13">14]</ref>, there exists to date no efficient algorithm for training arbitrary-order HOFMs. In fact, even just computing predictions given the model parameters naively takes polynomial time in the number of features. For this reason, HOFMs have, to our knowledge, never been applied to any problem. In addition, HOFMs, as originally defined in <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b13">14]</ref>, model each degree in the polynomial expansion with a different matrix and therefore require the estimation of a large number of parameters.</p><p>In this paper, we propose the first efficient algorithms for training arbitrary-order HOFMs. To do so, we rely on a link between FMs and the so-called ANOVA kernel <ref type="bibr" target="#b3">[4]</ref>. We propose linear-time dynamic programming algorithms for evaluating the ANOVA kernel and computing its gradient. Based on these, we propose stochastic gradient and coordinate descent algorithms for arbitrary-order HOFMs. To reduce the number of parameters, as well as prediction times, we also introduce two new kernels derived from the ANOVA kernel, allowing us to define new variants of HOFMs with shared parameters. We demonstrate the proposed approaches on four different link prediction tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Factorization machines (FMs)</head><p>Second-order FMs. Factorization machines (FMs) <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b13">14]</ref> are an increasingly popular method for efficiently using second-order feature combinations in classification or regression tasks even when the data is very high-dimensional. Let w ∈ R d and P ∈ R d×k , where k ∈ N is a rank hyper-parameter. We denote the rows of P by pj and its columns by p s , for j ∈ [d] and s ∈ [k],</p><p>where [d] := {1, . . . , d}. Then, FMs predict an output y ∈ R from a vector x = [x 1 , . . . , x d ] T by ŷFM (x) := w, x + j &gt;j pj , pj x j x j .</p><p>(1)</p><p>An important characteristic of ( <ref type="formula">1</ref>) is that it considers only combinations of distinct features (i.e., the squared features x<ref type="foot" target="#foot_2">2</ref> 1 , . . . , x 2 d are ignored). The main advantage of FMs compared to naive polynomial regression is that the number of parameters to estimate is O(dk) instead of O(d 2 ). In addition, we can compute predictions in O(2dk) time<ref type="foot" target="#foot_1">1</ref> using</p><formula xml:id="formula_0">ŷFM (x) = w T x + 1 2 P T x 2 - k s=1 p s • x 2 ,</formula><p>where • indicates element-wise product <ref type="bibr" target="#b2">[3]</ref>. Given a training set X = [x 1 , . . . , x n ] ∈ R d×n and y = [y 1 , . . . , y n ] T ∈ R n , w and P can be learned by minimizing the following non-convex objective</p><formula xml:id="formula_1">1 n n i=1 (y i , ŷFM (x i )) + β 1 2 w 2 + β 2 2 P 2 ,<label>(2)</label></formula><p>where is a convex loss function and β 1 &gt; 0, β 2 &gt; 0 are hyper-parameters. The popular libfm library <ref type="bibr" target="#b13">[14]</ref> implements efficient stochastic gradient and coordinate descent algorithms for obtaining a stationary point of (2). Both algorithms have a runtime complexity of O(2dkn) per epoch.</p><p>Higher-order FMs (HOFMs). Although no training algorithm was provided, FMs were extended to higher-order feature combinations in the original work of <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b13">14]</ref>. Let P (t) ∈ R d×kt , where t ∈ {2, . . . , m} is the order or degree of feature combinations considered, and k t ∈ N is a rank hyper-parameter. Let p(t) j be the j th row of P (t) . Then m-order HOFMs can be defined as</p><formula xml:id="formula_2">ŷHOFM (x) := w, x + j &gt;j p(2) j , p<label>(2)</label></formula><formula xml:id="formula_3">j x j x j + • • • + jm&gt;•••&gt;j1 p(m) j1 , . . . , p(m) jm x j1 x j2 . . . x jm<label>(3)</label></formula><p>where we defined p(t) j1 , . . . , p(t)</p><formula xml:id="formula_4">jt := sum(p (t) j1 • • • • • p(t)</formula><p>jt ) (sum of element-wise products). The objective function of HOFMs can be expressed in a similar way as for (2):</p><formula xml:id="formula_5">1 n n i=1 (y i , ŷHOFM (x i )) + β 1 2 w 2 + m t=2 β t 2 P (t) 2 ,<label>(4)</label></formula><p>where β 1 , . . . , β m &gt; 0 are hyper-parameters. To avoid the combinatorial explosion of hyperparameter combinations to search, in our experiments we will simply set</p><formula xml:id="formula_6">β 1 = • • • = β m and k 2 = • • • = k m . While<label>(</label></formula><p>3) looks quite daunting, <ref type="bibr" target="#b3">[4]</ref> recently showed that FMs can be expressed from a simpler kernel perspective. Let us define the ANOVA 2 kernel <ref type="bibr" target="#b18">[19]</ref> of degree 2 ≤ m ≤ d by</p><formula xml:id="formula_7">A m (p, x) := jm&gt;•••&gt;j1 m t=1 p jt x jt .<label>(5)</label></formula><p>For later convenience, we also define A 0 (p, x) := 1 and A 1 (p, x) := p, x . Then it is shown that</p><formula xml:id="formula_8">ŷHOFM (x) = w, x + k2 s=1 A 2 p (2) s , x + • • • + km s=1 A m p (m) s , x ,<label>(6)</label></formula><p>where p (t) s is the s th column of P (t) . This perspective shows that we can view FMs and HOFMs as a type of kernel machine whose "support vectors" are learned directly from data. Intuitively, the ANOVA kernel can be thought as a kind of polynomial kernel that uses feature combinations without replacement (i.e., of distinct features). A key property of the ANOVA kernel is multi-linearity <ref type="bibr" target="#b3">[4]</ref>:</p><formula xml:id="formula_9">A m (p, x) = A m (p ¬j , x ¬j ) + p j x j A m-1 (p ¬j , x ¬j ),<label>(7)</label></formula><p>where p ¬j denotes the (d -1)-dimensional vector with p j removed and similarly for x ¬j . That is, everything else kept fixed, A m (p, x) is an affine function of p j ∀j ∈ [d]. Although no training algorithm was provided, <ref type="bibr" target="#b3">[4]</ref> showed based on (7) that, although non-convex, the objective function of arbitrary-order HOFMs is convex in w and in each row of P (2) , . . . , P (m) , separately.</p><p>Interpretability of HOFMs. An advantage of FMs and HOFMs is their interpretability. To see why this is the case, notice that we can rewrite (3) as</p><formula xml:id="formula_10">ŷHOFM (x) = w, x + j &gt;j W (2) j,j x j x j + • • • + jm&gt;•••&gt;j1 W (m) j1,...,jm x j1 x j2 . . . x jm ,</formula><p>where we defined</p><formula xml:id="formula_11">W (t) := kt s=1 p (t) s ⊗ • • • ⊗ p (t) s t times . Intuitively, W (t) ∈ R d t is a low-rank t-way</formula><p>tensor which contains the weights of feature combinations of degree t. For instance, when t = 3, W</p><p>i,j,k is the weight of x i x j x k . Similarly to the ANOVA decomposition of functions, HOFMs consider only combinations of distinct features (i.e., x j1 x j2 . . . x jm for j m &gt; • • • &gt; j 2 &gt; j 1 ). This paper. Unfortunately, there exists to date no efficient algorithm for training arbitrary-order HOFMs. Indeed, computing (5) naively takes O(d m ), i.e., polynomial time. In the following, we present linear-time algorithms. Moreover, HOFMs, as originally defined in <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b13">14]</ref> require the estimation of m -1 matrices P (2) , . . . , P (m) . Thus, HOFMs can produce large models when m is large. To address this issue, we propose new variants of HOFMs with shared parameters.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Linear-time stochastic gradient algorithms for HOFMs</head><p>The kernel view presented in Section 2 allows us to focus on the ANOVA kernel as the main "computational unit" for training HOFMs. In this section, we develop dynamic programming (DP) algorithms for evaluating the ANOVA kernel and computing its gradient in only O(dm) time.</p><p>Evaluation. The main observation (see also <ref type="bibr" target="#b17">[18,</ref><ref type="bibr">Section 9.2]</ref>) is that we can use <ref type="bibr" target="#b6">(7)</ref> to recursively remove features until computing the kernel becomes trivial. Let us denote a subvector of p by p 1:j ∈ R j and similarly for x. Let us introduce the shorthand a j,t := A t (p 1:j , x 1:j ). Then, from <ref type="bibr" target="#b6">(7)</ref>,</p><formula xml:id="formula_13">a j,t = a j-1,t + p j x j a j-1,t-1 ∀d ≥ j ≥ t ≥ 1.<label>(8)</label></formula><p>For convenience, we also define a j,0 = 1 ∀j ≥ 0 since A 0 (p, x) = 1 and a j,t = 0 ∀j &lt; t since there does not exist any t-combination of features in a j &lt; t dimensional vector.</p><p>Table <ref type="table">1</ref>: Example of DP table</p><formula xml:id="formula_14">j = 0 j = 1 j = 2 . . . j = d t = 0 1 1 1 1 1 t = 1 0 a1,1 a2,1 . . . a d,1 t = 2 0 0 a2,2 . . . a d,2 . . . . . . . . . . . . . . . . . . t = m 0 0 0 . . . a d,m</formula><p>The quantity we want to compute is A m (p, x) = a d,m . Instead of naively using recursion <ref type="bibr" target="#b7">(8)</ref>, which would lead to many redundant computations, we use a bottom-up approach and organize computations in a DP table. We start from the top-left corner to initialize the recursion and go through the table to arrive at the solution in the bottomright corner. The procedure, summarized in Algorithm 1, takes O(dm) time and memory.</p><p>Gradients. For computing the gradient of A m (p, x) w.r.t. p, we use reverse-mode differentiation <ref type="bibr" target="#b1">[2]</ref> (a.k.a. backpropagation in a neural network context), since it allows us to compute the entire gradient in a single pass. We supplement each variable a j,t in the DP table by a so-called adjoint ãj,t := ∂a d,m ∂aj,t , which represents the sensitivity of a d,m = A m (p, x) w.r.t. a j,t . From recursion (8), except for edge cases, a j,t influences a j+1,t+1 and a j+1,t . Using the chain rule, we then obtain</p><formula xml:id="formula_15">ãj,t = ∂a d,m ∂a j+1,t ∂a j+1,t ∂a j,t + ∂a d,m ∂a j+1,t+1 ∂a j+1,t+1 ∂a j,t = ãj+1,t +p j+1 x j+1 ãj+1,t+1 ∀d-1 ≥ j ≥ t ≥ 1.</formula><p>(9) Similarly, we introduce the adjoint pj :</p><formula xml:id="formula_16">= ∂a d,m ∂pj ∀j ∈ [d]. Since p j influences a j,t ∀t ∈ [m], we have pj = m t=1 ∂a d,m ∂a j,t ∂a j,t ∂p j = m t=1 ãj,t a j-1,t-1 x j .</formula><p>We can run recursion <ref type="bibr" target="#b8">(9)</ref> in reverse order of the DP table starting from ãd,m =</p><formula xml:id="formula_17">∂a d,m</formula><p>∂a d,m = 1. Using this approach, we can compute the entire gradient ∇A m (p, x) = [p 1 , . . . , pd ] T w.r.t. p in O(dm) time and memory. The procedure is summarized in Algorithm 2.</p><formula xml:id="formula_18">Algorithm 1 Evaluating A m (p, x) in O(dm) Input: p ∈ R d , x ∈ R d aj,t ← 0 ∀t ∈ [m], j ∈ [d] ∪ {0} aj,0 ← 1 ∀j ∈ [d] ∪ {0} for t := 1, . . . , m do for j := t, . . . , d do aj,t ← aj-1,t + pjxjaj-1,t-1 end for end for Output: A m (p, x) = a d,m Algorithm 2 Computing ∇A m (p, x) in O(dm) Input: p ∈ R d , x ∈ R d , {aj,t} d,m j,t=0 ãj,t ← 0 ∀t ∈ [m + 1], j ∈ [d] ãd,m ← 1 for t := m, . . . , 1 do for j := d -1, . . . , t do ãj,t ← ãj+1,t + ãj+1,t+1pj+1xj+1 end for end for pj := m t=1 ãj,taj-1,t-1xj ∀j ∈ [d] Output: ∇A m (p, x) = [p1, . . . , pd ] T</formula><p>Stochastic gradient (SG) algorithms. Based on Algorithm 1 and 2, we can easily learn arbitraryorder HOFMs using any gradient-based optimization algorithm. Here we focus our discussion on SG algorithms. If we alternatingly minimize (4) w.r.t P (2) , . . . , P (m) , then the sub-problem associated with degree m is of the form</p><formula xml:id="formula_19">F (P ) := 1 n n i=1 y i , k s=1 A m (p s , x i ) + o i + β 2 P 2 , (<label>10</label></formula><formula xml:id="formula_20">)</formula><p>where o 1 , . . . , o n ∈ R are fixed offsets which account for the contribution of degrees other than m to the predictions. The sub-problem is convex in each row of P <ref type="bibr" target="#b3">[4]</ref>. A SG update for (10) w.r.t. p s for some instance x i can be computed by p s ← p s -η (y i , ŷi )∇A m (p s , x i ) -ηβp s , where η is a learning rate and where we defined ŷi := k s=1 A m (p s , x i ) + o i . Because evaluating A m (p, x) and computing its gradient both take O(dm), the cost per epoch, i.e., of visiting all instances, is O(mdkn). When m = 2, this is the same cost as the SG algorithm implemented in libfm.</p><p>Sparse data. We conclude this section with a few useful remarks on sparse data. Let us denote the support of a vector x = [x 1 , . . . , x d ] T by supp(x) := {j ∈ [d] : x j = 0} and let us define x S := [x j : j ∈ S] T . It is easy to see from (7) that the gradient and x have the same support, i.e., supp(∇A m (p, x)) = supp(x). Another useful remark is that A m (p, x) = A m (p supp(x) , x supp(x) ), provided that m ≤ n z (x), where n z (x) is the number of non-zero elements in x. Hence, when the data is sparse, we only need to iterate over non-zero features in Algorithm 1 and 2. Consequently, their time and memory cost is only O(n z (x)m) and thus the cost per epoch of SG algorithms is O(mkn z (X)).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Coordinate descent algorithm for arbitrary-order HOFMs</head><p>We now describe a coordinate descent (CD) solver for arbitrary-order HOFMs. CD is a good choice for learning HOFMs because their objective function is coordinate-wise convex, thanks to the multilinearity of the ANOVA kernel <ref type="bibr" target="#b3">[4]</ref>. Our algorithm can be seen as a generalization to higher orders of the CD algorithms proposed in <ref type="bibr" target="#b13">[14,</ref><ref type="bibr" target="#b3">4]</ref>.</p><p>An alternative recursion. Efficient CD implementations typically require maintaining statistics for each training instance, such as the predictions at the current iteration. When a coordinate is updated, the statistics then need to be synchronized. Unfortunately, the recursion we used in the previous section is not suitable for a CD algorithm because it would require to store and synchronize the DP table for each training instance upon coordinate-wise updates. We therefore turn to an alternative recursion:</p><formula xml:id="formula_21">A m (p, x) = 1 m m t=1 (-1) t+1 A m-t (p, x)D t (p, x),<label>(11)</label></formula><p>where we defined D t (p, x) := d j=1 (p j x j ) t . Note that the recursion was already known in the context of traditional kernel methods (c.f., <ref type="bibr" target="#b18">[19,</ref><ref type="bibr">Section 11.8]</ref>) but its application to HOFMs is novel. Since we know that A 0 (p, x) = 1 and A 1 (p, x) = p, x , we can use <ref type="bibr" target="#b10">(11)</ref> to compute A 2 (p, x), then A 3 (p, x), and so on. The overall evaluation cost for arbitrary m ∈ N is O(md + m 2 ).</p><p>Coordinate-wise derivatives. We can apply reverse-mode differentiation to recursion <ref type="bibr" target="#b10">(11)</ref> in order to compute the entire gradient (c.f., Appendix C). However, in CD, since we only need the derivative of one variable at a time, we can simply use forward-mode differentiation:</p><formula xml:id="formula_22">∂A m (p, x) ∂p j = 1 m m t=1 (-1) t+1 ∂A m-t (p, x) ∂p j D t (p, x) + A m-t (p, x) ∂D t (p, x) ∂p j ,<label>(12)</label></formula><p>where ∂D t (p,x) ∂pj = tp t-1 j x t j . The advantage of ( <ref type="formula" target="#formula_22">12</ref>) is that we only need to cache D t (p, x) for t ∈ [m]. Hence the memory complexity per sample is only O(m) instead of O(dm) for <ref type="bibr" target="#b7">(8)</ref>.</p><p>Use in a CD algorithm. Similarly to <ref type="bibr" target="#b3">[4]</ref>, we assume that the loss function is µ-smooth and update the elements p j,s of P in cyclic order by p j,s ← p j,s -η -1 j,s ∂F (P ) ∂pj,s , where we defined</p><formula xml:id="formula_23">η j,s := µ n n i=1 ∂A m (p s , x i ) ∂p j,s<label>2</label></formula><formula xml:id="formula_24">+ β and ∂F (P ) ∂p j,s = 1 n n i=1 (y i , ŷi ) ∂A m (p s , x i ) ∂p j,s + βp j,s .</formula><p>The update guarantees that the objective value is monotonically non-increasing and is the exact coordinate-wise minimizer when is the squared loss. Overall, the total cost per epoch, i.e., updating all coordinates once, is O(τ (m)kn z (X)), where τ (m) is the time it takes to compute <ref type="bibr" target="#b11">(12)</ref>. Assuming D t (p s , x i ) have been previously cached, for t ∈ [m], computing <ref type="bibr" target="#b11">(12)</ref> takes τ (m) = m(m + 1)/2 -1 operations. For fixed m, if we unroll the two loops needed to compute <ref type="bibr" target="#b11">(12)</ref>, modern compilers can often further reduce the number of operations needed. Nevertheless, this quadratic dependency on m means that our CD algorithm is best for small m, typically m ≤ 4.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">HOFMs with shared parameters</head><p>HOFMs, as originally defined in <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b13">14]</ref>, model each degree with separate matrices P (2) , . . . , P (m) . Assuming that we use the same rank k for all matrices, the total model size of m-order HOFMs is therefore O(kdm). Moreover, even when using our O(dm) DP algorithm, the cost of computing predictions is O(k(2d</p><formula xml:id="formula_25">+ • • • + md)) = O(kdm 2 )</formula><p>. Hence, HOFMs tend to produce large, expensiveto-evaluate models. To reduce model size and prediction times, we introduce two new kernels which allow us to share parameters between each degree: the inhomogeneous ANOVA kernel and the all-subsets kernel. Because both kernels are derived from the ANOVA kernel, they share the same appealing properties: multi-linearity, sparse gradients and sparse-data friendliness.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Inhomogeneous ANOVA kernel</head><p>It is well-known that a sum of kernels is equivalent to concatenating their associated feature maps <ref type="bibr" target="#b17">[18,</ref><ref type="bibr">Section 3.4]</ref>. Let θ = [θ 1 , . . . , θ m ] T . To combine different degrees, a natural kernel is therefore</p><formula xml:id="formula_26">A 1→m (p, x; θ) := m t=1 θ t A t (p, x).<label>(13)</label></formula><p>The kernel uses all feature combinations of degrees 1 up to m. We call it inhomogeneous ANOVA kernel, since it is an inhomogeneous polynomial of x. In contrast, A m (p, x) is homogeneous. The main difference between ( <ref type="formula" target="#formula_26">13</ref>) and ( <ref type="formula" target="#formula_8">6</ref>) is that all ANOVA kernels in the sum share the same parameters. However, to increase modeling power, we allow each kernel to have different weights θ 1 , . . . , θ m .</p><p>Evaluation. Due to the recursive nature of Algorithm 1, when computing A m (p, x), we also get A 1 (p, x), . . . , A m-1 (p, x) for free. Indeed, lower-degree kernels are available in the last column of the DP ) for ŷHOFM (x). Learning. While it is certainly possible to learn P and θ by directly minimizing some objective function, here we propose an easier solution, which works well in practice. Our key observation is that we can easily turn A m into A 1→m by adding dummy values to feature vectors. Let us denote the concatenation of p with a scalar γ by [γ, p] and similarly for x. From (7), we easily obtain Similarly, if we apply (7) twice, we obtain:</p><formula xml:id="formula_27">A m ([γ 1 , p], [1, x]) = A m (p, x) + γ 1 A m-1 (p, x).</formula><formula xml:id="formula_28">A m ([γ 1 , γ 2 , p], [1, 1, x]) = A m (p, x) + (γ 1 + γ 2 )A m-1 (p, x) + γ 1 γ 2 A m-2 (p, x).</formula><p>Applying the above to m = 2 and m = 3, we obtain</p><formula xml:id="formula_29">A 2 ([γ1, p], [1, x]) = A 1→2 (p, x; [γ1, 1]) and A 3 ([γ1, γ2, p], [1, 1, x]) = A 1→3 (p, x; [γ1γ2, γ1 +γ2, 1]).</formula><p>More generally, by adding m -1 dummy features to p and x, we can convert A m to A 1→m . Because p is learned, this means that we can automatically learn γ 1 , . . . , γ m-1 . These weights can then be converted to θ 1 , . . . , θ m by "unrolling" recursion <ref type="bibr" target="#b6">(7)</ref>. Although simple, we show in our experiments that this approach works favorably compared to directly learning P and θ. The main advantage of this approach is that we can use the same software unmodified (we simply need to minimize <ref type="bibr" target="#b9">(10)</ref> with the augmented data). Moreover, the cost of computing the entire gradient by Algorithm 2 using the augmented data is just O(dm + m 2 ) compared to O(dm 2 ) for HOFMs with separate parameters.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">All-subsets kernel</head><p>We now consider a closely related kernel called all-subsets kernel [18, Definition 9.5]:</p><formula xml:id="formula_30">S(p, x) := d j=1 (1 + p j x j ).</formula><p>The main difference with the traditional use of this kernel is that we learn p. Interestingly, it can be shown that S(p, x) = 1 + A 1→d (p, x; 1) = 1 + A 1→nz(x) (p, x; 1), where n z (x) is the number of non-zero features in x. Hence, the kernel uses all combinations of distinct features up to order n z (x) with uniform weights. Even if d is very large, the kernel can be a good choice if each training instance contains only a few non-zero elements. To learn the parameters, we simply substitute A m with S in <ref type="bibr" target="#b9">(10)</ref>. In SG or CD algorithms, all it entails is to substitute ∇A m (p, x) with ∇S(p, x).</p><p>For computing ∇S(p, x), it is easy to verify that S(p, x) = S(p ¬j , x ¬j )(1 + p j x j ) ∀j ∈ [d] and therefore we have</p><formula xml:id="formula_31">∇S(p, x) = x 1 S(p ¬1 , x ¬1 ), . . . , x d S(p ¬d , x ¬d ) T = x 1 S(p, x) 1 + p 1 x 1 , . . . , x d S(p, x) 1 + p d x d T .</formula><p>Therefore, the main advantage of the all-subsets kernel is that we can evaluate it and compute its gradient in just O(d) time. The total cost for computing ŷ =</p><formula xml:id="formula_32">k s=1 S(p s , x) is only O(kd).</formula><p>6 Experimental results</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1">Application to link prediction</head><p>Problem setting. We now demonstrate a novel application of HOFMs to predict the presence or absence of links between nodes in a graph. Formally, we assume two sets of possibly disjoint nodes of size n A and n B , respectively. We assume features for the two sets of nodes, represented by matrices A ∈ R d A ×n A and B ∈ R d B ×n B . For instance, A can represent user features and B movie features. We denote the columns of A and B by a i and b j , respectively. We are given a matrix Y ∈ {0, 1} n A ×n B , whose elements indicate presence (positive sample) or absence (negative sample) of link between two nodes a i and b j . We denote the number of positive samples by n + . Using this data, our goal is to predict new associations. Datasets used in our experiments are summarized in Table <ref type="table" target="#tab_1">2</ref>. Note that for the NIPS and Enzyme datasets, A = B.</p><p>Conversion to a supervised problem. We need to convert the above information to a format FMs and HOFMs can handle. To predict an element y i,j of Y , we simply form x i,j to be the concatenation of a i and b j and feed this to a HOFM in order to compute a prediction ŷi,j . Because HOFMs use feature combinations in x i,j , they can learn the weights of feature combinations between a i and b j .</p><p>At training time, we need both positive and negative samples. Let us denote the set of positive and negative samples by Ω. Then our training set is composed of (x i,j , y i,j ) pairs, where (i, j) ∈ Ω.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Models compared.</head><p>• HOFM: ŷi,j = ŷHOFM (x i,j ) as defined in (3) and as originally proposed in <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b13">14]</ref>. We minimize (4) by alternating minimization of (10) for each degree.</p><p>• HOFM-shared: ŷi,j = k s=1 A 1→m (p s , x i,j ; θ). We learn P and θ using the simple augmented data approach described in Section 5.1 (HOFM-shared-augmented). Inspired by SimpleMKL <ref type="bibr" target="#b11">[12]</ref>, we also report results when learning P and θ directly by minimizing 1 |Ω| (i,j)∈Ω (y i,j , ŷi,j ) + β 2 P 2 subject to θ ≥ 0 and θ, 1 = 1 (HOFM-shared-simplex).</p><p>• All-subsets: ŷi,j = k s=1 S(p s , x i,j ). As explained in Section 5.2, this model is equivalent to the HOFM-shared model with m = n z (x i,j ) and θ = 1.</p><p>• Polynomial network: ŷi,j = k s=1 (γ s + p s , x i,j ) m . This model can be thought as factorization machine variant that uses a polynomial kernel instead of the ANOVA kernel (c.f., <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b3">4,</ref><ref type="bibr" target="#b21">22]</ref>).</p><p>• Low-rank bilinear regression: ŷi,j = a i U V T b j , where U ∈ R d A ×k and V ∈ R d B ×k . Such model was shown to work well for link prediction in <ref type="bibr" target="#b8">[9]</ref> and <ref type="bibr" target="#b9">[10]</ref>. We learn U and V by minimizing</p><formula xml:id="formula_33">1 |Ω| (i,j)∈Ω (y i,j , ŷi,j ) + β 2 ( U 2 + V 2 )</formula><p>. Experimental setup and evaluation. In this experiment, for all models above, we use CD rather than SG to avoid the tuning of a learning rate hyper-parameter. We set to be the squared loss. Although we omitted it from our notation for clarity, we also fit a bias term for all models. We evaluated the compared models using the area under the ROC curve (AUC), which is the probability that the model correctly ranks a positive sample higher than a negative sample. We split the n + positive samples into 50% for training and 50% for testing. We sample the same number of negative samples as positive samples for training and use the rest for testing. We chose β from 10 -6 , 10 -5 , . . . , 10 6 by cross-validation and following <ref type="bibr" target="#b8">[9]</ref> we empirically set k = 30. Throughout our experiments, we initialized the elements of P randomly by N (0, 0.01).</p><p>Results are indicated in Table <ref type="table" target="#tab_2">3</ref>. Overall the two best models were HOFM and HOFM-sharedaugmented, which achieved the best scores on 3 out of 4 datasets. The two models outperformed low-rank bilinear regression on 3 out 4 datasets, showing the benefit of using higher-order feature combinations. HOFM-shared-augmented achieved similar accuracy to HOFM, despite using a smaller model. Surprisingly, HOFM-shared-simplex did not improve over HOFM-shared-augmented except on the GD dataset. We conclude that our augmented data approach is convenient yet works well in practice. All-subsets and polynomial networks performed worse than HOFM and HOFM-sharedaugmented, except on the GD dataset where they were the best. Finally, we observe that HOFM were quite robust to increasing m, which is likely a benefit of modeling each degree with a separate matrix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2">Solver comparison</head><p>We compared AdaGrad <ref type="bibr" target="#b4">[5]</ref>, L-BFGS and coordinate descent (CD) for minimizing <ref type="bibr" target="#b9">(10)</ref> when varying the degree m on the NIPS dataset with β = 0.1 and k = 30. We constructed the data in the same way as explained in the previous section and added m -1 dummy features, resulting in n = 8, 280 sparse samples of dimension d = 27, 298 + m -1. For AdaGrad and L-BFGS, we computed the (stochastic) gradients using Algorithm 2. All solvers used the same initialization.</p><p>Results are indicated in Figure <ref type="figure">1</ref>. We see that our CD algorithm performs very well when m ≤ 3 but starts to deteriorate when m ≥ 4, in which case L-BFGS becomes advantageous. As shown in Figure <ref type="figure">1 d</ref>), the cost per epoch of AdaGrad and L-BFGS scales linearly with m, a benefit of our DP algorithm for computing the gradient. However, to our surprise, we found that AdaGrad is quite sensitive to the learning rate η. AdaGrad diverged for η ∈ {1, 0.1, 0.01} and the largest value to work well was η = 0.001. This explains why AdaGrad did not outperform CD despite the lower cost per epoch. In the future, it would be useful to create a CD algorithm with a better dependency on m.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Conclusion and future directions</head><p>In this paper, we presented the first training algorithms for HOFMs and introduced new HOFM variants with shared parameters. A popular way to deal with a large number of negative samples is to use an objective function that directly maximize AUC <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b14">15]</ref>. This is especially easy to do with SG algorithms because we can sample pairs of positive and negative samples from the dataset upon each SG update. We therefore expect the algorithms developed in Section 3 to be especially useful in this setting. Recently, <ref type="bibr" target="#b6">[7]</ref> proposed a distributed SG algorithm for training second-order FMs. It should be straightforward to extend this algorithm to HOFMs based on our contributions in Section 3. Finally, it should be possible to integrate Algorithm 1 and 2 into a deep learning framework such as TensorFlow <ref type="bibr" target="#b0">[1]</ref>, in order to easily compose ANOVA kernels with other layers (e.g., convolutional).  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Reverse-mode differentiation on the alternative recursion</head><p>We now describe how to apply reverse-mode differentiation to the alternative recursion <ref type="bibr" target="#b10">(11)</ref> in order to compute the entire gradient efficiently. Let us introduce the shorthands a t := A t (p, x) and d t := D t (p, x). We can then write the recursion as</p><formula xml:id="formula_34">a m = 1 m m t=1</formula><p>(-1) t+1 a m-t d t .</p><p>For concreteness, let us illustrate the recursion for m = 3. We have dt tp t-1 j x t j .</p><p>Assuming that d 1 , . . . , d m and a 1 , . . . , a m have been previously computed, which takes O(dm+m 2 ), the procedure for computing the gradient can be summarized as follows:</p><p>1. Initialize ãm = 1, 2. Compute ãm-1 , . . . , ã1 (in that order), </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>(a) Convergence when m = 2 (Figure 1 :</head><label>21</label><figDesc>Figure 1: Solver comparison for minimizing (10) when varying the degree m on the NIPS dataset with β = 0.1 and k = 30. Results on other datasets are in Appendix B.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>(a) m = 2 (</head><label>2</label><figDesc>b) m = 3 (c) m = 4</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 2 : 4 Figure 3 : 4 Figure 4 :Figure 5 :</head><label>243445</label><figDesc>Figure 2: Solver comparison for minimizing<ref type="bibr" target="#b9">(10)</ref> on the Enzyme dataset. We set β to the values with best test-set performance, which were β = 0.1, β = 0.1 and β = 0.01, respectively. We set k = 30.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>a 1 = a 0 d 1 , a 2 = 1 2 (a 1 d 1 -a 0 d 2 ) and a 3 = 1 3 (a 2 d 1 -a 1 d 2 + 1 s</head><label>112123121</label><figDesc>a 0 d 3 ).We see that a 2 influences a 3 , and a 1 influences a 2 and a 3 . Likewise, d 3 influences a 3 , d 2 influences a 2 and a 3 , and d 1 influences a 1 , a 2 and a 3 . Let us denote the adjoints ãt := ∂am ∂at and dt := ∂am ∂dt . For general m, summing over quantities that influences a t and d t , we obtain ãt = m s=t+1 (-1) s-t+1 s ãs d s-t and dt = (-1) t+1 m s=t ãs a s-t .Let us denote the adjoint of p j by pj := ∂am ∂pj . We know that p j directly influences only d 1 , . . . , d m and therefore</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>3 . 1 p 1 p</head><label>311</label><figDesc>Compute dm , . . . , d1 , 4. Compute ∇A m (p, x) = [p 1 , . . . , pd ] T .Steps 2 and 4 both take O(m 2 ) and step 4 takes O(dm) so the total cost is O(dm + m 2 ). We can improve the complexity of step 4 as follows. We can rewrite ∇A m (p, x) in matrix notation:∇A m (p, x) = 1 x 1 (p 1 x 1 ) 2 . . . (p 1 x 1 ) m-1 1 p 2 x 2 (p 2 x 2 ) 2 . . . (p 2 x 2 ) d x d (p d x d ) 2 . . . (p d x d ) m-1The left matrix is called a Vandermonde matrix. The product between a d × m Vandermonde matrix and a m-dimensional vector can be computed using the Moenck-Borodin algorithm (an algorithm similar to the FFT), in O(r log 2 l), where r = max(d, m) and l = min(d, m)<ref type="bibr" target="#b10">[11]</ref>. Since m ≤ d, the cost of step 4 can therefore be reduced to O(d log 2 m).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Datasets used in our For a detailed description, c.f. Appendix A.</figDesc><table><row><cell>Dataset</cell><cell>n+</cell><cell>Columns of A</cell><cell>nA</cell><cell>dA</cell><cell>Columns of B</cell><cell>nB</cell><cell>dB</cell></row><row><cell>NIPS [17]</cell><cell>4,140</cell><cell>Authors</cell><cell cols="2">2,037 13,649</cell><cell></cell><cell></cell><cell></cell></row><row><cell>Enzyme [21]</cell><cell>2,994</cell><cell>Enzymes</cell><cell>668</cell><cell>325</cell><cell></cell><cell></cell><cell></cell></row><row><cell>GD [10]</cell><cell>3,954</cell><cell>Diseases</cell><cell>3,209</cell><cell>3,209</cell><cell>Genes</cell><cell cols="2">12,331 25,275</cell></row><row><cell cols="2">Movielens 100K [6] 21,201</cell><cell>Users</cell><cell>943</cell><cell>49</cell><cell>Movies</cell><cell>1,682</cell><cell>29</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>3 :</head><label>3</label><figDesc>Comparison of area under the ROC curve (AUC) as measured on the test sets.</figDesc><table><row><cell></cell><cell cols="2">NIPS Enzyme</cell><cell>GD</cell><cell>Movielens 100K</cell></row><row><cell>HOFM (m = 2)</cell><cell>0.856</cell><cell>0.880</cell><cell>0.717</cell><cell>0.778</cell></row><row><cell>HOFM (m = 3)</cell><cell>0.875</cell><cell>0.888</cell><cell>0.717</cell><cell>0.786</cell></row><row><cell>HOFM (m = 4)</cell><cell>0.874</cell><cell>0.887</cell><cell>0.717</cell><cell>0.786</cell></row><row><cell>HOFM (m = 5)</cell><cell>0.874</cell><cell>0.887</cell><cell>0.717</cell><cell>0.786</cell></row><row><cell cols="2">HOFM-shared-augmented (m = 2) 0.858</cell><cell>0.876</cell><cell>0.704</cell><cell>0.778</cell></row><row><cell cols="2">HOFM-shared-augmented (m = 3) 0.874</cell><cell>0.887</cell><cell>0.704</cell><cell>0.787</cell></row><row><cell cols="2">HOFM-shared-augmented (m = 4) 0.836</cell><cell>0.824</cell><cell>0.663</cell><cell>0.779</cell></row><row><cell cols="2">HOFM-shared-augmented (m = 5) 0.824</cell><cell>0.795</cell><cell>0.600</cell><cell>0.621</cell></row><row><cell>HOFM-shared-simplex (m = 2)</cell><cell>0.716</cell><cell>0.865</cell><cell>0.721</cell><cell>0.701</cell></row><row><cell>HOFM-shared-simplex (m = 3)</cell><cell>0.777</cell><cell>0.870</cell><cell>0.721</cell><cell>0.709</cell></row><row><cell>HOFM-shared-simplex (m = 4)</cell><cell>0.758</cell><cell>0.870</cell><cell>0.721</cell><cell>0.709</cell></row><row><cell>HOFM-shared-simplex (m = 5)</cell><cell>0.722</cell><cell>0.869</cell><cell>0.721</cell><cell>0.709</cell></row><row><cell>All-subsets</cell><cell>0.730</cell><cell>0.840</cell><cell>0.721</cell><cell>0.714</cell></row><row><cell>Polynomial network (m = 2)</cell><cell>0.725</cell><cell>0.879</cell><cell>0.721</cell><cell>0.761</cell></row><row><cell>Polynomial network (m = 3)</cell><cell>0.789</cell><cell>0.853</cell><cell>0.719</cell><cell>0.696</cell></row><row><cell>Polynomial network (m = 4)</cell><cell>0.782</cell><cell>0.873</cell><cell>0.717</cell><cell>0.708</cell></row><row><cell>Polynomial network (m = 5)</cell><cell>0.543</cell><cell>0.524</cell><cell>0.648</cell><cell>0.501</cell></row><row><cell>Low-rank bilinear regression</cell><cell>0.855</cell><cell>0.694</cell><cell>0.611</cell><cell>0.718</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_0"><p>30th Conference on Neural Information Processing Systems (NIPS 2016), Barcelona, Spain.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_1"><p>We include the constant factor for fair later comparison with arbitrary-order HOFMs.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_2"><p>The name comes from the ANOVA decomposition of functions.<ref type="bibr" target="#b19">[20,</ref><ref type="bibr" target="#b18">19]</ref> </p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Supplementary material A Dataset descriptions</head><p>• NIPS: co-author graph of authors at the first twelve editions of NIPS, obtained from <ref type="bibr" target="#b16">[17]</ref>. For this dataset, as well as the Enzyme dataset below, we have A = B. The co-author graph comprises n A = n B = 2, 037 authors represented by bag-of-words vectors of dimension d A = d B = 13, 649 (words used by authors in their publications). The number of positive samples is n + = 4, 140.</p><p>• Enzyme: metabolic network obtained from <ref type="bibr" target="#b20">[21]</ref>. The network comprises n A = n B = 668 enzymes represented by three sets of features: a 157-dimensional vector of phylogenetic information, a 145-dimensional vector of gene expression information and a 23-dimensional vector of gene location information. We concatenate the three sets of information to form feature vectors of dimension d A = d B = 325. Original enzyme similarity scores are between 0 and 1. We binarize the scores using 0.95 as threshold. The resulting number of positive samples is n + = 2, 994.</p><p>• GD: human gene-disease association data obtained from <ref type="bibr" target="#b9">[10]</ref>. The bipartite graph is comprised of n A = 3, 209 diseases and n B = 12, 331 genes. We represent each disease using a vector of d A = 3, 209 dimensions, whose elements are similarity scores obtained from MimMiner. The study <ref type="bibr" target="#b9">[10]</ref> also used bag-of-words vectors describing each disease but we found these to not help improve performance both for baselines and proposed methods. We represent each gene using a vector of d B = 25, 275 features, which are the concatenation of 12, 331 similarity scores obtained from HumanNet and 12, 944 gene-phenotype associations from 8 other species. See <ref type="bibr" target="#b9">[10]</ref> for a detailed description of the features. The number of positive samples is n + = 3, 954.</p><p>• Movielens 100K: recommender system data obtained from <ref type="bibr" target="#b5">[6]</ref>. The bipartite graph is comprised of n A = 943 users and n B = 1, 682 movies. For users, we convert age, gender, occupation and living area (first digit of zipcode) to a binary vector using a one-hot encoding. For movies, we use the release year and genres. The resulting vectors are of dimension d A = 49 and d B = 29, respectively. Original ratings are between 1 and 5. We binarize the ratings using 5 as threshold, resulting in n + = 21, 201 positive samples.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Additional experiments B.1 Solver comparison</head><p>We also compared AdaGrad, L-BFGS and coordinate descent (CD) on the Enzyme, Gene-Disease (GD) and Movielens 100K datasets. Results are indicated in Figure <ref type="figure">2</ref>, 3 and 4, respectively.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.2 Recommender system experiments</head><p>As we explained in Section 5.2, the all-subsets kernel can be a good choice if the number of non-zero elements per sample is small. To verify this assumption, we ran experiments on two recommender system tasks: Movielens 1M and Last.fm. We used the exact same setting as in [4, Section 9.3]. For each rating y i , the corresponding x i was set to the concatenation of the one-hot encodings of the user and item indices. We compared the following models: Results are indicated in Figure <ref type="figure">5</ref>. We see that All-subsets performs relatively well on these tasks.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">TensorFlow: Large-scale machine learning on heterogeneous systems</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Abadi</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Automatic differentiation in machine learning: a survey</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">G</forename><surname>Baydin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">A</forename><surname>Pearlmutter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">A</forename><surname>Radul</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1502.05767</idno>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Convex factorization machines</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Blondel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Fujino</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Ueada</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of European Conference on Machine Learning and Principles and Practice of Knowledge Discovery in Databases (ECML PKDD)</title>
+		<meeting>European Conference on Machine Learning and Principles and Practice of Knowledge Discovery in Databases (ECML PKDD)</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Polynomial networks and factorization machines: New insights and efficient training algorithms</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Blondel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ishihata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Fujino</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Ueada</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of International Conference on Machine Learning (ICML)</title>
+		<meeting>International Conference on Machine Learning (ICML)</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Adaptive subgradient methods for online learning and stochastic optimization</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Duchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Hazan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Singer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="page" from="2121" to="2159" />
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<ptr target="http://grouplens.org/datasets/movielens/" />
+		<title level="m">GroupLens</title>
+		<imprint>
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Difacto -distributed factorization machines</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Smola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-X</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of International Conference on Web Search and Data Mining</title>
+		<meeting>International Conference on Web Search and Data Mining</meeting>
+		<imprint>
+			<publisher>WSDM</publisher>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">On the computational efficiency of training neural networks</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Livni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Shalev-Shwartz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Shamir</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="855" to="863" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Link prediction via matrix factorization</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">K</forename><surname>Menon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Elkan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Machine Learning and Knowledge Discovery in Databases</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="437" to="452" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Inductive matrix completion for predicting gene-disease associations</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Natarajan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><forename type="middle">S</forename><surname>Dhillon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Bioinformatics</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="issue">12</biblScope>
+			<biblScope unit="page" from="60" to="68" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">Y</forename><surname>Pan</surname></persName>
+		</author>
+		<title level="m">Structured Matrices and Polynomials: Unified Superfast Algorithms</title>
+		<imprint>
+			<publisher>Springer-Verlag New York, Inc</publisher>
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">A</forename><surname>Rakotomamonjy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Bach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Canu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Grandvalet</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Simplemkl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="2491" to="2521" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Factorization machines</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rendle</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of International Conference on Data Mining</title>
+		<meeting>International Conference on Data Mining</meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="995" to="1000" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Factorization machines with libfm</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rendle</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Intelligent Systems and Technology (TIST)</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="57" to="78" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Bpr: Bayesian personalized ranking from implicit feedback</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rendle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Freudenthaler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Gantner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Schmidt-Thieme</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the twenty-fifth conference on uncertainty in artificial intelligence</title>
+		<meeting>the twenty-fifth conference on uncertainty in artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="452" to="461" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Fast context-aware recommendations with factorization machines</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rendle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Gantner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Freudenthaler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Schmidt-Thieme</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SIGIR</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="635" to="644" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">S</forename><surname>Roweis</surname></persName>
+		</author>
+		<ptr target="http://www.cs.nyu.edu/~roweis/data.html" />
+		<imprint>
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Kernel Methods for Pattern Analysis</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shawe-Taylor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Cristianini</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+			<publisher>Cambridge University Press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<author>
+			<persName><forename type="first">V</forename><surname>Vapnik</surname></persName>
+		</author>
+		<title level="m">Statistical learning theory</title>
+		<imprint>
+			<publisher>Wiley</publisher>
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Spline models for observational data</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Wahba</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1990">1990</date>
+			<biblScope unit="volume">59</biblScope>
+			<pubPlace>Siam</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Supervised enzyme network inference from the integration of genomic data and chemical information</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yamanishi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-P</forename><surname>Vert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kanehisa</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Bioinformatics</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="page" from="468" to="477" />
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Tensor machines for learning target-specific polynomial features</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gittens</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1504.01697</idno>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

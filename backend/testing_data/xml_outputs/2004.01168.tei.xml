@@ -1,0 +1,872 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Evaluating the Calibration of Knowledge Graph Embeddings for Trustworthy Link Prediction</title>
+				<funder ref="#_FrnmyRp #_rB4BQ4P">
+					<orgName type="full">National Science Foundation</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2020-10-06">6 Oct 2020</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Tara</forename><surname>Safavi</surname></persName>
+							<email>tsafavi@umich.edu</email>
+						</author>
+						<author>
+							<persName><forename type="first">Danai</forename><surname>Koutra</surname></persName>
+							<email>dkoutra@umich.edu</email>
+						</author>
+						<author>
+							<persName><forename type="first">Edgar</forename><surname>Meij</surname></persName>
+							<email>emeij@bloomberg.net</email>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Michigan</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">University of Michigan</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Evaluating the Calibration of Knowledge Graph Embeddings for Trustworthy Link Prediction</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2020-10-06">6 Oct 2020</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">205ECAB1184BB8EE9219BC39BC3E936D</idno>
+					<idno type="arXiv">arXiv:2004.01168v3[cs.AI]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T09:37+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Little is known about the trustworthiness of predictions made by knowledge graph embedding (KGE) models. In this paper we take initial steps toward this direction by investigating the calibration of KGE models, or the extent to which they output confidence scores that reflect the expected correctness of predicted knowledge graph triples. We first conduct an evaluation under the standard closed-world assumption (CWA), in which predicted triples not already in the knowledge graph are considered false, and show that existing calibration techniques are effective for KGE under this common but narrow assumption. Next, we introduce the more realistic but challenging open-world assumption (OWA), in which unobserved predictions are not considered true or false until ground-truth labels are obtained. Here, we show that existing calibration techniques are much less effective under the OWA than the CWA, and provide explanations for this discrepancy. Finally, to motivate the utility of calibration for KGE from a practitioner's perspective, we conduct a unique case study of human-AI collaboration, showing that calibrated predictions can improve human performance in a knowledge graph completion task.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Knowledge graphs are essential resources in natural language processing tasks such as question answering and reading comprehension <ref type="bibr" target="#b16">(Shen et al., 2019;</ref><ref type="bibr" target="#b25">Yang et al., 2019)</ref>. Because they are by nature incomplete, extensive research efforts have been invested into completing them via different techniques <ref type="bibr" target="#b7">(Ji et al., 2020;</ref><ref type="bibr" target="#b1">Belth et al., 2020)</ref>.</p><p>One such technique is knowledge graph embedding (KGE), which involves learning latent representations of entities and relations to be used toward predicting new facts. KGE models are most Figure <ref type="figure">1</ref>: An example of how optimizing for ranking does not necessarily lead to trustworthy prediction scores. Here, an uncalibrated KGE model would perform well according to ranking metrics because the true triple is ranked highly, even though it receives a much lower score than the incorrect top-ranked triple and a similar score to the nonsensical triple below it.</p><p>commonly optimized for the link prediction task, which tests their ability to "learn to rank" plausible knowledge graph triples higher than implausible ones. While KGE accuracy as measured by rankingbased link prediction metrics has been steadily improving on benchmark datasets over the past decade <ref type="bibr" target="#b14">(Ruffinelli et al., 2020)</ref>, such evaluation setups can be misleading. As shown in Figure <ref type="figure">1</ref>, ranking only considers the ordering of prediction scores, so models can perform well according to ranking metrics even if they assign high scores to incorrect or nonsensical triples <ref type="bibr" target="#b21">(Wang et al., 2019)</ref>.</p><p>As such, the practical utility of KGE for realworld knowledge graph completion remains limited, especially given that other completion techniques such as relation extraction and manual curation have already been reliably deployed in commercial and scientific settings <ref type="bibr" target="#b17">(Suchanek et al., 2007;</ref><ref type="bibr" target="#b4">Dong et al., 2014;</ref><ref type="bibr" target="#b0">Ammar et al., 2018)</ref>. The outstanding issue that we address relates to trustworthiness: That is, to what degree can one trust the predictions made by KGE? We believe that trustworthiness is an important part of making KGE practical for knowledge graph completion.</p><p>In this paper we propose to investigate confidence calibration as a technique toward making KGE more trustworthy. Intuitively, calibration is a post-processing step that adjusts KGE link prediction scores to be representative of actual correctness probabilities <ref type="bibr" target="#b6">(Guo et al., 2017)</ref>. Calibration has several benefits. From the systems perspective, natural language processing pipelines that include knowledge graphs can rely on calibrated confidence scores to determine which KGE predictions to trust. From a practitioner's perspective, calibrated confidence scores act as decision support for accepting or verifying KGE predictions. Toward this direction we contribute the following:</p><p>Task We evaluate KGE calibration for link prediction, which is important for making KGE viable for deployment. While many knowledge graph embedding models exist, their calibration and general trustworthiness are under-explored ( § 2).</p><p>Complementary evaluations We first evaluate the calibration of established KGE models under the commonly-used closed-world assumption (CWA), in which triples not present in the knowledge graph are considered false ( § 4). We show that existing calibration techniques are highly effective for KGE under this assumption. Next, we introduce the more challenging open-world assumption (OWA), which reflects how practitioners would use KGE: Triples not present in the knowledge graph are assumed to be unknown, rather than false, until ground-truth labels are obtained ( § 5). We show that existing calibration techniques are less effective under the OWA than the CWA, and provide explanations for this discrepancy.</p><p>Case study Finally, as a proof of concept on the benefits of KGE calibration, we conduct a case study in which data annotators complete knowledge graph triples with the help of KGE predictions. We show that presenting calibrated confidence scores alongside predictions significantly improves human accuracy and efficiency in the task, motivating the utility of calibration for human-AI tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related work</head><p>While knowledge graph embeddings and calibration have both been extensively studied in separate communities-see <ref type="bibr" target="#b7">(Ji et al., 2020;</ref><ref type="bibr" target="#b14">Ruffinelli et al., 2020)</ref> for reviews of KGE and <ref type="bibr" target="#b6">(Guo et al., 2017)</ref> for an overview of calibration for machine learningrelatively little work on calibration for knowledge graph embeddings exists.</p><p>In the domain of relation extraction, a few works calibrate predicted knowledge graph triples as com-ponents of large-scale relation extraction systems. <ref type="bibr" target="#b4">Dong et al. (2014)</ref> used Platt scaling <ref type="bibr" target="#b13">(Platt et al., 1999)</ref> to calibrate the probabilities of factual triples in the proprietary Knowledge Vault dataset, and <ref type="bibr" target="#b23">West et al. (2014)</ref> used Platt scaling in a searchbased fact extraction system. However, we focus on link prediction with KGE models that learn only from the knowledge graph itself ( § 3.1).</p><p>We are aware of only two recent works that investigate calibration for KGE, both of which address the task of triple classification <ref type="bibr" target="#b18">(Tabacof and Costabello, 2020;</ref><ref type="bibr" target="#b12">Pezeshkpour et al., 2020)</ref>. By contrast, we focus on link prediction, which is a different-and much more common <ref type="bibr" target="#b15">(Safavi and Koutra, 2020)</ref>-KGE evaluation task. We also contribute an evaluation under the open-world assumption, whereas <ref type="bibr" target="#b18">Tabacof and Costabello (2020)</ref> evaluate under the closed-world assumption only. Finally, unique to our work, we conduct a human-AI case study to demonstrate the benefits of calibration from a practitioner's perspective.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Preliminaries</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Knowledge graph embeddings</head><p>A knowledge graph G comprises a set of entities E, relations R, and (head, relation, tail) triples (h, r, t) ∈ E × R × E. A knowledge graph embedding (KGE) takes triples (h, r, t) as input and learns corresponding embeddings (h, r, t) to maximize a scoring function f : E × R × E → R, such that more plausible triples receive higher scores.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Models</head><p>In this paper we consider four KGE models: TransE <ref type="bibr" target="#b2">(Bordes et al., 2013)</ref>, TransH <ref type="bibr" target="#b22">(Wang et al., 2014)</ref>, DistMult <ref type="bibr" target="#b26">(Yang et al., 2015)</ref>, and ComplEx <ref type="bibr" target="#b19">(Trouillon et al., 2016)</ref>. Table <ref type="table" target="#tab_0">1</ref> gives the scoring function of each model.</p><p>We choose these models because they are efficient and representative of two main classes of KGE architecture-translational <ref type="bibr">(TransE, TransH)</ref> and bilinear (DistMult, ComplEx)-which allows us to interpret how different types of scoring functions affect calibration. Moreover, these earlier models tend to be used by NLP practitioners. For example, the language model in <ref type="bibr" target="#b10">(Logan et al., 2019)</ref> uses TransE embeddings, and the machine reading system in <ref type="bibr" target="#b25">(Yang et al., 2019)</ref> uses DistMult embeddings. From our knowledge of the literature, practitioners using KGE are more likely to use earlier, established models. Since our work targets real-world applications, we prioritize such models.  <ref type="bibr" target="#b26">(Yang et al., 2015)</ref> × h diag(r)t diag(•) turns a vector into a diagonal matrix ComplEx <ref type="bibr" target="#b19">(Trouillon et al., 2016)</ref> × Re h diag(r)t t: Complex conjugate of t; Re: Real part of a complex number</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Link prediction</head><p>The link prediction task, which is most commonly used to evaluate KGE <ref type="bibr" target="#b15">(Safavi and Koutra, 2020)</ref>, is conducted as follows. Given a test triple (h, r, t), we hold out one of its entities or its relation to form a query (h, r, ?), (?, r, t), or (h, ?, t). The model then scores all tail entities t i ∈ E, head entities h i ∈ E, or relations r i ∈ R as answers to the respective query such that higher-ranked completions (h, r, t i ), (h i , r, t), or (h, r i , t) are more plausible. Prior to computing rankings, all true triples across train, validation, and test beyond the given test triple are filtered out <ref type="bibr" target="#b2">(Bordes et al., 2013)</ref>.</p><p>Under the closed-world assumption (CWA, § 4), models are evaluated by their ability to score the true test triples (h, r, t) as high as possible, because it is assumed that all triples not seen in the knowledge graph are incorrect. Under the open-world assumption (OWA, § 5), models simply score all predicted completions, and the predictions not seen in the knowledge graph are not considered true or false until ground-truth labels are obtained.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Confidence calibration</head><p>In the context of link prediction, calibration is the extent to which a KGE model outputs probabilistic confidence scores that reflect its expected accuracy in answering queries. For example, for 100 predicted triple completions scored at a confidence level of 0.99 by a perfectly calibrated model, we expect 99 of these predictions to be correct.</p><p>Calibration is a post-processing step. To calibrate a KGE model, separate calibration parameters are learned on a held-out validation set using the prediction scores of the uncalibrated model. These parameters do not affect the trained, fixed embeddings, but rather transform the model's scores.</p><p>Negative samples All calibration methods require negatives to appropriately adjust prediction scores for plausible and implausible triples. However, link prediction benchmarks ( § 4.2) do not contain negatives. Therefore, per positive instance, we assume that only the held-out entity or relation correctly answers the query, and take all other completions as negative samples.</p><p>This approach, which has been shown to work well in practice for training KGE models <ref type="bibr" target="#b14">(Ruffinelli et al., 2020)</ref>, treats link prediction as multiclass:</p><p>The "class" for each query is its true, held-out entity or relation. Since this approach is less faithful to reality for queries that have many entities as correct answers, in this paper we evaluate calibration for the relation prediction task-that is, answering (h, ?, t) queries-because there are usually fewer correct answers to relation queries than entity queries.<ref type="foot" target="#foot_0">1</ref> While the methods we describe are general, for brevity we focus on relation prediction in this rest of this section.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4">Calibration techniques</head><p>Let (h, ?, t) be a relation query, k = |R| be the number of relations in the graph, and</p><formula xml:id="formula_0">z = [f (h, r 1 , t), . . . , f (h, r k , t)] ∈ R k (1)</formula><p>be a vector of uncalibrated KGE prediction scores across all relations r i ∈ R, such that z i = f (h, r i , t). Note that for head or tail queries (?, r, t) or (h, r, ?), z would instead contain prediction scores across all entities in E.</p><p>Our goal is to learn a function that transforms the uncalibrated score vector z into calibrated probabilities z ∈ R k . Post-calibration, the final predicted answer r to the query and corresponding confidence score p are taken as</p><formula xml:id="formula_1">r = arg max [z ] and p = max [z ],<label>(2)</label></formula><p>where p reflects the expectation that r correctly answers the query, i.e., is the "class" of the query.</p><p>One-versus-all One approach to multiclass calibration is to set up k one-versus-all binary calibration problems, and combine the calibrated probabilities for each class afterward. The classic Platt scaling technique <ref type="bibr" target="#b13">(Platt et al., 1999)</ref>, which was originally designed for binary classification, can be extended to the multiclass setting in this manner. For each class, scalar parameters a and b are learned such that the calibrated probability of the query belonging to the i-th class is given by pi = σ sig (az i + b), where σ sig denotes the logistic sigmoid. The parameters are optimized with negative log-likelihood (i.e., binary cross-entropy) loss, which is standard for obtaining probabilistic predictions <ref type="bibr" target="#b11">(Niculescu-Mizil and Caruana, 2005)</ref>. Afterward, all pi are gathered into z = [p 1 , . . . , pk ] and normalized to sum to 1.</p><p>Another well-known calibration technique that fits in the one-versus-all framework is isotonic regression <ref type="bibr" target="#b27">(Zadrozny and Elkan, 2002)</ref>. For each class, a nondecreasing, piecewise constant function g is learned to minimize the sum of squares [1(r i ) -g(σ sig (z i ))]<ref type="foot" target="#foot_1">2</ref> across all queries, where 1(r i ) is 1 if the class of the given query is r i and 0 otherwise. The calibrated probability of the query belonging to the i-th class is taken as pi = g(σ sig (z i )). Again, these scores are gathered into z = [p 1 , . . . , pk ] and normalized to sum to 1.</p><p>Multiclass An alternative approach is to use the softmax σ sm to directly obtain probabilities over k classes, rather than normalizing independent logistic sigmoids. To this end, <ref type="bibr" target="#b6">Guo et al. (2017)</ref> propose a variant of Platt scaling that learns weights A ∈ R k×k and biases b ∈ R k to obtain calibrated confidences z = σ sm (Az + b). A and b are optimized with cross-entropy loss.</p><p>The weight matrix A can either be learned with the full k 2 parameters (matrix scaling), or can be restricted to be diagonal (vector scaling). We compare both approaches in § 4.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Closed-world evaluation</head><p>We first evaluate KGE calibration under the closedworld assumption (CWA), in which we assume triples not observed in a given knowledge graph are false. This assumption, which is standard in KGE evaluation <ref type="bibr" target="#b14">(Ruffinelli et al., 2020)</ref>, helps narrow evaluation down to a well-defined task in which models are judged solely by their ability to fit known data. It is therefore important to first explore this (restrictive) assumption before moving to the more realistic but challenging OWA ( § 5). </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Task and metrics</head><p>As described in § 3.2, link prediction under the CWA is conducted by constructing queries from test triples and evaluating models' abilities to score these test triples as high as possible. We measure accuracy by the proportion of top-ranked predicted relations that correctly answer each query. 2  We quantify a KGE model's level of calibration with expected calibration error (ECE) <ref type="bibr" target="#b6">(Guo et al., 2017)</ref>. ECE measures the degree to which a model's confidence scores match its link prediction accuracy in bins partitioning [0, 1]. Given M such bins of equal size, ECE is defined as</p><formula xml:id="formula_2">M m=1 |Bm| n |acc(B m ) -conf(B m )|,</formula><p>where n is the number of test triples, B m is the bin containing all predictions with confidence score in a given region of [0, 1], acc(B m ) measures the average link prediction accuracy in bin B m , and conf(B m ) measures the average confidence score in bin B m . ECE is in [0, 1], and lower is better. For all reported ECE values, we use 10 bins.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Data</head><p>We use two link prediction benchmarks (Table <ref type="table" target="#tab_1">2</ref>):</p><p>The WN18RR semantic relation network <ref type="bibr" target="#b3">(Dettmers et al., 2018)</ref> and a version of the FB15K encyclopedic knowledge graph <ref type="bibr" target="#b2">(Bordes et al., 2013)</ref>. We refer to this dataset as FB15K-Wiki because we link it to Wikidata <ref type="bibr" target="#b20">(Vrandečić and Krötzsch, 2014)</ref> to use as an external reference in § 5 for data annotation, discarding entities without entries in Wikidata. Following standard practice, we remove inverse relations from FB15K-Wiki, which artificially inflate link prediction accuracy <ref type="bibr" target="#b3">(Dettmers et al., 2018)</ref>. We randomly split both datasets into 80/10/10 train/validation/test triples to ensure a sufficient number of validation triples for calibration.</p><p>Note that there have been recent (concurrent) efforts to construct appropriate datasets for evaluating KGE calibration <ref type="bibr" target="#b12">(Pezeshkpour et al., 2020;</ref><ref type="bibr" target="#b15">Safavi and Koutra, 2020)</ref>. Analysis on these new datasets is an important direction for future work.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Results and discussion</head><p>We implement our methods in an extension of the OpenKE library. 3 To understand "off-the-shelf" calibration, we train models with the original loss functions and optimizers in the respective papers.</p><p>Appendix A provides details on implementation and model selection.</p><p>Calibration error Table <ref type="table" target="#tab_2">3</ref> gives the ECE of all models before and after calibration using each technique in § 3.4. Confidence scores prior to calibration are scaled via the softmax. Across datasets, standard techniques calibrate models within 1-2 percentage points of error under the CWA. In most cases, the strongest methods are the multiclass (softmax) approaches. The only exception is matrix scaling on FB15K-Wiki, which overfits due to the large number of classes in the dataset (773 in FB15K-Wiki versus only 11 in WN18RR, Table <ref type="table" target="#tab_1">2</ref>). Evidently, taking the softmax over k classes leads to more discriminative probabilities than setting up k separate one-versus-all calibration problems and performing post-hoc normalization.</p><p>We also observe that off-the-shelf calibration error is correlated with model type, as the bilinear models (DistMult, ComplEx) consistently have lower ECE than the translational models (TransE, 3 https://github.com/thunlp/OpenKE/ TransH). To illustrate these differences, Figure <ref type="figure" target="#fig_0">2</ref> gives reliability diagrams for TransE and Dist-Mult before and after calibration. Reliability diagrams <ref type="bibr" target="#b6">(Guo et al., 2017)</ref> bin predictions by confidence level into equally-sized regions of [0, 1] and show the relationship between average confidence level and accuracy in each bin, similar to ECE ( § 4.1). Without calibration, TransE is underconfident because it scores all predictions nearly the same, whereas DistMult is better calibrated. We observe a similar pattern for TransH and ComplEx.</p><p>One potential explanation for this difference is that multiplicative scoring functions lead to more discriminative scores due to the composition of dot products, which amplify embedding values. In fact, TransE is the only model that does not apply any dot product-based transformation to embeddings, leading to the worst off-the-shelf calibration. Another explanation relates to losses: All methods except ComplEx are trained with margin ranking loss, which optimizes the ordering of predictions rather than the values of prediction scores. By contrast, ComplEx is trained with binary cross-entropy loss, the same loss that we use to calibrate models in the validation stage.</p><p>Link prediction accuracy Table 3 also compares link prediction accuracy before and after calibration. In most cases vector and matrix scaling improve accuracy, which is reminiscent of previous work showing that training KGE with softmax cross-entropy improves link prediction performance <ref type="bibr" target="#b8">(Kadlec et al., 2017;</ref><ref type="bibr" target="#b15">Safavi and Koutra, 2020)</ref>. We conclude that for relation prediction under the CWA, vector scaling provides the best trade-off between calibration, accuracy, and efficiency, as it consistently improves accuracy and calibration with only O(k) extra parameters.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Open-world evaluation</head><p>We now address the more realistic open-world assumption (OWA), in which predictions not present in the knowledge graph are considered unknown, rather than false, until ground-truth labels are obtained. While the OWA is beneficial because it helps us assess KGE calibration under more realistic conditions, it is also challenging because it significantly changes the requirements for evaluation. Specifically, now we need a label for every triple considered, whereas with the CWA we only needed labels for a small group of positives.</p><p>We emphasize that this is the reason the OWA is rarely used to evaluate KGE. Narrowing down the large space of unknowns to a manageable smaller set and labeling these triples can be difficult and costly. We thus contribute first steps toward evaluation strategies under the OWA.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Task and metrics</head><p>Similar to the link prediction task in § 4.1, we construct (h, ?, t) queries from (h, r, t) knowledge graph triples. A KGE model then scores relations r i ∈ R to answer these queries. However, here we only consider completions (h, r i , t) ∈ G, those for which the truth values are not known ahead of time, which reflects how practitioners would use KGE to complete knowledge graphs in deployment settings. We use FB15K-Wiki as our dataset for this task because it is linked to Wikidata; we provide links to entities' Wikidata pages in our crowdsourced label collection process ( § 5.2).</p><p>Generating OWA predictions For each (h, ?, t) query, we take the top-ranked (h, r, t) prediction made by a KGE model, and filter these predictions to unknowns (h, r, t) ∈ G.</p><p>To simulate how a practitioner might narrow down a large set of unknowns to a few promising candidates under resource constraints (i.e., the cost of collecting labels), we take only the predictions made with confidence level ≥ 0.80. In other words, we choose to obtain many judgments of a few highconfidence predictions rather than few judgments of many lower-confidence predictions. This helps us robustly compute agreement, maximize the probability of positives, and control quality.</p><p>We run this generation process for each KGE model from § 3.1 trained on FB15K-Wiki before and after calibration. We use vector scaling as our calibrator because it yields the best results on FB15K-Wiki under the CWA ( § 4.3).</p><p>For evaluation, we use the same accuracy and calibration metrics as in § 4.1. However, since there is no "test set" in the open world, we must obtain ground-truth labels on predictions, discussed next.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Data annotation</head><p>We collect judgments of the unknown (h, r, t) ∈ G predictions over FB15K-Wiki using the Figure <ref type="figure">8</ref> crowdsourcing platform. <ref type="foot" target="#foot_2">4</ref> In the task, crowd workers answer whether each prediction is factually correct (Figure <ref type="figure" target="#fig_1">3</ref>). Triples are presented as sentences, converted via pre-defined relation templates, with links to the Wikidata entries of the head and tail entities. Appendix B gives sentence template examples, as well as more details on data preprocessing and the data annotation instructions.</p><p>Participants We limit the annotation task to the highest-trusted group of contributors on Figure <ref type="figure">8</ref>, and require references from Wikidata or Wikipedia for answers. We also pre-label 20% of all triples and require participants to pass a 5-question "quiz" before starting the task and maintain 90% accuracy on the remaining gold questions. We gather judgments for 1,152 triples, and collect five judgments per triple, taking the majority label as groundtruth. The inter-annotator agreement using Fleiss' </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Results and discussion</head><p>Table <ref type="table" target="#tab_4">4</ref> compares calibration error and link prediction accuracy before and after applying vector scaling. As shown in the table, the translational models do not make any uncalibrated predictions above a confidence level of 0.80 due to underconfidence, as dicussed in § 4.3. The bilinear models, DistMult and ComplEx, are much less calibrated off-the-shelf than under the CWA (c.f. Table <ref type="table" target="#tab_2">3</ref>). Even after vector scaling, which reduces ECE significantly for both models and scales the scores of the translational models appropriately, all models are overconfident, collectively reaching around 50-60% accuracy at the 80-100% confidence level (Table <ref type="table" target="#tab_4">4</ref> and<ref type="table">Figure</ref>  <ref type="figure" target="#fig_2">4</ref>). This is consistent with observations of KGE overconfidence made by <ref type="bibr" target="#b12">Pezeshkpour et al. (2020)</ref> for the task of triple classification, as well as observations on the general overconfidence of neural networks for vision and language processing <ref type="bibr" target="#b6">(Guo et al., 2017)</ref>.</p><p>We also do not observe any correlation between a model's level of exposure to a particular relation type and its calibration on that relation type. For example, all models achieve relatively low ECE (&lt; 4%) on the relation /language/ human_language/ countries_spoken_in, which ap- pears in only 0.148% of all triples in FB15K-Wiki. By contrast, for the relation /location/ location/ containedby, which appears in 2.30% of all FB15K-Wiki triples (15× more frequent), all models are poorly calibrated both before and after vector scaling (ECE &gt; 10%). We discuss these results and behaviors in more detail next.</p><p>Challenges of the OWA Accurately calibrating KGE models (and evaluating calibration thereof) is challenging under the OWA for several reasons. First, in the CWA, all queries are known to have at least one correct answer ahead of time, whereas in the OWA we have no such guarantee. This highlights one of the fundamental challenges of the OWA, which is that of selecting predictions from a vast space of unknowns to maximize the probability of positives. It is likely that different strategies for selecting unknowns would lead to different observed levels of calibration.</p><p>In the OWA there is also a mismatch between negatives in the calibration and evaluation stages. Recall that in the calibration stage, we take completions not seen in the graph as negative samples ( § 3.3), which is essentially a closed-world assumption. By contrast, at evaluation time we make an open-world assumption. Higher-quality validation negatives may alleviate this problem; indeed, recent works have raised this issue and constructed new datasets toward this direction, albeit for the task of triple classification <ref type="bibr" target="#b12">(Pezeshkpour et al., 2020;</ref><ref type="bibr" target="#b15">Safavi and Koutra, 2020)</ref>.</p><p>Finally, our observation about the varying levels of calibration per relation suggests that some relations are simply more difficult to calibrate because of the knowledge required to accurately model them. Most popular "vanilla" KGE models do not explicitly make use of external knowledge that can help refine prediction confidences, such as entity types, compositional rules, or text.</p><p>Table <ref type="table" target="#tab_3">5</ref> provides examples of high-scoring predictions made before and after calibration with corresponding labels. While most predictions are grammatically correct, it is perhaps not reasonable to expect KGE to capture certain types of semantics, logic, or commonsense using just the structure of the graph alone, for example that architects can design buildings but not video games (Table <ref type="table" target="#tab_4">4</ref>, calibration with vector scaling on FB15K-Wiki improves OWA link prediction accuracy by 20-28 percentage points, which is significantly higher than under the CWA (c.f. Table <ref type="table" target="#tab_2">3</ref>), in which it improved accuracy by 1-5 percentage points on FB15K-Wiki. We conclude that from a practitioner's perspective, vector scaling is a practical technique for making predictions more accurate and trustworthy even if it does not perfectly calibrate models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Link prediction accuracy As shown in Table</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Case study</head><p>Finally, we conduct a case study of human-AI knowledge graph completion as a proof of concept on the benefits of KGE calibration for practitioners. In this experiment, given "fill-in-the-blank" sentences corresponding to incomplete knowledge graph triples, the task is to choose from multiplechoice answer lists generated by KGE to complete the sentences. We show that, compared to annotators not provided with confidence scores for this task, annotators provided with calibrated confidence scores for answer choices more accurately and efficiently complete triples.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1">Data</head><p>We construct a knowledge graph consisting of 23,887 entities, 13 relations, and 86,376 triples from Wikidata. We collect triples in which the head entity is categorized as a writer on Wikidata, and 13 people-centric relations (e.g., born in, married to). We extract our dataset directly from Wikidata to guarantee that all answers are resolvable using a single public-domain source of information. We choose writing as a domain because it is less "common knowledge" than, e.g., pop culture.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Task input</head><p>After training and calibrating each KGE model from § 3.1 over the Wikidata graph, we use our best-calibrated model (ComplEx + Platt scaling, ECE &lt; 0.01 under the CWA) to predict relations. Per triple, we take the top-five predicted relations {r} 5 i=1 and their calibrated confidence scores {p} 5 i=1 . We filter these predictions to a sample of 678 triples by choosing only instances whose ground-truth relation r is in the top-five predictions {r} 5 i=1 , balancing class proportions, and discarding questions with answers that are easy to guess. Appendix C.1 provides more details.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2">Task setup</head><p>The task is to complete triples by choosing the correct relation among the top-five KGE-predicted relations {r} 5 i=1 , presented in natural language. We conduct an A/B test whereby we vary how the confidence scores {p} 5 i=1 for answer choices are presented to participants. We provide the noconfidence (control) group with multiple-choice answers in their natural language form without any accompanying confidence estimates, whereas the confidence (treatment) group is provided a calibrated confidence score along with each answer candidate in parentheses (Figure <ref type="figure" target="#fig_3">5</ref>). We also provide the confidence group with an extra paragraph of instructions explaining that the confidence scores are generated by a computer system; Appendix C.2 provides the full task instructions.</p><p>To mitigate position bias, we randomize the pre- sentation order of answer choices so that the answers are not necessarily ranked in order of confidence. The answer candidates are presented in the same randomized order for both groups.</p><p>Participants We recruit 226 participants for the no-confidence group and 202 participants for the confidence group from Figure <ref type="figure">8</ref>. Participants are required to pass a 10-question "quiz" and maintain 50% minimum accuracy across all pre-labeled gold questions. We limit each participant to up to 20 judgments, and collect three judgments per triple.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.3">Results and discussion</head><p>Table <ref type="table" target="#tab_5">6</ref> summarizes the results of our case study. For the accuracy results, statistical significance is determined with the Wilcoxon rank-sum test <ref type="bibr" target="#b24">(Wilcoxon, 1992)</ref> due to non-normality. For the efficiency results, statistical significance is determined with an independent two-sample t-test.</p><p>Accuracy The proportion of correct judgments in the no-confidence group was 0.8977 compared to 0.9175 in the confidence group, an improvement of 1.98 percentage points. In terms of the average judgment accuracy per triple, or the number of correct judgments divided by the number of judgments per triple, the no-confidence and confidence averages were 0.8969 and 0.9220 respectively, a significant difference (p &lt; 10 -3 ). The average judgment accuracy per participant also differed significantly (p &lt; 10 -6 ), again in favor of the confidence group. Finally, model accuracy was 0.6268, meaning that for 62.68% (425/678) of triples seen by participants in the confidence group, the answer choice with the highest confidence score was the correct answer. Given that the confidence group's accuracy was much higher (0.9175 versus 0.6268), we can conclude that the participants in this group did not blindly trust the confidence scores.</p><p>Efficiency For this comparison we remove outliers with average judgment times more than two standard deviations away from the group mean. The mean time per judgment was 36.88 seconds in the no-confidence group (194 participants) versus 31.91 seconds in the confidence group (179 participants), a significant difference (p = 0.010). Note that we required sources and textual references for all answers across both groups (Questions 2 and 3 in the example in Figure <ref type="figure" target="#fig_3">5</ref>). However, even with these quality control measures, the confidence group was significantly faster.</p><p>In conclusion, the results of our case study indicate that human-AI knowledge graph completion is more accurate and efficient with calibrated confidence scores generated by KGE. These findings suggest that calibrated probabilities are indeed trustworthy to practitioners, motivating the utility of calibration for human-AI tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Conclusion</head><p>We investigate calibration as a technique for improving the trustworthiness of link prediction with KGE, and uniquely contribute both closed-world and open-world evaluations; the latter is rarely studied for KGE, even though it is more faithful to how practitioners would use KGE for completion. We show that there is significant room for improvement in calibrating KGE under the OWA, and motivate the importance of this direction with our case study of human-AI knowledge graph completion. As knowledge graphs are increasingly used as gold standard data sources in artificial intelligence systems, our work is a first step toward making KGE predictions more trustworthy. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Implementation details</head><p>To select models, we grid search over the number of training epochs in {200, 300, 500}, the batch size in {100, 200, 500}, and the embedding dimension in {50, 100}. For training, we use random uniform negative sampling to speed up the training process.</p><p>We search over the number of negative relations sampled per positive triple in {1, 5}. We follow the original papers' choices of loss functions and optimizers. For loss functions, we use margin ranking for TransE, TransH, and DistMult and binary cross-entropy for ComplEx, and grid search over the margin hyperparameter in {1, 5, 10} for margin ranking. For optimizers, we use SGD for TransE and TransH, and Adagrad for DistMult and ComplEx, with a learning rate of 0.01.</p><p>We use the scikit-learn implementations of oneversus-all Platt scaling and isotonic regression 5 , and implement vector and matrix scaling in Tensorflow with L-BFGS (Liu and Nocedal, 1989) limited to 2,000 iterations following the reference implementation provided by <ref type="bibr" target="#b6">Guo et al. (2017)</ref>. 6</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Open-world evaluation B.1 Data</head><p>To construct the set of triples for annotation, we discard relations pertaining to Netflix (e.g., /me-dia_common/netflix_genre/titles) to avoid disagreement due to crowd workers' countries of origin, since Netflix title availability varies widely by country. We convert all triples to sentences with a set of pre-defined relation templates. Because all relations can be reversed-e.g., (Beyoncé, citizenOf, USA) and (USA, hasCitizen, Beyoncé) express the same fact-we create two sentence templates for each relation and take the sentence that expresses the more plausible and/or grammatical statement 5 https://scikit-learn.org/stable/modules/generated/ sklearn.calibration.CalibratedClassifierCV.html 6 https://github.com/gpleiss/temperature_scaling per triple. Table <ref type="table" target="#tab_6">7</ref> gives examples of sentence templates for relations in FB15K-Wiki.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.2 Task instructions</head><p>This section gives the data annotation task instructions. Note that we conduct two separate annotation tasks: One with links to entities' Wikidata pages, and one with links to entities' IMDb pages for /film relations only (Wikidata is linked to both Freebase and IMDb). The instructions are exactly the same between the two versions of the task, except that each instance of "Wikidata and/or Wikipedia" is replaced with "IMDb" in the latter.</p><p>Overview The goal of this task is to determine whether a given sentence is true or false.</p><p>Instructions Given a sentence that states a potentially true fact about the world, for example</p><p>Elizabeth Alexandra Mary Windsor is the queen of the Commonwealth.</p><p>Read the sentence carefully and answer whether the sentence is factually correct by choosing one of Yes, No, or Unsure. To arrive at your answer, you must use English-language Wikidata and/or Wikipedia, even if you know the answer ahead of time. Each sentence already contains links to potentially relevant Wikidata pages; however, if you do not find an answer in the Wikidata page, you must check related Wikipedia pages. You may not use any external data sources beyond English-language Wikidata or Wikipedia.</p><p>After you select your answer (Question 1), give the primary English-language Wikidata or Wikipedia URL (Question 2) and the text snippet or reasoning you used to arrive at your answer (Question 3).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Rules and Tips</head><p>• Read each sentence carefully and check both Wikidata and Wikipedia before choosing your answer.</p><p>• </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Case study C.1 Data</head><p>To convert all triples into natural language for the task, we map each relation in the dataset to a phrase: P19 (was born in), P20 (died in), P21 (is of gender), P26 (is or was married to), P101 (works or worked in the field of ), P103 (speaks or spoke the native language of ), P106 (works or worked as a), P119 (is buried in), P136 (created works in the genre of ), P140 (follows or followed the religion), P166 (was awarded the), P551 (lives or lived in), and P737 (was influenced by).</p><p>We train each model on all triples that we collected from Wikidata, but limit the task input to a subset of triples for which the correct answer is unambiguous but also not easy to guess. To this end, we discard triples with relations that can be guessed via type matching: Gender (the tail entity is always male or female in our dataset), award received (the tail entity usually contains the word "award", "prize", etc.), and place of burial (the tail entity usually contains the word "cemetery"). We also discard triples with relations that can be interpreted as synonyms of one another (occupation and genre, e.g., "fiction writer"), and triples with the relation field of work for which the tail entity is synonymous with "writer" or "author", since all people in the dataset are categorized as authors or writers on Wikidata. Finally, we remove triples for which there is more than one correct answer in the top-five predicted relations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.2 Task instructions</head><p>This section gives the task instructions of the case study. Underline indicates that the enclosed text was presented to the confidence group only.</p><p>Overview The goal of this task is to complete a sentence so that it states a true fact about the world.</p><p>Instructions Given a partially complete sentence, fill in the blank with exactly one of the provided answer choices so that the sentence states a true fact about the world. To arrive at your answer, you must use the provided Wikidata links in each sentence. You may not use any external data sources beyond the provided Wikidata links in each sentence. Please note that we have used a computer system to generate "confidence values" for each answer choice in order to help you with the task. These values signify our system's belief about which answer is most likely to be correct. After you select your answer (Question 1), give the single Wikidata URL (Question 2) and the text snippet or reasoning you used to arrive at your answer (Question 3). You must provide all answers in English.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Rules and Tips</head><p>• Question 1: Choose the answer that makes the sentence grammatically correct and factual according to Wikidata. Every sentence has at least one correct answer. If you believe a sentence has multiple equally correct answers, choose any of them.</p><p>• Question 2: You must copy-paste the single, entire Wikidata link that you used to arrive at your answer. The link that you copy-paste must contain the correct answer that fills in the blank in the sentence. You must use the Wikidata links provided in each sentence. You may not use any external data sources beyond the provided Wikidata links.</p><p>• Question 3: You may copy-paste relevant textual snippets from Wikidata. If there is no relevant text to copy-paste, you must write a brief explanation of how you arrived at your answer.</p><p>You must provide all answers in English.</p><p>Examples We give two examples presented to crowd workers in the task instructions.</p><p>1. Anna Akhmatova Leo Tolstoy.</p><p>(a) was or is married to (40% confident) (b) was influenced by (45% confident) (c) was the academic advisor of (5% confident) (d) was the child of (5% confident) (e) was the parent of (5% confident) </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Reliability diagrams on FB15K-Wiki with predictions grouped into 10 bins.</figDesc><graphic coords="5,89.40,226.99,194.48,87.94" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Open-world annotation interface.</figDesc><graphic coords="6,307.28,62.81,218.27,147.79" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Reliability before and after calibration, aggregated across all four models.</figDesc><graphic coords="7,334.56,211.27,163.70,92.77" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Example completion task from our case study. The confidence scores shown in parentheses for Question 1 are presented to the confidence group only.</figDesc><graphic coords="8,307.28,62.81,218.27,168.08" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Scoring functions of models used in our evaluation. Bold letters indicate vector embeddings. + indicates that the scoring function is translational, and × indicates that the scoring function is bilinear. We use the L 2 norm TransH (Wang et al., 2014) + -h ⊥ + rt ⊥ Projects h, t onto relation-specific hyperplanes to get h ⊥ , t ⊥ DistMult</figDesc><table><row><cell></cell><cell cols="2">Type Scoring function f Scoring function notes</cell></row><row><cell>TransE (Bordes et al., 2013)</cell><cell>+</cell><cell>-h + r -t</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Datasets used in our closed-world evaluation.</figDesc><table><row><cell></cell><cell cols="3"># entities # relations # triples</cell></row><row><cell>WN18RR</cell><cell>40,493</cell><cell>11</cell><cell>93,003</cell></row><row><cell>FB15K-Wiki</cell><cell>14,290</cell><cell cols="2">773 272,192</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 :</head><label>3</label><figDesc>ECE (10 bins) and accuracy on WN18RR and FB15K-Wiki. ↑: Higher is better. ↓: Lower is better.</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell>WN18RR</cell><cell></cell><cell></cell><cell></cell><cell>FB15K-Wiki</cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell>Uncalib.</cell><cell>One-vs-all Platt Iso.</cell><cell cols="2">Multiclass Vector Matrix</cell><cell>Uncalib.</cell><cell>One-vs-all Platt Iso.</cell><cell cols="2">Multiclass Vector Matrix</cell></row><row><cell></cell><cell>TransE</cell><cell>0.624</cell><cell>0.054 0.040</cell><cell>0.014</cell><cell>0.022</cell><cell>0.795</cell><cell>0.071 0.016</cell><cell>0.026</cell><cell>0.084</cell></row><row><cell>ECE (↓)</cell><cell>TransH DistMult</cell><cell>0.054 0.046</cell><cell>0.057 0.044 0.040 0.029</cell><cell>0.018 0.044</cell><cell>0.027 0.014</cell><cell>0.177 0.104</cell><cell>0.081 0.024 0.095 0.031</cell><cell>0.031 0.018</cell><cell>0.089 0.054</cell></row><row><cell></cell><cell>ComplEx</cell><cell>0.028</cell><cell>0.041 0.034</cell><cell>0.035</cell><cell>0.020</cell><cell>0.055</cell><cell>0.102 0.037</cell><cell>0.024</cell><cell>0.112</cell></row><row><cell></cell><cell>TransE</cell><cell>0.609</cell><cell>0.609 0.609</cell><cell>0.724</cell><cell>0.739</cell><cell>0.849</cell><cell>0.849 0.849</cell><cell>0.857</cell><cell>0.842</cell></row><row><cell>Acc. (↑)</cell><cell>TransH DistMult</cell><cell>0.625 0.570</cell><cell>0.625 0.625 0.570 0.570</cell><cell>0.735 0.723</cell><cell>0.740 0.761</cell><cell>0.850 0.819</cell><cell>0.850 0.850 0.819 0.819</cell><cell>0.858 0.862</cell><cell>0.839 0.871</cell></row><row><cell></cell><cell>ComplEx</cell><cell>0.571</cell><cell>0.571 0.571</cell><cell>0.750</cell><cell>0.781</cell><cell>0.884</cell><cell>0.884 0.884</cell><cell>0.908</cell><cell>0.892</cell></row><row><cell></cell><cell></cell><cell>(a) TransE</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>(b) DistMult</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 5 :</head><label>5</label><figDesc>Examples of OWA predictions before and after calibration.</figDesc><table><row><cell></cell><cell>Head h</cell><cell>Predicted relation r</cell><cell>Tail t</cell><cell cols="2">Model Conf. p True?</cell></row><row><cell></cell><cell>Bloomfield Hills</cell><cell cols="2">/location/administrative_division/second_level_division_of United States of America</cell><cell>ComplEx</cell><cell>0.985</cell></row><row><cell>Uncalib.</cell><cell>Spanish New Hampshire Billie Holiday</cell><cell>/language/human_language/countries_spoken_in /location/location/containedby /music/artist/origin</cell><cell>Spain Hampshire New York City</cell><cell>ComplEx DistMult ComplEx</cell><cell>0.946 0.860 0.844</cell></row><row><cell></cell><cell>egg</cell><cell>/food/ingredient/compatible_with_dietary_restrictions</cell><cell>veganism</cell><cell>ComplEx</cell><cell>0.844</cell></row><row><cell></cell><cell>Asia</cell><cell>/locations/continents/countries_within</cell><cell>Kazakhstan</cell><cell>TransH</cell><cell>0.999</cell></row><row><cell>Vector</cell><cell cols="2">Shigeru Miyamoto /architecture/architectural_style/architects Gujarati /language/human_language/countries_spoken_in Finnish /location/location/containedby</cell><cell cols="2">Mario &amp; Sonic at the Olympic Games DistMult Uganda TransE Europe TransH</cell><cell>0.958 0.871 0.843</cell></row><row><cell></cell><cell>James Wong Jim</cell><cell>/people/person/nationality</cell><cell>Hong Kong</cell><cell>ComplEx</cell><cell>0.832</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4 :</head><label>4</label><figDesc>ECE and link prediction accuracy by model in the open-world setting, before and after calibration. The translational models do not make any predictions at a confidence level over 0.80 before calibration.</figDesc><table><row><cell></cell><cell cols="2">ECE (↓)</cell><cell cols="2">Accuracy (↑)</cell></row><row><cell></cell><cell cols="2">Uncalib. Vector</cell><cell cols="2">Uncalib. Vector</cell></row><row><cell>TransE</cell><cell>-</cell><cell>0.234</cell><cell>-</cell><cell>0.594</cell></row><row><cell>TransH</cell><cell>-</cell><cell>0.307</cell><cell>-</cell><cell>0.521</cell></row><row><cell>DistMult</cell><cell>0.618</cell><cell>0.344</cell><cell>0.308</cell><cell>0.509</cell></row><row><cell>ComplEx</cell><cell>0.540</cell><cell>0.291</cell><cell>0.293</cell><cell>0.581</cell></row><row><cell>Aggregate</cell><cell>0.548</cell><cell>0.296</cell><cell>0.295</cell><cell>0.549</cell></row></table><note><p><p><p>kappa</p><ref type="bibr" target="#b5">(Fleiss, 1971</ref></p>) is 0.7489 out of 1.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 6 :</head><label>6</label><figDesc>Case study results. ↑: Higher is better. ↓: Lower is better. Bold: Significant at p &lt; 0.05. Underline: Significant at p &lt; 0.01. * : p-value not applicable. Detailed explanations are given in § 6.3.</figDesc><table><row><cell></cell><cell>Accuracy ↑</cell><cell></cell><cell>Sec. per</cell></row><row><cell cols="3">Overall Per triple Per person</cell><cell>triple ↓</cell></row><row><cell>No-conf. 0.8977</cell><cell>0.8969</cell><cell>0.9120</cell><cell>36.88</cell></row><row><cell>Conf. 0.9175  *</cell><cell>0.9220</cell><cell>0.9478</cell><cell>31.91</cell></row><row><cell cols="2">Abs. diff. +0.0198 +0.0251</cell><cell>+0.0358</cell><cell>-4.97</cell></row><row><cell>Rel. diff. +2.21%</cell><cell>+2.79%</cell><cell>+3.93%</cell><cell>-13.48%</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 7 :</head><label>7</label><figDesc>Example sentence templates for relations in FB15K-Wiki. h: Head entity label. t: Tail entity label. was designed by the architect t. t was the architect of h. /cvg/computer_videogame/sequel h is a video game with sequel t. t is the sequel of the video game h. /fight/crime_type/victims_of_this_crime_type h is a crime that happened to t. t was a victim of h. /film/writer/film h was a writer on the film t.</figDesc><table><row><cell>Relation</cell><cell>Template</cell><cell>Reverse template</cell></row><row><cell>/architecture/structure/architect</cell><cell cols="2">h The film t's writers included h.</cell></row><row><cell>/food/diet_follower/follows_diet</cell><cell>h follows a diet of t.</cell><cell>t is a diet followed by h.</cell></row><row><cell cols="3">/government/government_agency/jurisdiction h is a governmental agency with jurisdiction over t. t is under the jursidiction of h.</cell></row><row><cell>/medicine/risk_factor/diseases</cell><cell>h has the risk of causing t.</cell><cell>t can be caused by h.</cell></row><row><cell>/people/person/nationality</cell><cell>h has or had t nationality.</cell><cell>t is the nationality of h.</cell></row><row><cell>/time/holiday/featured_in_religions</cell><cell>h is a holiday featured in the religion of t.</cell><cell>t is a religion that celebrates h.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head></head><label></label><figDesc>Question 1: If a sentence is not grammatically correct, treat it as false. If a sentence is grammatically correct but you cannot find any information on Wikidata or Wikipedia supporting or disproving its claim, or you cannot reason about whether its claim is true or false, choose Unsure.</figDesc><table><row><cell>• Which sentence(s) or information from</cell></row><row><cell>Wikidata or Wikipedia did you use to</cell></row><row><cell>arrive at your answer?</cell></row><row><cell>-Avignon is not listed as a capital of</cell></row><row><cell>France on the Wikipedia page about</cell></row><row><cell>the capitals of France.</cell></row><row><cell>• Question 2: You must copy-paste the primary</cell></row><row><cell>Wikidata or Wikipedia link that you used to</cell></row><row><cell>arrive at your answer. Only copy-paste the</cell></row><row><cell>single link that contains the most complete</cell></row><row><cell>answer to the question. You may use the pro-</cell></row><row><cell>vided Wikidata links, but you may also need</cell></row><row><cell>to check related Wikipedia pages if you do</cell></row><row><cell>not find what you are looking for. You may</cell></row><row><cell>not use any external data sources beyond</cell></row><row><cell>English-language Wikidata or Wikipedia.</cell></row><row><cell>• Question 3: You may copy-paste relevant tex-</cell></row><row><cell>tual snippets from Wikidata or Wikipedia. If</cell></row><row><cell>there is no relevant text to copy-paste, you</cell></row><row><cell>may write a brief explanation of how you ar-</cell></row><row><cell>rived at your answer.</cell></row><row><cell>Examples We give two examples presented to</cell></row><row><cell>crowd workers in the task instructions.</cell></row><row><cell>1. Nawaz Sharif is or was a leader of Pakistan.</cell></row><row><cell>• Is this sentence factually correct?</cell></row><row><cell>-Yes</cell></row><row><cell>• Which Wikidata or Wikipedia link did</cell></row><row><cell>you use to arrive at your answer?</cell></row><row><cell>-https://en.wikipedia.org/wiki/</cell></row><row><cell>Nawaz_Sharif</cell></row><row><cell>• Which sentence(s) or information from</cell></row><row><cell>Wikidata or Wikipedia did you use to</cell></row><row><cell>arrive at your answer?</cell></row><row><cell>-"Mian Muhammad Nawaz Sharif is a</cell></row><row><cell>Pakistani businessman and politician</cell></row><row><cell>who served as the prime minister of</cell></row><row><cell>Pakistan for three non-consecutive</cell></row><row><cell>terms" -from the Wikipedia page of</cell></row><row><cell>Nawaz Sharif</cell></row><row><cell>2. The capital of France is or was Avignon.</cell></row><row><cell>• Is this sentence factually correct?</cell></row><row><cell>-No</cell></row><row><cell>• Which Wikidata or Wikipedia link did</cell></row><row><cell>you use to arrive at your answer?</cell></row><row><cell>-https://en.wikipedia.org/wiki/List_</cell></row><row><cell>of_capitals_of_France</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>For example, in our FB15K-Wiki dataset ( § 4.2), the mean number of relations between each unique pair of entities is 1.12, and the median is 1.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>Here we use top-1 accuracy because there are relatively few relations in knowledge graphs. However, any binary link prediction metric (i.e., hits@k) may be used.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_2"><p>https://www.figure-eight.com/</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgments</head><p>We thank <rs type="person">Caleb Belth</rs> for his feedback. This material is partially supported by the <rs type="funder">National Science Foundation</rs> under Grant No. <rs type="grantNumber">IIS 1845491</rs>, <rs type="grantName">Army Young Investigator Award</rs> No. <rs type="grantNumber">W911NF1810397</rs>, and an <rs type="funder">NSF</rs> <rs type="grantName">Graduate Research Fellowship</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_FrnmyRp">
+					<idno type="grant-number">IIS 1845491</idno>
+					<orgName type="grant-name">Army Young Investigator Award</orgName>
+				</org>
+				<org type="funding" xml:id="_rB4BQ4P">
+					<idno type="grant-number">W911NF1810397</idno>
+					<orgName type="grant-name">Graduate Research Fellowship</orgName>
+				</org>
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Construction of the literature graph in semantic scholar</title>
+		<author>
+			<persName><forename type="first">Waleed</forename><surname>Ammar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dirk</forename><surname>Groeneveld</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chandra</forename><surname>Bhagavatula</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Iz</forename><surname>Beltagy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Miles</forename><surname>Crawford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Doug</forename><surname>Downey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Dunkelberger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ahmed</forename><surname>Elgohary</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Feldman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vu</forename><surname>Ha</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of NAACL-HLT</title>
+		<meeting>NAACL-HLT</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="84" to="91" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">What is normal, what is strange, and what is missing in a knowledge graph: Unified characterization via inductive summarization</title>
+		<author>
+			<persName><forename type="first">Caleb</forename><surname>Belth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinyi</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jilles</forename><surname>Vreeken</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danai</forename><surname>Koutra</surname></persName>
+		</author>
+		<ptr target="ACM/IW3C2" />
+	</analytic>
+	<monogr>
+		<title level="m">The Web Conference</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1115" to="1126" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multirelational data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="2787" to="2795" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pontus</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Thirty-Second AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Knowledge vault: A web-scale approach to probabilistic knowledge fusion</title>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evgeniy</forename><surname>Gabrilovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geremy</forename><surname>Heitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wilko</forename><surname>Horn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ni</forename><surname>Lao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Strohmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shaohua</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="601" to="610" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Measuring nominal scale agreement among many raters</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Joseph</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Fleiss</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Psychological bulletin</title>
+		<imprint>
+			<biblScope unit="volume">76</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page">378</biblScope>
+			<date type="published" when="1971">1971</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">On calibration of modern neural networks</title>
+		<author>
+			<persName><forename type="first">Chuan</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geoff</forename><surname>Pleiss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kilian</forename><forename type="middle">Q</forename><surname>Weinberger</surname></persName>
+		</author>
+		<ptr target="JMLR.org" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 34th International Conference on Machine Learning</title>
+		<meeting>the 34th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">70</biblScope>
+			<biblScope unit="page" from="1321" to="1330" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<author>
+			<persName><forename type="first">Shaoxiong</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shirui</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Erik</forename><surname>Cambria</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pekka</forename><surname>Marttinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philip</forename><forename type="middle">S</forename><surname>Yu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2002.00388</idno>
+		<title level="m">A survey on knowledge graphs: Representation, acquisition and applications</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Knowledge base completion: Baselines strike back</title>
+		<author>
+			<persName><forename type="first">Rudolf</forename><surname>Kadlec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ondrej</forename><surname>Bajgar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>Kleindienst</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2nd Workshop on Representation Learning for NLP</title>
+		<meeting>the 2nd Workshop on Representation Learning for NLP</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="69" to="74" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">On the limited memory bfgs method for large scale optimization</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jorge</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Nocedal</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Mathematical programming</title>
+		<imprint>
+			<biblScope unit="volume">45</biblScope>
+			<biblScope unit="issue">1-3</biblScope>
+			<biblScope unit="page" from="503" to="528" />
+			<date type="published" when="1989">1989</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Barack&apos;s wife hillary: Using knowledge graphs for fact-aware language modeling</title>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Logan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nelson</forename><forename type="middle">F</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthew</forename><forename type="middle">E</forename><surname>Peters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matt</forename><surname>Gardner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sameer</forename><surname>Singh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 57th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="5962" to="5971" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Predicting good probabilities with supervised learning</title>
+		<author>
+			<persName><forename type="first">Alexandru</forename><surname>Niculescu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">-Mizil</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rich</forename><surname>Caruana</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd international conference on Machine learning</title>
+		<meeting>the 22nd international conference on Machine learning</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2005">2005</date>
+			<biblScope unit="page" from="625" to="632" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Revisiting evaluation of knowledge base completion models</title>
+		<author>
+			<persName><forename type="first">Pouya</forename><surname>Pezeshkpour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yifan</forename><surname>Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sameer</forename><surname>Singh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Automated Knowledge Base Construction (AKBC)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Probabilistic outputs for support vector machines and comparisons to regularized likelihood methods</title>
+		<author>
+			<persName><forename type="first">John</forename><surname>Platt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in large margin classifiers</title>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page" from="61" to="74" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">You {can} teach an old dog new tricks! on training knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samuel</forename><surname>Broscheit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rainer</forename><surname>Gemulla</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Codex: A comprehensive knowledge graph completion benchmark</title>
+		<author>
+			<persName><forename type="first">Tara</forename><surname>Safavi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danai</forename><surname>Koutra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Multi-task learning for conversational question answering over a large-scale knowledge base</title>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiubo</forename><surname>Geng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daya</forename><surname>Tao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Duyu</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nan</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guodong</forename><surname>Duan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daxin</forename><surname>Long</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Jiang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2442" to="2451" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Yago: a core of semantic knowledge</title>
+		<author>
+			<persName><forename type="first">Gjergji</forename><surname>Fabian M Suchanek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gerhard</forename><surname>Kasneci</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Weikum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 16th international conference on World Wide Web</title>
+		<meeting>the 16th international conference on World Wide Web</meeting>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="697" to="706" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Probability calibration for knowledge graph embedding models</title>
+		<author>
+			<persName><forename type="first">Pedro</forename><surname>Tabacof</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Costabello</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Complex embeddings for simple link prediction</title>
+		<author>
+			<persName><forename type="first">Théo</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Éric</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2071" to="2080" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Wikidata: a free collaborative knowledgebase</title>
+		<author>
+			<persName><forename type="first">Denny</forename><surname>Vrandečić</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Markus</forename><surname>Krötzsch</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Communications of the ACM</title>
+		<imprint>
+			<biblScope unit="volume">57</biblScope>
+			<biblScope unit="issue">10</biblScope>
+			<biblScope unit="page" from="78" to="85" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">On evaluating embedding models for knowledge base completion</title>
+		<author>
+			<persName><forename type="first">Yanjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rainer</forename><surname>Gemulla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samuel</forename><surname>Broscheit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christian</forename><surname>Meilicke</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 4th Workshop on Representation Learning for NLP (RepL4NLP-2019)</title>
+		<meeting>the 4th Workshop on Representation Learning for NLP (RepL4NLP-2019)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="104" to="112" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding by translating on hyperplanes</title>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianwen</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianlin</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Twenty-Eighth AAAI conference on artificial intelligence</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Knowledge base completion via search-based question answering</title>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>West</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evgeniy</forename><surname>Gabrilovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shaohua</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rahul</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dekang</forename><surname>Lin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 23rd international conference on World wide web</title>
+		<meeting>the 23rd international conference on World wide web</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="515" to="526" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Individual comparisons by ranking methods</title>
+		<author>
+			<persName><forename type="first">Frank</forename><surname>Wilcoxon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Breakthroughs in statistics</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="1992">1992</date>
+			<biblScope unit="page" from="196" to="202" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Enhancing pre-trained language representations with rich knowledge for machine reading comprehension</title>
+		<author>
+			<persName><forename type="first">An</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jing</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yajuan</forename><surname>Lyu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hua</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qiaoqiao</forename><surname>She</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sujian</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 57th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2346" to="2357" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">Bishan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Deng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Transforming classifier scores into accurate multiclass probability estimates</title>
+		<author>
+			<persName><forename type="first">Bianca</forename><surname>Zadrozny</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><surname>Elkan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the eighth ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the eighth ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2002">2002</date>
+			<biblScope unit="page" from="694" to="699" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

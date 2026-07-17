@@ -1,0 +1,1580 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">LINKGPT: Teaching Large Language Models To Predict Missing Links</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-06-07">7 Jun 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Zhongmou</forename><surname>He</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Michigan</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Jing</forename><surname>Zhu</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Michigan</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Shengyi</forename><surname>Qian</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Michigan</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Joyce</forename><surname>Chai</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Michigan</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Danai</forename><surname>Koutra</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Michigan</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">LINKGPT: Teaching Large Language Models To Predict Missing Links</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-06-07">7 Jun 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">E082D0FE5A575B27AC6997748790D4BD</idno>
+					<idno type="arXiv">arXiv:2406.04640v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:11+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Large Language Models (LLMs) have shown promising results on various language and vision tasks. Recently, there has been growing interest in applying LLMs to graph-based tasks, particularly on Text-Attributed Graphs (TAGs). However, most studies have focused on node classification, while the use of LLMs for link prediction (LP) remains understudied. In this work, we propose a new task on LLMs, where the objective is to leverage LLMs to predict missing links between nodes in a graph. This task evaluates an LLM's ability to reason over structured data and infer new facts based on learned patterns. This new task poses two key challenges: (1) How to effectively integrate pairwise structural information into the LLMs, which is known to be crucial for LP performance, and (2) how to solve the computational bottleneck when teaching LLMs to perform LP. To address these challenges, we propose LINKGPT, the first end-to-end trained LLM for LP tasks. To effectively enhance the LLM's ability to understand the underlying structure, we design a two-stage instruction tuning approach where the first stage fine-tunes the pairwise encoder, projector, and node projector, and the second stage further fine-tunes the LLMs to predict links. To address the efficiency challenges at inference time, we introduce a retrieval-reranking scheme. Experiments show that LINKGPT can achieve state-of-the-art performance on real-world graphs as well as superior generalization in zero-shot and few-shot learning, surpassing existing benchmarks. At inference time, it can achieve 10× speedup while maintaining high LP accuracy.</p><p>Recent advancements in Large Language Models (LLMs) have revolutionized natural language processing (NLP) and computer vision tasks <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b18">19,</ref><ref type="bibr" target="#b32">33,</ref><ref type="bibr" target="#b20">21]</ref>. LLMs have demonstrated remarkable capabilities in understanding and generating human-like text, thanks to their ability to capture rich semantic information from large-scale pretraining <ref type="bibr" target="#b26">[27]</ref>. Inspired by their success, researchers have begun exploring the application of LLMs to graph-based tasks. However, most existing works focus on node classification which primarily involves node-level information. It remains unclear whether and how LLM can be used for LP, a task that relies on pairwise information <ref type="bibr" target="#b30">[31,</ref><ref type="bibr" target="#b7">8]</ref>.</p><p>Preprint. Under review.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Graph-structured data is ubiquitous in real-world applications, ranging from social networks and recommendation systems to biological networks and knowledge graphs. Among the various tasks performed on graphs, link prediction (LP) is of particular importance, as it enables the discovery of missing or potential connections between nodes. Studies have also found that the performance of the link prediction task is directly related to the model's ability to understand the underlying structure <ref type="bibr" target="#b22">[23,</ref><ref type="bibr" target="#b45">46,</ref><ref type="bibr" target="#b28">29]</ref>. In recent years, LP has been tackled using Graph Neural Networks (GNNs), which learn node representations by aggregating information from their local neighborhoods <ref type="bibr" target="#b40">[41,</ref><ref type="bibr" target="#b42">43,</ref><ref type="bibr" target="#b19">20]</ref>. However, GNNs often struggle to capture long-range dependencies and complex semantic information present in text-attributed graphs (TAGs) and fail to generalize to unseen graphs <ref type="bibr" target="#b13">[14]</ref>.</p><p>Therefore, we propose to explore the ability of LLMs to reason over the graph structure for the task of link prediction, where the objective is for LLMs to predict missing links between nodes in a graph, given the existing graph structure and node attributes (i.e., link prediction in text-attributed graphs).</p><p>Nonetheless, teaching LLMs to perform LP is not straightforward and presents two key challenges. First, LLMs are primarily designed to process textual and sequential data and how to integrate node-wise and pairwise structural information into LLMs is non-trivial. Second, teaching LLMs to predict missing links presents computational bottlenecks. LP typically requires ranking against a large number of negative candidates (e.g., 1,000) for each link at inference time, which is computationally expensive when combined with LLMs. Efficiently and accurately ranking candidates is crucial for the practicality of LLM-based LP methods.</p><p>To address these challenges, we propose LINKGPT, the first end-to-end trained LLM specifically designed to predict missing links in TAGs. LINKGPT consists of three main components: (1) node encoding and pairwise encoding, (2) two-stage instruction tuning, and (3) a retrieval-reranking scheme for inference. Experiments show that LINKGPT not only achieves state-of-the-art performance across datasets but also has strong generalization ability in both zero-shot and few-shot in-context learning settings. When employing our designed retrieval-rerank scheme for inference, LINKGPT is 10× faster while maintaining high LP accuracy.</p><p>Our contributions are summarized as follows:</p><p>• First LLM designed for LP: We introduce the first-of-its-kind link prediction approach that teaches LLMs to predict missing links in graphs, enabling LLMs to reason over structured data.</p><p>• Effective and Efficient Method: We propose LINKGPT, a framework that effectively incorporates node-wise and pairwise structural knowledge into LLMs via instruction tuning and significantly improves inference time efficiency by the retrieval-rank scheme.</p><p>• Extensive Evaluation: We conduct extensive experiments on real-world TAGs, demonstrating LINKGPT's superior performance and fast inference compared to existing state-of-the-art methods. Moreover, we showcase LinkGPT's ability of zero-shot generalization and few-shot in-context learning to cross-category and cross-domain unseen datasets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>Link prediction. Link prediction aims to complete missing links in a graph, with applications ranging from knowledge graph completion to e-commerce recommendations <ref type="bibr" target="#b23">[24,</ref><ref type="bibr" target="#b34">35]</ref>. While heuristic algorithms were once predominant, Graph Neural Networks (GNNs) for Link Prediction have been prevalent in the past few years. Methods that use GNNs for LP mainly fall into two categories: Graph Autoencoder (GAE)-based methods and enclosing subgraph-based methods <ref type="bibr" target="#b16">[17,</ref><ref type="bibr" target="#b3">4,</ref><ref type="bibr" target="#b40">41]</ref>. While GNN-based methods show promising results, they do not generalize to unseen graphs. In this work, we aim to explore LLMs' structure reasoning ability on LP tasks and evaluate their generalization ability in both zero-shot and few-shot settings.</p><p>Large Language Models for graphs. Recent progress on applying LLMs for TAGs aims to leverage the power of LLMs to boost performance on graph-related tasks <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b12">13]</ref>. Two main strategies have emerged: (1) LLMs as predictors, where LLMs directly generate solutions to tasks like node classification and link prediction <ref type="bibr" target="#b30">[31,</ref><ref type="bibr" target="#b4">5]</ref>, and (2) LLMs as enhancers, which utilize LLM capabilities to improve the representations learned by smaller GNNs for better efficiency <ref type="bibr" target="#b46">[47]</ref>. LINKGPT directly predicts missing links in graphs and thus falls into the first category. While previous works mainly focus on improving LLMs' ability to predict node labels, here we believe that LLMs' ability to predict missing links in graphs presents its actual structure reasoning ability.</p><p>Instruction tuning. Instruction tuning has emerged as a promising approach to adapting large language models (LLMs) for various tasks and modalities. Several recent works have explored instruction tuning in the context of vision-language models and multimodal learning <ref type="bibr" target="#b20">[21,</ref><ref type="bibr" target="#b18">19,</ref><ref type="bibr" target="#b44">45]</ref>. Instruction tuning has also been employed in several LLM-based models for graph tasks <ref type="bibr" target="#b30">[31,</ref><ref type="bibr" target="#b4">5]</ref>. Our work further explores instruction tuning in the context of structure-semantic understanding.  </p><formula xml:id="formula_0">A B C D E … (count: 𝑛 𝐶 ) Yes/No Index 𝑥 𝐴 𝑥 𝐵 𝑥 𝐶 𝑥 𝐷 𝑥 𝐸 A E C … B ranking … result: A &gt; E &gt; C &gt; B &gt; …</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Preliminaries</head><p>Graphs. We consider a graph G = {V, E, X }, where V is the set of vertices, E is the set of edges, and X denotes the set of attributes or features associated with each node in V. A graph G is considered to be a Text-Attributed Graph (TAG) if its node attributes X are in textual format, i.e. each node has text features. We further denote N k u as the k-hop neighbors of node u, i.e., the set of nodes at a distance equal to k from u.</p><p>Link prediction. Given a source node s ∈ V and a set of candidate target nodes C = {t 1 , t 2 , • • • , t N C }, which consists of 1 positive target node and N C -1 negative target node, the link prediction task aims to rank all candidate target nodes based on the probability that there is a link between s and t i .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Method</head><p>In this section, we present the proposed LINKGPT framework for link prediction in text-attributed graphs (TAGs). LINKGPT leverages the power of Large Language Models (LLMs) to effectively capture both graph structure and textual semantics, enabling accurate and efficient link prediction. The framework consists of three main components: (1) node encoding and pairwise encoding, (2) two-stage instruction tuning, and (3) a retrieval-rerank scheme for inference. An overview of the LINKGPT framework is illustrated in Figure <ref type="figure" target="#fig_0">1</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Node Encoding and Pairwise Encoding</head><p>To effectively capture graph structure and textual semantics, we first introduce two special tokens: &lt;NODE&gt; and &lt;PAIRWISE&gt;. The &lt;NODE&gt; token represents a node and its neighborhood, while the &lt;PAIRWISE&gt; token encodes the pairwise relationship between two nodes.</p><p>Neighborhood-aware node encoding. We obtain neighborhood-aware node embeddings through contrastive graph-text pre-training (CGTP). Let f G and f T denote the node encoder and text encoder, respectively. The node representations H ∈ R N ×d H and neighborhood text representations T ∈ R N ×2d T are obtained as follows:</p><formula xml:id="formula_1">T ′ = f T (X ), T v = concat T ′ v , 1 |N 1 v | u∈N 1 v T ′ u , H = f G (V, E, X )<label>(1)</label></formula><p>where  we use BERT <ref type="bibr" target="#b5">[6]</ref> as our text encoder f T . The contrastive loss L is calculated as follows:</p><formula xml:id="formula_2">T ′ v ∈ R d T is</formula><formula xml:id="formula_3">Γ = Ĥ TT /τ, L = ((CE(Γ, y) + CE(Γ T , y))/2<label>(2)</label></formula><p>where T = norm(T), Ĥ = norm(H), τ denotes the temperature, and the label y is set to (0, 1, • • • , N -1) T . The learned node encoding H is then mapped to the semantic space of the LLM using a simple alignment projector σ G . Details about node encoding are in Appendix A.</p><p>Pairwise encoding. To capture the pairwise relationship between nodes, we employ LPFormer <ref type="bibr" target="#b28">[29]</ref>.</p><p>For node a and b, the LPFormer learns a pairwise encoding f P (a, b) to represent their relationship.</p><formula xml:id="formula_4">f P (a, b) = u∈V (a,b) w(a, b, u) ⊙ h(a, b, u)<label>(3)</label></formula><p>where w(a, b, u) and h(a, b, u) denote the importance and encoding of node u relative to the relation between a and b respectively, and V (a,b) denotes the set of nodes that might be important to the relation. f P (a, b) is also mapped to the semantic space of LLM using an alignment projector σ P . Note that the pairwise encoder is not pre-trained. Details about pairwise encoder are in Appendix B.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Two-Stage Instruction Tuning</head><p>We leverage a two-stage instruction tuning approach to train LINKGPT for link prediction and neighbor prediction tasks. The instruction templates for these tasks are shown in Figure <ref type="figure" target="#fig_1">2</ref>.</p><p>Prompt design. For the neighbor prediction task, the model is prompted to directly generate the texts of the neighbors of a given node based on its node encoding and text. This task is designed to further align the node encoding with the neighborhood of a node, and to enable the model to directly generate the neighbors of a node, which helps accelerate the inference process.</p><p>For the link prediction task, the model is asked to predict whether two nodes are connected based on their texts, node encodings, and the pairwise encoding between them. Each instruction contains one source node and multiple candidate target nodes, with an equal number of positive and negative samples. This setup allows the model to compare the current candidate with other candidates in the context, enabling the model to have in-context learning capabilities during inference.</p><p>Training schedule. We adopt a two-stage tuning strategy. In stage 1, we focus on training the pairwise encodings and aligning the special encodings with the word embeddings of the pre-trained LLM. The LLM is kept frozen, and only the encoding-related modules, including the pairwise encoder and two alignment projectors, are tuned. In stage 2, we keep the encoding-related modules frozen and tune the LLM through LoRA <ref type="bibr" target="#b8">[9]</ref> to improve its understanding of the encodings.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Retrieval-Rerank Scheme for Inference</head><p>The inference stage of link prediction involves ranking a set of candidate target nodes C = {t 1 , t 2 , • • • , t N C } for each source node. However, directly ranking all candidates using the LLM can be computationally expensive, especially when the candidate set C is large. To address this challenge, we propose a retrieval-rerank scheme that efficiently narrows down the candidate set before applying the LLM for final ranking.</p><p>Retrieval stage. In the retrieval stage, we aim to quickly identify a smaller subset of n C ≪ N C candidate target nodes that are most likely to be connected to the source node. Inspired by GPT4Rec <ref type="bibr" target="#b17">[18]</ref> , we prompt the LLM to directly generate the texts of potential neighbors for the source node. The generated texts are then used as queries to search for relevant candidates in the target set C using the BM25 algorithm <ref type="bibr" target="#b27">[28]</ref>.</p><p>To ensure the generated texts cover a diverse range of content, we employ beam search with diversity penalty applied between each beam group <ref type="bibr" target="#b35">[36]</ref>. Furthermore, we apply a distance-based grouping strategy to select βn C nodes from the source node's 2-hop neighborhood N 2 s and (1 -β)n C nodes from the rest of the graph V\N 2 s with the highest BM25 scores. We set β = 0.65 in our experiments. Rerank stage. In the rerank stage, we use the LLM to rank the retrieved n C candidates and obtain the final link prediction results. To quantify the probability of an edge existing between the source node s and a candidate target node t i , we introduce the Yes/No Index:</p><formula xml:id="formula_5">Yes/No Index = p("Yes" | context) p("Yes" | context) + p("No" | context)<label>(4)</label></formula><p>The probabilities are calculated by applying the softmax function to the logits output by the LLM.</p><p>To leverage the LLMs' in-context learning ability, we include several examples in the prompt's context, where positive samples are the source node's neighbors in the training set, and negative samples are randomly selected from V\N 1 s . Since the prompts for all candidate target nodes share the same context about the source node and examples, we can save computation by reusing the keys and values of this shared part when calculating the logits for each candidate. The time complexity analysis is in Appendix C. The retrieval-rerank scheme significantly reduces the computational cost of link prediction inference while maintaining high accuracy, making LINKGPT more practical for real-world applications.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Experiments</head><p>We conduct comprehensive experiments to evaluate the effectiveness and efficiency of our proposed framework and address the following research questions:</p><p>• RQ1: Compared to other GAE-based and LLM-based baselines, what is the overall performance of our LINKGPT model in the link prediction task?</p><p>• RQ2: What is the zero-shot and few-shot generalization ability of our model?</p><p>• RQ3: How scalable and efficient is our model during inference, i.e., candidate target nodes ranking?</p><p>• RQ4: What is the individual contribution of the node and pairwise encodings to the overall performance of our model?</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Experimental Setup</head><p>Datasets. Following Patton <ref type="bibr" target="#b13">[14]</ref>, we train and evaluate our model on these four datasets: Amazon-Sports, Amazon-Clothing <ref type="bibr" target="#b24">[25]</ref>, MAG-Geology, and MAG-Math <ref type="bibr" target="#b29">[30,</ref><ref type="bibr" target="#b43">44]</ref>. The first two datasets are e-commerce networks, where each node represents a product on Amazon, and an edge between two nodes means that they are frequently purchased together. The last two datasets are academic networks, where each node represents a paper and an edge between two nodes means that one cites the other. Since the inference process of link prediction is computationally expensive for LLMs, we subsample all the datasets by randomly selecting 20,000 nodes. Detailed statistics about the datasets are reported in Appendix D.</p><p>Tasks. We leverage LINKGPT for two tasks: link prediction and neighbor prediction. The target of link prediction is to rank the N C candidate target nodes based on their probabilities of being connected with the source node. We do not apply the retrieval stage in this experiment for a clearer assessment of the model's ranking capability. Besides, in the neighbor prediction task, the model is prompted to directly generate the text of neighbors, which will then be used to retrieve n C candidate target nodes from a pool of N C . Note that link prediction is the primary task, while neighbor prediction is formulated to make the link prediction more efficient during inference.</p><p>Metrics. For the link prediction task, we use MRR and Hits@1, which are two of the most commonly used evaluation metrics in the literature <ref type="bibr" target="#b9">[10,</ref><ref type="bibr" target="#b13">14]</ref>. MRR is defined as the mean reciprocal rank of the positive target node, and Hits@1 is the proportion of times the positive target node is ranked top 1 among all candidates. For the neighbor prediction task, the generated texts are used as queries for retrieval, and the performance is evaluated using the MRR and runtime of the whole retrieval-rerank process. If the positive target node is not retrieved, its ranking is considered to be infinity.</p><p>Baselines. We apply three categories of competitive models. The first category is traditional GAEbased models, including GCN <ref type="bibr" target="#b15">[16]</ref>, GraphSAGE <ref type="bibr" target="#b6">[7]</ref>, and GATv2 <ref type="bibr" target="#b2">[3]</ref>. The second category comprises models that make use of pairwise information, including SEAL <ref type="bibr" target="#b41">[42]</ref>, BUDDY <ref type="bibr" target="#b3">[4]</ref>, and LPFormer <ref type="bibr" target="#b28">[29]</ref>. The third category consists of LLM-based models like our LINKGPT, which includes vanilla LLaMA2-7B <ref type="bibr" target="#b32">[33]</ref>, GraphGPT <ref type="bibr" target="#b30">[31]</ref> and LLaGA <ref type="bibr" target="#b4">[5]</ref>. Note that only the vanilla LLaMA2-7B model is not trained on these datasets. More descriptions of baseline models are in Appendix E.</p><p>Implementation details. We leverage LLaMA2-7B <ref type="bibr" target="#b32">[33]</ref> as the backbone of our framework. In each stage of the instruction tuning, the link prediction and neighbor prediction tasks are carried out for 1 epoch respectively. Details about hyper-parameters and computing resources are in Appendix F. Furthermore, for a fair comparison, we employ bert-base-uncased <ref type="bibr" target="#b5">[6]</ref> as the original embeddings of the nodes for the training of LINKGPT and all the GNN-based baseline models. For LLM-based models, we use the embedding methods described in their original papers.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Overall Performance (RQ1)</head><p>First, we compare the performance of LINKGPT and state-of-the-art baselines on the link prediction task. The number of candidates N C is set to be 150 for all datasets. The results are presented in Table <ref type="table" target="#tab_2">1</ref>. The proposed LINKGPT model significantly outperforms all the baseline models across all four datasets on the link prediction task, achieving state-of-the-art performance in terms of both MRR and Hits@1 metrics. This highlights the effectiveness of LINKGPT's approach in leveraging node-wise, pairwise, and textual information for link prediction.</p><p>While GraphGPT <ref type="bibr" target="#b30">[31]</ref> performs relatively poorly as it is designed for node classification tasks, the vanilla LLaMA2 <ref type="bibr" target="#b32">[33]</ref>, though not specifically trained for this task, still demonstrates reasonable performance, suggesting the strong potential of pre-trained language models in utilizing textual attributes of TAGs. LLaGA <ref type="bibr" target="#b4">[5]</ref>, which leverages both the node-wise structural and textual information, outperforms most baselines but still lags behind LINKGPT, indicating the importance of effectively modeling pairwise information for link prediction. Although GATv2 <ref type="bibr" target="#b2">[3]</ref> also achieves impressive performance thanks to its dynamic attention mechanism, overall, models that can capture pairwise  information, especially BUDDY <ref type="bibr" target="#b3">[4]</ref> and SEAL <ref type="bibr" target="#b41">[42]</ref>, tend to perform better than traditional graph auto-encoder (GAE)-based ones.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Generalization Ability (RQ2)</head><p>We then evaluate the generalization ability of LINKGPT in two settings: zero-shot generalization and few-shot in-context learning.</p><p>Zero-shot generalization. We train LINKGPT on one dataset A and evaluate it on another dataset B, without fine-tuning or additional examples in the prompt. Results are summarized in Table <ref type="table" target="#tab_3">2</ref>.</p><p>Sports→Clothing and Math→Geology are cross-category generalization, since both datasets are from the same domain, such as e-commerce networks or academic networks. Sports→Geology and Math→Clothing are cross-domain generalization, where the two datasets are from different domains.</p><p>The proposed LINKGPT model demonstrates the strongest generalization ability, outperforming all other baseline models in all settings. LINKGPT not only benefits from its LLM backbone, which possesses powerful text feature generalization capabilities, but also from effectively capturing the structural commonalities of link formation through the node and pairwise encodings. Models that make use of pairwise information in the table all demonstrate impressive generalization abilities, but they lag behind LINKGPT due to their inability to transfer knowledge of text features. Additionally, although LLaGA <ref type="bibr" target="#b4">[5]</ref> also possesses LLM's text generalization capability, it underperforms since it fails to capture the pairwise structural information explicitly and effectively.</p><p>Few-shot in-context learning. We also evaluate the generalization ability of LINKGPT with the help of a few examples in test time. Other baseline models do not have the capability for in-context learning due to their architectures or prompt designs. The results are shown in Figure <ref type="figure" target="#fig_2">3</ref>. When we train and evaluate on the same dataset, in-context learning is not very helpful since the model has been fine-tuned on the dataset. However, for cross-domain generalization, in-context learning is extremely helpful and boosts the performance from 66.40 to 70.09 on the MAG-Geology dataset.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">Scalability Analysis (RQ3)</head><p>In this section, we investigate the scalability of LINKGPT by evaluating the performance and runtime of LINKGPT and other LLM-based model with large candidate target node set C.</p><p>Setup. We set the number of negative candidates N C = 1, 800 for all four datasets, the number of candidates to retrieve n C = 30 for Amazon, and n C = 60 for MAG. Due to the computational costs, we randomly selected 200 pairs of source node s and candidate target node set C for the experiments. Furthermore, we conducted experiments under three settings: LLaGA <ref type="bibr" target="#b4">[5]</ref>, LINKGPT w/o retrieval, and LINKGPT. The inference of LINKGPT consists of two stages: retrieval and rerank. For the neighbor prediction in the retrieval stage, we set 5 beam groups, with each group having a size of 3.</p><p>Results. As shown in Figure <ref type="figure" target="#fig_3">4</ref>, LINKGPT w/o Retrieval significantly outperforms LLaGA <ref type="bibr" target="#b4">[5]</ref> in terms of MRR across all datasets and has relatively lower runtime. Thanks to LINKGPT's neighbor prediction capability, the inclusion of the retrieval stage can improve the inference efficiency by 10 times while ensuring that the MRR decline does not exceed 5%. Furthermore, LINKGPT's MRR is still not lower than LLaGA's across all datasets, showing the effectiveness and efficiency of the retrieval-rerank scheme of LINKGPT. Case study of the neighbor prediction task is in Appendix H. Setup. In this section, we investigate the individual contributions of the node and pairwise encodings. We remove each encoding component separately and train the model using the same two-stage instruction tuning strategy. This allows us to isolate the effect of each encoding on the model's performance. For the ablated models, we maintain the same hyper-parameters and training settings as the full LINKGPT model to ensure a fair comparison. The models are evaluated on the same benchmark datasets, and their link prediction performance is reported.</p><p>Results. The results of the ablation study are presented in Table <ref type="table" target="#tab_4">3</ref>. Incorporating the node and pairwise encodings leads to significant improvements in link prediction performance. This highlights the importance of explicitly encoding node and pairwise information to enhance the LLMs' understanding of the graph structure. The node encoding allows the model to capture node-wise structural information, such as the features of its neighborhood, and the pairwise encoding enables the model to reason about the relationships between node pairs.</p><p>Comparing the contributions of the two encodings, we find that the pairwise encoding plays a more crucial role in the link prediction task. The removal of pairwise encoding results in a larger performance drop compared to removing the node encoding. This observation aligns with the intuition that pairwise information, which captures the connectivity patterns between nodes, is more directly relevant to predicting missing links.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.6">Limitations</head><p>Finally, although LINKGPT brings LLM to the link prediction and achieves state-of-the-art performance, it also brings certain limitations.</p><p>The balance of performance and efficiency. One of the primary bottlenecks of adapting LLM to link prediction is efficiency, as link prediction typically has hundreds of negative targets to rank. We have proposed a retrieval-rank scheme to address it. However, compared with LLaGA <ref type="bibr" target="#b4">[5]</ref>, LINKGPT experiences a more noticeable performance decline when the target candidate set C constitutes an excessively large proportion of the entire node set V. On MAG-Math, when N C /|V| increases from 5% to 15%, the MRR of LINKGPT w/o retrieval drops from 58.95 to 38.82, while that of LLaGA <ref type="bibr" target="#b4">[5]</ref> only drops from 47.83 to 32.90. We believe when N C /|V| is too large, many nodes that are close to the source node s are selected as negative target candidates. These nodes have a high probability of being connected to s due to pairwise encoding, leading to lower rankings of positive candidates.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>LLM hallucinations.</head><p>One key limitation is the susceptibility of LLM to hallucinations, where the model generates plausible but incorrect information. LLMs are known to sometimes produce outputs that are inconsistent with the input data or introduce false statements presented as facts <ref type="bibr" target="#b11">[12]</ref>. This can be particularly problematic in the context of link prediction, as hallucinated links could lead to erroneous conclusions and decision-making based on the graph data. To mitigate the impact of hallucinations, future work could explore techniques such as retrieval-augmented generation <ref type="bibr" target="#b31">[32]</ref>, where the LLM is provided with relevant external knowledge to ground its outputs in factual information.</p><p>Incorporating explicit knowledge bases or structured data alongside the LLM could help reduce the occurrence of hallucinations. Additionally, implementing output filtering mechanisms or confidence thresholds to identify and discard potentially hallucinated links could improve the reliability of the predictions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>In this paper, we introduced LINKGPT, a novel approach that leverages the power of Large Language Models (LLMs) for link prediction tasks on text-attributed graphs (TAGs). By combining node and pairwise encodings, two-stage fine-tuning, and a retrieval-rerank scheme for inference, LINKGPT effectively addresses the challenges of incorporating pairwise node information and efficiently ranking a large number of candidates. Our extensive experiments on real-world datasets demonstrate LINKGPT's superior performance and computational efficiency compared to state-of-the-art methods. Furthermore, the cross-category generalization experiments highlight LINKGPT's robustness and ability to transfer knowledge across different categories and domains.</p><p>Social impacts. LINKGPT has the potential to revolutionize various real-world applications that rely on graph-structured data. For instance, in social networks, LINKGPT can help identify potential connections between users, fostering community growth and enhancing user experience. In recommendation systems, LINKGPT can improve the accuracy of personalized recommendations by discovering hidden preferences and interests. Moreover, in biological networks and knowledge graphs, LINKGPT can aid in uncovering novel relationships between entities, leading to groundbreaking discoveries in fields such as drug discovery and scientific research. However, it is crucial to consider the ethical implications of using LLMs for link prediction, such as privacy concerns and the potential for biased predictions. Future research should focus on developing techniques to mitigate these risks and ensure the responsible deployment of LINKGPT in real-world scenarios.</p><p>A Details of the Neighborhood-Aware Node Encoder</p><p>We employ GraphFormers <ref type="bibr" target="#b38">[39]</ref> as the node encoder. GraphFormers is a transformer encoder with a GNN applied between each block, and the text encoding and graph aggregation are thus alternately performed. Formally, the forward pass of each layer in GraphFormers is given by</p><formula xml:id="formula_6">z (l) v = GNN({H (l) u [CLS] | u ∈ N 1 v })<label>(5)</label></formula><formula xml:id="formula_7">H(l) v = concat(z (l) v , H (l) v )<label>(6)</label></formula><formula xml:id="formula_8">H(l) ′ v = LayerNorm(H (l) v + MHA asy ( H(l) v ))<label>(7)</label></formula><formula xml:id="formula_9">H (l+1) v = LayerNorm( H(l) ′ v + MLP( H(l) ′ v ))<label>(8)</label></formula><p>where</p><formula xml:id="formula_10">H (l)</formula><p>v is the hidden states in the l -th layer of node v, and MHA asy means asymmetric multihead attention. The initial embedding H (0) v is obtained through a learnable embedding module. We use the Amazon Sports dataset as an example to investigate the effect of contrastive graph-text pretraining (CGTP). We reduce the dimensions of node encoding to two dimensions for visualization through t-SNE <ref type="bibr" target="#b33">[34]</ref>, as shown in Figure <ref type="figure" target="#fig_4">5</ref>. After CGTP, connected nodes tend to be closer in the embedding space, forming clear clusters. In contrast, embeddings produced by BERT are generally evenly dispersed throughout the space, showing a weaker tendency to form clusters. This indicates that our node encoding can effectively understand the central node by leveraging information from its neighborhood. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Details of Pairwise Encoding</head><p>Pairwise information plays a crucial role in the task of link prediction <ref type="bibr" target="#b22">[23]</ref>. LPFormer is an adaptive pairwise encoder, and many common pairwise heuristics, such as Common Neighbors <ref type="bibr" target="#b25">[26]</ref> and Katz Index <ref type="bibr" target="#b14">[15]</ref>, can be represented as its special cases. Specifically, the pairwise encoding f P (a, b) between nodes a and b is calculated as follows:</p><formula xml:id="formula_11">f P (a, b) = u∈V (a,b) w(a, b, u) ⊙ h(a, b, u)<label>(9)</label></formula><p>where w(a, b, u) and h(a, b, u) denote the importance and encoding of node u relative to the relation between a and b respectively, and V (a,b) denotes the set of notes that might be important to the relation between a and b. Specifically, V (a,b) consists of nodes with Personalized PageRank (PPR) <ref type="bibr" target="#b1">[2]</ref> score higher than a threshold η relative to either a or b. </p><formula xml:id="formula_12">V (a,b) = {u ∈ V | ppr(a, u) ≥ η, ppr(b, u) ≥ η}<label>(10)</label></formula><p>In this paper, we set η = 0.01 for nodes in N 1 a ∪ N 1 b , and η = 1 for all other nodes to filter them out. Moreover, w(a, b, u) and h(a, b, u) are given by:</p><formula xml:id="formula_13">w(a, b, u) = ϕ(h a , h b , h u , rpe (a,b,u) )<label>(11)</label></formula><p>w(a, b, u) = exp( w(a, b, u))</p><p>v∈V\{a,b} exp( w(a, b, u))</p><formula xml:id="formula_14">(12) h(a, b, u) = Wconcat(h u , rpe (a,b,u) )<label>(13)</label></formula><p>where ϕ denotes the GATv2 attention mechanism <ref type="bibr" target="#b2">[3]</ref>, W is a trainable weight matrix, and rpe (a,b,u) denotes the relative positional encoding (RPE), which is given by rpe (a,b,u) = MLP(ppr(a, u), ppr(b, u)). The learned pairwise encoding s(a, b) is then mapped to the semantic space of the LLM using a simple alignment projector σ P , which can be either a linear layer or a small MLP.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Time Complexity Analysis of Reusing Keys and Values</head><p>Denote the length of the part about the source node and all examples by m s , and denote the length of the part about the candidate target node by m t . Since the time complexity of each self-attention layer in LLM is O(m 2 ), where m represents the length of the input sequence, if we do not reuse any past keys or values, the time complexity for all n C instructions would be</p><formula xml:id="formula_15">O(n C (m s + m t ) 2 ) = O(n C m 2 s + n C m s m t + n C m 2 t )<label>(14)</label></formula><p>However, since for each (s, C) pair, where s denotes the source node and C denotes the candidate set, all instructions share the same part about the source node and examples. By reusing the keys and values generated by each self-attention layer of the shared part, we can reduce the time complexity to</p><formula xml:id="formula_16">O m 2 s + n C mt i=1 (m s + i) = O(m 2 s + n C m s m t + n C m 2 t )<label>(15)</label></formula><p>Due to the existence of examples and question text, m s is usually much longer than m t . Therefore, reusing keys and values can boost the efficiency of the ranking stage of LINKGPT without any performance loss.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D Statistics of the Datasets</head><p>Since the training and inference of LLMs are both computationally expensive, we randomly subsample all datasets, retaining about 20k nodes and their interconnecting edges. The statistics of the subsampled datasets are shown in Table <ref type="table" target="#tab_5">4</ref>. Furthermore, the data split ratio for training, validation, and test is 9:0.5:0.5 due to the high computation cost of inference. For these models, we use the implementation of the Deep Graph Library (DGL) <ref type="bibr" target="#b36">[37]</ref>. After obtaining the embedding of each node through the model, a 3-layer MLP is applied to determine whether two nodes are connected.</p><p>GCN <ref type="bibr" target="#b15">[16]</ref> GCN extends CNN to graph-structured data, learning node features through information passing and aggregation between nodes and their neighbors.</p><p>GraphSAGE <ref type="bibr" target="#b6">[7]</ref> GraphSAGE learns graph representations by sampling and aggregating features from a node's neighbors, which makes it particularly suitable for large graphs.</p><p>GATv2 <ref type="bibr" target="#b2">[3]</ref> GATv2 uses a dynamic attention mechanism to assign different weights to each node in the graph, thus capturing important relationships between nodes.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E.2 Models Leveraging Pairwise Information</head><p>These models learn and utilize pairwise information between nodes in various ways. We use their respective official code for implementation.</p><p>SEAL <ref type="bibr" target="#b41">[42]</ref> SEAL encodes local subgraphs between node pairs using GNNs, thus capturing richer structural information.</p><p>BUDDY <ref type="bibr" target="#b3">[4]</ref> BUDDY uses subgraph sketches as message passing without explicit subgraph construction and applies feature precomputation technique, making it scalable in both time and space.</p><p>LPFormer <ref type="bibr" target="#b28">[29]</ref> LPFormer designs an adaptive pairwise encoding using the attention mechanism of GATv2, thus effectively capturing pairwise information between nodes.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E.3 LLM-Based Models</head><p>For LLaMA2, we use the transformers library released by Hugging Face <ref type="bibr" target="#b37">[38]</ref> for implementation. For LLaGA and GraphGPT, we use their official code for implementation.</p><p>LLaMA2 <ref type="bibr" target="#b32">[33]</ref> The LLaMA2 model is a large autoregressive language model trained on a large corpus. We use the LLaMA2-7B version.</p><p>GraphGPT <ref type="bibr" target="#b30">[31]</ref> GraphGPT performs text-graph grounding through contrastive learning and uses graph matching, node classification, and link prediction as training tasks for dual-stage instruction tuning. Moreover, it is primarily designed for node classification.</p><p>LLaGA <ref type="bibr" target="#b4">[5]</ref> LLaGA enables LLMs to understand graph structural information by reorganizing nodes into two kinds of structure-aware sequence. It is trained using three tasks: node description, node classification, and link prediction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>F Implementation Details of LINKGPT</head><p>In stage 1 of instruction tuning, only the pairwise encoder f P , projector σ P and the node projector σ G are tuned. In stage 2, the aforementioned modules are frozen and only the LLM is tuned. When tuning the LLM, we apply LoRA <ref type="bibr" target="#b8">[9]</ref> to the query and value projection modules with rank r = 16 and </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>G Licenses of Assets Used</head><p>LLaMA2 <ref type="bibr" target="#b32">[33]</ref> LLaMA2 is a series of Large Language Models released by Meta. The LLaMA2-7B version is used in this paper. It is accessed through its homepage on Hugging Face, and its license is Llama 2 Community License Agreement.</p><p>MAG <ref type="bibr" target="#b29">[30,</ref><ref type="bibr" target="#b43">44]</ref> The MAG dataset is an academic network released by Sinha et al. and organized by Zhang et al. It is accessed through its official repository, and is licensed under ODC-By.</p><p>Amazon Products <ref type="bibr" target="#b24">[25]</ref> The Amazon Products dataset is an e-commerce network released by Julian et al. It is accessed through its homepage, and its license is MIT. The 2013 version is used in this paper.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>H Case Study of Neighbor Prediction Task</head><p>In this section, we discuss some cases of the neighbor prediction task. In the neighbor prediction task, the models are asked to directly generate the neighbors of a given node without any examples in the prompt. The generated text will then be used as the queries for retrieval. Figure <ref type="figure">6</ref> showcases an example from MAG-Geology <ref type="bibr" target="#b29">[30,</ref><ref type="bibr" target="#b43">44]</ref>, where the five sentences in the Generated Neighbors part represent the top-scoring sentences from the five beam groups (typically, there is little difference between sentences within the same beam group). In the figure, words that appear in both the positive target node and the generated texts are highlighted using the same colors. We can see that although there is no perfect matching, LINKGPT successfully predicts two important keywords: "magma" and "eruption." These two words did not appear in the source node or its neighbors but were mentioned multiple times in the generated texts, demonstrating the effectiveness of LINKGPT in the neighbor prediction task. Figure <ref type="figure">7</ref> showcases an example of the Amazon-Sports <ref type="bibr" target="#b24">[25]</ref> dataset, where LINKGPT precisely outputs the text of the positive target node. We believe the reason is that, compared to the titles of academic papers, the titles of products on Amazon are usually simpler and shorter, making them easier to predict. Meanwhile, we also observe that some texts generated by the model do not actually exist in the dataset, or they differ from similar texts in the dataset to some extent. Such phenomenon indicates that the hallucination problem of LLMs also exists in LINKGPT. However, by introducing a frequency-based retriever, e.g., BM25 <ref type="bibr" target="#b27">[28]</ref>, the negative impact of hallucinations can be alleviated.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Overview of the LINKGPT framework. The framework consists of three main components: (1) node encoding and pairwise encoding, (2) two-stage instruction tuning, and (3) a retrieval-rerank scheme for inference. In this figure, ⇒ means that the corresponding module is tuned during stage 1 and is frozen during stage 2, and vice versa. Note that the two LLMs in this figure are the same model.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Instruction templates for link prediction and neighbor prediction tasks. Only the answers (highlighted in green) are used for calculating the loss.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Performance of few-shot in-context learning. (Left): When the model is fine-tuned and evaluated on MAE-Geology, in-context learning does not significantly improve the performance. (Right): For cross-domain generalization, in-context learning boosts the performance significantly.</figDesc><graphic coords="7,145.11,234.54,158.40,118.80" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Performance of the retrieval-rerank scheme of LINKGPT. The line chart represents the final MRR, using the right axis, while the bar chart represents the total time required for each (s, C) pair during inference, using the left axis. Here s denotes the source node and C denotes the candidate target node set.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Visualization of two node encoding methods.</figDesc><graphic coords="13,108.00,374.79,178.19,130.72" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Stage Instruction Tuning Retrieval-Rerank Scheme for Inference 𝑓</head><label></label><figDesc></figDesc><table><row><cell></cell><cell></cell><cell>CE loss</cell><cell></cell><cell></cell><cell>candidate</cell></row><row><cell></cell><cell>LLM 𝜙</cell><cell></cell><cell>text</cell><cell>text</cell><cell>target set</cell></row><row><cell></cell><cell></cell><cell></cell><cell>generated</cell><cell></cell></row><row><cell>𝑓 𝐺 𝜎 𝐺</cell><cell>{source text}</cell><cell>CE loss</cell><cell>neighbors queries</cell><cell cols="2">BM25 as retriever</cell></row><row><cell>source node</cell><cell>LLM 𝜙</cell><cell></cell><cell></cell><cell></cell></row><row><cell>target node</cell><cell></cell><cell>: Frozen</cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell>: Tuned</cell><cell></cell><cell></cell></row></table><note><p>{source text} {target text} What nodes are connected with it? 𝑓 𝑃 𝜎 𝑃 Are they connected? node encoding pairwise encoding Task 1: Neighbor Prediction Task 2: Link Prediction Two-𝐺 : node encoder, 𝜎 𝐺 : node projector 𝑓 𝑃 : pairwise encoder, 𝜎 𝑃 : pairwise projector (count: 𝑁 𝐶 )</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>the raw text encoding of node v. We employ GraphFormers<ref type="bibr" target="#b38">[39]</ref> as our node encoder f G , which fuses text encoding and graph aggregation into a uniform iterative workflow, and This is the source node. &lt;NODE&gt; Text: {text}. This is another node. &lt;NODE&gt; &lt;PAIRWISE&gt; Text: {text}. Is this node connected with the source node? Answer: {Yes/No} This is another node. &lt;NODE&gt; &lt;PAIRWISE&gt; Text: {text}. Is this node connected with the source node? Answer: {Yes/No} ...</figDesc><table><row><cell>Link Prediction:</cell></row><row><cell>Neighbor Prediction:</cell></row><row><cell>This is the source node. &lt;NODE&gt; Text: {text}. What nodes are connected with it?</cell></row><row><cell>Answer: Text: {text}. Text: {text}. ...</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 1 :</head><label>1</label><figDesc>Performance of LINKGPT and baseline models on the link prediction task on 4 datasets. The best results are marked in bold.</figDesc><table><row><cell>Dataset</cell><cell cols="4">Amazon-Sports Amazon-Clothing</cell><cell cols="2">MAG-Math</cell><cell cols="2">MAG-Geology</cell></row><row><cell></cell><cell cols="3">MRR Hits@1 MRR</cell><cell>Hits@1</cell><cell cols="4">MRR Hits@1 MRR Hits@1</cell></row><row><cell>GCN [16]</cell><cell>70.44</cell><cell>60.17</cell><cell>68.18</cell><cell>60.00</cell><cell>51.35</cell><cell>40.11</cell><cell>45.80</cell><cell>33.14</cell></row><row><cell>GraphSAGE [7]</cell><cell>77.60</cell><cell>68.43</cell><cell>81.17</cell><cell>71.61</cell><cell>50.97</cell><cell>36.77</cell><cell>44.17</cell><cell>28.41</cell></row><row><cell>GATv2 [3]</cell><cell>81.44</cell><cell>72.96</cell><cell>87.83</cell><cell>81.56</cell><cell>65.65</cell><cell>55.27</cell><cell>51.59</cell><cell>37.95</cell></row><row><cell>SEAL [42]</cell><cell>76.79</cell><cell>69.58</cell><cell>82.14</cell><cell>75.41</cell><cell>61.79</cell><cell>56.34</cell><cell>58.05</cell><cell>50.07</cell></row><row><cell>BUDDY [4]</cell><cell>81.33</cell><cell>74.00</cell><cell>83.89</cell><cell>76.52</cell><cell>58.15</cell><cell>48.30</cell><cell>54.95</cell><cell>45.32</cell></row><row><cell>LPFormer [29]</cell><cell>69.94</cell><cell>62.61</cell><cell>65.99</cell><cell>56.29</cell><cell>47.97</cell><cell>42.19</cell><cell>43.10</cell><cell>35.08</cell></row><row><cell>LLaMA2 [33]</cell><cell>40.81</cell><cell>30.88</cell><cell>30.22</cell><cell>22.49</cell><cell>22.92</cell><cell>13.54</cell><cell>21.86</cell><cell>13.47</cell></row><row><cell>GraphGPT [31]</cell><cell>14.82</cell><cell>5.96</cell><cell>32.29</cell><cell>14.28</cell><cell>12.43</cell><cell>4.37</cell><cell>9.78</cell><cell>2.62</cell></row><row><cell>LLaGA [5]</cell><cell>83.41</cell><cell>75.40</cell><cell>84.49</cell><cell>77.54</cell><cell>74.25</cell><cell>63.34</cell><cell>62.19</cell><cell>49.80</cell></row><row><cell cols="2">LINKGPT (Ours) 87.07</cell><cell>79.56</cell><cell>90.18</cell><cell>84.82</cell><cell>81.03</cell><cell>71.01</cell><cell>75.43</cell><cell>64.57</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 2 :</head><label>2</label><figDesc>Zero-shot performance on the link prediction task. A → B indicates that the model is trained on dataset A and evaluated on an unseen dataset B. The best results are marked in bold.</figDesc><table><row><cell></cell><cell></cell><cell cols="2">Cross-category</cell><cell></cell><cell></cell><cell cols="2">Cross-domain</cell><cell></cell></row><row><cell>Dataset</cell><cell cols="4">Sports→Clothing Math→Geology</cell><cell cols="2">Sports→Math</cell><cell cols="2">Math→Sports</cell></row><row><cell></cell><cell cols="8">MRR Hits@1 MRR Hits@1 MRR Hits@1 MRR Hits@1</cell></row><row><cell>GraphSAGE [7]</cell><cell>51.88</cell><cell>36.43</cell><cell>8.11</cell><cell>2.06</cell><cell>19.27</cell><cell>8.88</cell><cell>27.64</cell><cell>14.52</cell></row><row><cell>GATv2 [3]</cell><cell>67.01</cell><cell>55.36</cell><cell>21.41</cell><cell>13.54</cell><cell>36.87</cell><cell>26.86</cell><cell>49.68</cell><cell>37.21</cell></row><row><cell>BUDDY [4]</cell><cell>81.23</cell><cell>72.01</cell><cell>24.45</cell><cell>13.35</cell><cell>26.43</cell><cell>15.73</cell><cell>42.39</cell><cell>21.22</cell></row><row><cell>LPFormer [29]</cell><cell>68.26</cell><cell>59.64</cell><cell>42.70</cell><cell>35.08</cell><cell>48.50</cell><cell>43.75</cell><cell>56.78</cell><cell>44.13</cell></row><row><cell>LLaGA [5]</cell><cell>78.62</cell><cell>68.90</cell><cell>23.20</cell><cell>13.13</cell><cell>23.86</cell><cell>12.97</cell><cell>53.67</cell><cell>40.46</cell></row><row><cell cols="2">LINKGPT (Ours) 85.74</cell><cell>79.01</cell><cell>71.58</cell><cell>60.42</cell><cell>67.50</cell><cell>55.27</cell><cell>69.38</cell><cell>55.40</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 3 :</head><label>3</label><figDesc>Ablation on the node encoding and pairwise encoding. The pairwise encoding are more important than node encoding for the link prediction task, since pairwise information is more helpful. However, both encodings contribute to the final performance of LINKGPT.</figDesc><table><row><cell>Dataset</cell><cell cols="4">Amazon-Clothing MAG-Geology</cell></row><row><cell></cell><cell>MRR</cell><cell>Hits@1</cell><cell cols="2">MRR Hits@1</cell></row><row><cell>LINKGPT (Ours)</cell><cell>90.18</cell><cell>84.82</cell><cell>75.43</cell><cell>64.57</cell></row><row><cell>-w/o node encoding</cell><cell>88.77</cell><cell>82.46</cell><cell>74.73</cell><cell>63.50</cell></row><row><cell cols="2">-w/o pairwise encoding 83.08</cell><cell>74.11</cell><cell>72.07</cell><cell>60.42</cell></row><row><cell>5.5 Ablation Study (RQ4)</cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 4 :</head><label>4</label><figDesc>Statistics of the four datasets. Amazon-Sports Amazon-Clothing MAG-Mathematics MAG-Geology</figDesc><table><row><cell># of Nodes</cell><cell>20,417</cell><cell>20,180</cell><cell>19,878</cell><cell>20,530</cell></row><row><cell># of Edges</cell><cell>48,486</cell><cell>44,775</cell><cell>34,676</cell><cell>51,540</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 5 :</head><label>5</label><figDesc>Summary of parameters, memory usage, and training time for each stage. For # of params tuned in stage 1, number 5.26 M is for linear projector, and 5.85 M is for 2-layer MLP as the projector.# of Total Params # of Params Tuned Memory Time</figDesc><table><row><cell>Stage 1</cell><cell>6.7 B</cell><cell>5.26 M or 5.85 M</cell><cell>27 GB</cell><cell>2.2 hours</cell></row><row><cell>Stage 2</cell><cell>6.7 B</cell><cell>8.39 M</cell><cell>27 GB</cell><cell>2.8 hours</cell></row><row><cell cols="3">E Descriptions of the Baseline Models</cell><cell></cell><cell></cell></row><row><cell cols="2">E.1 Traditional GAE-Based Models</cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 6 :</head><label>6</label><figDesc>Performance of LINKGPT and baseline models on the link prediction task on PubMed and ogbn-Arxiv. The best results are marked in bold. During the whole training process, the learning rate is set to 3e-4 and the batch size is set to 8. Furthermore, we use AdamW<ref type="bibr" target="#b21">[22]</ref> as the optimizer.One NVIDIA A40 GPU used for training and inference. The numbers of tuned parameters, memory usage, and training time for each stage of the instruction tuning are shown in Table5. The time of inference needed to produce the results of LINKGPT in Table1, Table2and Figure3is approximately 2.3 hours for each dataset. The time of inference needed to produce the results of LINKGPT in Figure4is approximately 2.75 hours for each dataset.</figDesc><table><row><cell>Dataset</cell><cell cols="2">PubMed</cell><cell cols="2">ogbn-Arxiv</cell></row><row><cell></cell><cell cols="4">MRR Hits@1 MRR Hits@1</cell></row><row><cell>GATv2 [3]</cell><cell>39.33</cell><cell>26.19</cell><cell>63.85</cell><cell>52.09</cell></row><row><cell>LPFormer [29]</cell><cell>30.08</cell><cell>20.78</cell><cell>58.51</cell><cell>50.55</cell></row><row><cell>LLaGA [5]</cell><cell>43.44</cell><cell>29.05</cell><cell>70.78</cell><cell>59.80</cell></row><row><cell cols="2">LINKGPT (Ours) 66.54</cell><cell>53.42</cell><cell>81.03</cell><cell>72.06</cell></row><row><cell>alpha α = 32.</cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Source Node: An experimental study of the kinetics of decompression-induced crystallization in silicic melt.</p><p>Positive Target Node: Preeruption conditions and timing of dacite-andesite magma mixing in the 2.2 ka eruption at Mount Rainier.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Generated Neighbors:</head><p>Experimental study of the kinetics of decompression-induced crystallization in silicic magma. Thermodynamics of decompression-induced crystallization in silicic magma. Hydrothermal alteration of the 1980 Mt. St. Helens eruption. Crystallization kinetics of silicic melt at 1200-1400 °C and 10-15 kbar: Implications for magma chamber dynamics. Decompression-induced crystallization in silicic melt. Figure <ref type="figure">6</ref>: One example of the neighbor prediction task on the MAG-Geology dataset. The words that appear both in the positive target node and the generated neighbors are marked with the same colors.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Source Node:</head><p>Louis Garneau Mistral Vent Jersey -Sleeveless.</p><p>Positive Target Node: K-Edge Handlebar Computer Mount for Garmin -Men's.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Generated Neighbors: K-Edge Handlebar Computer Mount for Garmin -Men's.</head><p>Pearl Izumi Men's Elite Gel Glove. Louis Garneau Men's 0 Calories Cycling Jersey. Lizard Skins DSP 2.5mm Bar Tape. BDI Men's Classic Cycling Jersey. Made in Italy. Figure <ref type="figure">7</ref>: One example of the neighbor prediction task on the Amazon-Sports dataset. The words that appear both in the positive target node and the generated neighbors are marked with the same colors.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I Experiments on Other Datasets</head><p>Since LLaGA <ref type="bibr" target="#b4">[5]</ref> in not applied to the Amazon <ref type="bibr" target="#b24">[25]</ref> and MAG <ref type="bibr" target="#b29">[30,</ref><ref type="bibr" target="#b43">44]</ref> datasets in the original paper, we train LINKGPT and other baseline models on the PubMed <ref type="bibr" target="#b39">[40]</ref> and ogbn-Arxiv <ref type="bibr" target="#b10">[11]</ref> datasets for a fairer and more comprehensive comparison. We use the publicly available checkpoint released by the authors of LLaGA. Due to the size of the ogbn-Arxiv dataset, 20,000 nodes are randomly selected for this experiment. As shown in Table <ref type="table">6</ref>, LINKGPT outperforms all baseline models on these two additional datasets.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Flamingo: a visual language model for few-shot learning</title>
+		<author>
+			<persName><forename type="first">Jean-Baptiste</forename><surname>Alayrac</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeff</forename><surname>Donahue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pauline</forename><surname>Luc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Miech</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Iain</forename><surname>Barr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yana</forename><surname>Hasson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karel</forename><surname>Lenc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arthur</forename><surname>Mensch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katherine</forename><surname>Millican</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Malcolm</forename><surname>Reynolds</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="23716" to="23736" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">The anatomy of a large-scale hypertextual web search engine</title>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Brin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lawrence</forename><surname>Page</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Comput. Networks</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="page" from="107" to="117" />
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">How attentive are graph attention networks?</title>
+		<author>
+			<persName><forename type="first">Shaked</forename><surname>Brody</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Uri</forename><surname>Alon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eran</forename><surname>Yahav</surname></persName>
+		</author>
+		<idno>ArXiv, abs/2105.14491</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Graph neural networks for link prediction with subgraph sketching</title>
+		<author>
+			<persName><forename type="first">Benjamin</forename><surname>Paul Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Shirobokov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emanuele</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabrizio</forename><surname>Frasca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Markovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nils</forename><surname>Hammerla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">M</forename><surname>Bronstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Hansmire</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<author>
+			<persName><forename type="first">Runjin</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ajay</forename><surname>Jaiswal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neil</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhangyang</forename><surname>Wang</surname></persName>
+		</author>
+		<title level="m">Llaga: Large language and graph assistant</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Bert: Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<publisher>NAACL-HLT</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Inductive representation learning on large graphs</title>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhitao</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Harnessing explanations: Llm-to-lm interpreter for enhanced text-attributed graph representation learning</title>
+		<author>
+			<persName><forename type="first">Xiaoxin</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xavier</forename><surname>Bresson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Laurent</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Perold</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yann</forename><surname>Lecun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Hooi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Twelfth International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">Lora: Low-rank adaptation of large language models</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">Edward</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yelong</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Phillip</forename><surname>Wallis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zeyuan</forename><surname>Allen-Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuanzhi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shean</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weizhu</forename><surname>Chen</surname></persName>
+		</author>
+		<idno>ArXiv, abs/2106.09685</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Open graph benchmark: Datasets for machine learning on graphs</title>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marinka</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michele</forename><surname>Catasta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NeurIPS</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="22118" to="22133" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Open graph benchmark: Datasets for machine learning on graphs</title>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marinka</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michele</forename><surname>Catasta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Survey of hallucination in natural language generation</title>
+		<author>
+			<persName><forename type="first">Ziwei</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nayeon</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rita</forename><surname>Frieske</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tiezheng</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yan</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Etsuko</forename><surname>Ishii</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ye</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jin</forename><surname>Bang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrea</forename><surname>Madotto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pascale</forename><surname>Fung</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Computing Surveys</title>
+		<imprint>
+			<biblScope unit="volume">55</biblScope>
+			<biblScope unit="issue">12</biblScope>
+			<biblScope unit="page" from="1" to="38" />
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<author>
+			<persName><forename type="first">Jin</forename><surname>Bowen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chi</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ji</forename><surname>Heng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiawei</forename><surname>Han</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2312.02783</idno>
+		<title level="m">Large language models on graphs: A comprehensive survey</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<author>
+			<persName><forename type="first">Jin</forename><surname>Bowen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wentao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinyang</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiawei</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Patton</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2305.12268</idno>
+		<title level="m">Language model pretraining on text-rich networks</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">A new status index derived from sociometric analysis</title>
+		<author>
+			<persName><forename type="first">Leo</forename><surname>Katz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Psychometrika</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="page" from="39" to="43" />
+			<date type="published" when="1953">1953</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+		<idno>ArXiv, abs/1609.02907</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">Variational graph auto-encoders</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1611.07308</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Gpt4rec: A generative framework for personalized recommendation and user interests interpretation</title>
+		<author>
+			<persName><forename type="first">Jinming</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wentao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tian</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guanglei</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alan</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gerard</forename><surname>Medioni</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Blip-2: Bootstrapping languageimage pre-training with frozen image encoders and large language models</title>
+		<author>
+			<persName><forename type="first">Junnan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongxu</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Silvio</forename><surname>Savarese</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Hoi</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2301.12597</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">The link prediction problem for social networks</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Liben</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">-</forename><surname>Nowell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jon</forename><surname>Kleinberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CIKM</title>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+			<biblScope unit="page" from="556" to="559" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Visual instruction tuning</title>
+		<author>
+			<persName><forename type="first">Haotian</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chunyuan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qingyang</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yong Jae</forename><surname>Lee</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Decoupled weight decay regularization</title>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Loshchilov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Frank</forename><surname>Hutter</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Revisiting link prediction: A data perspective</title>
+		<author>
+			<persName><forename type="first">Haitao</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juanhui</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harry</forename><surname>Shomer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bingheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenqi</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neil</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+		</author>
+		<idno>ArXiv, abs/2310.00793</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">A survey of link prediction in complex networks</title>
+		<author>
+			<persName><forename type="first">Víctor</forename><surname>Martínez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fernando</forename><surname>Berzal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juan-Carlos</forename><surname>Cubero</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM computing surveys (CSUR)</title>
+		<imprint>
+			<biblScope unit="volume">49</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="1" to="33" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Javen Qinfeng Shi, and Anton van den Hengel. Imagebased recommendations on styles and substitutes</title>
+		<author>
+			<persName><forename type="first">Julian</forename><surname>Mcauley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Targett</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 38th International ACM SIGIR Conference on Research and Development in Information Retrieval</title>
+		<meeting>the 38th International ACM SIGIR Conference on Research and Development in Information Retrieval</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Clustering and preferential attachment in growing networks</title>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">J</forename><surname>Mark</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Newman</surname></persName>
+		</author>
+		<idno>64 2 Pt 2:025102</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Physical review. E, Statistical, nonlinear, and soft matter physics</title>
+		<imprint>
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title/>
+	</analytic>
+	<monogr>
+		<title level="j">OpenAI. Gpt-4 technical report</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">The probabilistic relevance framework: Bm25 and beyond</title>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Robertson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hugo</forename><surname>Zaragoza</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Found. Trends Inf. Retr</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="333" to="389" />
+			<date type="published" when="2009-04">apr 2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Lpformer: An adaptive graph transformer for link prediction</title>
+		<author>
+			<persName><forename type="first">Harry</forename><surname>Shomer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haitao</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juanhui</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2310.11009</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">An overview of microsoft academic service (mas) and applications</title>
+		<author>
+			<persName><forename type="first">Arnab</forename><surname>Sinha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhihong</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Darrin</forename><surname>Eide</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bo-June (paul)</forename><surname>Hsu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kuansan</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 24th International Conference on World Wide Web, WWW &apos;15 Companion</title>
+		<meeting>the 24th International Conference on World Wide Web, WWW &apos;15 Companion<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="243" to="246" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">Graphgpt: Graph instruction tuning for large language models</title>
+		<author>
+			<persName><forename type="first">Jiabin</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuhao</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lixin</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suqi</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dawei</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Huang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2310.13023</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<author>
+			<persName><surname>Sm Tonmoy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vinija</forename><surname>Zaman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anku</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vipula</forename><surname>Rani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aman</forename><surname>Rawte</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amitava</forename><surname>Chadha</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Das</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2401.01313</idno>
+		<title level="m">A comprehensive survey of hallucination mitigation techniques in large language models</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Hugo</forename><surname>Touvron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Louis</forename><surname>Martin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Stone</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Albert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amjad</forename><surname>Almahairi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yasmine</forename><surname>Babaei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nikolay</forename><surname>Bashlykov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soumya</forename><surname>Batra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prajjwal</forename><surname>Bhargava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shruti</forename><surname>Bhosale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Bikel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lukas</forename><surname>Blecher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cristian Canton</forename><surname>Ferrer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Moya</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillem</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Esiobu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jude</forename><surname>Fernandes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeremy</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenyin</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brian</forename><surname>Fuller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cynthia</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vedanuj</forename><surname>Goswami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naman</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anthony</forename><surname>Hartshorn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saghar</forename><surname>Hosseini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Hou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hakan</forename><surname>Inan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marcin</forename><surname>Kardas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Viktor</forename><surname>Kerkez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Madian</forename><surname>Khabsa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Isabel</forename><surname>Kloumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Artem</forename><surname>Korenev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Punit</forename><surname>Singh Koura</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marie-Anne</forename><surname>Lachaux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thibaut</forename><surname>Lavril</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jenya</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diana</forename><surname>Liskovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinghai</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuning</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xavier</forename><surname>Martinet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Todor</forename><surname>Mihaylov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pushkar</forename><surname>Mishra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Igor</forename><surname>Molybog</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixin</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Poulton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeremy</forename><surname>Reizenstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rashi</forename><surname>Rungta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kalyan</forename><surname>Saladi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alan</forename><surname>Schelten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruan</forename><surname>Silva</surname></persName>
+		</author>
+		<editor>Eric Michael Smith, Ranjan Subramanian, Xiaoqing Ellen Tan, Binh Tang, Ross Taylor, Adina Williams, Jian Xiang Kuan, Puxin Xu, Zheng Yan, Iliyan Zarov, Yuchen Zhang, Angela Fan, Melanie Kambadur, Sharan Narang, Aurelien Rodriguez, Robert Stojnic, Sergey Edunov</editor>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note>and Thomas Scialom. Llama 2: Open foundation and fine-tuned chat models</note>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Visualizing data using t-sne</title>
+		<author>
+			<persName><forename type="first">Laurens</forename><surname>Van Der Maaten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><forename type="middle">E</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="2579" to="2605" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Composition-based multi-relational graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Shikhar</forename><surname>Vashishth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soumya</forename><surname>Sanyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nitin</forename><surname>Vikram</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Partha</forename><surname>Talukdar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ICLR</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<monogr>
+		<title level="m" type="main">Diverse beam search: Decoding diverse solutions from neural sequence models</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Ashwin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Vijayakumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ramprasath</forename><forename type="middle">R</forename><surname>Cogswell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qing</forename><surname>Selvaraju</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefan</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dhruv</forename><surname>Crandall</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Batra</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<monogr>
+		<title level="m" type="main">Deep graph library: A graph-centric, highly-performant package for graph neural networks</title>
+		<author>
+			<persName><forename type="first">Minjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Da</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zihao</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quan</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mufei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinjing</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lingfan</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Gai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianjun</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Karypis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinyang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Wolf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lysandre</forename><surname>Debut</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Victor</forename><surname>Sanh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julien</forename><surname>Chaumond</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clement</forename><surname>Delangue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anthony</forename><surname>Moi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pierric</forename><surname>Cistac</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Rault</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rémi</forename><surname>Louf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Morgan</forename><surname>Funtowicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joe</forename><surname>Davison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Shleifer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clara</forename><surname>Patrick Von Platen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yacine</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julien</forename><surname>Jernite</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Canwen</forename><surname>Plu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Teven</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sylvain</forename><surname>Le Scao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mariama</forename><surname>Gugger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quentin</forename><surname>Drame</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><forename type="middle">M</forename><surname>Lhoest</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Rush</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note>Huggingface&apos;s transformers: State-of-the-art natural language processing</note>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Graphformers: Gnn-nested transformers for representation learning on textual graph</title>
+		<author>
+			<persName><forename type="first">Junhan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shitao</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chaozhuo</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Defu</forename><surname>Lian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanjay</forename><surname>Agrawal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amit</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guangzhong</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xing</forename><surname>Xie</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">Revisiting semi-supervised learning with graph embeddings</title>
+		<author>
+			<persName><forename type="first">Zhilin</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">W</forename><surname>Cohen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruslan</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Link prediction based on graph neural networks</title>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixin</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NeurIPS</title>
+		<imprint>
+			<biblScope unit="page">31</biblScope>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Link prediction based on graph neural networks</title>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixin</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Labeling trick: A theory of using graph neural networks for multi-node representation learning</title>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinglong</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Long</forename><surname>Jin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NeurIPS</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="9061" to="9073" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">The effect of metadata on scientific literature tagging: A cross-field cross-model study</title>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiawei</forename><surname>Han</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">WWW&apos;23</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="1626" to="1637" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<monogr>
+		<title level="m" type="main">Minigpt-4: Enhancing vision-language understanding with advanced large language models</title>
+		<author>
+			<persName><forename type="first">Deyao</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoqian</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohamed</forename><surname>Elhoseiny</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2304.10592</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<monogr>
+		<title level="m" type="main">Touchupg: Improving feature representation through graph-centric finetuning</title>
+		<author>
+			<persName><forename type="first">Jing</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Vassilis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danai</forename><surname>Ioannidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christos</forename><surname>Koutra</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Faloutsos</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2309.13885</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">Efficient tuning and inference for large language models on textual graphs</title>
+		<author>
+			<persName><forename type="first">Yun</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaoke</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haizhou</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Siliang</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2401.15569</idno>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

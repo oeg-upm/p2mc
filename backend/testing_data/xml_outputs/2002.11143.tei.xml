@@ -1,0 +1,909 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">End-to-End Entity Linking and Disambiguation leveraging Word and Knowledge Graph Embeddings</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2020-02-25">25 Feb 2020</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Rostislav</forename><surname>Nedelchev</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Bonn</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Debanjan</forename><surname>Chaudhuri</surname></persName>
+							<affiliation key="aff1">
+								<orgName type="institution">University of Bonn</orgName>
+								<address>
+									<settlement>Fraunhofer</settlement>
+									<country>IAIS Germany</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Jens</forename><surname>Lehmann</surname></persName>
+							<email>jens.lehmann@cs.uni-bonn.de</email>
+							<affiliation key="aff2">
+								<orgName type="institution">University of Bonn</orgName>
+								<address>
+									<settlement>Fraunhofer</settlement>
+									<country>IAIS Germany</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Asja</forename><surname>Fischer</surname></persName>
+							<email>asja.fischer@rub.de</email>
+							<affiliation key="aff3">
+								<orgName type="institution">Ruhr University Bochum</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">End-to-End Entity Linking and Disambiguation leveraging Word and Knowledge Graph Embeddings</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2020-02-25">25 Feb 2020</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">4228EB11C977A3DE907229605752181E</idno>
+					<idno type="arXiv">arXiv:2002.11143v1[cs.CL]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T09:35+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Entity linking -connecting entity mentions in a natural language utterance to knowledge graph (KG) entities is a crucial step for question answering over KGs. It is often based on measuring the string similarity between entity label and its mention in the question. The relation referred to in the question can help to disambiguate between entities with the same label. This can be misleading if an incorrect relation has been identified in the relation linking step. However, an incorrect relation may still be semantically similar to the relation which the correct entity forms a triple with in the KG; which could be captured by a similarity of their KG embeddings. Based on this idea, we propose the first end-to-end neural network approach that employs KG as well as word embeddings to perform joint relation and entity classification of simple questions while implicitly performing entity dismabiguation with the help of a novel gating mechanism. An empirical evaluation shows that the proposed approach achieves a performance comparable to state-of-the-art entity linking while requiring less post-processing.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Question answering is a scientific discipline which aims at automatically answering questions posed by humans in natural language. Simple question answering over knowledge graphs is a well researched topic. <ref type="bibr" target="#b2">(Bordes et al., 2015;</ref><ref type="bibr" target="#b26">Yin et al., 2016;</ref><ref type="bibr" target="#b17">Mohammed et al., 2018;</ref><ref type="bibr" target="#b19">Petrochuk and Zettlemoyer, 2018)</ref> A knowledge graph (KG) is a multi-relational graph which represents entities as nodes and relations between those entities as edges. Facts in a KG are stored in form of triples <ref type="bibr">(h, r, t)</ref> where h and t denote the head (also called subject) and tail (also called object) entities, respectively, and r denotes their relation. A simple question is a natural language question (NLQ) that can be represented by a single (subject) entity and a relation. Answering the query then corresponds to identifying the correct entity and relation given in NLQ and returning the object entity of the matching triple. For example, for the question Who is the producer of a beautiful mind? the corresponding KG fact is (a beautiful mind, produced by, Brian Grazer) and the question answering system should be able to link to the correct entity "a beautiful mind" (of type movie) and the relation "produced by" in the KG to answer the question by "Brian Grazer".</p><p>The tasks of identifying the KG entity and relation mentioned in the NLQ are called entity and relation linking, respectively. The former is often decomposed into two sub-tasks, firstly detecting the span of the entity mention in the NLQ, secondly to connect the identified mention to a single entity in the KG, which is usually solved by comparing the entity mention to the names of the KG entities based on string similarity measures. This becomes particularly challenging if there exist more than one entity in the KG with the same label (name). However, the context provided for the entity in the KG can be used for disambiguation. In our example, correct relation linking would identify the relation "produced by" as being mentioned in the NLQ. Now one could make use of this information for entity linking by considering only entities which are connected to this specific relation. This would allow to disambiguate and link to the movie "a beautiful mind" rather than the book. This procedure is called soft disambiguation.</p><p>However, relation linking is still challenging since the number of relations in many KGs is still large (e.g. 6701 in the FB2M graph subset of the SimpleQuestions dataset <ref type="bibr" target="#b2">(Bordes et al., 2015)</ref>), while suffering from the problem of unbalanced classes <ref type="bibr" target="#b25">(Xu et al., 2016)</ref>. Furthermore, some relations may be semantically similar, for example, "fb:film.film.executive_produced_by" and "fb:film.film.produced_by"; and hence can be confusing for the relation linker. Therefore, relation linking may end up predicting the wrong relation, which would negatively effect relation based entity disambiguation. To encounter this effect, it seems promising to leverage the relation specific information contained in the KG which is represented by the KG embedding of the relation. Semantically similar relations are closer to each other in KG embeddings vector space. So even if a model is not able to predict the correct relation , the semantic information provided by KG embeddings can be employed to perform soft disambiguation of the entity candidates.</p><p>Based on these line of thoughts, we propose a novel end-to-end neural network model for answering simple questions from knowledge graphs , that incorporates both word and KG embeddings. Specifically, the contributions of this paper are as follows:</p><p>• The proposal of a novel end-to-end model leveraging relatively simple architectures for entity and relation detection which is comparable to other state-of-the-art approaches for entity linking even without additional postprocessing.</p><p>• The (to our knowledge) first investigation of incorporating KG embeddings for leveraging KG structures for the end task of entity linking in an end-to-end manner.</p><p>• A novel gating mechanism incorporated in the end-to-end architecture which can implicitly perform entity disambiguation if required, improving overall entity linking performance. The final prediction is based on vector similarities, which along with the gate's output can be interpreted during prediction.</p><p>The rest of the paper is organized as follows: In Section 2, we summarize the related works on simple question answering. Sections 3 &amp; 4 provide the background and preliminaries important to this work. The overall approach and the architecture is explained in Section 5. In Section 6, we describe the experiment conditions. Evaluation results are discussed in Section 7. We do an ablation study and result analysis in section 8. Finally, we conclude and state the planned future works in Section 9.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>The SimpleQuestions dataset, as proposed by <ref type="bibr" target="#b2">(Bordes et al., 2015)</ref> is the first large scale dataset for simple questions over Freebase. It consists of 108,442 questions split into train(70%), valid(10%), and test(20%). They also proposed an end-to-end architecture using memory networks along with the dataset.</p><p>The second end-to-end approach for simple question answering over Freebase was provided by <ref type="bibr" target="#b9">(He and Golub, 2016)</ref>. They proposed a character LSTM based question encoder for encoding the question, a CNN based encoder for encoding the KG entity and relation, and finally an attentionbased LSTM decoder for predicting an entityrelation pair given the question. A similar entto-end approach was suggested by <ref type="bibr" target="#b14">(Lukovnikov et al., 2017)</ref>. It employs Gated Recurrent Unit (GRU) based encoders that work on character and word level and in addition encode the hierarchical types of relations and entities to provide further information.</p><p>Furthermore, a growing set of modular architectures was proposed on the SimpleQuestions dataset. <ref type="bibr" target="#b26">(Yin et al., 2016)</ref> proposed a characterlevel CNN for identifying entity mentions and a separate word-level CNN with attentive maxpooling to select knowledge graph tuples. <ref type="bibr" target="#b27">(Yu et al., 2017)</ref> utilized a hierarchical residual bidirectional LSTM for for predicting a relation, which is then used to re-rank the entity candidates. They replaced the topic entity in the question with a generic token &lt;e&gt; during relation prediction which helps in better distinguishing the relative position of each word compared to the entity. <ref type="bibr" target="#b5">(Dai et al., 2016)</ref> proposed a conditional probabilistic framework with bidirectional GRUs that takes advantage of knowledge graph embeddings. <ref type="bibr" target="#b17">(Mohammed et al., 2018)</ref> suggested to use a combination of relatively simple, component-based approaches that build on bidirectional GRUs, bidirectional LSTMs (BiLSTMs), and conditional random fields (CRFs) as well as on graph-based heuristics to select the most relevant entity given a question from a candidate set. The resulting model provides strong baselines for simple question-answering. More recently, <ref type="bibr" target="#b10">(Huang et al., 2019)</ref> proposed an architecture based on KG em-beddings, <ref type="bibr" target="#b19">(Petrochuk and Zettlemoyer, 2018)</ref> proposed a technique combining LSTM-CRF based entity detection with BiLSTM based relation linking where they also replace the topic entity with generic tokens following <ref type="bibr" target="#b27">(Yu et al., 2017)</ref>. Some other open-domain knowledge graphs are Wikidata <ref type="bibr" target="#b24">(Vrandečić and Krötzsch, 2014)</ref> and DBpedia <ref type="bibr" target="#b13">(Lehmann et al., 2015)</ref>. In particular, there are two very recent efforts that provided adaptations of the SimpleQuestions dataset <ref type="bibr" target="#b2">(Bordes et al., 2015)</ref> to Wikidata <ref type="bibr" target="#b7">(Diefenbach et al., 2017)</ref> and DBpedia <ref type="bibr" target="#b0">(Azmy et al., 2018)</ref>. In addition, there is the Question Answering over Linked Data (QALD) <ref type="bibr" target="#b21">(Unger et al., 2016;</ref><ref type="bibr" target="#b23">Usbeck et al., 2017</ref><ref type="bibr" target="#b22">Usbeck et al., , 2018) )</ref> series of challenges that use DBpedia as a knowledge base for QA.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Background</head><p>Knowledge graphs, word embeddings, and KG embeddings are concepts that are fundamental to this work. Embeddings provide a numerical representation of words and KG entities/relations that facilitate the incorporation of information provided by KG and language into neural networks. Their detailed description follows.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Knowledge Graphs</head><p>In this work, a KG is a network of real world entities that are connected to each other by means of relations. Those entities and their relations are represented as nodes and edges respectively in a multi-relational, directed graph. Knowledge graphs consist of ordered triples, also known as facts, of the form (s, r, o), where s and o are two entities connected by the relation r. Revisiting the example from the introduction, the corresponding fact would be given by ("a beautiful mind" "produced by", "Brian Grazer").</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Knowledge Graph Embeddings</head><p>Knowledge graphs are data structures that lack a default numerical representation that allows their straightforward application in a standard machine learning context. Statistical relation learning therefore relies beside other approaches on latent feature models for making prediction over KGs. These latent features usually correspond to embedding vectors of the KG entities and relations. Given the embeddings of the entities and relations of a fact (h, r, t), a score function outputs the a value indicating the probability that the fact is ex-isting in the KG. In this paper, we use TransE <ref type="bibr" target="#b3">(Bordes et al., 2013)</ref> to learn the KG embeddings used by our model. Let the embedding vector of subject and object entity be given by h and t respectively, and that of the relation by a vector r, then the score function of TransE is given by f (h, r, t) = -h + r -t .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Word Embeddings</head><p>In recent times, various approaches were proposed that embed words on a vector space <ref type="bibr" target="#b1">(Bengio et al., 2003;</ref><ref type="bibr" target="#b4">Collobert and Weston, 2008)</ref>. These methods create representations for each word as a vector of floating-point numbers. Words whose vectors are close to each other are demonstrated to be semantically similar or related. Especially, two works <ref type="bibr">(Mikolov et al., 2013a,b)</ref> showed the high potential of word embeddings in natural language processing (NLP) problems.</p><p>In this work, we use the GloVe <ref type="bibr" target="#b18">(Pennington et al., 2014)</ref> vector embeddings. The method aims to create a d-dimensional vector representation of each word in the vocabulary, w ∈ V w , and the context of each occurrence of a word in the corpus, c ∈ V C so that:</p><formula xml:id="formula_0">w • c + b w + b c = log(#(w, c)) ∀(w, c) ∈ D</formula><p>where b w and b c are biases that are learned together with w and c and #(w, c) is the word occurrence count of word w in context c. D being the documents from which the corpora is extracted from.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Preliminaries</head><p>We employ two kinds of embeddings in the proposed model namely word embeddings and KG embeddings which are defined in the previous section.</p><p>For matching a question to the entities and relations of a KG, likely candidates are first selected in an reprocessing step to reduce the enormous number of candidates in the KG. This is described in the following sections.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Entity Candidates Generation</head><p>We first start with a simple language based candidate generation process selecting potential candidate entities for a given question. That is, given a question we generate candidates by matching the tf-idf vectors of the query with that of the entity labels of all the entities in the knowledge graph, resulting in a list of n entity candidates e 1 c , e 2 c ..e n c for a given question. This list is then re-ranked based on the tf-idf similarity score, whether the candidate label is present in the question, number of relation the candidate is connected to in the KG and whether it has a direct mapping to wikipedia or not. This is done to give importance to important entities (defined by connectivity in the KG) following previous works <ref type="bibr" target="#b17">(Mohammed et al., 2018</ref>) <ref type="bibr" target="#b19">(Petrochuk and Zettlemoyer, 2018)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Relation Candidate Generation</head><p>To generate a set of entity specific relation candidates, for each entity e j c in the entity candidate set we extract the list of relations connected to this candidate at a 1-hop distance in the Freebase Knowledge Graph. For the j th entity candidate e j c , the relation candidates are r 1 j ...r n j .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Model Description</head><p>The proposed neural network model is quintessentially composed of three parts as visualized in 1:</p><p>1. A word-embedding based entity span detection model, which selects the probable words of an entity in a natural language question, represented by a bi-LSTM.</p><p>2. An word-embedding based relation prediction model which links the the question to one of the relations in the knowledge graph, represented by a bi-LSTM with selfattention.</p><p>3. An entity prediction model which takes the predictions of the previous two submodels into account and employs a sentinel gating mechanism that performs disambiguation based on similarity measures.</p><p>The different model parts and the training objective of the resulting model will be described in more detail in the following.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Entity Span Detection</head><p>The span detection module is inspired by <ref type="bibr" target="#b17">(Mohammed et al., 2018)</ref>. The given question is firstly passed through a bi-directional LSTM. Its output hidden states are then passed through a fully connected layer and a sigmoid (σ) activation function which outputs the probability of the word at timestep t corresponding to an entity (or not). Mathematically, this can be described as</p><formula xml:id="formula_1">h t = f span (x t ) ; o t = σ(W h t )<label>(1)</label></formula><p>where, o t is the output probability, W the weight matrix of the fully connected layer, and h t the hidden state vector from the applying the bidirectional LSTM f span on the input question x t . We use I-O encoding for the output for training.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Relation Prediction</head><p>For relation prediction, the question is passed into a self-attention based bi-directional LSTM which was inspired by <ref type="bibr" target="#b28">(Zhou et al., 2016)</ref>. The attention weighted hidden states are then fed into a fullyconnected classification layer outputting a probability over the r n relations in the knowledge graph.</p><formula xml:id="formula_2">y r = tanh(W r (α r * f rel (x t )))<label>(2)</label></formula><p>W r being a set of model parameters, α r the selfattention weights and f rel is the Bi-LSTM function which produces a response for every time-step t for the input query x t .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Entity prediction</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3.1">Word-based Entity Candidate</head><p>Selection.</p><p>With the help of the entity span identified by the span detection submodule described in 5.1, the questions are now compared to the entity candidates based on vector similarity methods. More specifically, the word embedding of each word of the question is multiplied with corresponding output probability from the entity-span detection model leading to an "entity-weighted" word representation</p><formula xml:id="formula_3">e t = o t * w emb t (3)</formula><p>where, w emb t denotes the word embedding of the tth word in the question and o t is the sigmoid output from 5.1. We then take a simple average of the entity-weighted representations of all words of the questions to yield the entity embedding of the question e emb q . Similarly, the entity candidates e 1 c , e 2 c ..e n c generated in the preprocessing step described in 4.1 are represented by the word embeddings of their labels e emb1 c , e emb2 c .. e embn c . If a label consists of multiple words, the word embeddings are averaged to yield a singe representation. Finally, to compute the similarity between a question and an entity candidate, the cosine between the question embedding and the entity embedding is estimated. For the j th candidate, that is </p><formula xml:id="formula_4">sim j c = cos(e emb q , e embj c )<label>(4)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3.2">KG-based Entity Candidate Selection.</head><p>To leverage the relational information encoded in the KG, we firstly take the logits over r n from the relation prediction model and draw a categorical representation using gumbel softmax <ref type="bibr" target="#b11">(Jang et al., 2016)</ref>. This representation is multiplied with the KG embeddings over r n to get a KG embedding based representation of the query r emb q . This relation specific representation is then compared against the full relation candidate set of each candidate entity, where each candidate relation is as well represented by its KG embedding. To match the relation specific question representation to relation candidates for a given entity, we estimate the cosine similarity of the corresponding KG embeddings followed by a max-pooling operation over all the candidate relations of an entity which produces an entity specific similarity metric sim j kg , which indicates the degree of matching between the question and an entity candidate from a KG perspective, which specifically takes relation information into account. Mathematically, for the j-th entity candidate, let the embedding of the kth relation candidate r k j be denoted by r embk j . The KG based similarity sim j kg between the question and the j-th entity then given by sim j kg = maxpool(cos(r emb q , r emb1 j ),</p><formula xml:id="formula_5">cos(r emb q , r emb2 j ) .. cos(r emb q , r embk j )) ,<label>(5)</label></formula><p>and the vector sim kg = (sim 1 kg , . . . sim n kg ) represents the KG based similarity of the question to all entity candidates.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3.3">Disambiguation and final prediction.</head><p>The final entity prediction is based on the wordand KG-based similarity measures sim c and sim kg First, for disambiguation, the word based similarity vector sim c is passed into a gating mechanism</p><formula xml:id="formula_6">g amb = W g sim c (6) with W g ∈ R nX1</formula><p>, which aims at estimating if there is more than one single likely candidate in the entity candidate set based on word similarity.</p><p>If so, the KG based similarity sim kg should also be taken into account, which is done by averaging sim c and sim kg and predicting the final entity candidate by</p><formula xml:id="formula_7">y e p = σ(g amb * mean(sim kg , sim c ) + (1 -g amb ) * sim c ) (7)</formula><p>Note that, y e p ∈ R n are the logits over the set of candidate entities, from which the entity with the highest probability can be picked. During inferencing, we perform an additional step for ensuring the entity and relation predicted from the model forms a pair in the KG. In order to achieve that, we take the top 5 probable relation from the relation linker and choose the one which is connected to the predicted entity at 1-hop.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Training</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1">Training objective</head><p>The model is trained based on a multi-task objective, where the total loss is the sum of the losses from the entity span detection, relation detection, entity candidate prediction, and disambiguation. The individual loss function are given below 1 . The loss function for the entity span detection model is the average binary cross entropy L span over the words of the input question, with</p><formula xml:id="formula_8">L span = 1 T T t=1 l t l t = -[y t • log σ(o t )+ (1 -y t ) • log(1 -σ(o t ))] ,<label>(8)</label></formula><p>where y t is the label denoting if the t-th word belongs to the entity span or not. For relation prediction, a weighted cross-entropy loss L rel is used (where the weights are given by the relative ratio of relations in the training set having the same class as the sample) and for entity prediction a vanilla cross-entropy loss L ent , which depends on the parameters of all sub-models. Furthermore, an additional cross entropy loss function L amb is used to train the gating function. Last but not least, we add an regularization term for soft-parameter sharing following <ref type="bibr" target="#b8">(Duong et al., 2015)</ref> resulting in a total loss given by</p><formula xml:id="formula_9">L =L span + L rel + L ent + L amb + ||W 1 span -W 1 rel || 2 , (<label>9</label></formula><formula xml:id="formula_10">)</formula><p>1 y is used to denote the true label for all tasks here where, W 1 span and W 1 rel are the hidden layer weights of the entity span detection and relation detection module. Given L, all parameters of the model are jointly trained in an end-to-end manner.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2">Training details</head><p>We use the pre-processed data and wordembeddings provided by <ref type="bibr" target="#b17">(Mohammed et al., 2018)</ref> to train our models. To obtain KG embeddings, we train TransE <ref type="bibr" target="#b3">(Bordes et al., 2013)</ref> on the provided Freebase KG of 2 million entities. The size of the word embedding vectors is 300, and that of the KG embeddings is 50. The KG embeddings are kept fixed but the word embeddings are fine-tuned during optimization. For training the disambiguation gate g amb we use a label of 1 if the correct entity label is present more than one times in the entity candidates, and label of 0 otherwise.</p><p>For training, a batch-size of 100 is used and the model is trained for 100 epochs. We save the model with the best validation accuracy of entity prediction and evaluate it on the test set. We apply Adam (Kingma and Ba, 2014) for optimization with a learning rate of 1e-4. The size of the hidden layer of both the entity span and relation prediction Bi-LSTM is set to 300. The training process is conducted on a GPU with 3072 CUDA cores and a VRAM of 12GB.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Evaluation</head><p>In this section, we compare our model with other state-of-the-art entity linking and questionanswering systems, both end-to-end and modular approaches. Resources are provided as supplementary materials to this paper that allow the reader to reproduce the final results reported in this section.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.1">Entity-linking</head><p>We compare our end-to-end entity-linking accuracy with other systems whose results are published, on the test set. The results are summarized in Table <ref type="table" target="#tab_0">1</ref>. The number of candidates n in the entity candidate set is varied from 100 to 300. The percentage of examples for which the correct entity candidate is present in the candidate set is reported in parenthesis. If the percentage is higher, model performance also increases. The model evaluated over wthe largest entity candidate set (i.e. n = 300) gives the best performance, which is significantly better than the BiLSTM based model <ref type="bibr" target="#b17">(Mohammed et al., 2018)</ref> (13.60% additional accuracy) and the Attentive CNN model (5% additional accuracy). It must be noted that our model cannot be compared directly to the one from <ref type="bibr" target="#b17">(Mohammed et al., 2018)</ref> because they don't use any candidate information for entity-linking, they do it during final question-answering as a post-processing step. The BiLSTM based model in combination with a n-gram based entity matching and relation based re-ranking suggested by <ref type="bibr" target="#b27">(Yu et al., 2017)</ref> is better than our proposed model by 0.40%.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Model</head><p>Accuracy (% of Cand. Present) BiLSTM <ref type="bibr" target="#b17">(Mohammed et al., 2018)</ref> 65.00 (-)</p><p>Attentive CNN <ref type="bibr" target="#b26">(Yin et al., 2016)</ref>  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.2">Question Answering</head><p>The final metric for simple QAKG is defined by the number of correct entities and relations predicted by a given model. We are comparing the performance of our system with that of both endto-end methods and modular approaches in Table 2. The results show that the proposed architecture outperforms the state-of-the-art NN based model (GRU based) <ref type="bibr" target="#b14">(Lukovnikov et al., 2017)</ref> by 2.0 %, and shows a performance competitive to simple modular baseline approaches like <ref type="bibr" target="#b17">(Mohammed et al., 2018)</ref> and the KG embedding based approaches KEQA proposed by <ref type="bibr" target="#b10">(Huang et al., 2019)</ref>. However, the best state-of-the-art approach on QAKG <ref type="bibr" target="#b27">(Yu et al., 2017)</ref> outperforms ours model by 5.50%. It should be noted here that although our entity-span detection and relation linking accuracy (82.01 %) is better than that of the model proposed by <ref type="bibr" target="#b17">(Mohammed et al., 2018)</ref>, the final question answering performance is worse by 1.7 %. This can be explained by the fact that their approach builds on additional stringmatching heuristics along with the scores from the different models to re-rank the predicted entities and relations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8">Discussion</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8.1">Ablation Study</head><p>Finally, we do an ablation study where we remove some parts of the proposed model and observe the performance of entity linking for n = 300. The results are in 3. As observed, the entity-linking accuracy from not training the relation linker are at par with <ref type="bibr" target="#b17">(Mohammed et al., 2018)</ref>  The model is able to predict the correct candidate 97.70 % of the times for cases where no disambiguation is required. Out of the 440 such wrongly classified candidates, 165 cases are because the true entity and correct relation are not connected in the KG at 1-hop, 162 because the entity span detector was not able to predict the correct span and the rest for wrong prediction in the disambiguate gating mechanism.</p><p>In general, some cases where the entity-span detector has failed to identify the correct entity is in table 4. In some of these cases, there are more than 1 entity in the question. Hence, it is difficult for the entity span detector to detect the correct entity.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Approach</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Model</head><p>Accuracy(FB2M) End-to-End NN Memory NN <ref type="bibr" target="#b2">(Bordes et al., 2015)</ref> 61.60 Attn. LSTM <ref type="bibr" target="#b9">(He and Golub, 2016)</ref> 70.90 GRU based <ref type="bibr" target="#b14">(Lukovnikov et al., 2017)</ref> 71.20</p><p>Proposed model (n=100) 72.29 Proposed model (n=200) 72.84 Proposed model (n=300)</p><p>73.20</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Modular</head><p>BiLSTM &amp; BiGRU <ref type="bibr" target="#b17">(Mohammed et al., 2018)</ref> 74.90 KEQA <ref type="bibr" target="#b10">(Huang et al., 2019)</ref> 75.40 CFO <ref type="bibr" target="#b5">(Dai et al., 2016)</ref> 75.70 CNN &amp; Attn. CNN &amp; BiLSTM-CRF <ref type="bibr" target="#b26">(Yin et al., 2016)</ref> 76.40 BiLSTM-CRF &amp; BiLSTM <ref type="bibr" target="#b19">(Petrochuk and Zettlemoyer, 2018)</ref> 78.10 BiLSTM &amp; Entity-reranking <ref type="bibr" target="#b27">(Yu et al., 2017)</ref> 78.70   For the final question-answering task, as mentioned previously, although the end-to-end accuracy for <ref type="bibr" target="#b17">(Mohammed et al., 2018)</ref> is better than ours', but the task of question answering is particularly challenging in this case because we don't use any scores from string matching based methods such as Levenshtein distance for entity linking as done as an additional post-processing step by <ref type="bibr" target="#b17">(Mohammed et al., 2018)</ref>, especially in cases where the entity candidates and the entity mention in the question consists of out-of-vocabulary words. Also, for some cases, it is challenging to disambiguate between the predicted relations because there are no explicit linguistic signals available. To exemplify, let us consider the question what county is sandy balls near ?. The predicted relation relation for this question by our model is "fb:location.location.containedby" while the true relation in the dataset is "fb:travel.tourist_attraction.near_travel_destination".</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="9">Conclusion and Future Work</head><p>In this paper, we have proposed an end-to-end model for entity linking, leveraging KG embeddings along with word embeddings banking on relatively simple architectures for entity and relation detection. As reported, the proposed architecture performs better than other end-to-end models but modular architectures demonstrates better question answering performance. However, the purpose of this paper was to integrate KG and word embeddings in a single, end-to-end model for entity linking. Moreover, since the final prediction model is based on similarity scores, the final prediction (and gating) can be easily interpreted following equations 4, 5, 6 and 7.</p><p>Error analysis suggest that the model can gain from better entity span detection. As a future work we will experiment by integrating CRF-biLSTM for span-detection and also with more recent NLP models like BERT. The model will also improve with better relation linking and better handling of out-of-vocabulary words. We would also like to integrate more recent state-of-the-art KG embedding models <ref type="bibr" target="#b6">(Dettmers et al., 2018;</ref><ref type="bibr" target="#b20">Schlichtkrull et al., 2018)</ref>, which can capture better relation semantics in the architecture as a future work.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Architecture</figDesc><graphic coords="5,151.37,59.97,294.79,307.74" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Entity Linking Accuracy.</figDesc><table><row><cell></cell><cell>73.60 (-)</cell></row><row><cell>BiLSTM &amp; Entity-reranking (Yu et al., 2017)</cell><cell>79.00 (-)</cell></row><row><cell>Proposed model (n=100)</cell><cell>77.80(92.07)</cell></row><row><cell>Proposed model (n=200)</cell><cell>78.35(94.34)</cell></row><row><cell>Proposed model (n=300)</cell><cell>78.60(95.49)</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Question Answering Accuracy.</figDesc><table><row><cell>Approach</cell><cell>Entity-linking Accuracy</cell></row><row><cell>Removing L rel from total loss</cell><cell>67.55</cell></row><row><cell>Removing gating mechanism g amb</cell><cell>74.63</cell></row><row><cell>Removing soft-loss from total loss</cell><cell>78.17</cell></row><row><cell>Without re-ranking candidates</cell><cell>77.56</cell></row><row><cell>Our Best Model (n=300)</cell><cell>78.60</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3</head><label>3</label><figDesc></figDesc><table><row><cell></cell><cell></cell><cell cols="2">: Ablation Study</cell><cell></cell><cell></cell></row><row><cell cols="5">what 's a rocket that has been flown</cell><cell></cell></row><row><cell cols="4">who is a swedish composer</cell><cell></cell><cell></cell></row><row><cell>what</cell><cell>'s</cell><cell>the</cell><cell>name</cell><cell>of</cell><cell>an</cell></row><row><cell cols="4">environmental disaster in italy</cell><cell></cell><cell></cell></row><row><cell cols="6">which korean air flight was in an accident</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4 :</head><label>4</label><figDesc>Span Detection Error. Green -correct span, blue -detected span.</figDesc><table /></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Farewell freebase: Migrating the simplequestions dataset to dbpedia</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Azmy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ihab</forename><surname>Ilyas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 27th International Conference on Computational Linguistics</title>
+		<meeting>the 27th International Conference on Computational Linguistics</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="2093" to="2103" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">A neural probabilistic language model</title>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Réjean</forename><surname>Ducharme</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pascal</forename><surname>Vincent</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christian</forename><surname>Jauvin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of machine learning research</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="1137" to="1155" />
+			<date type="published" when="2003-02">2003. Feb</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">Large-scale simple question answering with memory networks</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sumit</forename><surname>Chopra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1506.02075</idno>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multirelational data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">C</forename><forename type="middle">J C</forename><surname>Burges</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">L</forename><surname>Bottou</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Z</forename><surname>Ghahramani</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><forename type="middle">Q</forename><surname>Weinberger</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">26</biblScope>
+			<biblScope unit="page" from="2787" to="2795" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">A unified architecture for natural language processing: Deep neural networks with multitask learning</title>
+		<author>
+			<persName><forename type="first">Ronan</forename><surname>Collobert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th international conference on Machine learning</title>
+		<meeting>the 25th international conference on Machine learning</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="160" to="167" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Cfo: Conditional focused neural question answering with large-scale knowledge bases</title>
+		<author>
+			<persName><forename type="first">Zihang</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Xu</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P16-1076</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="800" to="810" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minervini</forename><surname>Pasquale</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 32th AAAI Conference on Artificial Intelligence</title>
+		<meeting>the 32th AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1811" to="1818" />
+		</imprint>
+	</monogr>
+	<note>Stenetorp Pontus, and Sebastian Riedel</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Question answering benchmarks for wikidata</title>
+		<author>
+			<persName><forename type="first">Dennis</forename><surname>Diefenbach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Tanon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kamal</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pierre</forename><surname>Maret</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017. 2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Low resource dependency parsing: Cross-lingual parameter sharing in a neural network parser</title>
+		<author>
+			<persName><forename type="first">Long</forename><surname>Duong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Trevor</forename><surname>Cohn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Bird</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Cook</surname></persName>
+		</author>
+		<idno type="DOI">10.3115/v1/P15-2139</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 53rd Annual Meeting of the Association for Computational Linguistics and the 7th International Joint Conference on Natural Language Processing</title>
+		<meeting>the 53rd Annual Meeting of the Association for Computational Linguistics and the 7th International Joint Conference on Natural Language Processing<address><addrLine>Beijing, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="845" to="850" />
+		</imprint>
+	</monogr>
+	<note>Short Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Character-level question answering with attention</title>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Golub</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D16-1166</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2016 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2016 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="1598" to="1607" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding based question answering</title>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingyuan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dingcheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ping</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twelfth ACM International Conference on Web Search and Data Mining</title>
+		<meeting>the Twelfth ACM International Conference on Web Search and Data Mining</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="105" to="113" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Jang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shixiang</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Poole</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1611.01144</idno>
+		<title level="m">Categorical reparameterization with gumbel-softmax</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ba</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6980</idno>
+		<title level="m">Adam: A method for stochastic optimization</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Dbpedia-a large-scale, multilingual knowledge base extracted from wikipedia</title>
+		<author>
+			<persName><forename type="first">Jens</forename><surname>Lehmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Isele</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Jakob</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anja</forename><surname>Jentzsch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dimitris</forename><surname>Kontokostas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pablo</forename><forename type="middle">N</forename><surname>Mendes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Hellmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohamed</forename><surname>Morsey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Van Kleef</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sören</forename><surname>Auer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Semantic Web</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="167" to="195" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Neural network-based question answering over knowledge graphs on word and character level</title>
+		<author>
+			<persName><forename type="first">Denis</forename><surname>Lukovnikov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Asja</forename><surname>Fischer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jens</forename><surname>Lehmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sören</forename><surname>Auer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th international conference on World Wide Web</title>
+		<meeting>the 26th international conference on World Wide Web</meeting>
+		<imprint>
+			<publisher>International World Wide Web Conferences Steering Committee</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1211" to="1220" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Greg</forename><surname>Corrado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Dean</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1301.3781</idno>
+		<title level="m">Efficient estimation of word representations in vector space</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Distributed representations of words and phrases and their compositionality</title>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Greg</forename><forename type="middle">S</forename><surname>Corrado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeff</forename><surname>Dean</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="3111" to="3119" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Strong baselines for simple question answering over knowledge graphs with and without neural networks</title>
+		<author>
+			<persName><forename type="first">Salman</forename><surname>Mohammed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Lin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference of the North American Chapter</title>
+		<title level="s">Short Papers</title>
+		<meeting>the 2018 Conference of the North American Chapter</meeting>
+		<imprint>
+			<publisher>Human Language Technologies</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="291" to="296" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Glove: Global vectors for word representation</title>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Pennington</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Manning</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2014 conference on empirical methods in natural language processing (EMNLP)</title>
+		<meeting>the 2014 conference on empirical methods in natural language processing (EMNLP)</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1532" to="1543" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Simplequestions nearly solved: A new upperbound and baseline approach</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Petrochuk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2018 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="554" to="558" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Modeling relational data with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Bloem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rianne</forename><surname>Van Den</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><surname>Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Titov</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">European Semantic Web Conference</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="593" to="607" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">6th open challenge on question answering over linked data (qald-6)</title>
+		<author>
+			<persName><forename type="first">Christina</forename><surname>Unger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Axel-Cyrille Ngonga</forename><surname>Ngomo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elena</forename><surname>Cabrio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Semantic Web Evaluation Challenge</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="171" to="177" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">8th challenge on question answering over linked data (qald-8)</title>
+		<author>
+			<persName><forename type="first">Ricardo</forename><surname>Usbeck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Axel-Cyrille Ngonga</forename><surname>Ngomo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Conrads</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Röder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giulio</forename><surname>Napolitano</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">language</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">7th open challenge on question answering over linked data (qald-7)</title>
+		<author>
+			<persName><forename type="first">Ricardo</forename><surname>Usbeck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Axel-Cyrille Ngonga</forename><surname>Ngomo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bastian</forename><surname>Haarmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anastasia</forename><surname>Krithara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Röder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giulio</forename><surname>Napolitano</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Semantic Web Evaluation Challenge</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="59" to="69" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">Wikidata: a free collaborative knowledge base</title>
+		<author>
+			<persName><forename type="first">Denny</forename><surname>Vrandečić</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Markus</forename><surname>Krötzsch</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Question answering on freebase via relation extraction and textual evidence</title>
+		<author>
+			<persName><forename type="first">Kun</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Siva</forename><surname>Reddy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yansong</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Songfang</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongyan</forename><surname>Zhao</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="800" to="810" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Simple question answering by attentive convolutional neural network</title>
+		<author>
+			<persName><forename type="first">Wenpeng</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mo</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bing</forename><surname>Xiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hinrich</forename><surname>Schütze</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of COLING 2016, the 26th International Conference on Computational Linguistics: Technical Papers</title>
+		<meeting>COLING 2016, the 26th International Conference on Computational Linguistics: Technical Papers</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="1746" to="1756" />
+		</imprint>
+	</monogr>
+	<note>The COLING 2016 Organizing Committee</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Improved neural relation detection for knowledge base question answering</title>
+		<author>
+			<persName><forename type="first">Mo</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenpeng</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kazi</forename><surname>Saidul Hasan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bing</forename><surname>Cicero Dos Santos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Xiang</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zhou</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P17-1053</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 55th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="571" to="581" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Attentionbased bidirectional long short-term memory networks for relation classification</title>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhenyu</forename><surname>Qi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bingchen</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongwei</forename><surname>Hao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>Xu</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P16-2034</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Berlin, Germany</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="207" to="212" />
+		</imprint>
+	</monogr>
+	<note>Short Papers). Association for Computational Linguistics</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

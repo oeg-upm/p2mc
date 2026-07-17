@@ -1,0 +1,1488 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Link Prediction with Persistent Homology: An Interactive View</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2021-06-12">12 Jun 2021</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Zuoyu</forename><surname>Yan</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Tengfei</forename><surname>Ma</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Liangcai</forename><surname>Gao</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Zhi</forename><surname>Tang</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Chao</forename><surname>Chen</surname></persName>
+						</author>
+						<title level="a" type="main">Link Prediction with Persistent Homology: An Interactive View</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2021-06-12">12 Jun 2021</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">2366C040F6E26B941894342B5ADB948D</idno>
+					<idno type="arXiv">arXiv:2102.10255v2[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:02+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Link prediction is an important learning task for graph-structured data. In this paper, we propose a novel topological approach to characterize interactions between two nodes. Our topological feature, based on the extended persistent homology, encodes rich structural information regarding the multi-hop paths connecting nodes. Based on this feature, we propose a graph neural network method that outperforms state-of-the-arts on different benchmarks. As another contribution, we propose a novel algorithm to more efficiently compute the extended persistence diagrams for graphs. This algorithm can be generally applied to accelerate many other topological methods for graph learning tasks.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Graph-structured data is very common in our life. Learning from graphs is important in various scientific and industrial domains <ref type="bibr" target="#b49">(Zhang et al., 2020;</ref><ref type="bibr" target="#b46">Wu et al., 2020)</ref>. In this paper, we focus on the link prediction task, i.e., to learn to predict whether an edge exists between two target nodes, conditioned on their attributes and local connectivity <ref type="bibr" target="#b27">(Liben-Nowell &amp; Kleinberg, 2007;</ref><ref type="bibr" target="#b38">Schlichtkrull et al., 2018;</ref><ref type="bibr" target="#b28">Lü &amp; Zhou, 2011)</ref>. Link prediction is an important step in knowledge discovery in various applications, e.g., recommendation systems <ref type="bibr" target="#b24">(Koren et al., 2009;</ref><ref type="bibr" target="#b0">Adamic &amp; Adar, 2003)</ref>, knowledge graph completion <ref type="bibr" target="#b42">(Teru et al., 2020)</ref>, protein-protein interactions <ref type="bibr" target="#b14">(Coulomb et al., 2005)</ref>, and gene prediction <ref type="bibr" target="#b32">(Nagarajan et al., 2015)</ref>.</p><p>Classic link prediction methods <ref type="bibr" target="#b4">(Barabási &amp; Albert, 1999;</ref><ref type="bibr" target="#b52">Zhou et al., 2009;</ref><ref type="bibr" target="#b6">Brin &amp; Page, 2012)</ref> use hand-crafted connectivity features and enforce strong assumptions of the distributions of links, e.g., nodes with similar connectivity 1 Wangxuan Institute of Computer Technology, Peking University, Beijing, China 2 T. J. Watson Research Center, IBM, New York, USA 3 Department of Biomedical Informatics, Stony Brook University, New York, USA. Correspondence to: Chao Chen &lt;chao.chen.1@stonybrook.edu&gt;, Liangcai Gao &lt;glc@pku.edu.cn&gt;. features tend to be connected. Better performance has been achieved by comparing the similarity of nodes in the embedding space <ref type="bibr" target="#b35">(Perozzi et al., 2014)</ref>, which encodes more global connectivity information. In recent years, graph neural networks (GNNs) have achieved state-of-the-art link prediction performance as they exploit graph connectivity information and node attributes in a completely data driven manner. However, even for GNNs, graph connectivity information such as node degrees is beneficial; it provides contextual information for the graph convolutional operations <ref type="bibr" target="#b23">(Kipf &amp; Welling, 2016;</ref><ref type="bibr" target="#b36">Qiu et al., 2018;</ref><ref type="bibr" target="#b47">Ye et al., 2020)</ref>.</p><p>For link prediction, an effective strategy is the direct modeling of the interaction between two target nodes. The path distance of nearby nodes from the target nodes has been shown useful <ref type="bibr" target="#b48">(Zhang &amp; Chen, 2018</ref>). However, these distance-based methods mainly focus on the "closeness" between target nodes, but do not explicitly model the "richness of connections" between them. In Figure <ref type="figure">1</ref>, we show examples with the same distance encoding. But the connections in the right example are much richer than in the left example. It is conceivable that nodes with a wealth of multi-hop connections have a better chance to share an edge. Figure <ref type="figure">1</ref>. Two example graphs. In both cases, black nodes have the same distance from the red target nodes (either (2,1) or (1,2)). But the richness of the connections is very different. On the left, there are only three connections between the target nodes. On the right, there are many more connections between the targets.</p><p>To exploit the richness of connections between nodes, we propose a novel method based on the theory of persistent homology <ref type="bibr" target="#b16">(Edelsbrunner et al., 2000;</ref><ref type="bibr" target="#b15">Edelsbrunner &amp; Harer, 2010)</ref>, which encodes high-order structural information of the graph via algebraic topology. The theory captures topological structures of arbitrary shape and scale, e.g., connected components and loops, and encodes them in a robustto-noise manner. To predict whether two given nodes u and v are connected, our method explicitly counts the number of loops within their vicinity. This count essentially measures the complexity of connections between u and v, which can be indicative of the existence of links. The method not only counts the numbers of loops, but also measures the range of distance from u and v for each loop. See Figure <ref type="figure" target="#fig_0">2</ref> for an illustration. This rich set of structural information is mapped into a topological feature space and is integrated into a graph neural network. As will be shown in experiments, our topological loop-counting graph neural network achieves better performance for link prediction.</p><p>Persistent homology has been used for learning with graphs <ref type="bibr" target="#b50">(Zhao &amp; Wang, 2019;</ref><ref type="bibr" target="#b19">Hofer et al., 2020;</ref><ref type="bibr">2017;</ref><ref type="bibr" target="#b8">Carrière et al., 2020)</ref>. However, most existing works use it as a global structural feature for the whole graph. These global features, although proven useful for graph classification tasks, cannot describe the interaction between a pair of nodes.</p><p>In this paper, we propose a pairwise topological feature to capture the richness of the interaction between a specific pair of target nodes. We compute topological information within the vicinity of the target nodes, i.e., the intersection of the k-hop neighborhoods of the nodes. It has been shown that such local enclosing graph carries sufficient information for link prediction <ref type="bibr" target="#b48">(Zhang &amp; Chen, 2018)</ref>.</p><p>To measure the saliency of topological structures, we also introduce a distance-based filter function to measure the interaction between nodes. These choices ensure our pairwise topological feature to be informative of the interaction between the targets.</p><p>We propose topological loop-counting graph neural network (TLC-GNN) by injecting the pairwise topological feature into the latent representation of a graph neural network.</p><p>Our method achieves state-of-the-art performance in link prediction. Another contribution of this paper is on the computational side. To capture the full information of loops, we use the extended persistent homology <ref type="bibr" target="#b13">(Cohen-Steiner et al., 2009)</ref>.</p><p>The commonly used algorithm is based on a matrix reduction algorithm that is similar to the Gaussian elimination. It is cubic to the input graph/subgraph size, O((|V | + |E|) 3 ).<ref type="foot" target="#foot_0">1</ref> Since the computation needs to be executed on all training/validation/testing pairs of nodes, we could significantly benefit from a faster algorithm. In this paper, we propose a novel algorithm for the extended persistent homology, specific for graphs. Instead of the expensive matrix reduction, our algorithm directly operates on the graph and is quadratic to the input graph/subgraph size, O(|V ||E|). This algorithm is not application specific and can be applied to other graph learning problems <ref type="bibr" target="#b50">(Zhao &amp; Wang, 2019;</ref><ref type="bibr" target="#b19">Hofer et al., 2020;</ref><ref type="bibr">2017;</ref><ref type="bibr" target="#b8">Carrière et al., 2020)</ref>.</p><p>In summary, our contribution is three-fold:</p><p>• We introduce a pairwise topological feature based on persistent homology to measure the complexity of interaction between nodes. We compute the topological feature specific to the target nodes using a carefully designed filter function and domain of computation. • We use the pairwise topological feature to enhance the latent representation of a graph neural network and achieve state-of-the-art link prediction results on various benchmarks. • We propose a general-purpose fast algorithm to compute extended persistent homology on graphs. The time complexity is improved from cubic to quadratic to the input size. It applies to many other persistenthomology-based learning methods for graphs.</p><p>Outline. In Section 2, we briefly introduce existing works on link prediction and on learning with topological information. In Section 3, we present details of extended persistent homology and our model, TLC-GNN. In Section 4, we introduce a faster algorithm for extended persistent homology and prove its correctness. In Section 5, we evaluate our method on synthetic and real-world benchmarks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Related Work</head><p>Link prediction methods. Early works <ref type="bibr" target="#b4">(Barabási &amp; Albert, 1999;</ref><ref type="bibr" target="#b52">Zhou et al., 2009;</ref><ref type="bibr" target="#b6">Brin &amp; Page, 2012;</ref><ref type="bibr" target="#b22">Jeh &amp; Widom, 2002)</ref> predict links based on node similarity scores measured within the local neighborhood of the two target nodes.</p><p>These methods tend to have strong assumptions on the link distribution and do not generalize well. Graph embeddings have been used to encode more global structural information for link prediction <ref type="bibr" target="#b24">(Koren et al., 2009;</ref><ref type="bibr" target="#b2">Airoldi et al., 2008;</ref><ref type="bibr" target="#b35">Perozzi et al., 2014;</ref><ref type="bibr" target="#b41">Tang et al., 2015;</ref><ref type="bibr" target="#b36">Qiu et al., 2018)</ref>.</p><p>However, these methods only rely on graph connectivity and do not take full advantage of node attributes.</p><p>In recent years, new GNN-based methods have been proposed to jointly leverage graph connectivity and node attributes. <ref type="bibr" target="#b48">Zhang &amp; Chen (2018)</ref> show that local enclosing subgraphs contains sufficient information, and propose a GNN to leverage such information. Considering the non-Euclidean nature of graph metrics, one may generalize graph convolution to the hyperbolic space <ref type="bibr" target="#b9">(Chami et al., 2019;</ref><ref type="bibr" target="#b53">Zhu et al., 2020)</ref>. However, most existing methods use either limited structural information or node embedding to represent edge features. They do not explicitly model the advanced topological information that arises in node interaction.</p><p>Learning with topological features. Persistent homology <ref type="bibr" target="#b16">(Edelsbrunner et al., 2000;</ref><ref type="bibr" target="#b15">Edelsbrunner &amp; Harer, 2010)</ref> captures structural information from the data using the language of algebraic topology <ref type="bibr" target="#b31">(Munkres, 2018)</ref>. It captures multi-scale topological structures in a provably robust manner <ref type="bibr" target="#b12">(Cohen-Steiner et al., 2007)</ref>.</p><p>Different learning methods for persistent homology have been proposed, such as direct vectorization <ref type="bibr" target="#b1">(Adams et al., 2017)</ref>, kernel machines <ref type="bibr" target="#b37">(Reininghaus et al., 2015;</ref><ref type="bibr" target="#b26">Kusano et al., 2016;</ref><ref type="bibr" target="#b7">Carriere et al., 2017)</ref>, convolutional neural networks <ref type="bibr" target="#b17">(Hofer et al., 2017)</ref>, topological loss <ref type="bibr" target="#b10">(Chen et al., 2019;</ref><ref type="bibr" target="#b21">Hu et al., 2019;</ref><ref type="bibr" target="#b18">Hofer et al., 2019)</ref>, and generative model <ref type="bibr" target="#b45">(Wang et al., 2020)</ref>.</p><p>For graph-structured data, topological features have been used for node classification <ref type="bibr" target="#b51">(Zhao et al., 2020)</ref> and graph classification <ref type="bibr" target="#b50">(Zhao &amp; Wang, 2019;</ref><ref type="bibr" target="#b19">Hofer et al., 2020;</ref><ref type="bibr" target="#b8">Carrière et al., 2020)</ref>. However, these existing methods cannot model interactions between nodes as desired in link prediction tasks. <ref type="bibr" target="#b5">Bhatia et al. (2018)</ref> also use persistent homology for link prediction. But their method only exploits 0-dimensional topology, i.e., whether the target nodes are connected or not within the local neighborhood. This cannot capture the complexity of connection as we intend to model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Link Prediction with Persistence Homology</head><p>In this section, we introduce our topological loop-counting graph neural network (TLC-GNN), which computes persistent homology based on the chosen subgraph and incorporates the pairwise topological feature into a graph neural network. The input of the model includes two target nodes and a subgraph encoding their topological information. The output is the probability of whether an edge exists between the two target nodes.</p><p>In section 3.1 and 3.2, we will briefly introduce the extended persistent homology and its computation, respectively. In section 3.3, we will illustrate how to combine the topological feature with a standard graph neural network.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.">Extended Persistent Homology</head><p>In this section, we provide a brief introduction to extended persistent homology and refer the reader to <ref type="bibr" target="#b13">(Cohen-Steiner et al., 2009)</ref> for details. In the setting of graphs, the data only contain 0-dimensional (connected components) and 1-dimensional (loops) topological structures<ref type="foot" target="#foot_2">2</ref> . We define simplices to be all elements in the graph, including nodes and edges. The combinatorial relationship between simplices determines the topological structure of the graph, and persistent homology can count the number of these topological structures. Besides, persistent homology measures the saliency of all topological structures in view of a scalar function defined on all simplices, called the filter function.</p><p>For example, let V , E be the sets of nodes and edges, and X be the union of V and E, namely the set of simplices. The filter function for nodes f : V → R can be defined as the sum of the distance to the target nodes. Then we can further define the filter function for edge uv as the maximum value of f (u) and f (v).</p><p>Given the filter function for all the simplices in a graph, we can define X a as the sublevel set of X: X a = {x|f (x) ≤ a, x ∈ X}. Here a is a threshold in the filter function f , and X a is the subset of X whose filter value are not greater than a. As the threshold a increases from -∞ to ∞, we obtain the ascending filtration of X:</p><formula xml:id="formula_0">∅ = X -∞ ⊂ ... ⊂ X ∞ = X.</formula><p>An example is shown in the first half of Figure <ref type="figure" target="#fig_4">2 (b)</ref>.</p><p>With the increasing of threshold a, the sublevel set grows from empty to X, and new topological structures gradually appear (born) and disappear (die). For example, two connected components appear when reaching X t1 and X t2 (for simplicity, we replace X ti with X i ). One of the connected components disappears in X 3 . Besides, two loops appear when reaching X 4 .</p><p>Extended persistence. However, with the settings above, we find that some structures, such as the whole connected component and all the loops, will never disappear.</p><p>To address this limitation of ordinary persistent homology, <ref type="bibr" target="#b13">Cohen-Steiner et al. (2009)</ref> propose extended persistence by introducing another filtration of the superlevel set X a = {x|f (x) ≥ a, x ∈ X}. Let a decrease from ∞ to -∞, and we can obtain the descending filtration of X:</p><formula xml:id="formula_1">∅ = X ∞ ⊂ ... ⊂ X -∞ = X 3 .</formula><p>An example descending filtration is shown in the second half of Figure <ref type="figure" target="#fig_0">2</ref> (b). In the descending filtration, the filter function for an edge uv is set differently, i.e., f (uv) = min(f (u), f (v)).</p><p>For loops and the whole connected component in a graph, the death time can be defined as the filter value in the superlevel set when the structure appears again. For instance, the extended persistence point of the loop {ac, cd, da} in Figure <ref type="figure" target="#fig_0">2</ref> is (t 4 , t 1 ). It is born when reaching X 4 in the ascending filtration and dies when reaching X 1 in the descending filtration. It is a bit counter-intuitive that the death time can be smaller than the birth time. After obtaining the extended persistence diagram, we can encode it into a vectorized feature called persistence image <ref type="bibr" target="#b1">(Adams et al., 2017)</ref>.</p><p>Further details are available in the supplementary material.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.">Matrix Reduction Algorithm for Extended Persistence Diagram</head><p>In this section, we will introduce the algorithm to compute the extended persistence diagrams. Let m be the total number of simplices (m = |V | + |E|). We write (κ 1 , κ 2 , ..., κ m ) as the ascending sequence of simplices in X, i.e., f (κ 1 ) &lt; f (κ 2 ) &lt; ... &lt; f (κ m )<ref type="foot" target="#foot_4">4</ref> . Similarly, we write (λ 1 , λ 2 , ..., λ m ) as the descending sequence of sim-plices in X. Every simplex will appear once in the ascending sequence and once in the descending sequence.</p><p>To compute the extended persistence diagram, we need a binary valued matrix M to encode the adjacency relationship between nodes and edges. Matrix M is a 2m × 2m matrix  D is defined similarly, except that it encodes the relationship of the simplices in the descending sequence, i.e., D[i, j] = 1 iff λ i is the boundary of λ j . P stores the permutation that connects the two sequences of simplices, i.e., P [i, j] = 1 iff κ i and λ j denote the same simplex. 0 is a zero-valued m × m matrix. In the supplementary material, we will provide a complete example of matrix M .</p><p>The computation of persistent homology boils down to counting ranks of submatrices of the boundary matrix. This can be achieved by a specific matrix reduction algorithm on M . Algorithm 1 reduces M from left to right. To describe the reduction process, let low M (j) be the maximum row index i for which M [i, j] = 1. For instance, in Figure <ref type="figure" target="#fig_3">3</ref>,</p><formula xml:id="formula_2">low M (4) = 3. If column j is zero, then low M (j) is unde- fined. M is reduced if low M (j) = low M (k)</formula><p>for any two non-zero columns j = k. Notice that "add" here is the mod-2 sum of the binary column vectors. After the matrix reduction is finished, we can record the persistence diagram. Each pair of simplex ids (low M (j), j) corresponds to an extended persistence pair. By taking the filter function value of the corresponding simplices, we will obtain the corresponding birth and death times of a persistence point. For simplicity, we slightly abuse the notation, that is to denote the birth and death time as f (low M (j)) and f (j) respectively. To better illustrate Algorithm 1, we provide the reduction process of Figure <ref type="figure" target="#fig_0">2</ref> in the supplementary material.</p><p>Algorithm 1 Matrix Reduction Input: filter funtion f , graph G Persistence Diagram P D = {} M = build reduction matrix(f, G) for j = 1 to 2m do while ∃k &lt; j with low M (k) = low M (j) do add column k to column j end while add (f (low M (j)), f (j)) to P D end for Output: Persistence Diagram P D</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.">TLC-GNN for Link Prediction</head><p>We have introduced extended persistent homology, its computation and vectorization. Next, we explain how our method computes topological feature for a specific pair of target nodes, and combine it with GNN for link prediction.</p><p>To characterize the interaction between two target nodes, we need to choose a vicinity graph and a corresponding filter function. Given a weighted graph, we can define the sum of the distance from any node v to the target nodes v 1 and v 2 as the filter function, f (v) = d(v, v 1 ) + d(v, v 2 ). Note that for each pair of target nodes on which we predict whether a link exists, we create a filter function and then compute the persistent homology as the topological feature.</p><p>Our topological feature is only extracted within vicinity of the target nodes. Existing works using persistent homology usually exploit topological information from the whole graph <ref type="bibr" target="#b50">(Zhao &amp; Wang, 2019;</ref><ref type="bibr" target="#b19">Hofer et al., 2020)</ref>, thus cannot be directly used in our task. Besides, topological structures captured by global persistent homology can be irrelevant to the target nodes if they are far away. As justified in <ref type="bibr" target="#b48">(Zhang &amp; Chen, 2018)</ref>, local enclosing subgraphs already contain enough information for link prediction. We exploit the intersection of the k-hop neighborhoods of the two target nodes: let G = (V, E) be the whole graph, where V and E are the set of vertices and edges.</p><formula xml:id="formula_3">V 1 = {v|d(v, v 1 ) ≤ k} and V 2 = {v|d(v, v 2 ) ≤ k} are the k-hop neighborhoods of target nodes v 1 and v 2 , V 12 = V 1 ∩ V 2 is the intersec- tion. The enclosing subgraph is G 12 = (V 12 , E 12 ), where E 12 = E ∩ V 2</formula><p>12 . We compute the persistence image of the subgraphs generated by all possible links, and define P I(v 1 , v 2 ) as the persistence image of the subgraph generated by target nodes v 1 and v 2 .</p><p>We combine the extracted topological feature P I(v 1 , v 2 ) with GNN-generated node embedding features for link pre-diction. To obtain node embeddings, we use a classic Llayer graph convolutional network (GCN) <ref type="bibr" target="#b23">(Kipf &amp; Welling, 2016)</ref>. Messages are passed between nodes to update their feature representations. After an L-layer GCN, the embedding of a certain node can be viewed as a combination of node representation from its L-hop neighborhood.</p><formula xml:id="formula_4">H = [h 1 , h 2 , ..., h |V | ]</formula><p>where h i ∈ R d is the representation of node i in the -th layer, = 0, 1, ..., L, and |V | is the number of nodes. Here, H 0 is the input node features, and H L is the node embeddings of the final layer.</p><p>To compute the representation of all the nodes, in theth layer, H = σ( D-1/2 Â D-1/2 H -1 W ), where Â = A + I denotes the adjacency matrix with inserted self-loop and D is a diagonal matrix with D[i, i] = j Â[i, j]. σ represents the activation function, and W is a learned matrix to encode node embedding from dimension d -1 to d . The nodewise formulation of node i is given by</p><formula xml:id="formula_5">h i = σ(W j∈N (i) 1 √ dj di h -1 j ) where N (i) is the neigh- borhood of node i including i itself.</formula><p>For given target nodes u and v, the node embeddings h u and h v obtained through the GCN model can be viewed as the node feature, and the persistence image P I(u, v) can be viewed as the edge feature. To combine the two features effectively, we use a modified Fermi-Dirac decoder <ref type="bibr" target="#b25">(Krioukov et al., 2010;</ref><ref type="bibr" target="#b34">Nickel &amp; Kiela, 2017)</ref>:</p><formula xml:id="formula_6">(h u -h v ) 2</formula><p>is defined as the distinction between the two nodes. It is then concatenated with P I(u, v), and passed to a two layer Multi-Layer Perceptron (MLP), which outputs a single value. Denote the value after the two layer MLP as distance of the two target nodes: dist(u, v), and the final probability of whether there exists an edge between u and v is prob(u, v) = 1 (e (dist(u,v)-2) +1) . We then train TLC-GNN by minimizing the cross-entropy loss using negative sampling.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">A Faster Algorithm for Extended Persistence Diagram</head><p>In this section, we propose a new algorithm for extended persistent homology. Recall that Algorithm 1 reduces the matrix M . In the new algorithm, we manage to avoid explicit construction and reduction of the matrix M . Instead, we create and maintain a rooted tree while going through the descending filtration. When processing a new edge, by inspecting its relationship with the current tree, we can find the corresponding persistence pair efficiently. Afterward, we update the tree and continue with the next edge in the descending filtration. In section 4.1, we explain the algorithm in details. In section 4.2, we prove the correctness of the proposed algorithm.  Our new algorithm is shown in Algorithm 2. For 0-dim topology, we run existing union-find algorithm (Edelsbrunner &amp; Harer, 2010) for the ascending filtration once and for the descending filtration once. The algorithm is guaranteed to be correct. In the following section, we will therefore mainly focus on 1-dimensional extended persistence.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.">A Faster Algorithm</head><p>Take Figure <ref type="figure" target="#fig_5">4</ref> as an example, with the Union-Find algorithm <ref type="bibr" target="#b16">(Edelsbrunner et al., 2000;</ref><ref type="bibr" target="#b11">Cohen-Steiner et al., 2006)</ref>, we can procure the set of positive edges and the set of negative edges in the descending filtration:</p><formula xml:id="formula_7">E pos = {u 2 u 3 , u 1 u 3 }, E neg = {u 3 u 4 , u 2 u 4 , u 1 u 4 }.</formula><p>Recall that positive edges give rise to new loops, while negative edges do not. And in the descending filtration, every positive edge will be paired with a certain edge in the ascending filtration, and give rise to a certain loop.</p><p>In order to find all the persistence pairs, we construct a tree with all the negative edges and nodes. Every time we add a positive edge into the tree, a loop appears. The newly added edge and the edge which appears the latest in the ascending filtration in the loop form the persistence pair. We then delete the paired edge to update the tree iteratively.</p><p>Updating the tree is essential. When a new edge e is added into the descending filtration, it forms a unique loop with the tree; this loop is exactly the loop with the latest birth during ascending and is coned out due to e. Without tree updating, the loop formed by the tree and e will not be the desired one.</p><p>Look at Figure <ref type="figure" target="#fig_5">4</ref>, all the negative edges and nodes form (a). The positive edge u 2 u 3 is then added, and we can discover the loop it forms: {u 3 u 4 , u 4 u 2 , u 2 u 3 }. In the loop, the edge that appears the latest in the ascending filtration is u 3 u 4 . The sequence of simplices in the ascending filtration is shown in Figure <ref type="figure" target="#fig_3">3</ref>. Then u 2 u 3 is paired with u 3 u 4 , we can obtain the persistence point (t 4 , t 2 ).</p><p>After that, we delete the paired edge u 3 u 4 to get (c). Then the positive edge u 1 u 3 is added, with the same process, we can discover the loop: {u 1 u 3 , u 3 u 2 , u 2 u 4 , u 4 u 1 }, and the paired edge is u 2 u 4 . The persistence point of the loop is (t 4 , t 1 ), so the final 1-dimensional extended persistence diagram is {(t 4 , t 2 ), (t 4 , t 1 )}. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.">The Correctness of Algorithm 2</head><p>In this section, we prove the proposed faster algorithm is correct, i.e., it produces the same output as the matrix reduction algorithm. Formally, we state the theorem as follows.</p><p>Theorem 1. Algorithm 2 outputs the same extended persistence diagram as Algorithm 1.</p><p>We briefly explain the idea of the proof. A complete proof is provided in the supplementary material.</p><p>The 0-dimensional persistent homology is computed using known Union-Find algorithm. We only need to prove the correctness for the 1-dimensional topology, i.e., loops. Recall each loop is created by an edge in the ascending filtration and destroyed by an edge in the descending filtration. We plan to show that the pairs of the edges found by our new algorithm are the same as the pairs found by the matrix The core of our proof is to show that for each positive descending edge, its corresponding pair found by the new algorithm is equivalent to the pair in the reduced algorithm.</p><p>We prove this by induction. As we go through all positive descending edges in the descending filtration, we show that for edge e i , the pairing by our algorithm is the same as the reduction result. We prove that:</p><p>• After reducing the D part of the column of e i , i.e., when low(e i ) ≤ m, the remaining entries of e i in P constitute a unique loop in {e i } ∪ T i-1 . Here T i is the tree after updating the first i positive edges. • The lowest entry of the reduced column, e j , is not paired by any other previous edges, and thus will be paired with e i . Indeed, it is the last edge in the loop w.r.t. the ascending ordering. • The updating of the tree T i = T i-1 -{e j } + {e i } is equivalent to adding the reduced column of e i to all descending columns with nonzero entry at row of e j . Although this will affect the final reduced matrix, it will not change the resulting simplex pairings.</p><p>This proves that our new algorithm has the same output as the existing matrix reduction algorithm. We have shown that the new algorithm is much more efficient in terms of complexity (Section 4.1). We will also validate the benefit empirically in Section 5.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Experiments</head><p>We evaluate our method on on synthetic and real-world graph datasets. We compare with different SOTA link prediction baselines. Furthermore, we evaluate the efficiency of the proposed faster algorithm for extended persistent homology. Source code will be available at https://github.com/pkuyzy/TLC-GNN.</p><p>Baseline methods. We compare our framework TLC-GNN with different link prediction methods. We compare with popular GNN models such as GCN <ref type="bibr" target="#b23">(Kipf &amp; Welling, 2016)</ref> and GAT <ref type="bibr" target="#b44">(Veličković et al., 2017)</ref>. We use them for node embedding and then adopt the Fermi-Dirac decoder <ref type="bibr" target="#b25">(Krioukov et al., 2010;</ref><ref type="bibr" target="#b34">Nickel &amp; Kiela, 2017)</ref> to predict whether there is a link between two nodes. We also compare with several SOTA methods. SEAL <ref type="bibr" target="#b48">(Zhang &amp; Chen, 2018)</ref>, which utilize local distances and pre-trained transductive node features for link prediction.HGCN <ref type="bibr" target="#b9">(Chami et al., 2019)</ref>, which introduces hyperbolic space to deal with free-scale graphs. GIL <ref type="bibr" target="#b53">(Zhu et al., 2020)</ref>, which takes advantage of both Euclidean and hyperbolic geometries.</p><p>To demonstrate the importance of pairwise topological features, we also compare with two baseline methods using node-wise topological features, i.e., topological feature for each node. PEGN <ref type="bibr" target="#b51">(Zhao et al., 2020)</ref> extracts topological features for each node using its neighborhood. Then the node-wise topological feature is used to re-calibrate the graph convolution. PEGN was originally designed for node classification. Similar to GCN and GAT, we adapt it to link prediction via the Fermi-Dirac decoder. A second baseline, TLC-GNN (Nodewise), is a modification of our method TLC-GNN (Ricci). Instead of the pairwise topological feature for a pair of target nodes, we concatenate their node-wise topological features, inject it into the node embedding, and then use MLP to predict.</p><p>For all settings, we randomly split edges into 85/5/10% for training, validation, and test sets. To compute the distancebased filter function, we need a graph metric. We use hopdistance and Ollivier-Ricci curvature <ref type="bibr" target="#b33">(Ni et al., 2018)</ref> respectively. The filter function with hop-distance is the same as Double-Radius Node Labeling (DRNL) <ref type="bibr" target="#b48">(Zhang &amp; Chen, 2018)</ref>. For Ollivier-Ricci curvature, we compute the curvature for all training edges and use them as the edge weights.</p><p>We add 1 to the curvature of all edges to avoid negative edge weights. With this weighted graph, we define the filter function of each node as the total shortest distance from the two target nodes. In each subgraph, the corresponding target nodes (v 1 , v 2 ) are used as the anchors to compute the filter function: for given node v, f</p><formula xml:id="formula_8">(v) = d(v, v 1 ) + d(v, v 2 ),</formula><p>where d(v, v 1 ) is the shortest path distance between the given node v and the corresponding target node v 1 in the weighted graph. Recall that we need to use the intersection of the k-hop neighborhoods of the two target nodes to compute pairwise topological features. The choice of k is either 1 or 2, depending on the size and density of the graph.</p><p>Note that here we use pre-computed weight function to define filter function. It is possible to extend the framework to learn the filter function end-to-end, as in graph classification <ref type="bibr" target="#b19">(Hofer et al., 2020)</ref>. However, this involves recomputing filter function and persistence diagram for each pair of target nodes for each epoch; it is computationally prohibitive. Alternatively, we may learn better kernels on the persistence diagrams, which do not require recomputing persistence diagrams every epoch <ref type="bibr" target="#b50">(Zhao &amp; Wang, 2019)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1.">Synthetic Experiments</head><p>We generate synthetic data using a graph theoretical model called Stochastic Block Model (SBM) <ref type="bibr" target="#b20">(Holland et al., 1983)</ref>. To be specific, we create random graphs with 1000 nodes, forming 5 equal-size communities. Edges are ran-  For each method we generate a heatmap for its performance on 12 synthetic graphs with different (p, q) combinations. We also report in the title of each heatmap the average performance over 12 graphs.</p><p>domly sampled with intra-community probability p and inter-community probability q. We randomly create 12 graphs with p ranging in {0.05, 0.25, 0.45} and q ranging in {0.0, 0.015, 0.03, 0.045}. Furthermore, we assign each node with a randomly created feature of dimension 100 and use them as the input of all the methods. For pairwise persistence diagrams, we use intersections of 1-hop neighborhoods for all the graphs.</p><p>We run the methods on each synthetic graph 10 times and report the mean average area under the ROC curve (ROC-AUC) score as the result. More details can be found in the supplementary material.</p><p>Results. Figure <ref type="figure" target="#fig_8">5</ref> reports the results of 6 methods. We observe that TLC-GNN outperforms nearly all the SOTA baselines among all the synthetic graphs. This justifies the benefit of pairwise topological feature. We observe that GIL sometimes performs well, but is unstable overall. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2.">Real-World Benchmarks</head><p>We use a variety of datasets: (a) PubMed <ref type="bibr" target="#b39">(Sen et al., 2008)</ref> is a standard benchmark describing citation network. (b) Photo and Computers <ref type="bibr" target="#b40">(Shchur et al., 2018)</ref> are graphs related to Amazon shopping records. (c) PPI networks are protein-protein interaction networks <ref type="bibr" target="#b54">(Zitnik &amp; Leskovec, 2017)</ref>. More details of these datasts can be found in the supplementary material.</p><p>For pairwise persistence diagrams, we compute intersections of 1-hop neighborhoods for PPI, Photo and Computers due to their high density. We use intersections of 2-hop neighborhoods for PubMed. Following prior works <ref type="bibr" target="#b9">(Chami et al., 2019;</ref><ref type="bibr" target="#b53">Zhu et al., 2020)</ref>, we evaluate link prediction using the ROC-AUC score on the test set. We run the methods on each graph 50 times to get the results.</p><p>Results. Table <ref type="table" target="#tab_0">1</ref> summarizes the performance of all methods. TLC-GNN is superior to others among all the benchmarks. This implies that the high-order topological feature is more effective in these large and dense graphs, which tend to have rich and heterogeneous structures.</p><p>For PPI networks, we run experiments on 5 sample graphs. Ollivier-Ricci curvature is adopted as the filter function.</p><p>The results are shown in Table <ref type="table" target="#tab_2">3</ref>. We observe that TLC-GNN consistently outperforms nearly all the SOTA base-lines among all the sampled PPI graphs. Although GIL sometimes performs well, it is unstable overall. This further justifies the benefit of pairwise topological feature.</p><p>Ablation study. Comparing with models using nodewise persistent homology (PEGN and TLC-GNN (Nodewise)), TLC-GNN generally performs better. This proves that for link prediction task, the proposed pairwise persistent homology carries crucial structural information to model node interaction. Whereas nodewise topological feature cannot.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3.">Algorithm Efficiency</head><p>To verify the computational benefit of the proposed new algorithm (Algorithm 2), we compare it with the classic matrix reduction algorithm (Algorithm 1) (implemented in the Dionysus package <ref type="bibr">(Morozov)</ref>). Both implementations are written in python<ref type="foot" target="#foot_5">5</ref> . We compare the two algorithms on all real-world benchmarks. We report the average running time for computing the pairwise topological feature for each edge (in seconds). More details are available in the supplementary material.</p><p>Results. As is shown in Table <ref type="table" target="#tab_1">2</ref>, the proposed Algorithm 2 achieves 1.5 to 2.5 times speedup compared with the matrix reduction algorithm (Algorithm 1) on all benchmarks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.">Conclusion</head><p>In this paper, we propose a novel pairwise topological feature for link prediction, based on the theory of persistent homology. We also introduce a GNN model to leverage this topological feature. Experiments show that our approach outperforms state-of-the-arts on various benchmarks, especially on large and dense graphs. Besides, we propose a novel algorithm to more efficiently calculate the extended persistence diagrams on graphs. We verify the correctness and efficiency of the algorithm. The algorithm can be generalized to other graph learning tasks.</p><p>Algorithm 1 reduces the columns of matrix M from left to right. If we allow certain flexibility in the reduction ordering, we can separate the algorithm into 3 phases: the reduction of matrix A (Phase 1), the reduction of matrix D (Phase 2) and the reduction of matrix P (Phase 3) <ref type="bibr" target="#b13">(Cohen-Steiner et al., 2009)</ref>. We define a simplex as positive if its corresponding column is zero after reduction, and negative if its corresponding column is not zero after reduction. In our setting, all the nodes, as well as edges that give rise to a loop are positive simplices, edges that destroy a connected component are negative simplices. All the simplices are either negative or positive <ref type="bibr" target="#b16">(Edelsbrunner et al., 2000;</ref><ref type="bibr" target="#b15">Edelsbrunner &amp; Harer, 2010)</ref>. Notice that the positive and negative edges in the ascending filtration are not the same as the positive and negative edges in the descending filtration.</p><p>In the following paragraph, we will introduce the whole process of the matrix reduction algorithm by introducing the 3 phases successively.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2.1 Phase 1</head><p>Phase 1 is the matrix reduction for A. All the columns of nodes and all the rows of edges are all zero in A, therefore they will have no impact on the matrix reduction algorithm.</p><p>After deleting these rows and columns, matrix A is shown below:</p><formula xml:id="formula_9">A u 1 u 3 u 2 u 3 u 1 u 4 u 2 u 4 u 3 u 4 u 1 1 0 1 0 0 u 2 0 1 0 1 0 u 3 1 1 0 0 1 u 4 0 0 1 1 1</formula><p>For simplicity, we define low A (e i ) as the maximum row of node v j for which A[v j , e i ] = 1. Notice that low A is originally defined for the row index, and we replace the index with the simplex it represents. i.e., we replace A[1, 1] = 1 with A[u 1 , u 1 u 3 ] = 1, and we replace low A (1) = 3 with low A (u 1 u 3 ) = u 3 .</p><p>From left to right, we can find that low A (u 1 u 3 ) = u 3 , and low A (u 2 u 3 ) = u 3 = low A (u 1 u 3 ), thus we add column of u 1 u 3 to column of u 2 u 3 : [1, 0, 1, 0] + [0, 1, 1, 0] = [1, 1, 0, 0]. Notice that "add" here means the mod-2 sum of the two binary vectors. Thus low A (u 2 u 3 ) = u 2 .</p><p>Then we can find that low A (u 1 u 4 ) = u 4 , low A (u 2 u 4 ) = u 4 = low A (u 1 u 4 ), we add the column of u 1 u 4 to the column of u 2 u 4 : [1, 0, 0, 1] + [0, 1, 0, 1] = [1, 1, 0, 0], thus low A (u 2 u 4 ) = u 2 = low A (u 2 u 3 ). Again we add the column of u 2 u 3 to the column of u 2 u 4 : [1, 1, 0, 0] + [1, 1, 0, 0] = [0, 0, 0, 0]. Notice here the column value for u 2 u 3 is the value after matrix reduction. Therefore u 2 u 4 is not paired.</p><p>Similarly, we add the column of u 1 u 4 and column of u 1 u 3 to column of u 3 u 4 and get [0, 0, 0, 0]. Then u 3 u 4 is not paired.</p><p>After Phase 1, matrix A is shown below. And we can obtain the persistence pair:</p><formula xml:id="formula_10">(u 3 , u 1 u 3 ), (u 2 , u 2 u 3 ), (u 4 , u 1 u 4 ). A u 1 u 3 u 2 u 3 u 1 u 4 u 2 u 4 u 3 u 4 u 1 1 1 1 0 0 u 2 0 1 0 0 0 u 3 1 0 0 0 0 u 4 0 0 1 0 0</formula><p>Recall that A encodes the relationship between all the simplices in the ascending sequence. In the ascending sequence, the filter function for an edge u i u j is defined as</p><formula xml:id="formula_11">f a (u i u j ) = max(f (u i ), f (u j )).</formula><p>Thus we can infer the persistence points from the persistence pairs: (t 3 , t 3 ), (t 2 , t 3 ), (t 4 , t 4 ). We remove the persistence points whose birth time and death time are the same, and get the final persistence point: (t 2 , t 3 ).</p><p>Recall that a simplex is defined as positive if its corresponding column is zero after reduction, and negative if its corresponding column is not zero after reduction. So the positive edges in the ascending sequence are u 2 u 4 and u 3 u 4 , the negative edges in the ascending sequence are u 1 u 3 , u 2 u 3 , and u 1 u 4 .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2.2 Phase 2</head><p>Phase 2 is the matrix reduction for D. Notice that we define low D similar to low A , and Phase 2 influences not only D but also P <ref type="bibr" target="#b13">(Cohen-Steiner et al., 2009)</ref>. All the columns of nodes and all the rows of edges are all zero in D. In P , all the columns of nodes and all the rows of nodes have no impact to the reduction process and pairing for 1-dimensional topology. Therefore for simplicity, we delete these rows and edges and obtain the condensed matrices P and D:</p><formula xml:id="formula_12">P u 4 u 3 u 4 u 2 u 3 u 2 u 4 u 1 u 3 u 1 u 1 u 3 0 0 0 0 1 u 2 u 3 0 0 1 0 0 u 1 u 4 0 0 0 1 0 u 2 u 4 0 1 0 0 0 u 3 u 4 1 0 0 0 0 D u 4 u 3 u 4 u 2 u 3 u 2 u 4 u 1 u 3 u 1 u 4 1 1 0 1 0 u 3 1 0 1 0 1 u 2 0 1 1 0 0 u 1 0 0 0 1 1 From left to right, low D (u 4 u 3 ) = u 3 , low D (u 4 u 2 ) = u 2 , low D (u 3 u 2 ) = u 2 = low D (u 4 u 2 ).</formula><p>We add the column of u 4 u 2 to the column of</p><formula xml:id="formula_13">u 3 u 2 : [1, 0, 1, 0] + [0, 1, 1, 0] = [1, 1, 0, 0]. Then low D (u 3 u 2 ) = u 3 = low D (u 4 u 3</formula><p>), and we add column of u 4 u 3 to column of u 3 u 2 : [1, 1, 0, 0] + [1, 1, 0, 0] = [0, 0, 0, 0]. Therefore u 3 u 2 is not paired. Notice that when we add column of u 4 u 2 and column of u 4 u 3 to column of u 3 u 2 in D, we are also adding these columns in P . Consequently the column of u 3 u 2 in P will become:</p><formula xml:id="formula_14">[0, 0, 0, 1, 0] + [0, 0, 0, 0, 1] + [0, 1, 0, 0, 0] = [0, 1, 0, 1, 1].</formula><p>Then we continue the matrix reduction algorithm, low D (u 4 u 1 ) = u 1 , and low D (u</p><formula xml:id="formula_15">3 u 1 ) = u 1 = low D (u 4 u 1 ).</formula><p>Then we add column of u 4 u 1 to column of u 3 u 1 :</p><formula xml:id="formula_16">[1, 0, 0, 1] + [0, 1, 0, 1] = [1, 1, 0, 0], low D (u 3 u 1 ) = u 3 = low D (u 4 u 3 ). Again we add column of u 4 u 3 to column of u 3 u 1 : [1, 1, 0, 0] + [1, 1, 0, 0] = [0, 0, 0, 0]</formula><p>. Therefore u 3 u 1 is not paired, and column of u 3 u 1 in P becomes [1, 0, 1, 0, 1]. Matrix D and P will therefore become:</p><formula xml:id="formula_17">P u 4 u 3 u 4 u 2 u 3 u 2 u 4 u 1 u 3 u 1 u 1 u 3 0 0 0 0 1 u 2 u 3 0 0 1 0 0 u 1 u 4 0 0 0 1 1 u 2 u 4 0 1 1 0 0 u 3 u 4 1 0 1 0 1 D u 4 u 3 u 4 u 2 u 3 u 2 u 4 u 1 u 3 u 1 u 4 1 1 0 1 0 u 3 1 0 0 0 0 u 2 0 1 0 0 0 u 1 0 0 0 1 0</formula><p>Similar to the process to discover the persistence point, negative edges and positive edges in Phase 1. We can find that all the persistence pairs appear and disappear at the same time, thus there is no persistence point. The positive edges in the descending sequence are u 3 u 2 and u 3 u 1 . The negative edges in the descending sequence are u 4 u 3 , u 4 u 2 , and u 4 u 1 .</p><p>Notice that before Phase 3, all the persistence points are all 0-dimensional persistence points. In other words, they just record the birth and death of connected components. 1-dimensional extended persistence pair will be discussed in Phase 3, where positive edges in the descending filtration will each be paired with an edge in the ascending filtration, thus the saliency of loops can be measured.</p><p>Theorem 2. Algorithm 4 outputs the same extended persistence diagram as Algorithm 3.</p><p>To prove Theorem 2, the core of our proof is to show that for each positive descending edge, its corresponding pair found by the new algorithm is equivalent to the pair resulting from the matrix reduction algorithm. We prove this by induction. As we go through all positive descending edges in the descending filtration, we show that for each positive edge, which creates a new loop, its extended persistence pair from our algorithm is the same as the reduction result.</p><p>In Lemma 3, we prove that after reducing the D part of the column of a given edge e i , i.e., when low M (e i ) ≤ m, the remaining entries of e i in P constitute a unique loop in</p><formula xml:id="formula_18">{e i } ∪ T . Algorithm 3 Matrix Reduction 1: Input: filter funtion f , graph G 2: Persistence Diagram P D = {} 3: M = build reduction matrix(f, G) 4: for j = 1 to 2m do 5:</formula><p>while ∃k &lt; j with low M (k) = low M (j) do Input: filter funtion f of descending filtration, graph G, filter function f a of ascending filtration 0-dim PD, E pos , E neg = Union-Find(G, f ) Tree T = E neg + all the nodes 1-dim PD = {} for e j in E pos do assume e j = uv, P ath u ⊆ T is the path from u to r within the tree T , P ath v ⊆ T is the path from v to r Loop = P ath u ∪ P ath v -P ath u ∩ P ath v + e j add (max e∈Loop f a (e), f (e j )) to 1-dim PD e k = argmax e∈Loop f a (e) T = T -{e k } + {e j } end for Output: 0-dim PD, 1-dim PD In Lemma 4 and Lemma 5, we prove that: (1) The lowest entry of the reduced column, e j , is not paired by any other previous edges, and thus will be paired with e i . Indeed, it is the last edge in the loop w.r.t. the ascending ordering. (2) The updating of the tree T = T -{e j } + {e i } is equivalent to adding the reduced column of e i to all descending columns with nonzero entry at row of e j . Although this will affect the final reduced matrix, it will not change the resulting simplex pairings.</p><p>In Lemma 6, we further prove inductively that in Phase 3, the remaining entries of e i in P constitute a unique loop in {e i } ∪ T i-1 . Here T i is the tree after updating the first i positive edges.</p><p>Finally, in Lemma 7, we prove that the highest filter value and the lowest value exactly form the persistence point of the loop. Lemma 3. After Phase 2 (the reduction of descending matrix D) and before Phase 3 (the reduction of permutation matrix P ), for a positive edge λ j , the set {κ i |P [i, j] = 1} stores the loop that λ j and some of the former negative edges form. Besides, it is the loop that λ j gives birth to.</p><p>Proof. Denote the reduced matrix and its submatrices after Algorithm 3 by M = A P 0 D . As is shown in <ref type="bibr" target="#b15">(Edelsbrunner &amp; Harer, 2010)</ref>, matrix reduction algorithm can be interpreted as computing the reduced matrix i.e., A = AV 1 , D = DV 2 , P = P V 2 V 3 , where V 1 , V 2 and V 3 are invertible and upper-triangular matrices.</p><p>For a positive edge λ j , we observe that after Phase 2, its column in D is set to zero. Here D[:, j] is denoted as the j-th column of matrix D, and we have DV 2 [:, j] = D[: , j] = 0. According to the definition of loop, the boundary of λ j is finally reduced to zero, so the set {λ i |V 2 [i, j] = 1} contains all the edges that form the loop which λ j gives birth to. Considering that (1) V 2 is upper-triangular, thus only columns of former edges will be added to the column of λ j . (2) All the columns of former positive edges in D have been reduced to zero, thus λ j will not be reduced by positive edges. {λ i |V 2 [i, j] = 1} contains the loop that λ j and some of the former negative edges form.</p><p>In fact, after Phase 2, P represents the matrix P V 2 . Recall that P stores the permutation that connects the two sequences of simplices, i.e., P [i; j] = 1 iff κ i and λ j denote the same simplex. Thus {κ i |P V 2 [i, j] = 1} stores the same component as {λ i |V 2 [i, j] = 1}, that is the loop λ j and some of the negative edges form. It is the loop that λ j gives rise to.</p><p>In Algorithm 4, we first add all the negative edges and all the nodes to form the original tree T . If we add a positive edge λ j to T , then a loop will appear. Considering that in the graph T + {λ j }, there is only one loop that λ j gives birth to, and it consists of λ j and some of the negative edges that appear before λ j in the descending sequence. Therefore, it is exactly the loop that set {κ i |P [i, j] = 1} consists of after Phase 2.</p><p>In the following lemmas, we try to show that: In Algorithm 4, replacing the paired edge e k with the positive edge e j every step has the same result with the same step in Phase 3 (matrix reduction for P ).</p><p>Lemma 4. In Algorithm 4, the process of replacing the positive edge e j with its paired edge e k is equivalent to adding the column of e j to all the columns whose row of e k is one.</p><p>Proof. If we add the column of e j to all the later columns whose row of e k is "one", all the rows of e k in the later columns will be zero. i.e., assume P [e k , e l ] = 1<ref type="foot" target="#foot_6">6</ref> , then after adding column of e j with column of e l , P [e k , e l ] = 0.</p><p>The set {e i |P [e i , e l ] = 1} contains the loop that appear before e l (without e k ) and e j , e l .</p><p>Here we denote T ej = T -{e k } + {e j }. In the graph T ej + {e l }, there is only a loop. Therefore, it is exactly the loop that set {e i |P [e i , e l ]} consists of.</p><p>For the former columns whose row of e k is "one", i.e., P [e k , e l ] = 1. This means low P (e l ) &gt; e k<ref type="foot" target="#foot_7">7</ref> , then adding column e j to e l will not change the extended persistence pair because low P (e l ) will not be affected by previous edges and thus remain the same.</p><p>Lemma 5. Adding the column of e j to all the columns whose row of e k is one in Lemma 4 has the same extended pair as the matrix reduction algorithm in Phase 3.</p><p>Proof. Assume P [e k , e l ] = 1, for simplicity, we define low P (e l ) as the maximum row index e i for which P [e i , e l ] = 1. If low P (e l ) = e k , then in the matrix reduction algorithm, we should add column e j to e l , thus the two algorithms are exactly the same. If low P (e l ) = e k , which means low P (e l ) &gt; e k , then adding column e j to e l will not change the extended persistence pair because low P (e l ) will not be affected by previous edges and thus remain the same. As a consequence, adding the column of e j to all the later columns whose row of e k is one in Lemma 4 has the same extended pair with the matrix reduction algorithm in Phase 3. Together with Lemma 4, adding the column of e j to all the columns whose row of e k is one in Lemma 4 has the same extended pair with the matrix reduction algorithm in Phase 3.</p><p>From Lemma 4 and Lemma 5, we manage to prove that in Algorithm 4, replacing the paired edge e k with the corresponding positive edge e j is equivalent to Phase 3 (matrix reduction for P ). Combining it with Lemma 3, we can prove that for every positive edge, to update T in the faster algorithm leads to the same extended pair with the matrix reduction algorithm. We have proved that in a single step, the two algorithms are equivalent. Then we should prove inductively that the whole process of the Algorithm 2 is equivalent to the matrix reduction Algorithm 3. Lemma 6. In Algorithm 2, the process to update the tree T is equivalent to the matrix reduction process in Phase 3.</p><p>Proof. First, in the original lemmas, we have proved that adding a positive edge to the original tree T and updating the tree leads to the same result as the matrix reduction algorithm.</p><p>We then assume that after adding the first j -1 positive edges, the process of updating the tree can output the same results as the matrix reduction algorithm. Denote the tree after updating the first j -1 positive edges as T j-1 .</p><p>When adding the j-th positive edge e j . Similar to the prove in Lemma 3, we can prove that the set {e i |P [e i , e j ] = 1} stores the loop that e j and T j-1 form. And similar to the prove in Lemma 4 and Lemma 5, we can prove that replacing the paired edge e k with the newly added positive edge e j leads to the same extended persistence pair with the matrix reduction algorithm in Phase 3. As a consequence, the process of updating the tree to T j can lead to the same results as the reduction algorithm. Then Lemma 6 is proved inductively.</p><p>In the above Lemmas, we have proven that to update the tree T in the faster algorithm output the same result as the matrix reduction algorithm. Then we should confirm that the extended point given by Algorithm 4 is correct.</p><p>Lemma 7. In a loop, the highest filter value and the lowest filter value form its extended persistence point.</p><p>Proof. For a positive edge e j , the edge it pairs in matrix P is the lowest one in its column, representing the latest one in the ascending filtration. Notice that in the ascending filtration, we define the filter value of an edge f a (uv) = max(f (u), f (v)), thus it has the biggest filter value in the loop. e j is the latest born edge in the descending filtration, Recall that we define the filter value of an edge in the descending filtration as f d (uv) = min(f (u), f (v)), thus it contains the lowest filter value in the loop. As a result, the extended persistence point will be the highest and lowest filter value of the loop.</p><p>From Lemma 7, we manage to prove that the persistence The real-world datasets in this paper include:</p><p>1. Citation network: PubMed <ref type="bibr" target="#b39">(Sen et al., 2008</ref>) is a standard benchmark describing citation network where nodes denote scientific papers and edges are citations between them.</p><p>2. Amazon networks: Photo and Computers <ref type="bibr" target="#b40">(Shchur et al., 2018)</ref> are datasets related to Amazon shopping records where nodes represent products and edges imply that two products are frequently brought together.</p><p>3. PPI networks: 24 Protein-protein interaction networks <ref type="bibr" target="#b54">(Zitnik &amp; Leskovec, 2017)</ref> where nodes denote protein and edges represent the interaction between proteins. Each graph has 3000 nodes with average degree 28.8. The dimension of node feature vector is 50.</p><p>The detailed statistics of these data is shown in Table <ref type="table" target="#tab_3">4</ref>.</p><p>Because PPI networks contain multiple graphs, we do not add it in the Table . 
+
+A.4.2 Detailed Experiment Settings Data split. We follow the experimental setting from <ref type="bibr" target="#b9">(Chami et al., 2019;</ref><ref type="bibr" target="#b53">Zhu et al., 2020)</ref> and use 5% (resp. 10%) of existing links as positive samples of the validation set (resp. test set). And equal number of non-existent links are sampled as negative samples of the validation and test set. The remaining 85% existing links are used as the positive training set. In every epoch, we randomly choose the same number of remaining non-existent links as the negative training set. We report the results on test set when the models achieve the best performance on the validation set.</p><p>Training setting. On synthetic experiments, we run all the methods on each graph 10 times and report the mean average area under the ROC curve (ROCAUC) scores as the Following <ref type="bibr" target="#b9">(Chami et al., 2019;</ref><ref type="bibr" target="#b53">Zhu et al., 2020)</ref>, during training, we remove positive validation and test edges from the graph. Cross Entropy Loss is chosen as the loss function and Adam is adopted as the optimizer with the learning rate set to 0.01 and weight-decay set to 0. For fairness, we set the number of node embeddings of the hidden layer and the final layer to be the same (100 and 16) for all networks. The backbone GNN in our model is a classic 2-layer GCN with one hidden and one output layer. All persistence images in the experiments are 25-dimension. All the activation function used in the graph neural networks is RELU and all the activation function used in Fermi-Dirac decoder (needed in TLC-GNN) is Leakyrelu with negative slope set to 0.2.</p><p>Details on evaluation of algorithm efficiency. To evaluate the efficiency of the proposed faster algorithm (Section 5.3 in the main paper), we use the following setting. For the sparse graph PubMed, we compute 0-dimensional and 1-dimensional extended persistence diagrams on all the existing edges. No edges are removed. For large and dense graphs like Photo and Computer, we compute 0-dimensional and 1-dimensional extended persistence diagrams on the first 1000 edges in the default edge list. We run the algorithms on each graph 10 times and report the average seconds per edge as the result. We use a cluster with two Intel Xeon Gold 5128 processors and 192GB RAM to run the two algorithms without multi-threading.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.4.3 Further experiments</head><p>In this paragraph, we add experiments to evaluate the effect of k (the hop distance to form the enclosing subgraph).</p><p>Considering that on large and dense graphs such as Photo and Computers, it costs immensely to compute the persistence image when k is 2, and on all the datasets, computing persistence image when k is larger than 3 takes immense computational cost, we evaluate the effect of k on PubMed and a sampled graph in PPI. As shown in Table <ref type="table" target="#tab_4">5</ref>, k = 2 is generally a good choice in these two datasets. However, it cost much more to compute the persistence images in PPI networks when k = 2, so we finally set k = 1 in PPI datasets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.4.4 Visualization of Extended Persistence</head><p>We provide qualitative examples to further illustrate how topological features can help differentiate edges/non-edges. We use the t-distributed stochastic neighbor embedding (t-SNE) (Van der <ref type="bibr" target="#b43">Maaten &amp; Hinton, 2008)</ref> to map the 25-dim persistence images of samples to a 2D plane, as shown in Figure <ref type="figure">8</ref>. The persistence images here are created using the Ollivier-Ricci curvature <ref type="bibr" target="#b33">(Ni et al., 2018)</ref> as the filter function.</p><p>For each graph, we randomly choose 1500 positive edges and 1500 negative edges. Figure <ref type="figure">8</ref> shows the t-SNE results of PubMed. The red and blue marks represent negative and positive edges respectively. Despite some exceptions, negative edges and positive edges are well separated in terms of persistent homology features.</p><p>To further understand the data, we choose 2 positive samples from the t-SNE plot of PubMed (Figure <ref type="figure">8</ref>) and draw their local enclosing graphs and persistence diagrams. In the t-SNE plot, positive samples form an elongated linear structure. We intentionally sample the two samples from the two ends of the structure. In the graph, the red nodes denote the target nodes, while the other nodes are black. In the persistence diagram, the red and blue markers represent the 0-dimensional and 1dimensional persistence points respectively. Notice that we add a random jitter to each persistence point so that we can observe the overlapped persistence points.</p><p>For the sample in the brown square, we observe that in its enclosing subgraph, there are several loops passing the target nodes. They correspond to 1D persistence points with death time zero in the diagram. The only loop that does not pass the target nodes has the same birth and death time, thus is not shown in the persistence diagram.</p><p>For the sample in the purple square, we observe that there exist many loops in the generated subgraph, and the distribution of the 1-dimensional persistence points mainly concentrate on the top right of the diagram. In addition, more 0-dimensional extended persistence points whose birth time is smaller than its death time appear. We observe (1) the density of 1-dimensional extended persistence points gradually increase from the bottom to the upper-right of the diagram.</p><p>(2) more 0-dimensional extended persistence points from the ascending filtration appear.</p><p>Discussion. From Figure <ref type="figure">8</ref> and Figure <ref type="figure">9</ref>, we observe the fol-lowing phenomena. Persistence images effectively differentiate positive and negative edges in all graphs. While almost all negative samples form a tight cluster, positive samples form clusters like pieces of 1-manifolds. This makes us wonder whether these clusters can be parameterized by a latent parameter. The selected two samples further suggest the possibility of this hypothesis. The brown and purple samples represent the two extreme of the positive cluster in PubMed. The share common characteristics, e.g., both have rich loops (compared to their number of nodes). Meanwhile, they range from small subgraphs with less loops to dense subgraphs with many loops. To investigate further on these positive sample clusters is an interesting research direction in the future.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 2 .</head><label>2</label><figDesc>Figure 2. An illustration of extended persistent homology. (a) We plot the input graph with a given filter function. The filter value for each node is f (u1) = t1, f (u2) = t2, f (u3) = t3, f (u4) = t4. (b) The ascending and descending filtrations of the input graph. The bars of brown and blue colors correspond to the life spans of connected components and loops respectively. The first four figures are the ascending filtration, while the last four figures denote the descending filtration. In the ascending filtration, f (uv) = max(f (u), f (v)), while in the descending filtration, f (uv) = min(f (u), f (v)). (c) In the resulting extended persistence diagram, red and blue markers correspond to 0-dimensional and 1-dimensional topological structures. There are two blue markers, corresponding to two loops (u1u3, u3u4, u4u1), (u2u3, u3u4, u4u2). The range of filter function f for these two loops are [t1, t4], [t2, t4] respectively. These ranges are encoded as the coordinates of the blue markers.</figDesc><graphic coords="2,402.99,93.62,126.35,98.38" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head></head><label></label><figDesc>After capturing the birth, death times of all the topological structures, we encode them into a 2-D point set called persistence diagram. Each topological structure corresponds to one persistence point in the diagram. Its x and y coordinates are the birth and death times. In Figure 2 (c), we show an extended persistence diagram.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>consisting of four m × m matrices: of M corresponds to a simplex. In particular, the first m columns of M correspond to the ascending sequence of simplices κ 1 , ..., κ m . The last m columns of M correspond to the descending sequence of simplices λ 1 , ..., λ m . The setting is the same for the rows of M . Matrix A encodes the relationship between all the simplices in the ascending sequence. Similar to the incidence matrix of a graph, A[i, j] = 1 iff κ i is the boundary of κ j , i.e., κ i is a node adjacent to the edge κ j . The matrix A of Figure2is shown in Figure3</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 .</head><label>3</label><figDesc>Figure 3. The matrix A of Figure 2</figDesc><graphic coords="4,307.44,289.63,233.99,100.58" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Algorithm 2 A</head><label>2</label><figDesc>Faster Algorithm for Extended Persistence Diagram Input: filter funtion f of descending filtration, graph G, filter function f a of ascending filtration 0-dim PD, E pos , E neg = Union-Find(G, f ) Tree T = E neg + all the nodes 1-dim PD = {} for e j in E pos do assume e j = uv, P ath u ⊆ T is the path from u to r within the tree T , P ath v ⊆ T is the path from v to r Loop = P ath u ∪ P ath v -P ath u ∩ P ath v + e j add (max e∈Loop f a (e), f (e j )) to 1-dim PD e k = argmax e∈Loop f a (e) T = T -{e k } + {e j } end for Output: 0-dim PD, 1-dim PD</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 4 .</head><label>4</label><figDesc>Figure 4. An illustration of Algorithm 2, based on Figure 2.</figDesc><graphic coords="6,55.44,277.79,233.99,116.59" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head></head><label></label><figDesc>Complexity of Algorithm 2. For every positive edge, the time cost to get the loop and to form the new path are both O(|V |), here |V | denotes the number of nodes, and |E| represents the number of edges. So the time cost among all positive edges is (|E|-|V |+1) * O(|V |) = O(|V ||E|). The union-find algorithm will take O(|V | + |E|)log(|E| + |V |). Therefore the final computational cost is O(|V ||E|). This is much more efficient than the complexity of the matrix reduction algorithm, O((|V | + |E|) 3 ).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head></head><label></label><figDesc>of M and its submatrices.We classify edges in the descending filtration into negative descending edges and positive descending edges. A negative descending edge e i destroys a connected component created by a descending node v j . In the reduced matrix M , its lowest entry [v j , e i ] falls into D. A positive descending edge e i adds a new loop to the superlevel set. But for extended persistence, it destroys the loop created by an edge e j in the ascending filtration. The lowest entry of e i , [e j , e i ] falls into P . See Figure2(c) for an illustration of different types of simplex pairs and their corresponding persistence points in the extended diagram.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 5 .</head><label>5</label><figDesc>Figure5. Heatmap of ROC-AUC score for different methods on synthetic data. For each method we generate a heatmap for its performance on 12 synthetic graphs with different (p, q) combinations. We also report in the title of each heatmap the average performance over 12 graphs.</figDesc><graphic coords="8,55.44,230.15,233.99,141.65" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 6 .Figure 7 .</head><label>67</label><figDesc>Figure 6. An illustration of extended persistent homology. (a) We plot the input graph with a given filter function. The filter value for each node is f (u1) = t1, f (u2) = t2, f (u3) = t3, f (u4) = t4. (b) The ascending and descending filtrations of the input graph. The bars of brown and blue colors correspond to the life spans of connected components and loops respectively. The first four figures are the ascending filtration, while the last four figures denote the descending filtration. In the ascending filtration, f (uv) = max(f (u), f (v)), while in the descending filtration, f (uv) = min(f (u), f (v)). (c) In the resulting extended persistence diagram, red and blue markers correspond to 0-dimensional and 1-dimensional topological structures. There are two blue markers, corresponding to two loops (u1u3, u3u4, u4u1), (u2u3, u3u4, u4u2). The range of filter function f for these two loops are [t1, t4], [t2, t4] respectively. These ranges are encoded as the coordinates of the blue markers.</figDesc><graphic coords="13,402.99,127.34,126.35,98.38" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head></head><label></label><figDesc>low M (j)), f (j)) to P D 9: end for 10: Output: Persistence Diagram P D Algorithm 4 A Faster Algorithm for Extended Persistence Diagram</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head>Figure 8 .Figure 9 .</head><label>89</label><figDesc>Figure 8. The t-distributed stochastic neighbor embedding (t-SNE) projection of the persistence images on PubMed. In the figure, the red and blue marks denote the persistence images generated by the negative edge and positive edges respectively.</figDesc><graphic coords="18,181.44,85.82,234.00,238.47" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head></head><label></label><figDesc>One from the center of the brown box. The other from the center of the purple box. The local enclosing graph and diagram of the first sample is drawn in Figure 9 (a) (c). The graph and diagram of the second sample is drawn in Figure 9 (b) (d).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 .</head><label>1</label><figDesc>Mean and standard deviation of ROC-AUC on real-world data. "*": results copied from<ref type="bibr" target="#b9">(Chami et al., 2019;</ref><ref type="bibr" target="#b53">Zhu et al., 2020)</ref>.</figDesc><table><row><cell>METHOD</cell><cell>PUBMED</cell><cell>PHOTO</cell><cell>COMPUTERS</cell></row><row><cell cols="4">GCN (KIPF &amp; WELLING, 2016) 89.56±3.660* 91.82±0.000 87.75±0.000</cell></row><row><cell>HGCN (CHAMI ET AL., 2019)</cell><cell cols="3">96.30±0.000* 95.40±0.000 93.61±0.000</cell></row><row><cell>GIL (ZHU ET AL., 2020)</cell><cell cols="3">95.49±0.160* 97.11±0.007 95.89±0.010</cell></row><row><cell>SEAL (ZHANG &amp; CHEN, 2018)</cell><cell>92.42±0.119</cell><cell cols="2">97.83±0.013 96.75±0.015</cell></row><row><cell>PEGN (ZHAO ET AL., 2020)</cell><cell>95.82±0.001</cell><cell cols="2">96.89±0.001 95.99±0.001</cell></row><row><cell>TLC-GNN (NODEWISE)</cell><cell>96.91±0.002</cell><cell cols="2">97.91±0.001 97.03±0.001</cell></row><row><cell>TLC-GNN (DRNL)</cell><cell>96.89±0.002</cell><cell cols="2">97.61±0.003 97.23±0.003</cell></row><row><cell>TLC-GNN (RICCI)</cell><cell>97.03±0.001</cell><cell cols="2">98.23±0.001 97.90±0.001</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 .</head><label>2</label><figDesc>Computational time (seconds per edge) evaluation.</figDesc><table><row><cell></cell><cell cols="3">PUBMED PHOTO COMPUTERS</cell></row><row><cell>ALG. 1</cell><cell>0.0068</cell><cell>1.6557</cell><cell>4.6531</cell></row><row><cell>ALG. 2</cell><cell>0.0027</cell><cell>1.1176</cell><cell>2.7033</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 .</head><label>3</label><figDesc>Experimental results(s) on PPI datasets</figDesc><table><row><cell>SAMPLES</cell><cell>1</cell><cell>2</cell><cell>3</cell><cell>4</cell><cell>5</cell></row><row><cell>GCN</cell><cell>75.21</cell><cell>74.42</cell><cell>77.68</cell><cell cols="2">76.22 69,67</cell></row><row><cell>GIL</cell><cell>57.69</cell><cell>1.45</cell><cell>34.90</cell><cell cols="2">85.61 33.65</cell></row><row><cell>HGCN</cell><cell></cell><cell>CANNOT</cell><cell>CONVERGE</cell><cell></cell><cell></cell></row><row><cell>SEAL</cell><cell>50.00</cell><cell>64.79</cell><cell>67.14</cell><cell cols="2">72.55 50.00</cell></row><row><cell cols="2">TLC-GNN 83.92</cell><cell>81.21</cell><cell>83.95</cell><cell cols="2">83.03 83.53</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 4 .</head><label>4</label><figDesc>Statistics of benchmark datasets</figDesc><table><row><cell>DATASET</cell><cell cols="2">FEATURES NODES</cell><cell>EDGES</cell><cell>EDGE DENSITY</cell></row><row><cell>PUBMED</cell><cell>500</cell><cell>19717</cell><cell>44338</cell><cell>0.0002</cell></row><row><cell>PHOTO</cell><cell>745</cell><cell>7487</cell><cell>119043</cell><cell>0.0042</cell></row><row><cell>COMPUTERS</cell><cell>767</cell><cell>13381</cell><cell>245779</cell><cell>0.0027</cell></row><row><cell cols="5">point of the positive edge e j is exact the value provided in</cell></row><row><cell cols="5">Algorithm 4. As a consequence, we can justify Theorem 2:</cell></row><row><cell cols="5">Algorithm 4 outputs the same extended persistence diagram</cell></row><row><cell cols="2">as Algorithm 3.</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="2">A.4 Experiment</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="4">A.4.1 Introduction to Real-World Datasets</cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 5 .</head><label>5</label><figDesc>Experimental results(s) on the chosen of hop distance</figDesc><table><row><cell>k</cell><cell>1</cell><cell>2</cell></row><row><cell cols="3">PubMed 96.79 97.03</cell></row><row><cell>PPI</cell><cell cols="2">83.92 84.11</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>In theory, the fastest algorithm for persistence diagram has the same complexity as matrix multiplication(Milosavljević et al.,   </p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_1"><p>2011), i.e., O((|V | + |E|) ω ), in which ω = 2.3728596 (Alman &amp; Williams, 2021).</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_2"><p>In graphs, there is no triangle. As a result, all the loops are topological structures (non-bounding cycles).</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_3"><p>Technically, the superlevel set should be the relative homology groups (X, X a ) in the second half of the filtration.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_4"><p>Without loss of generality, we assume the filter function of all nodes are distinct.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_5"><p>The codes of Dionysus are transformed into Cython, a C-Extension for Python.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="6" xml:id="foot_6"><p>Here, for simplicity, we use e k and e l to represent their indices.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="7" xml:id="foot_7"><p>  7  If lowP (e l ) = e k , e k will be paired in the former columns, thus dissatisfies the assumption that lowP (ej) = e k .</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Appendix</head><p>In this appendix, we provide (1) additional details for persistence image; (2) additional examples to illustrate the matrix reduction algorithm for extended persistent homology; (3) a complete proof of the correctness of the proposed faster algorithm; and (4) additional experimental details and qualitative results.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.1 Persistence Image</head><p>In recent years, efforts have been made to map persistence diagrams into representations valuable to machine learning tasks. Persistence Image <ref type="bibr" target="#b1">(Adams et al., 2017)</ref> is one such approach to convert persistence diagrams to vectors, which will be used in our model. Let T : R 2 → R 2 be a linear transformation</p><p>is the 2D Gaussian function with mean u and standard deviation σ.</p><p>Let α : R 2 → R be a non-negative weight function for the persistence plane R 2 . Given a persistence diagram DgX, its persistence surface is defined as: ρ D (z) = u∈T (D) α(u)φ u (z). Fix a grid in the plane with n pixels, the persistence image is the collection of pixels P I D = {P I D [p]} ∈ R n where P I D [p] = p ρ D (x, y)dxdy, thus can be directly used in machine learning tasks. The stability of persistence image under perturbation has been proven in <ref type="bibr" target="#b1">(Adams et al., 2017)</ref>. In our setting, α is a piecewise linear weighting function:</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 Examples of the Matrix Reduction Algorithm</head><p>The reduction matrix M for Figure <ref type="figure">6</ref> is shown in Figure <ref type="figure">7</ref>. Recall that M is a binary valued matrix to encode the adjacency relationship between nodes and edges. M is a 2m × 2m matrix consisting of four m × m matrices:</p><p>. Every column or row of M corresponds to a simplex. In particular, the first m columns of M correspond to the ascending sequence of simplices κ 1 , ..., κ m . The last m columns of M correspond to the descending sequence of simplices λ 1 , ..., λ m . The setting is the same for the rows of M . Matrix A encodes the relationship between all the simplices in the ascending sequence. Similar to the incidence matrix of a graph, A[i, j] = 1 iff κ i is the boundary of κ j , i.e., κ i is a node adjacent to the edge κ j .</p><p>D is defined similarly, except that it encodes the relationship of the simplices in the descending sequence, i.e., D[i, j] = 1 iff λ i is the boundary of λ j . P stores the permutation that connects the two sequences of simplices, i.e., P [i, j] = 1 iff κ i and λ j denote the same simplex. 0 is a zero-valued m × m matrix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2.3 Phase 3</head><p>Phase 3 is the reduction process of P . Only positive descending edges (edges whose column in D is 0) will be reduced, thus the value in D will not be influenced. Similar to the definition of low A in Phase 1, we define low P (e i ) as the maximum row of edge e j for which P [e j , e i ] = 1.</p><p>From left to right, we only consider the positive descending edges. We find that low P (u 3 u 2 ) = u 3 u 4 , low P (u 3 u 1 ) = u 3 u 4 = low P (u 3 u 2 ). We add column of u 3 u 2 to column of</p><p>As a consequence, we can get matrix P and D after Phase3:</p><p>And the extended persistence pair is (u 3 u 4 , u 3 u 2 ), (u 2 u 4 , u 3 u 1 ). Notice that for a extended persistence pair, the latter edge is the positive edge in the descending filtration, and the former edge is its paired edge in the ascending filtration. i.e, in the extended persistence pair (u 3 u 4 , u 3 u 2 ), u 3 u 2 is the positive edge in the descending filtration, while u 3 u 4 is the paired edge in the ascending filtration. Recall that for a certain edge, its filter value in the ascending sequence is defined as the maximum value of the filter value of its nodes: f a (u 3 u 4 ) = max(f (u 3 ), f (u 4 )) = max(t 3 , t 4 ) = t 4 . Similarly, f a (u 2 u 4 ) = t 4 . And for a certain edge in the descending filtration, its filter value is defined as the minimum value of the filter value of its nodes:</p><p>As a consequence, the extended persistence point are (t 4 , t 2 ) and (t 4 , t 1 ) respectively.</p><p>After the whole matrix reduction algorithm, we can get the ordinary persistence diagram for 0-dimensional topological structures (connected components): [(t 2 , t 3 )] and the extended persistence diagram for 1-dimensional topological structures (loops): [(t 4 , t 2 ), (t 4 , t 1 )]. To get the 0dimensional extended persistence diagram, the birth and death of the whole connected component is also recorded, that is, the minimum and the maximum filter value (t 1 , t 4 ). So the 0-dimensional extended persistence diagram is [(t 2 , t 3 ), (t 1 , t 4 )], as shown in Figure <ref type="figure">6</ref> (c).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3 Correctness of the Faster Algorithm</head><p>In this section, we provide complete proof of the correctness of the faster algorithm. For convenience, we restate the matrix reduction algorithms Alg. 3 and the proposed faster algorithm Alg. 4. We also restate the main theorem 2.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Friends and neighbors on the web</title>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">A</forename><surname>Adamic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Adar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Social networks</title>
+		<imprint>
+			<biblScope unit="volume">25</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="211" to="230" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Persistence images: A stable vector representation of persistent homology</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Adams</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Emerson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kirby</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Neville</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Peterson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Shipman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chepushtanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Hanson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Motta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Ziegelmeier</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="218" to="252" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Mixed membership stochastic blockmodels</title>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">M</forename><surname>Airoldi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">M</forename><surname>Blei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">E</forename><surname>Fienberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">P</forename><surname>Xing</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of machine learning research</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="1981" to="2014" />
+			<date type="published" when="2008-09">Sep. 2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">A refined laser method and faster matrix multiplication</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Alman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">V</forename><surname>Williams</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 ACM-SIAM Symposium on Discrete Algorithms (SODA)</title>
+		<meeting>the 2021 ACM-SIAM Symposium on Discrete Algorithms (SODA)</meeting>
+		<imprint>
+			<publisher>SIAM</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="522" to="539" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Emergence of scaling in random networks</title>
+		<author>
+			<persName><forename type="first">A.-L</forename><surname>Barabási</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Albert</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">science</title>
+		<imprint>
+			<biblScope unit="volume">286</biblScope>
+			<biblScope unit="issue">5439</biblScope>
+			<biblScope unit="page" from="509" to="512" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Understanding and predicting links in graphs: A persistent homology perspective</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bhatia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Chatterjee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Nathani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kaul</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1811.04049</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Reprint of: The anatomy of a largescale hypertextual web search engine. Computer networks</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Brin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Page</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="volume">56</biblScope>
+			<biblScope unit="page" from="3825" to="3833" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Sliced wasserstein kernel for persistence diagrams</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Carriere</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Cuturi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Oudot</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="664" to="673" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Perslay: a neural network layer for persistence diagrams and new graph topological signatures</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Carrière</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Chazal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Ike</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lacombe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Royer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Umeda</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="2786" to="2796" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Hyperbolic graph convolutional neural networks</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Chami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Ré</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="4868" to="4879" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">A topological regularizer for classifiers via persistent homology</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Ni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The 22nd International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2573" to="2582" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Vines and vineyards by updating persistence in linear time</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Cohen-Steiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Edelsbrunner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Morozov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the twenty-second annual symposium on Computational geometry</title>
+		<meeting>the twenty-second annual symposium on Computational geometry</meeting>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="page" from="119" to="126" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Stability of persistence diagrams</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Cohen-Steiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Edelsbrunner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Harer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Discrete &amp; computational geometry</title>
+		<imprint>
+			<biblScope unit="volume">37</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="103" to="120" />
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Extending persistence using poincaré and lefschetz duality</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Cohen-Steiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Edelsbrunner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Harer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Foundations of Computational Mathematics</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="79" to="103" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Gene essentiality and the topology of protein interaction networks</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Coulomb</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bauer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bernard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M.-C</forename><surname>Marsolier-Kergoat</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the Royal Society B: Biological Sciences</title>
+		<imprint>
+			<biblScope unit="volume">272</biblScope>
+			<biblScope unit="page" from="1721" to="1725" />
+			<date type="published" when="1573">1573. 2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Computational topology: an introduction</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Edelsbrunner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Harer</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<publisher>American Mathematical Soc</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Topological persistence and simplification</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Edelsbrunner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Letscher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zomorodian</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings 41st annual symposium on foundations of computer science</title>
+		<meeting>41st annual symposium on foundations of computer science</meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2000">2000</date>
+			<biblScope unit="page" from="454" to="463" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Deep learning with topological signatures</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hofer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kwitt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Niethammer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Uhl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 31st International Conference on Neural Information Processing Systems</title>
+		<meeting>the 31st International Conference on Neural Information Processing Systems</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1633" to="1643" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Connectivity-optimized representation learning via persistent homology</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hofer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kwitt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Niethammer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Dixit</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2751" to="2760" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Graph filtration learning</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hofer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Graf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Rieck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Niethammer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kwitt</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="4314" to="4323" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Stochastic blockmodels: First steps</title>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">W</forename><surname>Holland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">B</forename><surname>Laskey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Leinhardt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Social networks</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="109" to="137" />
+			<date type="published" when="1983">1983</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Topologypreserving deep image segmentation</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Samaras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="5657" to="5668" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Simrank: a measure of structuralcontext similarity</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Jeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Widom</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the eighth ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the eighth ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<date type="published" when="2002">2002</date>
+			<biblScope unit="page" from="538" to="543" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1609.02907</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Matrix factorization techniques for recommender systems</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Koren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Bell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Volinsky</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computer</title>
+		<imprint>
+			<biblScope unit="volume">42</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page" from="30" to="37" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Hyperbolic geometry of complex networks</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Krioukov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Papadopoulos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kitsak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vahdat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Boguná</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Physical Review E</title>
+		<imprint>
+			<biblScope unit="volume">82</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page">36106</biblScope>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Persistence weighted gaussian kernel for topological data analysis</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Kusano</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Hiraoka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Fukumizu</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2004" to="2013" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">The link-prediction problem for social networks</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Liben-Nowell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kleinberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the American society for information science and technology</title>
+		<imprint>
+			<biblScope unit="volume">58</biblScope>
+			<biblScope unit="issue">7</biblScope>
+			<biblScope unit="page" from="1019" to="1031" />
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Link prediction in complex networks: A survey</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Lü</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Physica A: statistical mechanics and its applications</title>
+		<imprint>
+			<biblScope unit="volume">390</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="1150" to="1170" />
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Zigzag persistent homology in matrix multiplication time</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Milosavljević</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Morozov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Skraba</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the twenty-seventh Annual Symposium on Computational Geometry</title>
+		<meeting>the twenty-seventh Annual Symposium on Computational Geometry</meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="216" to="225" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">D</forename><surname>Morozov</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Dinoysus</surname></persName>
+		</author>
+		<ptr target="https://www.mrzv.org/software/dionysus2/" />
+		<imprint>
+			<date type="published" when="2021-03-01">2021/03/01</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<title level="m" type="main">Elements of algebraic topology</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">R</forename><surname>Munkres</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<publisher>CRC press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Predicting future scientific discoveries based on a networked analysis of the past literature</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nagarajan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">D</forename><surname>Wilkins</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">J</forename><surname>Bachman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><forename type="middle">B</forename><surname>Novikov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">J</forename><surname>Haas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">E</forename><surname>Terrón-Díaz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bhatia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">K</forename><surname>Adikesavan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">J</forename><surname>Labrie</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 21th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</title>
+		<meeting>the 21th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="2019" to="2028" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Network alignment by discrete ollivier-ricci flow</title>
+		<author>
+			<persName><forename type="first">C.-C</forename><surname>Ni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-Y</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Gu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Symposium on Graph Drawing and Network Visualization</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="447" to="462" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Poincaré embeddings for learning hierarchical representations</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kiela</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="6338" to="6347" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Online learning of social representations</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Skiena</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Deepwalk</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="701" to="710" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Network embedding as matrix factorization: Unifying deepwalk, line, pte, and node2vec</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Eleventh ACM International Conference on Web Search and Data Mining</title>
+		<meeting>the Eleventh ACM International Conference on Web Search and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="459" to="467" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">A stable multi-scale kernel for topological machine learning</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Reininghaus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Huber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Bauer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kwitt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE conference on computer vision and pattern recognition</title>
+		<meeting>the IEEE conference on computer vision and pattern recognition</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="4741" to="4748" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Modeling relational data with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Bloem</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Van Den</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Titov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">European semantic web conference</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="593" to="607" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Collective classification in network data</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Namata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bilgic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Getoor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Galligher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Eliassi-Rad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AI magazine</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="93" to="93" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<title level="m" type="main">Pitfalls of graph neural network evaluation</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Shchur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mumme</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bojchevski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Günnemann</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1811.05868</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Line: Large-scale information network embedding</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Mei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 24th international conference on world wide web</title>
+		<meeting>the 24th international conference on world wide web</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="1067" to="1077" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Inductive relation prediction by subgraph reasoning</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Teru</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Denis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hamilton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="9448" to="9457" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Visualizing data using t-sne</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Van Der Maaten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of machine learning research</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">11</biblScope>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<monogr>
+		<title level="m" type="main">Graph attention networks</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1710.10903</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Topogan: A topology-aware generative adversarial network</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Samaras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">European Conference on Computer Vision</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">2</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">A comprehensive survey on graph neural networks</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Long</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">Y</forename><surname>Philip</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE transactions on neural networks and learning systems</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Curvature graph network</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">S</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Link prediction based on graph neural networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="5165" to="5175" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Deep learning on graphs: A survey</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Knowledge and Data Engineering</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Learning metrics for persistencebased summaries and applications for graph classification</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="9859" to="9870" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Persistence enhanced graph neural network</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="2896" to="2906" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Predicting missing links via local information</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Lü</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-C</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The European Physical Journal B</title>
+		<imprint>
+			<biblScope unit="volume">71</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="623" to="630" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Graph geometry interaction learning</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Predicting multicellular function through multi-layer tissue networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Bioinformatics</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="issue">14</biblScope>
+			<biblScope unit="page" from="190" to="198" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

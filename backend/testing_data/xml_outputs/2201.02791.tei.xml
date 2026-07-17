@@ -1,0 +1,1465 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Scaling Knowledge Graph Embedding Models</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2022-01-08">8 Jan 2022</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Nasrullah</forename><surname>Sheikh</surname></persName>
+							<email>nasrullah.sheikh@ibm.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">IBM Research Almaden San Jose</orgName>
+								<address>
+									<region>California, US</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Xiao</forename><surname>Qin</surname></persName>
+							<email>xiao.qin@ibm.com</email>
+							<affiliation key="aff1">
+								<orgName type="institution">IBM Research Almaden San Jose</orgName>
+								<address>
+									<region>California, US</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Berthold</forename><surname>Reinwald</surname></persName>
+							<email>reinwald@us.ibm.com</email>
+							<affiliation key="aff2">
+								<orgName type="institution">IBM Research Almaden San Jose</orgName>
+								<address>
+									<region>California, US</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Chuan</forename><surname>Lei</surname></persName>
+							<email>chuan.lei@instacart.com</email>
+							<affiliation key="aff3">
+								<orgName type="department">Instacart San Francisco</orgName>
+								<address>
+									<region>California, US</region>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Scaling Knowledge Graph Embedding Models</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2022-01-08">8 Jan 2022</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">D6A4711ABF71D604ABC49CA4974C5932</idno>
+					<idno type="arXiv">arXiv:2201.02791v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:22+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Developing scalable solutions for training Graph Neural Networks (GNNs) for link prediction tasks is challenging due to the high data dependencies which entail high computational cost and huge memory footprint. We propose a new method for scaling training of knowledge graph embedding models for link prediction to address these challenges. Towards this end, we propose the following algorithmic strategies: self-sufficient partitions, constraint-based negative sampling, and edge mini-batch training. Both, partitioning strategy and constraint-based negative sampling, avoid cross partition data transfer during training. In our experimental evaluation, we show that our scaling solution for GNN-based knowledge graph embedding models achieves a 16x speed up on benchmark datasets while maintaining a comparable model performance as non-distributed methods on standard metrics.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>Graphs have been widely used to model and manage relational data <ref type="bibr" target="#b36">[37]</ref>. Knowledge graphs (KG), as a prime example of graphs, model real-world objects, events, and concepts as well as various relations among them. Representation learning over large-scale knowledge graphs has been emerging as a pivotal tool to derive insights from graph structured data powering a wide range of applications such as data integration <ref type="bibr" target="#b30">[31,</ref><ref type="bibr" target="#b35">36,</ref><ref type="bibr" target="#b38">39]</ref> and question answering <ref type="bibr" target="#b3">[4,</ref><ref type="bibr" target="#b13">14]</ref>.</p><p>KG embedding methods <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b5">6,</ref><ref type="bibr" target="#b19">20,</ref><ref type="bibr" target="#b25">26,</ref><ref type="bibr" target="#b28">29,</ref><ref type="bibr" target="#b34">35,</ref><ref type="bibr" target="#b40">41</ref>] capture the attributes of entities and structures of relations in KGs, and project them into a lower dimensional vector space for use in various downstream tasks such as vertex classification <ref type="bibr" target="#b28">[29]</ref> and link prediction <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b25">26,</ref><ref type="bibr" target="#b28">29,</ref><ref type="bibr" target="#b29">30,</ref><ref type="bibr" target="#b37">38]</ref>. Traditional KG embedding methods learn various structures pattern between the entities such as symmetric, anti-symmetric and inverse relations. They mainly focus on the scoring aspect of the problem, which is to predict the legitimacy between two entities and a particular relation type. Recently, message passing-based graph neural networks (GNNs) have been adopted to enhance the expressivity of the entity 2 embeddings <ref type="bibr" target="#b28">[29]</ref>. GNNs capture the topological features of the entities such as shapes of the neighborhood sub-graphs which are overlooked by the traditional KG embedding methods. A generic GNN-based KG embedding neural network (Figure <ref type="figure" target="#fig_0">1</ref>) demonstrates an encoder-decoder architecture. The encoder generates entity embeddings using a GNN by aggregating neighbors' information, and the decoder learns the relations between entities using a traditional KG embedding method. Such architecture enjoys the benefits from both methods promising to generate expressive entity and relation embeddings. However, it learns better embedding but at the cost of increased model complexity in terms of number of trainable parameters. For example, TransE <ref type="bibr" target="#b4">[5]</ref> has 1.5 million parameters where as RGCN <ref type="bibr" target="#b28">[29]</ref> has 3.3 million parameters over FB15k-237 dataset with an embedding size of 100. The increasing number of trainable parameters leads to an increase in the training time.</p><p>Besides the model complexity, the size of the modern input KGs has also grown exponentially. The Facebook <ref type="bibr" target="#b6">[7]</ref> graph has billions of vertices and trillions of edges, and Freebase <ref type="bibr" target="#b10">[11]</ref> has millions of entities and billions of edges. Iterative training on these large graphs may not be feasible on single node systems due to its high computational cost and its significantly high memory requirements caused by the data dependencies.</p><p>Various distributed training frameworks <ref type="bibr" target="#b17">[18,</ref><ref type="bibr" target="#b42">43,</ref><ref type="bibr" target="#b44">45]</ref> have been proposed to scale KG embedding methods. However, these frameworks apply to the traditional models (various types of decoder in Figure <ref type="figure" target="#fig_0">1</ref>) with mutually independent training triplets <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b37">38]</ref>. The input data can be partitioned easily, and the models are subsequently trained in parallel. These frameworks cannot be used for training GNN-based KG embedding models <ref type="bibr" target="#b25">[26,</ref><ref type="bibr" target="#b28">29]</ref> due to the inherent dependencies on the neighborhood information (usually beyond 𝑛-hop with 𝑛 ≥ 2). Figure <ref type="figure" target="#fig_1">2</ref> shows that with larger and deeper neighborhoods, the average number of vertices required to compute an embedding rise significantly, which consequently leads to an increase in the number of model parameters. Thus, it requires larger computation and memory requirements. We further observe that the skewed distribution of vertex degrees in enterprise knowledge graphs leads to vertex dependencies up to tens of thousands of vertices. These dependencies make scaling GNN-based KG embedding models extremely challenging.</p><p>Several distributed GNN training frameworks have been proposed primarily for the vertex classification task <ref type="bibr" target="#b20">[21,</ref><ref type="bibr" target="#b41">42]</ref>. Graph partitioning followed by distributed training are commonly explored by these solutions. While a simple partitioning strategy is to partition the graph using either vertex-cut or edge-cut-based methods, and access required dependent vertices in other partitions remotely during training. However, with increase of the number of GNN layers, i.e., the number of hops, the amount of exchanges of neighborhood information across partitions will incur significant communication overhead. It is in contrast to distributed neural network training on non-graph structured datasets such as images, which only incurs communication overhead due to gradients sharing. The exchange of neighborhood information is the main bottleneck in scaling GNN training. The challenge is to generate optimized graph partitions that reduce the required exchange of neighborhood information. Moreover, partitions generated from larger graphs are of considerable size and cannot fit in the smaller memory such as GPU memory. The another challenge is to train on these considerably larger partitions, while still taking advantage of GPU. DistDGL <ref type="bibr" target="#b41">[42]</ref> introduces an edge-cut-based partitioning method using METIS <ref type="bibr" target="#b15">[16]</ref>, and employs a mini-batch training approach for vertex classification. Edge-cut-based methods produce partitions with edge replication in multiple partitions, which may lead to skewed partition sizes. The larger partitions will be the stragglers in the training process. We observe that partitions produced by METIS followed by neighborhood expansion for link prediction are approximately 33% larger than the partitions produced by vertex-cut based methods <ref type="bibr" target="#b26">[27]</ref>, which increases the training time by approximately 21%. Thus, this approach is not optimal for the link prediction task.</p><p>In this paper, we propose a distributed training approach using GNN-based knowledge graph embedding models for link prediction. We introduce a vertex-cut method to partition the graph and then expand the partition to include 𝑛-hop neighbors, where 𝑛 is determined by the number of convolutional layers of the GNN model. The partitions produced are self-sufficient, thus do not require any exchange of neighborhood information during distributed training, but at the expense of data replication and redundant computation. Moreover, we generate negative samples within the partition, thus further reducing the communication overhead. Using data parallel approach, we train the model in a cluster where each trainer process trains on a partition using edge mini-batch training strategy.</p><p>Our main contributions are as follows.</p><p>• To the best of our knowledge, we propose the first architecture for distributed GNN-based knowledge graph embedding model training for link prediction. We also introduce edge mini-batch training which allows us to train on large partitions. • We employ a vertex-cut-based partitioning strategy that partitions the graph into sets of disjoint edges, which we then expand to self-contained graph partitions by replicating 𝑛-hop dependent vertices and edges required for message passing. • We exploit the locally closed world assumption <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b31">32]</ref> and employ a constraint based negative sampling strategy to sample negative samples. The negative samples are drawn from within the partition to avoid communication overhead. The approach allows negative sampler to generate negative samples locally within the partition, thus avoiding communication cost of fetching the negative samples from other partitions. • We experimentally evaluated the performance of our proposed system on two public datasets. Our approach achieves a speedup of 16x with 8 trainers without any loss on measured metrics.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">BACKGROUND 2.1 Knowledge Graph Neural Networks</head><p>Knowledge graph convolutional network based graph embedding models such as <ref type="bibr" target="#b25">[26,</ref><ref type="bibr" target="#b28">29]</ref> use a message passing framework and apply a relation-specific transformation on the information from neighbors to obtain the embedding of a head vertex. A general message passing framework for knowledge graph embedding can be expressed as:</p><formula xml:id="formula_0">ℎ ′ 𝑠 = 𝜎 Agg (𝑟,𝑡 ) ∈N 𝑠 𝑓 (ℎ 𝑠 , 𝑟, ℎ 𝑡 ) (<label>1</label></formula><formula xml:id="formula_1">)</formula><p>where 𝑓 is the relation-specific transformation function applied on the information from neighbors, Agg is an aggregator function such as SUM, MEAN that is applied on the received information from all neighbors, 𝑁 𝑠 defines the neighbors of node 𝑠, 𝑟 is the relation between 𝑠 and 𝑡 nodes, 𝜎 is the activation function, and ℎ ′ 𝑠 is the new hidden representation of entity 𝑠. To prevent overfitting, the paper <ref type="bibr" target="#b28">[29]</ref> introduced two techniques for regularisation: 1) Basis decomposition and 2) Block diagonal decomposition. In case of basis decomposition, the weight matrix 𝑊 𝑟 is obtained as a linear combination of smaller basis matrices 𝑉 𝑏 ∈ R 𝑑×𝑑 as defined below:</p><formula xml:id="formula_2">𝑊 𝑟 = 𝐵 ∑︁ 𝑏=1 𝑎 𝑟𝑏 𝑉 𝑏<label>(2)</label></formula><p>where 𝑎 𝑟𝑏 are coefficients that depend on 𝑟 .</p><p>A knowledge graph embedding model is trained using a negative sampling approach. For each positive triplet 𝜏 ∈ 𝑇 + , a set of negative samples are generated by either corrupting 𝑠 or 𝑡 which produces a set of negative triplets 𝑇 -. Given the set of positive and negative triplets 𝑇 = 𝑇 + 𝑇 -, the model is optimized on cross-entropy loss to learn entity and relation embeddings.</p><formula xml:id="formula_3">L = 1 |𝑇 | ∑︁ 𝜏 ∈𝑇 𝑦 log 𝑙 𝑔(𝜏) + (1 -𝑦)log 1 -𝑙 (𝑔(𝜏))<label>(3)</label></formula><p>where 𝜏 is a training example (𝑠, 𝑟, 𝑡); 𝑙 is the logistic sigmoid function; 𝑦 is 1 or 0 for positive or negative triplets, respectively; and 𝑔 is a scoring function such as DistMult <ref type="bibr" target="#b37">[38]</ref> as shown below:</p><formula xml:id="formula_4">𝑔(𝑠, 𝑟, 𝑡) = ℎ 𝑇 𝑠 M 𝑟 ℎ 𝑡<label>(4)</label></formula><p>where M 𝑟 is a diagonal matrix associated with each relation 𝑟 .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Data Parallel Distributed Training</head><p>In data parallel distributed training, a model is replicated to each compute node, and each replicated model works on a partition of the data independently. The distributed training must have mathematical equivalence to the non-distributed training, i.e., the results produced by distributed training should be same as in non-distributed training. There are two approaches to make replicated models consistent after each iteration: gradient sharing or parameter sharing. With gradient sharing, each replicated model is updated by exchanging and averaging its gradients before the optimizer step. This enables consistency across all replicated models. In case of parameter sharing, each replicated model shares its parameters and the model parameters are averaged. This step is performed after the optimizer step. Parameter averaging does not satisfy the mathematical equivalence requirements, which leads to a loss in model accuracy <ref type="bibr" target="#b18">[19]</ref>. Moreover, parameter sharing under utilizes the resources as the optimizer step typically being the hard synchronization point, when the workers remain idle during the communication.</p><p>The gradients can be shared using the classical parameter server paradigm or AllReduce. In parameter server paradigm, a machine is responsible for aggregating the gradients from worker machines, and then sending back the averaged gradients to the workers. This approach requires high bandwidth for gradient sharing, and the gradient computation and communication are non-overlapping operations. In AllReduce gradient sharing paradigm, each compute node performs the aggregation on a subset of parameters. Thus, reducing the required communication bandwidth. Moreover, gradient computation and communication operations are overlapping. AllReduce is supported by several communication libraries such as NCCL <ref type="bibr" target="#b23">[24]</ref>, MPI <ref type="bibr" target="#b1">[2]</ref>, and GLOO <ref type="bibr" target="#b8">[9]</ref>. PyTorch <ref type="bibr" target="#b24">[25]</ref> provides an API, DistributedDataParallel for distributed data parallel training, which uses an AllReduce communication library for gradient sharing. Shen et al. has provided a detailed analysis of data parallel training in PyTorch <ref type="bibr" target="#b18">[19]</ref>. Various libraries such as RaySGD <ref type="bibr" target="#b2">[3]</ref> and Horovod <ref type="bibr" target="#b0">[1]</ref> have been developed that provide wrappers around DistributedDataParallel. Besides ease of use, the libraries improve performance and allow efficient utilization of resources. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">DISTRIBUTED KNOWLEDGE GRAPH TRAINING</head><p>In this section, we describe our distributed learning process of GNNbased KG embedding models on a cluster of compute nodes with multi CPUs/GPUs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">System Overview</head><p>The architecture 3 of our proposed approach is shown in Figure <ref type="figure" target="#fig_2">3</ref>. We choose the AllReduce paradigm of gradient sharing over the parameter server approach because it incurs less communication cost, and computation and communication is being overlapped during gradient sharing. Our proposed architecture is designed to run on a distributed CPU/GPU cluster. Each compute node (CPU/GPU) in a cluster runs a replica of the model and is responsible for training on a partition of data using synchronous gradient descent (SGD).</p><p>Each training process computes the gradients of the model on an edge mini-batch, shares and averages the gradients, and updates the local model. Specifically, our distributed KG embedding learning involves the following steps:</p><p>(1) Partition the graph into 𝑃 disjoint subsets, and then expand each partition to include 𝑛-hops of neighbors of each vertex in the partition, where 𝑛 is determined by the number of graph convolutional layers in the embedding model. The number of partitions is equal to the number of compute nodes available. We refer to compute node as a processing unit (CPU/GPU).</p><p>Graph partitions along with the required features of vertices are assigned to a compute nodes. (2) One training process/worker is launched per compute node.</p><p>During each epoch, each training process samples 𝑠 negative samples for each positive sample in its partition. The number of training examples in a partition is 𝑝 × (𝑠 + 1), where 𝑝 is the number of positive samples in a partition. (3) Each training process implements edge mini batching for training. A batch of 𝑏 edges (positive and negative) in a partition is sampled. The edge mini-batch ensures that the embedding of all entities required for scoring the edges in the edge mini-batch is computed. (4) After the formation of an edge mini-batch, a computational graph is generated for message passing in the graph convolutional layers. We obtain the loss, and compute the gradients. The gradients are shared using AllReduce, and the model is optimized based on the averaged gradients. Our proposed approach can be applied to any graph embedding model which uses a message passing approach for graph convolution.</p><p>The enumerated steps in the overview are described in detail in the following subsections.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Graph Partitioning</head><p>Partitioning the input graph is an important preprocessing step in distributed training. The quality of partitions have a direct impact on the learned model quality and on scale. We apply a two-phase approach by first partitioning the graph and then performing the neighborhood expansion to make the partitions self sufficient.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.1">Partitioning. Using edge-cut partitioning methods such as</head><p>Metis <ref type="bibr" target="#b15">[16]</ref>, some positive edges are replicated in multiple partitions as shown in Fig <ref type="figure" target="#fig_3">4(b</ref>) (e.g., Edges (0, 2), (1, 2) are present in all partitions). Hence, the training on the replicated edges is repeated in multiple partitions which incurs additional computational cost, and may also negatively impact the learning process. Moreover, edge-cut partitioning is shown to be ineffective in balancing the workload of large real-world graphs <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b39">40]</ref>. This load imbalance leads to a substantial stalling of work which increases the overall training time.</p><p>Vertex cut partitioning <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b27">28,</ref><ref type="bibr" target="#b39">40]</ref> divides the edges into disjoint partitions and produces balanced partitions by minimizing the vertex replication. We refer to edges in a partition as core edges, the vertices where the graph is partitioned as replicated-vertex, and other vertices as core-vertex. The set of core edges form the positive edges for training.</p><p>The disjoint partitions produced by vertex-cut partitions are more suited for the problem of link-prediction because the produced partitions are balanced and also the neighborhood expansion does not lead to graph explosion (discussed in detail in 3.2.2).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.2">Neighborhood Expansion.</head><p>Link prediction requires an updated embedding of vertices of an edge to calculate the score to determine the validity of an edge. As discussed in the above section 2.1, to compute an embedding of a vertex, a 𝑛 layer GNN requires to have the features from the 𝑛-hop neighbors. Due to partitioning, some edges will have partial neighborhood information available within the partition, and the other required information could be present in different partitions. We call these edges as boundary-edges. One possible way is to fetch this information during the training. But this will incur the communication cost, thus incurring delay in the training. We propose to make the partitions independent by including the missing partial neighborhood information of boundary-edges. We call this process as Neighborhood Expansion, and it is done after creating partitions. This eliminates the communication cost of fetching data from other partitions, but at the expense of the increased size of the partitions. We refer to these added vertices and edges as support-vertices and support-edges respectively. The neighborhood expansion of the graph is shown in Figures <ref type="figure" target="#fig_3">4(b</ref>) and (c). It can be seen from Figure <ref type="figure" target="#fig_3">4</ref>(b) that edge-cut partitions explode during Neighborhood Expansion, thus limiting its usability.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Training</head><p>Each compute node will have a replica of the graph embedding model and will work on a single partition of data. The partition assigned to a compute node remains fixed during the entire training process. We generate a set of negative edges, and the combined set of negative edges and core edges form the set of training edges. We employ a edge mini-batch training approach to train the KG </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.1">Negative Sampling.</head><p>In KG embedding methods, the negative samplers generally exploit the closed world hypothesis which considers any triplet not explicitly present in the graph as a negative triplet. Most of the negative triplets generated by this result are easy negative examples <ref type="bibr" target="#b16">[17]</ref>. The error gradient from these samples are very small, hence does not help in learning. The negative samples space 𝑂 (𝑁 2 ) is far larger than positive samples space, thus more prone to generating easy negative samples. We propose a constraint-based negative sampling approach. Our proposed approach considers the core edges in a partition as the positive triplets and each partition is independent of other partitions. We employ a constraint that generates the negative samples from the core vertices of the partition based on the local world hypothesis. This constraint provides two advantages, 1) the embeddings of entities in negative samples are not stale, and 2) it avoids the communication cost of querying other partitions and fetching data. This also reduces the sample space of negative samples as 𝑁 &lt;&lt; 𝑁 𝑖 , where 𝑁 𝑖 number of vertices in the 𝑖-th partition and 𝑁 is the total number of in a KG, respectively. This helps in minimizing the problem of generating easy negative samples.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.2">Edge Mini-Batch.</head><p>GNN training on a large dataset for vertex classification is done by mini-batching. In mini-batching, a set of vertices are randomly selected, and a computational sub-graph is sampled for training to obtain the embeddings of the selected vertices. Using a vertex sampling strategy for link prediction is not trivial as it does not guarantee that both vertices an are in the sample. For this reason, we are proposing to use edge mini-batching for link prediction. In edge mini-batching, a batch of edges are sampled, and the vertices in the batch form a vertex set. Then, a computational graph for message passing is created which captures the 𝑛-hop dependencies of the sampled edge batch. The embeddings are learned for vertices that are in the vertex set. Figure <ref type="figure" target="#fig_4">5</ref> shows a 1-hop computational graph for an edge (0, 2), and message passing is done on this graph to learn the embeddings of vertex 0, and 2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.3">Model Training.</head><p>For each edge mini-batch training, we generate a computational graph from the partitioned data using the vertices in the graph. This computational graph is used for embedding generation for the vertices in the the edge mini-batch using the graph convolutional layers of the KG embedding model. This constitutes the forward pass of the training. In the next step, a loss is calculated for the set of edges in the mini-batch which subsequently generates gradients. These gradients are shared among the training processes using AllReduce communication primitive. Once the gradients are shared and averaged, the training processes update their local model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Algorithm 1: Training Process on each compute node</head><p>Input: GNNmodel, optimizer, features, gPartition, epochs 1 𝑒𝑝𝑜𝑐ℎ ← 1 2 while 𝑒𝑝𝑜𝑐ℎ ≤ 𝑒𝑝𝑜𝑐ℎ𝑠 do </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">EXPERIMENTAL EVALUATION 4.1 System Setup</head><p>We ran our experiments on a cluster of 4 machines. Each node has two Intel Xeon 6138 CPUs @ 2.00 GHz (80 virtual cores), 726 GB DDR4 DRAM @ 2666 MT/s, 40 Gb Ethernet, 2 P100 GPUs, and running CentOS Linux 7.9.</p><p>We use PyTorch Geometric 1.7.2 <ref type="bibr" target="#b9">[10]</ref> as graph embedding framework and PyTorch 1.9.0 <ref type="bibr" target="#b24">[25]</ref> as the deep learning backend framework. We use PyTorch DistributedDataParallel for distributed training, and Gloo <ref type="bibr" target="#b8">[9]</ref> as the backend for collective communication operations for GPUs and AllReduce for gradient sharing.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Evaluation Metrics</head><p>The performance of link prediction in knowledge graphs is evaluated using MRR (Mean Reciprocal Rank) and Hits@𝑘. For each test triplet 𝑝, a set of corrupted triplets is generated by either corrupting ℎ(ead) or 𝑡(ail). These corrupted triplets are filtered by removing the triplets which occur in the training data. This procedure is referred to as "filtered setting". Let 𝑇 be the set containing a positive triplet 𝑝 and its respective corrupted triplets arranged in descending order of their scores, and 𝑟 𝑝 is the rank position of 𝑝 in 𝑇 . MRR in Equation 5 is the average reciprocal rank of the positive triplets, and Hits@𝑘 in Equation <ref type="formula">6</ref>is the fraction of positive triplets that appear in first 𝑘 highest ranked triplets, where 𝑁 is the total number of positive triplets in the test set.</p><formula xml:id="formula_5">𝑀𝑅𝑅 = 1 𝑁 𝑁 ∑︁ 𝑝=1 1 𝑟 𝑝 (5) 𝐻𝑖𝑡𝑠@𝑘 = |{𝑝 |𝑟 𝑝 &lt;= 𝑘 }| 𝑁 (6)</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Datasets</head><p>We experimented with two public benchmark datasets used for link prediction in KGs. The dataset statistics are summarized in Table <ref type="table" target="#tab_0">1</ref>.</p><p>• FB15k-237 <ref type="bibr" target="#b4">[5]</ref> is a subset of FreeBase <ref type="bibr" target="#b10">[11]</ref> which contains facts extracted from Wikipedia. It consists of named entities and edges which determine the type of relation between the entities. The dataset is a benchmark for evaluating KG embedding methods for link prediction. • ogbl-citation2 <ref type="bibr" target="#b14">[15]</ref> is a citation graph extracted from Microsoft Academic Graph (MAG) <ref type="bibr" target="#b32">[33]</ref>. Each vertex is associated with a 128-dimensional feature vector created using Word2Vec <ref type="bibr" target="#b22">[23]</ref> on paper title and abstract. We use vertex-cut based partitioning <ref type="bibr" target="#b26">[27,</ref><ref type="bibr" target="#b27">28]</ref>) to obtain a disjoint subsets of training edges followed by neighborhood expansion to include all 𝑛-hop neighbors. Table <ref type="table" target="#tab_1">2</ref> shows the statistics of the datasets after graph partitioning and neighborhood expansion. core edges are the average number of edges in the partitions before expansion, and total edges (sum of core edges and support edges) is the average number of edges after neighborhood expansion to 2 hops. Replication Factor (RF) shows the quality of partitioned data after neighborhood expansion. It is calculated as:</p><formula xml:id="formula_6">𝑅𝐹 (𝑃 1 , 𝑃 2 , ..., 𝑃 𝑝 ) = 1 |𝑉 | ∑︁ 𝑖 ∈ [𝑝 ] |𝑉 (𝐸 𝑖 )|,<label>(7)</label></formula><p>where 𝑃 𝑖 is the 𝑖th partition, |𝑉 | is the total number of vertices in the graph, 𝐸 𝑖 is the edges in the 𝑃 𝑖 partition, and 𝑉 () returns the set of vertices in a set of edges. The Table <ref type="table" target="#tab_1">2</ref> shows that size of partitions highly depends on the size of the graph and number of hops(𝑘) for expansion. For smaller graph at FB15k-237 𝑘 = 2, the partition size is almost equal to the number of original graph, and RF increases drastically as number of partitions increases. This trend is not seen in ogbl-citation2 datasets due to its large size. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Hyperparameters</head><p>We used a two layer RGCN <ref type="bibr" target="#b28">[29]</ref> model as a KG embedding method for link prediction and trained it in a distributed setting. For FB15k-237 dataset, we used the same hyperparameters as described in <ref type="bibr" target="#b28">[29]</ref> except the embedding size. We found out that an embedding size of 75 dimensions produces comparable results with the original setting.</p><p>As the dataset is small, we trained it using full edge batch. For ogbl-citation2 dataset, we chose an embedding size of 32, learning rate 0.01, dropout 0.2, 1 negative sample per positive sample, and basis decomposition with two basis functions for regularization.</p><p>For fairness of comparison, we used these hyperparameters in all training scenarios including non-distributed training. The number of partitions is equivalent to the number of distributed trainer processes. Since, we have two GPUs per compute node, we ran two trainers per machine.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.5">Distributed Training Results</head><p>In this section, we present the experimental results of our proposed approach. We compare our proposed distributed training with a nondistributed training setup (1 Trainer). The non-distributed training process trains on the full graph data. We answer the following questions:</p><p>• Does our distributed training approach have equivalence to non-distributed training (Accuracy)? • Does our distributed training approach accelerate the training (Scalability and Effect of number of model updates)? • Does our partitioning strategy effectively balance the workload (Effect of partitioning)?</p><p>4.5.1 Accuracy. We compare the performance of our distributed training approach with the non-distributed training setting. In case of distributed training, the number of trainers varies from 2 to 8 trainers with each compute node running two trainers. Since, FB15k-237 is a small dataset, we performed full batch training.</p><p>In case of ogbl-citation2, we performed mini-batch training, and the mini-batch size is approximately 118k. For FB15k-237 dataset, we follow the filtered settings for evaluations. Since the number of edges for dataset ogbl-citation2 is very large, the dataset has provided 1000 candidate negative target vertices for each test and validation edge for evaluation. We trained RGCN models on the two datasets, selected the best models and report the results on the test data. Ogbl-citation2 reached to maximum accuracy within 100 epochs. As shown in Table <ref type="table" target="#tab_2">3</ref>, the results (MRR and Hits@k) on benchmark dataset FB15k-237 shows that our distributed training approach produces similar results to the non-distributed setting which are also comparable to the numbers reported in the original RGCN paper. For the larger dataset, ogbl-citation2, we observe a similar trend, i.e our distributed training approach produces results similar to non-distributed training. The results also verify that our constraint-based negative sampling strategy is effective in training as no deterioration of the scoring metrics is observed.</p><p>4.5.2 Scalability. We used the same settings as described in Section 4.5.1 for evaluating the scalability of our approach. We did not apply any sampling strategy (vertex drop or edge drop) during training. As shown in Table <ref type="table" target="#tab_2">3</ref>, the speed up for FB15k-237 dataset is lower than linear. It is because the size of the partitions are equal to the     We study the effect of number of model updates on scalability. For this experiment, we fixed the number of batches in each epoch which in turn leads to a smaller batch size when going from 2 trainers to 8 trainers. Table <ref type="table" target="#tab_3">4</ref> shows a speedup gain of 3.7x is achieved in ogbl-citation2 dataset. This is due to the fact that the overall impact of training components on running time is nearly equal as the number of forward and backward passes are same. We examine the effectiveness of different partitioning strategies other than vertex-cut partitioning and their effect on running times. We used Random partitioning and METIS partitioning for this study. In Random partitioning, we randomly divide the edges into 4 partitions and then subsequently applied neighborhood expansion. In case of METIS, the first hop neighbors of vertices are the core edges of a partition. We applied neighborhood expansion on the partitions of vertices to include all 𝑛-hop neighbors of vertices in each partition. Table <ref type="table" target="#tab_4">5</ref> shows the statistics of the partitions produced using these two methods. The size of partitions produced by Random partitioning strategy are equal to the original graph, whereas in case of METIS partitions, the size of the partitions is bigger than the partitions produced using vertex cut partitioning.</p><p>After obtaining the partitions, we trained the model with the same hyperparameters for the Random and Metis partitions, and measured the epoch times. In this experiment, we fixed the number of batches to 256 to have the same number of model updates in all different partitioning strategies. As shown in Table <ref type="table" target="#tab_1">2</ref>, the epoch time in the case of Random partitioning is equal to the non-distributed training. This is because the size of each partition is equal to the full graph. The epoch time for METIS partitions is 1.3x slower than vertex-cut based partitioning strategy (KaHIP). Hence, our partitioning strategy is aptly suited for link prediction task. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">RELATED WORK</head><p>There has been a significant focus on developing frameworks <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b11">12,</ref><ref type="bibr" target="#b17">18,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b21">22,</ref><ref type="bibr" target="#b33">34,</ref><ref type="bibr" target="#b41">[42]</ref><ref type="bibr" target="#b42">[43]</ref><ref type="bibr" target="#b43">[44]</ref> for graph embeddings that provide various functionalities and optimizations for training existing models, and implementing new models in an efficient and scalable manner. These frameworks support training on mutli-gpu multi-node clusters. The distributed frameworks partition the input graph, and each compute node runs a replica of the model to train on a partition. Aligraph <ref type="bibr" target="#b43">[44]</ref> provides a generic architecture on which various GNNs can be implemented. It consists of various components such as distributed graph storage and a caching strategy.</p><p>Neugraph <ref type="bibr" target="#b20">[21]</ref> uses a vertex-program, graph-parallel abstraction to express GNN algorithms. NeuGraph performs GNN training on a a single node, multi-gpu system. There are additional frameworks that focus on knowledge graph embeddings such as OpenKE <ref type="bibr" target="#b11">[12]</ref>, PyTorch-BigGraph(PBG) <ref type="bibr" target="#b17">[18]</ref>, and DGL-KE <ref type="bibr" target="#b42">[43]</ref>. OpenKE <ref type="bibr" target="#b11">[12]</ref> is designed as a standalone system for knowledge graph embeddings, and does not scale to very large graphs. Both DGL-KE <ref type="bibr" target="#b42">[43]</ref> and PBG <ref type="bibr" target="#b17">[18]</ref> are distributed frameworks for knowledge graph embedding models. However, all these three frameworks are designed for embedding models which are either translation-based or semanticbased such as TransE <ref type="bibr" target="#b4">[5]</ref> or DistMult <ref type="bibr" target="#b37">[38]</ref>. When computing the embedding of entities, these models do not require information from neighbors as required in GNNs. Thus, these frameworks cannot be used to train GNN based knowledge graph embedding models <ref type="bibr" target="#b25">[26,</ref><ref type="bibr" target="#b28">29,</ref><ref type="bibr" target="#b29">30]</ref> where nodes have dependencies up to 𝑘-hop neighbors.</p><p>DistDGL <ref type="bibr" target="#b41">[42]</ref> is a distributed framework for GNN training based on DGL <ref type="bibr" target="#b33">[34]</ref>. It employs a mini-batch training approach to train large graphs, besides various other optimizations. DistDGL distributes the graph by partitioning it using Metis <ref type="bibr" target="#b15">[16]</ref>, and the graph partitions along with the associated data are assigned compute nodes for training. The vertex data is stored in a Key-Value store and fetched during training. For transductive models, DistDGL provides a distributed sparse embedding layer and updates it using sparse updates during training. DistDGL has shown superior performance in scaling models for node classification. However, as discussed in previous section, the edge cut partitioning based methods are not suitable for link prediction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">CONCLUSION</head><p>We proposed algorithmic approaches for distributed training of GNN-based knowledge graph embedding models. Our approach is agnostic to the used knowledge graph embedding model. We used a vertex cut partitioning approach along with neighborhood expansion method to make the partitions self-sufficient such that no data is transferred across partitions during training. We introduced edge mini-batch training for large partitions that enables us to train on large partitions with limited system memory. Moreover, we applied constraint-based negative sampling to exploit the local partitions to generate the negative samples for training. Our experimental evaluation shows a super linear speedup on a cluster of machines without sacrificing model accuracy, and our approach converges faster than non-distributing training.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: A graph neural network-based knowledge graph embedding network architecture.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Average number of vertices required to compute the embedding of a vertex in ogb-citation2 dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Architecture of our distributed approach for link prediction.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Graph partitioning: edge cut and vertex cut partitions along with their neighborhood expansion.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Edge Mini-batch</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>3 𝑛𝑒𝑔𝑎𝑡𝑖𝑣𝑒𝐸𝑑𝑔𝑒𝑠← 6 𝑒𝑚𝑏𝑒𝑑𝑑𝑖𝑛𝑔 7 𝑙𝑜𝑠𝑠 8 𝑏𝑎𝑐𝑘𝑤𝑎𝑟𝑑</head><label>3678</label><figDesc>𝑛𝑒𝑔𝑎𝑡𝑖𝑣𝑒𝑆𝑎𝑚𝑝𝑙𝑒𝑟 (𝑔𝑃𝑎𝑟𝑡𝑖𝑡𝑖𝑜𝑛) 4 while 𝑏𝑎𝑡𝑐ℎ ∈ 𝑏𝑎𝑡𝑐ℎ𝑒𝑠 (𝑛𝑒𝑔𝑎𝑡𝑖𝑣𝑒𝐸𝑑𝑔𝑒𝑠, 𝑔𝑃𝑎𝑟𝑡𝑖𝑡𝑖𝑜𝑛) do 5 𝑐𝑔𝑟𝑎𝑝ℎ ← 𝑔𝑒𝑡𝐶𝑜𝑚𝑝𝑢𝑡𝑒𝐺𝑟𝑎𝑝ℎ(𝑏𝑎𝑡𝑐ℎ, 𝑔𝑃𝑎𝑟𝑡𝑖𝑡𝑖𝑜𝑛) ← 𝐺𝑁 𝑁𝑚𝑜𝑑𝑒𝑙 (𝑓 𝑒𝑎𝑡𝑢𝑟𝑒𝑠, 𝑐𝑔𝑟𝑎𝑝ℎ) ← 𝑙𝑜𝑠𝑠 (𝑒𝑚𝑏𝑒𝑑𝑑𝑖𝑛𝑔, 𝑏𝑎𝑡𝑐ℎ) (𝑙𝑜𝑠𝑠) ; /* Gradients are computed &amp; shared */ 9 𝑜𝑝𝑡𝑖𝑚𝑖𝑧𝑒𝑟 .𝑠𝑡𝑒𝑝 () ; /* The model is updated */ 10 end 11 𝑒𝑝𝑜𝑐ℎ ← 𝑒𝑝𝑜𝑐ℎ + 1 12 end</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 6 (</head><label>6</label><figDesc>a,b) shows the average epoch time and average running time of different components in a batch. The component, getComputeGraph is a very compute intensive operation as it depends on the partition size. The function returns a computational graph for an edge mini-batch. It is essential function as the it enables us to train on large graphs. The running time of this operation decreases as we increase the number of trainers from 1 to 8, because the size of the partitions decreases. In the case of 8 partitions for ogbl-citation2, the size of each partition decreases by one-third with respect to the full graph. GNNmodel produces the embeddings of the vertices in an edge mini-batch. Its running time in case of multiple trainers is slightly higher than for 1 trainer, because we run 2 trainers per machine which share the same resources. The running time of the third block of operations (loss+backward+step) increases as we increase the number of trainers, because of the increase in communication cost for gradient sharing. The overall impact of these components on training time varies because the number of batches (forward pass and backward pass) per epoch decreases from 256 to 32 for 1 trainer and 8 trainers respectively.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: (a) Average running time per epoch; (b) average running time of components in batch for ogbl-citation2 dataset (same batch size across all trainers produces 256, 128, 64, 32 batches for 1,2,4,8 trainers respectively).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: Convergence of distributed training on ogbl-citation2 dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Dataset statistics.</figDesc><table><row><cell>Dataset</cell><cell cols="2">FB15k-237 ogbl-citation2</cell></row><row><cell># Entities</cell><cell>14,541</cell><cell>2,927,963</cell></row><row><cell># Relations</cell><cell>237</cell><cell>1</cell></row><row><cell># Features</cell><cell>-</cell><cell>128</cell></row><row><cell># Train edges</cell><cell>272,115</cell><cell>30,387,995</cell></row><row><cell># Valid edges</cell><cell>17,535</cell><cell>86,596</cell></row><row><cell># Test edges</cell><cell>20,466</cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Partition statistics (numbers in core edges and total edges columns are the average and standard deviation).</figDesc><table><row><cell>Dataset</cell><cell cols="3"># partitions #core edges #total edges RF</cell></row><row><cell>FB15k-237</cell><cell>2 4</cell><cell cols="2">136k ± 4.5k 270k ± 3.1k 1.98 68k ± 6.6 k 265k ± 5.1k 3.90</cell></row><row><cell></cell><cell>8</cell><cell>34k ± 3.2k</cell><cell>263k ± 4.0k 7.75</cell></row><row><cell>ogbl-citation2</cell><cell>2 4</cell><cell cols="2">15M ± 485K 19M ± 95k 1.45 7.5M ± 453K 13M ± 1.2M 2.26</cell></row><row><cell></cell><cell>8</cell><cell cols="2">3.8M ± 189K 10M ± 1.1M 3.58</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 :</head><label>3</label><figDesc>MRR, Hits@k and epoch time/speedup of RGCN non-distributed and distributed training on 3 datasets.</figDesc><table><row><cell>#Trainers</cell><cell cols="3">FB15k-237 MRR Hits@1 Ep. Time(s)/speedup</cell><cell cols="3">ogbl-citation2 MRR Hits@1 Ep. Time(m)/speedup</cell></row><row><cell>1</cell><cell>0.22</cell><cell>0.138</cell><cell>5.09/-</cell><cell>0.620</cell><cell>0.494</cell><cell>112/-</cell></row><row><cell>2</cell><cell>0.22</cell><cell>0.136</cell><cell>4.03/1.25x</cell><cell>0.621</cell><cell>0.492</cell><cell>44/2.54</cell></row><row><cell>4</cell><cell>0.21</cell><cell>0.130</cell><cell>3.62/1.40x</cell><cell>0.620</cell><cell>0.493</cell><cell>16/7x</cell></row><row><cell>8</cell><cell>0.21</cell><cell>0.124</cell><cell>3.54/1.43x</cell><cell>0.617</cell><cell>0.494</cell><cell>7/16x</cell></row><row><cell cols="4">original dataset as shown in Table 2. For ogbl-citation2 dataset, we</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="4">achieved a speedup of approximately 16x with 8 trainers compared</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="4">to 1 trainer. We performed an in-depth analysis of the running times</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="4">of the major computational components described in lines 4-10 of</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="4">Algorithm 1 (getComputeGraph, GNNmodel, loss+backward+step) in</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="4">order to quantify the contributions of these components to the over-</cell><cell></cell><cell></cell><cell></cell></row><row><cell>all speedup.</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 4 :</head><label>4</label><figDesc>Epoch time of RGCN on ogbl-citation2 dataset with fixed #model updates.</figDesc><table><row><cell cols="4">#Vertices #Partitions Time(hrs) Avg. #edges per batch</cell></row><row><cell>1</cell><cell>1</cell><cell>1.96</cell><cell>118k</cell></row><row><cell>1</cell><cell>2</cell><cell>1.30</cell><cell>60k</cell></row><row><cell>2</cell><cell>4</cell><cell>0.78</cell><cell>30k</cell></row><row><cell>4</cell><cell>8</cell><cell>0.52</cell><cell>15k</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 5 :</head><label>5</label><figDesc>Partition statistics of 4 partitions using METIS and random partitioning; Time per epoch(in hours) on ogbl-citation2 dataset with 2 nodes having 2 trainers each.</figDesc><table><row><cell cols="4">Partitioning #core edges #total edges Time per epoch</cell></row><row><cell cols="3">KaHIP+NE 4.1M ± 187K 12M ± 148k</cell><cell>0.78</cell></row><row><cell>Metis+NE</cell><cell cols="2">7.5M ± 3.0M 16M ± 223K</cell><cell>0.95</cell></row><row><cell>Random+NE</cell><cell>7.5M ± 0</cell><cell>29M ± 1k</cell><cell>1.88</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Distributed training framework for</title>
+		<author>
+			<persName><forename type="first">Keras</forename><surname>Tensorflow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Apache</forename><surname>Pytorch</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mxnet</surname></persName>
+		</author>
+		<ptr target="https://horovod.readthedocs.io/en/stable/" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">A High Performance Message Passing Library</title>
+		<ptr target="https://www.open-mpi.org" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">RaySGD: Distributed Training Wrappers</title>
+		<ptr target="https://docs.ray.io/en/latest/raysgd/raysgd.html" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sumit</forename><surname>Chopra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1506.02075</idno>
+		<title level="m">Largescale Simple Question Answering with Memory Networks</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Translating Embeddings for Modeling Multi-Relational Data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Durán</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th International Conference on Neural Information Processing Systems</title>
+		<title level="s">NIPS&apos;13</title>
+		<meeting>the 26th International Conference on Neural Information Processing Systems<address><addrLine>Lake Tahoe, Nevada; Red Hook, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="2787" to="2795" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">KBGAN: Adversarial Learning for Knowledge Graph Embeddings</title>
+		<author>
+			<persName><forename type="first">Liwei</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wang</forename></persName>
+		</author>
+		<idno type="arXiv">arXiv:1711.04071</idno>
+		<ptr target="http://arxiv.org/abs/1711.04071" />
+		<imprint>
+			<date type="published" when="2017">2017. 2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<author>
+			<persName><forename type="first">Avery</forename><surname>Ching</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Edunov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maja</forename><surname>Kabiljo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dionysios</forename><surname>Logothetis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sambavi</forename><surname>Muthukrishnan</surname></persName>
+		</author>
+		<idno type="DOI">10.14778/2824032.2824077</idno>
+		<ptr target="https://doi.org/10.14778/2824032.2824077" />
+		<title level="m">One Trillion Edges: Graph Processing at Facebook-Scale. Proc. VLDB Endow</title>
+		<imprint>
+			<date type="published" when="2015">2015. 2015</date>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page" from="1804" to="1815" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Euler</surname></persName>
+		</author>
+		<ptr target="https://github.com/alibaba/euler" />
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<author>
+			<persName><surname>Facebook</surname></persName>
+		</author>
+		<ptr target="https://github.com/facebookincubator/gloo" />
+		<title level="m">Gloo: Collective Communication Library</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Fast Graph Representation Learning with PyTorch Geometric</title>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><forename type="middle">E</forename><surname>Lenssen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR Workshop on Representation Learning on Graphs and Manifolds</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<author>
+			<persName><surname>Google</surname></persName>
+		</author>
+		<ptr target="https://developers.google.com/freebase" />
+		<title level="m">Freebase Data Dumps</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">OpenKE: An Open Toolkit for Knowledge Embedding</title>
+		<author>
+			<persName><forename type="first">Xu</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shulin</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lv</forename><surname>Xin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yankai</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juanzi</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of EMNLP</title>
+		<meeting>EMNLP</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Distributed Edge Partitioning for Trillion-Edge Graphs</title>
+		<author>
+			<persName><forename type="first">Masatoshi</forename><surname>Hanai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Toyotaro</forename><surname>Suzumura</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen</forename><forename type="middle">Jun</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elvis</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Georgios</forename><surname>Theodoropoulos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wentong</forename><surname>Cai</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. VLDB Endow</title>
+		<meeting>VLDB Endow</meeting>
+		<imprint>
+			<date type="published" when="2019-09">2019. Sept. 2019</date>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="page" from="2379" to="2392" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">An End-to-End Model for Question Answering over Knowledge Base with Cross-Attention Combining Global Knowledge</title>
+		<author>
+			<persName><forename type="first">Yanchao</forename><surname>Hao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuanzhe</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shizhu</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhanyi</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hua</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Zhao</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P17-1021</idno>
+		<ptr target="https://doi.org/10.18653/v1/P17-1021" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 55th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="221" to="231" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marinka</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michele</forename><surname>Catasta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2005.00687</idno>
+		<title level="m">Open Graph Benchmark: Datasets for Machine Learning on Graphs</title>
+		<imprint>
+			<date type="published" when="2020">2020. 2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">A Fast and High Quality Multilevel Scheme for Partitioning Irregular Graphs</title>
+		<author>
+			<persName><forename type="first">George</forename><surname>Karypis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vipin</forename><surname>Kumar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">SIAM J. Sci. Comput</title>
+		<imprint>
+			<biblScope unit="volume">20</biblScope>
+			<biblScope unit="page">1</biblScope>
+			<date type="published" when="1998-12">1998. Dec. 1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">Analysis of the Impact of Negative Sampling on Link Prediction in Knowledge Graphs</title>
+		<author>
+			<persName><forename type="first">Bhushan</forename><surname>Kotnis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vivi</forename><surname>Nastase</surname></persName>
+		</author>
+		<idno>CoRR abs/1708.06816</idno>
+		<imprint>
+			<date type="published" when="2017">2017. 2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Pytorch-BigGraph: A Large Scale Graph Embedding System</title>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ledell</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiajun</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothée</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Wehrstedt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhijit</forename><surname>Bose</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Peysakhovich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of Machine Learning and Systems</title>
+		<meeting>of Machine Learning and Systems<address><addrLine>MLSys</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">2019. 2019. 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">PyTorch Distributed: Experiences on Accelerating Data Parallel Training</title>
+		<author>
+			<persName><forename type="first">Shen</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanli</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rohan</forename><surname>Varma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Omkar</forename><surname>Salpekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pieter</forename><surname>Noordhuis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Teng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Paszke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeff</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brian</forename><surname>Vaughan</surname></persName>
+		</author>
+		<idno type="DOI">10.14778/3415478.3415530</idno>
+		<ptr target="https://doi.org/10.14778/3415478.3415530" />
+	</analytic>
+	<monogr>
+		<title level="m">Proc. VLDB Endow</title>
+		<meeting>VLDB Endow</meeting>
+		<imprint>
+			<date type="published" when="2020">2020. 2020</date>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="page">12</biblScope>
+		</imprint>
+	</monogr>
+	<note>Pritam Damania, and Soumith Chintala</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Learning Entity and Relation Embeddings for Knowledge Graph Completion</title>
+		<author>
+			<persName><forename type="first">Yankai</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuan</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-Ninth AAAI Conference on Artificial Intelligence</title>
+		<meeting>the Twenty-Ninth AAAI Conference on Artificial Intelligence<address><addrLine>Austin, Texas</addrLine></address></meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">NeuGraph: Parallel Deep Neural Network Computation on Large Graphs</title>
+		<author>
+			<persName><forename type="first">Lingxiao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhi</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Youshan</forename><surname>Miao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jilong</forename><surname>Xue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lidong</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yafei</forename><surname>Dai</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2019 USENIX Annual Technical Conference</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<author>
+			<persName><forename type="first">Vasimuddin</forename><surname>Md</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanchit</forename><surname>Misra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guixiang</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ramanarayan</forename><surname>Mohanty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evangelos</forename><surname>Georganas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Heinecke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dhiraj</forename><surname>Kalamkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nesreen</forename><forename type="middle">K</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sasikanth</forename><surname>Avancha</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2104.06700[cs.LG]</idno>
+		<title level="m">DistGNN: Scalable Distributed Training for Large-Scale Graph Neural Networks</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Distributed Representations of Words and Phrases and their Compositionality</title>
+		<author>
+			<persName><forename type="first">Tomás</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Greg</forename><surname>Corrado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Dean</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1310.4546</idno>
+		<ptr target="http://arxiv.org/abs/1310.4546" />
+		<imprint>
+			<date type="published" when="2013">2013. 2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Optimized primitives for inter-GPU communication</title>
+		<author>
+			<persName><surname>Nvidia</surname></persName>
+		</author>
+		<ptr target="https://github.com/NVIDIA/nccl" />
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">PyTorch: An Imperative Style, High-Performance Deep Learning Library</title>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Paszke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Gross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francisco</forename><surname>Massa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Bradbury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregory</forename><surname>Chanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Trevor</forename><surname>Killeen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zeming</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Natalia</forename><surname>Gimelshein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Antiga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alban</forename><surname>Desmaison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Kopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edward</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zachary</forename><surname>Devito</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Raison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alykhan</forename><surname>Tejani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sasank</forename><surname>Chilamkurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benoit</forename><surname>Steiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lu</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junjie</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soumith</forename><surname>Chintala</surname></persName>
+		</author>
+		<ptr target="http://papers.neurips.cc/paper/9015-pytorch-an-imperative-style-high-performance-deep-learning-library.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">F</forename><surname>Beygelzimer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">E</forename><surname>Alché-Buc</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Fox</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Garnett</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="8024" to="8035" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Relationaware Graph Attention Model with Adaptive Self-adversarial Training</title>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nasrullah</forename><surname>Sheikh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Berthold</forename><surname>Reinwald</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lingfei</forename><surname>Wu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2021-05">2021. May 2021</date>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="9368" to="9376" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Think Locally, Act Globally: Highly Balanced Graph Partitioning</title>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Sanders</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christian</forename><surname>Schulz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 12th International Symposium on Experimental Algorithms (SEA&apos;13)</title>
+		<meeting>the 12th International Symposium on Experimental Algorithms (SEA&apos;13)</meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">7933</biblScope>
+			<biblScope unit="page" from="164" to="175" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Schlag</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christian</forename><surname>Schulz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Seemaier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Darren</forename><surname>Strash</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1808.06411[cs.DS]</idno>
+		<title level="m">Scalable Edge Partitioning</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Modeling Relational Data with Graph Convolutional Networks</title>
+		<author>
+			<persName><forename type="first">Sejr</forename><surname>Michael</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rianne</forename><surname>Bloem</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Van Den</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><surname>Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Titov</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Semantic Web -15th International Conference</title>
+		<meeting><address><addrLine>Heraklion, Crete, Greece</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018-06-03">2018. 2018. June 3-7, 2018</date>
+		</imprint>
+	</monogr>
+	<note>Proceedings</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title level="m" type="main">Knowledge Graph Embedding using Graph Convolutional Networks with Relation-Aware Attention</title>
+		<author>
+			<persName><forename type="first">Nasrullah</forename><surname>Sheikh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Berthold</forename><surname>Reinwald</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christoph</forename><surname>Miksovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Gschwind</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paolo</forename><surname>Scotton</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2102.07200</idno>
+		<ptr target="https://arxiv.org/abs/2102.07200" />
+		<imprint>
+			<date type="published" when="2021">2021. 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">A Benchmarking Study of Embedding-Based Entity Alignment for Knowledge Graphs</title>
+		<author>
+			<persName><forename type="first">Zequn</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qingheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengming</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Muhao</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Farahnaz</forename><surname>Akrami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengkai</forename><surname>Li</surname></persName>
+		</author>
+		<idno type="DOI">10.14778/3407790.3407828</idno>
+		<ptr target="https://doi.org/10.14778/3407790.3407828" />
+	</analytic>
+	<monogr>
+		<title level="m">Proc. VLDB Endow</title>
+		<meeting>VLDB Endow</meeting>
+		<imprint>
+			<date type="published" when="2020-07">2020. July 2020</date>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="page" from="2326" to="2340" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Complex Embeddings for Simple Link Prediction</title>
+		<author>
+			<persName><forename type="first">Théo</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Éric</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 33rd International Conference on International Conference on Machine Learning</title>
+		<meeting>the 33rd International Conference on International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">48</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Microsoft Academic Graph: when experts are not enough</title>
+		<author>
+			<persName><forename type="first">Kuansan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Iris</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chieh-Han</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anshul</forename><surname>Kanakia</surname></persName>
+		</author>
+		<ptr target="https://www.microsoft.com/en-us/research/publication/microsoft-academic-graph-when-experts-are-not-enough/" />
+	</analytic>
+	<monogr>
+		<title level="j">Quantitative Science Studies</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="396" to="413" />
+			<date type="published" when="2020-02">2020. February 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">Deep Graph Library: A Graph-Centric, Highly-Performant Package for Graph Neural Networks</title>
+		<author>
+			<persName><forename type="first">Minjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Da</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zihao</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quan</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mufei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinjing</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lingfan</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Gai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianjun</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Karypis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinyang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1909.01315</idno>
+		<imprint>
+			<date type="published" when="2019">2019. 2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Knowledge Graph Embedding: A Survey of Approaches and Applications</title>
+		<author>
+			<persName><forename type="first">Quan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhendong</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Knowledge and Data Engineering</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="page" from="2724" to="2743" />
+			<date type="published" when="2017">2017. 2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Cross-lingual Knowledge Graph Alignment via Graph Convolutional Networks</title>
+		<author>
+			<persName><forename type="first">Zhichun</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qingsong</forename><surname>Lv</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaohan</forename><surname>Lan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2018 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Brussels, Belgium</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="349" to="357" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Graphgen: Exploring interesting graphs in relational data</title>
+		<author>
+			<persName><forename type="first">Konstantinos</forename><surname>Xirogiannopoulos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Udayan</forename><surname>Khurana</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amol</forename><surname>Deshpande</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the VLDB Endowment</title>
+		<meeting>the VLDB Endowment</meeting>
+		<imprint>
+			<date type="published" when="2015">2015. 2015</date>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page" from="2032" to="2035" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Embedding Entities and Relations for Learning and Inference in Knowledge Bases</title>
+		<author>
+			<persName><forename type="first">Bishan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Deng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">3rd Int. Conference on Learning Representations, ICLR</title>
+		<meeting><address><addrLine>San Diego, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">A Vectorized Relational Graph Convolutional Network for Multi-Relational Network Alignment</title>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yujie</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Zang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mingzhong</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th International Joint Conference on Artificial Intelligence</title>
+		<meeting>the 28th International Joint Conference on Artificial Intelligence<address><addrLine>Macao, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2019">2019. 19</date>
+			<biblScope unit="page" from="4135" to="4141" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Graph Edge Partitioning via Neighborhood Heuristic</title>
+		<author>
+			<persName><forename type="first">Chenzi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fan</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qin</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhihao</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gavin</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhenguo</forename><surname>Li</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3097983.3098033</idno>
+		<ptr target="https://doi.org/10.1145/3097983.3098033" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 23rd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</title>
+		<meeting>the 23rd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">10</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Long-tail Relation Extraction via Knowledge Graph Embeddings and Graph Convolution Networks</title>
+		<author>
+			<persName><forename type="first">Ningyu</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shumin</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhanlin</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guanying</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huajun</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter</title>
+		<meeting>the 2019 Conference of the North American Chapter</meeting>
+		<imprint>
+			<publisher>Human Language Technologies</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="3016" to="3025" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">DistDGL: Distributed Graph Neural Network Training for Billion-Scale Graphs</title>
+		<author>
+			<persName><forename type="first">Da</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinjing</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qidong</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quan</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Karypis</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/IA351965.2020.00011</idno>
+		<ptr target="https://doi.org/10.1109/IA351965.2020.00011" />
+	</analytic>
+	<monogr>
+		<title level="j">th IEEE/ACM Workshop on Irregular Applications: Architectures and Algorithms</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page" from="36" to="44" />
+			<date type="published" when="2020-11-11">2020. November 11. 2020</date>
+			<publisher>IEEE</publisher>
+			<pubPlace>Atlanta, GA, USA</pubPlace>
+		</imprint>
+	</monogr>
+	<note>IA</note>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">DGL-KE: Training Knowledge Graph Embeddings at Scale</title>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Da Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zeyuan</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zihao</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jin</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Karypis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR &apos;20)</title>
+		<meeting>the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR &apos;20)<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="739" to="748" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<monogr>
+		<author>
+			<persName><forename type="first">Rong</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kun</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongxia</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chang</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baole</forename><surname>Ai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yong</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingren</forename><surname>Zhou</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1902.08730[cs.DC]</idno>
+		<title level="m">AliGraph: A Comprehensive Graph Neural Network Platform</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">GraphVite: A High-Performance CPU-GPU Hybrid System for Node Embedding</title>
+		<author>
+			<persName><forename type="first">Zhaocheng</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shizhen</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The World Wide Web Conference</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2494" to="2504" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

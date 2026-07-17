@@ -1,0 +1,1380 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Sparse Graph Attention Networks</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2021-04-11">11 Apr 2021</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Yang</forename><surname>Ye</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">Georgia State University</orgName>
+								<address>
+									<postCode>30303</postCode>
+									<settlement>Atlanta</settlement>
+									<region>GA</region>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Sparse Graph Attention Networks</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2021-04-11">11 Apr 2021</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">44800DBB66CCA900DDFFA85BB83283D5</idno>
+					<idno type="arXiv">arXiv:1912.00552v2[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T09:31+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>Graph Neural Networks</term>
+					<term>Attention Networks</term>
+					<term>Sparsity Learning</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Graph Neural Networks (GNNs) have proved to be an effective representation learning framework for graph-structured data, and have achieved state-of-the-art performance on many practical predictive tasks, such as node classification, link prediction and graph classification. Among the variants of GNNs, Graph Attention Networks (GATs) learn to assign dense attention coefficients over all neighbors of a node for feature aggregation, and improve the performance of many graph learning tasks. However, real-world graphs are often very large and noisy, and GATs are prone to overfitting if not regularized properly. Even worse, the local aggregation mechanism of GATs may fail on disassortative graphs, where nodes within local neighborhood provide more noise than useful information for feature aggregation. In this paper, we propose Sparse Graph Attention Networks (SGATs) that learn sparse attention coefficients under an L 0 -norm regularization, and the learned sparse attentions are then used for all GNN layers, resulting in an edge-sparsified graph. By doing so, we can identify noisy/task-irrelevant edges, and thus perform feature aggregation on most informative neighbors. Extensive experiments on synthetic and real-world (assortative and disassortative) graph learning benchmarks demonstrate the superior performance of SGATs. In particular, SGATs can remove about 50%-80% edges from large assortative graphs, such as PPI and Reddit, while retaining similar classification accuracies. On disassortative graphs, SGATs prune majority of noisy edges and outperform GATs in classification accuracies by significant margins. Furthermore, the removed edges can be interpreted intuitively and quantitatively. To the best of our knowledge, this is the first graph learning algorithm that shows significant redundancies in graphs and edge-sparsified graphs can achieve similar (on assortative graphs) or sometimes higher (on disassortative graphs) predictive performances than original graphs. Our code is available at https://github.com/Yangyeeee/SGAT.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>G RAPH-structured data is ubiquitous in many real-world systems, such as social networks <ref type="bibr" target="#b0">[1]</ref>, biological networks <ref type="bibr" target="#b1">[2]</ref>, and citation networks <ref type="bibr" target="#b2">[3]</ref>, etc. Graphs can capture interactions (i.e., edges) between individual units (i.e., nodes) and encode data from irregular or non-Euclidean domains to facilitate representation learning and data analysis. Many tasks, from link prediction <ref type="bibr" target="#b3">[4]</ref>, graph classification <ref type="bibr" target="#b4">[5]</ref> to node classification <ref type="bibr" target="#b5">[6]</ref>, can be naturally performed on graphs, where effective node embeddings that can preserve both node information and graph structure are required. To learn from graph-structured data, typically an encoder function is needed to project high-dimensional node features into a low-dimensional embedding space such that "semantically" similar nodes are close to each other in the low-dimensional Euclidean space (e.g., by dot product) <ref type="bibr" target="#b6">[7]</ref>.</p><p>Recently, various Graph Neural Networks (GNNs) have been proposed to learn such embedding functions <ref type="bibr" target="#b6">[7]</ref>, <ref type="bibr" target="#b7">[8]</ref>, <ref type="bibr" target="#b8">[9]</ref>, <ref type="bibr" target="#b9">[10]</ref>, <ref type="bibr" target="#b10">[11]</ref>, <ref type="bibr" target="#b11">[12]</ref>, <ref type="bibr" target="#b12">[13]</ref>, <ref type="bibr" target="#b13">[14]</ref>. Traditional node embedding methods, such as matrix factorization <ref type="bibr" target="#b14">[15]</ref>, <ref type="bibr" target="#b15">[16]</ref> and random walk <ref type="bibr" target="#b16">[17]</ref>, <ref type="bibr" target="#b17">[18]</ref>, only rely on adjacent matrix (i.e., graph structure) to encode node similarity. Training in an unsupervised way, these methods employ dot product or cooccurrances on short random walks over graphs to measure the similarity between a pair of nodes. Similar to word embeddings <ref type="bibr" target="#b18">[19]</ref>, <ref type="bibr" target="#b19">[20]</ref>, <ref type="bibr" target="#b20">[21]</ref>, the learned node embeddings from these methods are simple look-up tables. Other approaches exploit both graph structure and node features in a semisupervised training procedure for node embeddings <ref type="bibr" target="#b9">[10]</ref>, <ref type="bibr" target="#b10">[11]</ref>, <ref type="bibr" target="#b11">[12]</ref>, <ref type="bibr" target="#b12">[13]</ref>. These methods can be classified into two cat-egories based on how they manipulate the adjacent matrix:</p><p>(1) spectral graph convolution networks <ref type="bibr" target="#b7">[8]</ref>, <ref type="bibr" target="#b8">[9]</ref>, <ref type="bibr" target="#b9">[10]</ref>, and (2) neighbor aggregation or message passing algorithms <ref type="bibr" target="#b10">[11]</ref>, <ref type="bibr" target="#b11">[12]</ref>, <ref type="bibr" target="#b12">[13]</ref>. Spectral graph convolution networks transform graphs to the Fourier domain, effectively converting convolutions over the whole graph into element-wise multiplications in the spectral domain. However, once the graph structure changes, the learned embedding functions have to be retrained or finetuned. On the other hand, the neighbor aggregation algorithms treat each node separately and learn feature representation of each node by aggregating (e.g., weighted-sum) over its neighbors' features. Under the assumption that connected nodes should share similar feature representations, these message passing algorithms leverage local feature aggregation to preserve the locality of each node, and is a generalization of classical convolution operation on images to irregular graph-structured data. For both categories of GNN algorithms, they can stack k layers on top of each other and aggregate features from k-hop neighbors.</p><p>Among all the GNN algorithms, the neighbor aggregation algorithms <ref type="bibr" target="#b10">[11]</ref>, <ref type="bibr" target="#b11">[12]</ref>, <ref type="bibr" target="#b12">[13]</ref> have proved to be more effective and flexible. In particular, Graph Attention Networks (GATs) <ref type="bibr" target="#b12">[13]</ref> use attention mechanism to calculate edge weights at each layer based on node features, and attend adaptively over all neighbors of a node for representation learning. To increase the expressiveness of the model, GATs further employ multi-head attentions to calculate multiple sets of attention coefficients for aggregation. Although multi-head attentions improve prediction accuracies, our analysis of the learned coefficients shows that multi-head attentions usually learn very similar distributions of attention coefficients (see Sec. 3.1 for details).</p><p>This indicates that there might be a significant redundancy in the GAT modeling. In addition, GATs cannot assign an unique attention score for each edge because multiple attention coefficients are generated (from multi-heads) for an edge per layer and the same edge at different layers might receive different attention coefficients. For example, for a 2-layer GAT with 8-head attentions, each edge receives 16 different attention coefficients. The redundancy in the GAT modeling not only adds significant overhead to computation and memory usage but also increases the risk of overfitting. To mitigate these issues, we propose to simplify the architecture of GATs such that only one single attention coefficient is assigned to each edge across all GNN layers. To further reduce the redundancy among edges or remove noisy edges, we incorporate a sparsity constraint into the attention mechanism of GATs. Specifically, we optimize the model under an L 0 -norm regularization to encourage model to use as fewer edges as possible. As we only employ one attention coefficient for each edge across all GNN layers, what we learn is an edge-sparsified graph with noisy/taskirrelevant edges removed. Our Sparse Graph Attention Networks (SGATs), as shown in Fig. <ref type="figure" target="#fig_1">1</ref>, outperform the original GATs in two aspects: (1) SGATs simplify the architecture of GATs, and this reduces the risk of overfitting, and (2) SGATs can identify noisy/task-irrelevant edges 1 of a graph such that an edge-sparsified graph structure can be discovered, which is more robust for downstream classification tasks. As a result, SGAT is a robust graph learning algorithm that can learn from both assortative and disassortative graphs, while GAT fails on disassortative graphs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">BACKGROUND AND RELATED WORK</head><p>In this section, we first introduce our notation and then review prior works related to the neighbor aggregation methods on graphs. Let G = (V, E) denote a graph with a set of nodes V = {v 1 , • • • , v N }, connected by a set of edges E ⊆ V ×V . Node features are organized in a compact matrix X ∈ R N ×D with each row representing the feature vector of one node. Let A ∈ R N ×N denote the adjacent matrix that describes graph structure of G: A ij = 1 if there is an edge e ij from node i to node j, and 0 otherwise. By adding a self-loop to each node, we have Ã = A + I N to denote the adjacency matrix of the augmented graph, where</p><formula xml:id="formula_0">I N ∈ R N ×N is an identity matrix.</formula><p>For a semi-supervised node classification task, given a set of labeled nodes {(v i , y i ), i = 1, • • • , n}, where y i is the label of node i and n &lt; N , we learn a function f (X, A, W ), parameterized by W , that takes node features X and graph structure A as inputs and yields a node embedding matrix H ∈ R N ×D for all nodes in V ; subsequently, H is fed to a classifier to predict the class label of each unlabeled node. To learn the model parameter W , we typically minimize an empirical risk over all labeled nodes:</p><formula xml:id="formula_1">R(W ) = 1 n n i=1 L (f i (X, A, W ), y i ) ,<label>(1)</label></formula><p>where f i (X, A, W ) denotes the output of f (X, A, W ) for node i and L(•) is a loss function, such as the cross-entropy 1. We call an edge task-irrelevant or noisy if removing it from graph incurs a similar or improved accuracy for downstream predictive tasks.</p><p>loss that measures the compatibility between model predictions and class labels. Although there exist many different GNN algorithms that can solve Eq. 1, the main difference among them is how the encoder function f (X, A, W ) is defined.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Neighbor Aggregation Methods</head><p>The most effective and flexible graph learning algorithms so far follow a neighbor aggregation mechanism. The basic idea is to learn a parameter-sharing aggregator, which takes feature vector x i of node i and its neighbors' feature vectors {x j , j ∈ N i } as inputs and outputs a new feature vector for node i. Essentially, the aggregator function aggregates lower-level features of a node and its neighbors and generates high-level feature representations. The popular Graph Convolution Networks (GCNs) <ref type="bibr" target="#b10">[11]</ref> fall into the category of neighbor aggregation. For a 2-layer GCN, its encoder function can be expressed as:</p><formula xml:id="formula_2">f (X, A, W ) = softmax Âσ( ÂXW (0) )W (1) ,<label>(2)</label></formula><p>where Â = D-1/2 Ã D-1/2 , Dii = j Ãij , and W (•) s are the learnable parameters of GCNs. Apparently, GCNs define the aggregation coefficients as the symmetrically normalized adjacency matrix Â, and these coefficients are shared across all GCN layers. More specifically, the aggregator of GCNs can be expressed as</p><formula xml:id="formula_3">h (l+1) i = σ   j∈Ni Âij h (l) j W (l)   ,<label>(3)</label></formula><p>where h</p><p>(l) j is the hidden representation of node j at layer l, h (0) = X, and N i denotes the set of all the neighbors of node i, including itself.</p><p>Since a fixed adjacency matrix Â is used for feature aggregation, GCNs can only be used for the transductive learning tasks, and if the graph structure changes, the whole GCN model needs to be retrained or fine-tuned. To support inductive learning, GraphSage <ref type="bibr" target="#b11">[12]</ref> proposes to learn parameterized aggregators (e.g., mean, max-pooling or LSTM aggregator) that can be used for feature aggregation on unseen nodes or graphs. To support large-scale graph learning tasks, GraphSage uniformly samples a fixed number of neighbors per node and performs computation on a sampled sub-graph at each iteration. Although it can reduce computational cost and memory usage significantly, its accuracies suffer from random sampling and partial neighbor aggregation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Graph Attention Networks</head><p>Recently, attention networks have achieved state-of-the-art results in many computer vision and natural language processing tasks, such as image captioning <ref type="bibr" target="#b21">[22]</ref> and machine translation <ref type="bibr" target="#b22">[23]</ref>. By attending over a set of inputs, attention mechanism can decide which parts of inputs to attend to in order to gather the most useful information. Extending the attention mechanism to graph-structured data, Graph Attention Networks (GATs) <ref type="bibr" target="#b12">[13]</ref> utilize an attention-based  aggregator to generate attention coefficients over all neighbors of a node for feature aggregation. In particular, the aggregator function of GATs is similar to that of GCNs:</p><formula xml:id="formula_4">h (l+1) i = σ   j∈Ni a (l) ij h (l) j W (l)   ,<label>(4)</label></formula><p>except that (1) a (l) ij is the attention coefficient of edge e ij at layer l, assigned by an attention function other than by a predefined Â, and (2) different layers utilize different attention functions, while GCNs share a predefined Â across all layers. To increase the capacity of attention mechanism, GATs further exploit multi-head attentions for feature aggregation: each head works independently to aggregate information, and all the outputs of multi-heads are then concatenated to form a new feature representation for the next layer. In principle, the learned attention coefficient can be viewed as an importance score of an edge. However, since each edge receives multiple attention coefficients at a layer and the same edge at a different layer has a different set of attention coefficients, GATs cannot assign an unique importance score to quantify the significance of an edge.</p><p>Built on the basic framework of GATs, our SGATs introduce a sparse attention mechanism via an L 0 -norm regularization for feature aggregation. Furthermore, we only assign one attention coefficient (or importance score) to each edge across all layers. As a result, we can identify important edges of a graph and remove noisy/task-irrelevant ones while retaining similar or sometimes even higher predictive performances on downstream classification tasks. Our results demonstrate that there is a significant amount of redundancies in graphs (e.g., 50%-80% of edges in assortative graphs like PPI and Reddit, and over 88% edges in disassortative graphs) that can be removed to achieve similar or improved classification accuracies.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3">Graph Sparsification</head><p>There are some prior works related to SGATs in terms of graph sparsification <ref type="bibr" target="#b23">[24]</ref>, <ref type="bibr" target="#b24">[25]</ref>, <ref type="bibr" target="#b25">[26]</ref>, <ref type="bibr" target="#b26">[27]</ref>, <ref type="bibr" target="#b27">[28]</ref>, <ref type="bibr" target="#b28">[29]</ref>, <ref type="bibr" target="#b29">[30]</ref>, <ref type="bibr" target="#b30">[31]</ref>. Spectral graph sparsification <ref type="bibr" target="#b23">[24]</ref>, <ref type="bibr" target="#b24">[25]</ref> aims to remove unnecessary edges for graph compression. Specifically, it identifies a sparse subgraph whose Laplacian matrix can approximate the original Laplacian matrix well. However, these algorithms do not utilize node representations for graph compression and are not suitable for semi-supervised node classification tasks considered in the paper. DropEdge <ref type="bibr" target="#b25">[26]</ref> (and its Bayesian treatment <ref type="bibr" target="#b26">[27]</ref>) propose to stochastically drop edges from graphs to regularize the training of GNNs. Specifically, DropEdge randomly removes a certain number of edges from an input graph at each training iteration to prevent the overfitting and oversmoothing issues <ref type="bibr" target="#b31">[32]</ref>. At validation or test phase, DropEdge is disabled and the full input graph is utilized. This method shares the same spirit of Dropout <ref type="bibr" target="#b32">[33]</ref> and is an intuitive extension to graph structured data. However, DropEdge does not induce an edge-sparsified graph since different subsets of edges are removed at different training iterations and the full graph is utilized for validation and test, while SGAT learns an edge-sparsified graph by removing noisy/task-irrelevant edges permanently from input graphs. Because of these discrepancies, these methods are not directly comparable to SGAT. Recently, Chen et al. <ref type="bibr" target="#b27">[28]</ref> propose LAGCN to add/remove edges based on the predictions of a trained edge classifier. It assumes the input graph is almost noisy free (e.g., assortative graphs) such that an edge classifier can be trained reliably from the existing graph topology. However, this assumption does not hold for very noisy (disassortative) graphs that SGAT can handle. NeuralSparse <ref type="bibr" target="#b28">[29]</ref> learns a sparsification network to sample a k-neighbor subgraph (with a pre-defined k), which is then fed to GCN, GraphSage or GAT for node classification. Again, it does not aim to learn an edge-sparsified graph as the sparsification network produces a different subgraph sample each time and multiple subgraphs are used to improve accuracy. PTDNet <ref type="bibr" target="#b29">[30]</ref> proposes to improve the robustness and generalization performance of GNNs by learning to drop task-irrelevant edges. It samples a subgraph for each layer and applies a denoising layer before each GNN layer. Therefore, it cannot induce an edge-sparsified graph either. SuperGAT <ref type="bibr" target="#b30">[31]</ref> improves GAT with an edge self-supervision regularization. It assumes that ideal attention should give all weights to label-agreed neighbors and introduces a layerwise regularization term to guild attention with the presence or absence of an edge. However, when the graph is noisy, the regularization term will still push connected nodes to have same labels, and may generate suboptimal results.</p><p>Overall, none of these prior works induce an edgesparsified graph while retaining similar or improved classification accuracies. Moreover, all of these algorithms are evaluated on assortative graphs with improved performance. But none of them (except SuperGAT <ref type="bibr" target="#b30">[31]</ref>) has been evaluated on noisy disassortative graphs. As we will see when we present results, SGAT outperforms all of these state-of-the-arts on disassortative graphs and demonstrates its robustness on assortative and disassortative graphs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">SPARSE GRAPH ATTENTION NETWORKS</head><p>The key idea of our Sparse Graph Attention Networks (SGATs) is that we can attach a binary gate to each edge of a graph to determine if that edge shall be used for neighbor aggregation or not. We optimize the SGAT model under an L 0 regularized loss function such that we can use as fewer edges as possible to achieve similar or better classification accuracies. We first introduce our sparse attention mechanism, and then describe how the binary gates can be optimized via stochastic binary optimization.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Formulation</head><p>To identify important edges of a graph and remove noisy/task-irrelevant ones, we attach a binary gate z ij ∈ {0, 1} to each edge e ij ∈ E such that z ij controls if edge e ij will be used for neighbor aggregation or not 2 . This corresponds to attaching a set of binary masks to the adjacent matrix A:</p><formula xml:id="formula_5">Ā = A Z, Z ∈ {0, 1} M ,<label>(5)</label></formula><p>where M is the number of edges in graph G. Since we want to use as fewer edges as possible for semi-supervised node classification, we train model parameters W and binary masks Z by minimizing the following L 0 -norm regularized empirical risk:</p><formula xml:id="formula_6">R(W, Z) = 1 n n i=1 L (f i (X, A Z, W ), y i )+λ Z 0 (6) = 1 n n i=1 L (f i (X, A Z, W ), y i )+λ (i,j)∈E 1 [zij =0] ,</formula><p>where Z 0 denotes the L 0 -norm of binary masks Z, i.e., the number of non-zero elements in Z (edge sparsity), 1 [c] is an indicator function that is 1 if the condition c is satisfied, and 0 otherwise, and λ is a regularization hyperparameter that balances between data loss and edge sparsity. For the encoder function f (X, A Z, W ), we define the following attention-based aggregation function:</p><formula xml:id="formula_7">h (l+1) i = σ   j∈Ni a ij h (l) j W (l)   ,<label>(7)</label></formula><p>where a ij is the attention coefficient assigned to edge e ij across all layers. This is in a stark contrast to GATs, in which a layer-dependent attention coefficient a (l) ij is assigned for each edge e ij at layer l.</p><p>2. Note that edges e ij and e ji are treated as two different edges and therefore have their own binary gates z ij and z ji , respectively.</p><p>To compute attention coefficients, we simply calculate them by a row-wise normalization of A Z, i.e.,</p><formula xml:id="formula_8">a ij = normalize (A ij z ij ) = A ij z ij k∈Ni A ik z ik .<label>(8)</label></formula><p>Intuitively, the center node i is important to itself; therefore we set z ii to 1 so that it can preserve its own information.</p><p>Compared to GAT, we do not use softmax to normalize attention coefficients since by definition z ij ∈ {0, 1} and typically A ij ≥ 0 such that their product A ij z ij ≥ 0 . Similar to GAT, we can also use multi-head attentions to increase the capacity of our model. We thus formulate a multi-head SGAT layer as:</p><formula xml:id="formula_9">h (l+1) i = K k=1 σ   j∈Ni a ij h (l) j W (l) k   , (<label>9</label></formula><formula xml:id="formula_10">)</formula><p>where K is the number of heads, represents concatenation, a ij is the attention coefficients computed by Eq. 8, and</p><formula xml:id="formula_11">W (l) k</formula><p>is the weight matrix of head k at layer l. Note that only one set of attention coefficients a ij is calculated for edge e ij , and they are shared among all heads and all layers. With multihead attention, the final returned output, h</p><p>, consists of KD features (rather than D ) for each node. Why can we use one set of coefficients for multi-head attention? This is based on our observation that all GAT heads tend to learn attention coefficients with similar distributions, indicating significant redundancy in the GAT modeling. For example, given a 2-layer GAT with a 8-head attention, each edge receives 16 attention coefficients, on which the variance can be calculated. Fig. <ref type="figure" target="#fig_2">2</ref> shows the histograms of variance of attention coefficients over all the edges in Cora and Citeseer, respectively 3 . As we can see, the variances of attention coefficients of majority of edges are close to 0, indicating GAT learns similar distributions of attention coefficients from different heads and from different GAT layers. This means using one set of attention coefficients might be enough for feature aggregation. In addition, using one set of attention coefficients isn't rare in GNNs as GCNs use a shared Â across all layers and are very competitive to GATs in terms of classification accuracies. While GCNs use one set of predefined aggregation coefficients, SGATs 3. Similar patterns are observed on the other datasets used in our experiments.</p><p>learn the coefficients from a sparse attention mechanism. We believe it is the learned attention coefficients instead of multi-set attention coefficients that leads to the improved performance of GATs over GCNs, and the benefit of multiset attention coefficients might be very limited and could be undermined by the risk of overfitting due to increased complexity. Therefore, the benefits of using one set of attention coefficients over the original multi-set coefficients are at least twofold: (1) one set of coefficients is computationally K times cheaper than multiple sets of coefficients and is less prone to overfitting; and (2) one set of coefficients can be interpreted as edge importance scores such that they can be used to identify important edges and remove noisy/taskirrelevant edges for robust learning from real-world graphstructured data.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Model Optimization</head><p>Stochastic Variational Optimization To optimize Eq. 6, we need to compute its gradient w.r.t. binary masks Z. However, since Z is a set of binary variables, neither the first term nor the second term is differentiable. Hence, we resort to approximation algorithms to solve this binary optimization problem. Specifically, we approximate Eq. 6 via an inequality from stochastic variational optimization <ref type="bibr" target="#b33">[34]</ref>: Given any function F(z) and any distribution q(z), the following inequality holds:</p><formula xml:id="formula_13">min z F(z) ≤ E z∼q(z) [F(z)],<label>(10)</label></formula><p>i.e., the minimum of a function is upper bounded by its expectation. Since z ij ∀(i, j) ∈ E is a binary random variable, we assume z ij is subject to a Bernoulli distribution with parameter π ij ∈ [0, 1], i.e. z ij ∼ Ber (z ij ; π ij ). Thus, we can upper bound Eq. 6 by its expectation:</p><formula xml:id="formula_14">R(W, π) = 1 n n i=1 E q(Z|π) L(f i (X, A Z, W ), y i )+λ (i,j)∈E π ij .<label>(11)</label></formula><p>Now the second term of Eq. 11 is differentiable w.r.t. the new model parameters π. However, the first term is still problematic since the expectation over a large number of binary random variables Z is intractable, and thus its gradient does not allow for an efficient computation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>The Hard Concrete Gradient Estimator</head><p>We therefore need further approximation to estimate the gradient of the first term of Eq. 11 w.r.t. π. Fortunately, this is a well-studied problem in machine learning and statistics with many existing gradient estimators for this discrete latent variable model, such as REINFORCE <ref type="bibr" target="#b34">[35]</ref>, Gumble-Softmax <ref type="bibr" target="#b35">[36]</ref>, RE-BAR <ref type="bibr" target="#b36">[37]</ref>, RELAX <ref type="bibr" target="#b37">[38]</ref> and the hard concrete estimator <ref type="bibr" target="#b38">[39]</ref>. We choose the hard concrete estimator due to its superior performance in our experiments and relatively straightforward implementation. Specifically, the hard concrete estimator employs a reparameterization trick to approximate the original optimization problem Eq. 11 by a close surrogate function:</p><formula xml:id="formula_15">R(W, logα) = 1 n n i=1 E u∼U (0,1) L f i (X,A g(f (logα,u)),W ),y i + λ (i,j)∈E σ log α ij -β log -γ ζ<label>(12)</label></formula><p>with</p><formula xml:id="formula_16">f (log α, u) = σ((log u-log(1-u)+log α)/β)(ζ -γ)+γ, g(•) = min(1, max(0, •)),</formula><p>where U(0, 1) is a uniform distribution in the range of [0, 1],</p><formula xml:id="formula_17">σ(x) = 1 1+exp(-x)</formula><p>is the sigmoid function, and β = 2/3, γ = -0.1 and ζ = 1.1 are the typical parameter values of the hard concrete distribution. We refer the readers to <ref type="bibr" target="#b38">[39]</ref> for more details of the hard concrete gradient estimator.</p><p>During training, we optimize log α ij for each edge e ij . At the test phrase, we generate a deterministic mask Ẑ by employing the following formula:</p><formula xml:id="formula_18">Ẑ = min(1, max(0, σ((log α)/β)(ζ -γ) + γ)),<label>(13)</label></formula><p>which is the expectation of Z under the hard concrete distribution q(Z| log α). Due to the hard concrete approximation, ẑij is now a continuous value in the range of [0, 1]. Ideally, majority of elements of Ẑ will be zeros, and thus many edges can be removed from the graph.</p><p>Inductive Model of log α The learning of binary masks Z discussed above is transductive, by which we can learn a binary mask z ij for each edge e ij in the training graph G. However, this approach cannot generate new masks for edges that are not in the training graph. A more desired approach is inductive that can be used to generate new masks for new edges. This inductive model of log α can be implemented as a generator, which takes feature vectors of a pair of nodes as input and produces a binary mask as output. We model this generator simply as</p><formula xml:id="formula_19">log α ij = (x i W (0) 0 x j W (0) 0 )b T<label>(14)</label></formula><p>where b ∈ R D is the parameter of the generator and W (0) 0</p><p>is the weight matrix of head 0 at layer 0. To integrate this generator into an end-to-end training pipeline, we define this generator to output log α ij . Upon receiving log α ij from the mask generator, we can sample a mask ẑij from the hard concrete distribution q(z| log α ij ). The set of sampled mask Ẑ is then used to generate an edge-sparsified graph for the downstream classification tasks. Fig. <ref type="figure" target="#fig_1">1</ref> illustrates the full pipeline of SGATs. In our experiments, we use this inductive SGAT pipeline for semi-supervised node classification.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">EVALUATION</head><p>To demonstrate SGAT's ability of identifying important edges for feature aggregation, we conduct a series of experiments on synthetic and real-world (assortative and disassortative) semi-supervised node classification benchmarks, including transductive learning tasks and inductive learning tasks. We compare our SGATs with the state-of-the-art GNN algorithms: GCNs <ref type="bibr" target="#b10">[11]</ref>, GraphSage <ref type="bibr" target="#b11">[12]</ref>, GATs <ref type="bibr" target="#b12">[13]</ref>, SuperGAT <ref type="bibr" target="#b30">[31]</ref>, DropEdge <ref type="bibr" target="#b25">[26]</ref> and PTDNet <ref type="bibr" target="#b29">[30]</ref>. For a fair comparison, our experiments closely follow the configurations of the competing algorithms. Our code is available at: https://github.com/Yangyeeee/SGAT.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Graph Datasets</head><p>Assortative and Disassortative Graphs Graph datasets can be categorized into assortative and disassortative ones <ref type="bibr" target="#b39">[40]</ref>, <ref type="bibr" target="#b40">[41]</ref> according to the node homophily in terms of class labels as introduced by <ref type="bibr" target="#b41">[42]</ref>,</p><formula xml:id="formula_20">H(G) = 1 |V | v∈V</formula><p>Number of v's neighbors of the same label Number of v's neighbors .</p><p>Assortative graphs refer to ones with a high node homophily, where nodes within the local neighborhood provide useful information for feature aggregation. Common assortative graphs include citation networks and community networks. On the other hand, disassortative graphs contain nodes of the same label but not in their direct neighborhood, and therefore nodes within the local neighborhood provide more noises than useful information. Example disassortative graph datasets are co-occurrence networks and webpage hyperlink networks. We evaluate our algorithm on both types of graphs to demonstrate the robustness of SGATs on pruning redundant edges from clean assortative graphs and noisy edges from disassortative graphs. In our experiments, we consider seven established assortative and four disassortative graphs, whose statistics are summarized in Table <ref type="table" target="#tab_0">1</ref>.</p><p>Transductive Learning Tasks Three citation network datasets: Cora, Citeseer and Pubmed <ref type="bibr" target="#b2">[3]</ref> and two copurchase graph datasets: Amazon Computers and Amazon Photo <ref type="bibr" target="#b42">[43]</ref>   <ref type="bibr" target="#b10">[11]</ref>, <ref type="bibr" target="#b42">[43]</ref>. For all these datasets, 20 nodes per class are used for training, 500 nodes are used for validation, and 1000 nodes are used for test.</p><p>For the four disassortative graphs, Actor <ref type="bibr" target="#b43">[44]</ref> is an actor co-occurrence network, where nodes denote actors and edges indicate co-occurrence of two actors on the same Wikipedia web page. Node features are the bag-of-word representation of keywords in the actors' Wikipedia pages. Each node is labeled with one of five classes according to the topic of the actor's Wikipedia page. Cornell, Texas, and Wisconsin come from the WebKB dataset collected by Carnegie Mellon University. Nodes represent web pages and edges denote hyperlinks between them. Node features are the bagof-word representation of the corresponding web page. Each node is labeled with one of the five categories {student, project, course, staff, and faculty}. We follow <ref type="bibr" target="#b41">[42]</ref> to randomly split nodes of each class into 60%, 20%, and 20% for training, validation, and test. The experiments are repeatedly run 10 times with different random splits and the average test accuracy over these 10 runs are reported. Test is performed when validation accuracy achieves maximum on each run.</p><p>Inductive Learning Tasks Two large-scale graph datasets: PPI <ref type="bibr" target="#b1">[2]</ref> and Reddit <ref type="bibr" target="#b11">[12]</ref> are also used to evaluate the performance of SGAT in the inductive learning setting, where test graphs are excluded from training graphs for parameter learning, and the representations of test nodes have to be generated from trained aggregators for classification. In this case, our inductive experiments closely follow the setup of GraphSage <ref type="bibr" target="#b11">[12]</ref>. The protein-protein interaction (PPI) dataset consists of graphs corresponding to different human tissues. Positional gene sets, motif gene sets and immunological signatures are extracted as node features and 121 gene ontology categories are used as class labels. There are in total 24 subgraphs in the PPI dataset with each subgraph containing 3k nodes and 100k edges on average. Among 24 subgraphs, 20 of them are used for training, 2 for validation and the rest of 2 for test. For the Reddit dataset, it's constructed from Reddit posts made in the month of September, 2014. Each node represents a reddit post and two nodes are connected when the same user commented on both posts. The node features are made up with the embedding of the post title, the average embedding of all the post's comments, the post's score and the number of comments made on the post. There are 41 different communities in the Reddit dataset corresponding to 41 categories. The task is to predict which community a post belongs to. We use the same data split as in GraphSage <ref type="bibr" target="#b11">[12]</ref>, where the first 20 days for training and the remaining days for test (with 30% used for validation). This is a large-scale graph learning benchmark that contains over 100 million edges and about 250 edges per node, and therefore a high edge redundancy is expected.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Models and Experimental Setup</head><p>Models A 2-layer SGAT with a 2-head attention at each layer is used for feature aggregation, followed by a softmax classifier for node classification. We use ReLU <ref type="bibr" target="#b44">[45]</ref> as the activation function and optimize the models with the Adam optimizer <ref type="bibr" target="#b45">[46]</ref> with the learning rate of lr = 1e -2. We compare SGAT with the state-of-the-arts in terms of node classification accuracy. Since SGAT induces an edgesparsified graph, we also report the percentage of edges removed from the original graph.</p><p>To investigate the effectiveness of sparse attention mechanism induced by the L 0 -norm regularization, we also introduce a GAT with top-k attention baseline (named as GAT-2head-top-k). This baseline has the same architecture of SGAT-2head, which only uses one head's attentions to do neighbor aggregation. However, instead of using sparse attention coefficients induced by Eq. 8, we remove the topk smallest attention coefficients calculated by GAT's dense attention function, with k set to remove the same percentage of edges induced by SGAT-2head. We report the best performance of GAT-2head-top-k from two training procedures: (1) removing the top-k smallest attention coefficients from the beginning of the training, (2) removing top-k smallest attention coefficients after the validation accuracies have converged. This GAT-2head-top-k baseline also produces an edge-sparsified graph, and thus serves as a fair comparison to SGAT-2head.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Hyperparameters</head><p>We tune the performance of SGAT and its variants based on the hyperparameters of GAT since SGAT is built on the basic framework of GAT. For a fair comparison, we also run 1-head and 2-head GAT models with the same architecture as SGATs to illustrate the impact of sparse attention models vs. standard dense attention models. To prevent models from overfitting on small datasets, L 2 regularization and dropout <ref type="bibr" target="#b32">[33]</ref> are used. Dropout is applied to the inputs of all layers and the attention coefficients. For the large-scale datasets, such as PPI and Reddit, we do not use L 2 regularization or dropout as the models have enough data for training. We implemented our SGAT and its variants with the DGL library <ref type="bibr" target="#b46">[47]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Experiments on Synthetic Dataset</head><p>To illustrate the idea of SGAT, we first demonstrate it on a synthetic dataset -Zachary's Karate Club <ref type="bibr" target="#b47">[48]</ref>, which is a social network of a karate club of 34 members with links between pairs of members representing who interacted outside the club. The club was split into two groups later due to a conflict between the instructor and the administrator. The goal is to predict the groups that all members of the club joined after the split. This is a semi-supervised node classification problem in the sense that only two nodes: the instructor (node 0) and the administrator (node 33) are labeled and we need to predict the labels of all the other nodes.</p><p>We train a 2-layer SGAT with a 2-head attention at each layer on the dataset. Fig. <ref type="figure" target="#fig_3">3</ref> illustrates the evolution of the graph at different training epochs, the corresponding classification accuracies and number of edges kept in the graph. As can be seen, as the training proceeds, some insignificant edges are removed and the graph is getting sparser; at the end of training, SGAT removes about 46% edges while retaining an accuracy of 96.88% (i.e., only one node is misclassified), which is the same accuracy achieved by GCN and other competing algorithms that utilize the full graph for prediction. In addition, the removed edges have an intuitive explanation. For example, the edge from node 16 to node 6 is removed while the reversed edge is kept. Apparently, this is because node 6 has 4 neighbors while node 16 has only 2 neighbors, and thus removing one edge between them doesn't affect node 6 too much while may be catastrophic to node 16. Similarly, the edges between node 27, 28 and node 2 are removed. This might be because node 2 has an edge to node 0 and has no edge to node 33, and therefore node 2 is more like to join node 0's group and apparently the edges to nodes 27 and 28 are insignificant or might be due to noise.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Experiments on Assortative Graphs</head><p>Next we evaluate the performance of SGAT on seven assortative graphs, where nodes within the local neighborhood provide useful information for feature aggregation. In this case, some redundant or task-irrelevant edges may be removed from the graphs with no or minor accuracy losses. For a fair comparison, we run each experiments 10 times with different random weight initializations and report the average accuracies.</p><p>The results are summarized in Table <ref type="table" target="#tab_2">2</ref>. Comparing SGAT with GCN, we note that SGAT outperforms GCN on the PPI dataset significantly while being similar on all the other six benchmarks. Comparing SGAT with GraphSage, SGAT again outperforms GraphSage on PPI by a significant margin. Comparing SGAT with GAT, we note that they achieve very competitive accuracies on all six benchmarks except Reddit, where the original GAT is "out of memory" and SGAT can perform successfully due to its simplified architecture. Another advantage of SGAT over GAT is the regularization effect of the L 0 -norm on the edges. To demonstrate this, we test two GAT variants: GAT-1head and GAT-2head that have the similar architectures as SGAT-1head and SGAT-2head but with different attention mechanisms (i.e., standard dense attention vs. sparse attention). As we can   <ref type="bibr" target="#b25">[26]</ref> and PTDNet <ref type="bibr" target="#b29">[30]</ref> and SuperGAT <ref type="bibr" target="#b30">[31]</ref> have reported improved accuracies on assortative graphs. Hence, we do not include their results in this table since only SGAT induces edge-sparsified graphs and we only claim SGAT achieves similar accuracies as GAT on these graphs. see, on the Reddit dataset, the sparse attention-based SGATs outperform GATs by 2-3% while sparsifying the graph by 80.8%. As discussed earlier, to evaluate the effectiveness of sparse attention mechanism of SGAT further, we also introduce a baseline (GAT-2head-top-k), which has the same architecture of SGAT-2head but removes the top-k smallest coefficients calculated by GAT's dense attention function, with k set to remove the same number of redundant edges induced by SGAT. As we can see from Table <ref type="table" target="#tab_2">2</ref>, SGAT-2head outperforms GAT-2head-top-k by 1%-4% accuracies on larger benchmarks (Amazon computer, Amazon Photo, PPI and Reddit) when a large percentage of edges is removed, demonstrating the superiority of SGAT's sparse attention mechanism over the naive top-k attention coefficients selection as used in GAT-top-k.</p><p>Overall, SGAT is very competitive against GCN, Graph-Sage and GAT in terms of classification accuracies, while being able to remove certain percentages of redundant edges from small and large assortative graphs. Specifically, on the three small citation networks: Cora, Citeseer and Pubmed, SGATs learn that majority of the edges are critical to maintain competitive accuracies as the original graphs are already very sparse (e.g., numbers of edges per node are 2.0, 1.4, 2.3, respectively. See Table <ref type="table" target="#tab_0">1</ref>), and therefore SGATs remove only 1-2% of edges. On the other hand, on the rest of large or dense assortative graphs, SGATs can identify significant amounts of redundancies in edges (e.g., 40-80%), and removing them incurs no or minor accuracy losses.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.5">Experiments on Disassortative Graphs</head><p>As shown in Table <ref type="table" target="#tab_0">1</ref>, the H(G) of disassortative graphs are around 0.1-0.2. This means the graphs are very noisy, i.e., a node and majority of its neighbors have different labels. In this case, the neighbor aggregation mechanism of GAT, GCN and GraphSage would aggregate noisy features from neighborhood and fail to learn good feature representations for the downstream classification tasks, while SGAT may excel due to its advantage of pruning noisy edges in order to achieve a high predictive performance.</p><p>To verify this, we compare SGAT with GAT, Geom-GCN <ref type="bibr" target="#b41">[42]</ref>, MLP, DropEdge, SuperGAT and PTDNet on the four disassortative graphs. Geom-GCN is a variant of GCN that utilizes a complicated node embedding method to identify similar nodes and create an edge between them, such that it can aggregate features from informative nodes and outperform GCN on the disassortative graphs. We also consider an MLP model as baseline, which makes prediction solely based on the node features without aggregating any local information. For a fair comparison, the GAT and MLP have a similar model capacity as that of SGAT-2head. We also compare SGAT with the state-of-the-art robust GNN The results are shown in Table <ref type="table" target="#tab_3">3</ref>. It can be observed that MLP outperforms GAT and the majority of algorithms considered, indicating that local aggregation methods fail to get a good performance due to the noisy neighbors. The robust GNN algorithms: SuperGAT and DropEdge achieve better performance than GAT in general but are still worse than MLP since the extremely noisy neighbors violate the label-agreement assumption of SuperGAT or beyond the noise level that simple drop edge can handle. On the other hand, PTDNet achieves a competitive performance with MLP, demonstrating that PTDNet's denoising layers and layer-wise subgraph sampling are indeed very effective. Among all the algorithms considered, SGAT achieves the best accuracies on the disassortative graphs. As shown in the last row of Table <ref type="table" target="#tab_3">3</ref>, on all the dissassortative graphs SGAT tends to remove majority of edges from the graphs, and only less than 10% edges are kept for feature aggregation, which explains its superior performance on these noisy disassortative graphs.</p><p>Overall, SGAT is a much more robust algorithm than GAT (and in many cases other competing methods) on assortative and disassortative graphs since it can detect and remove noisy/task-irrelevant edges from graphs in order to achieve similar or improved accuracies on the downstream classification tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.6">Analysis of Removed Edges</head><p>We further analyze the edges removed by SGAT. Fig. <ref type="figure" target="#fig_4">4</ref>  To demonstrate SGAT's accuracy of identifying important edges from a graph, Fig. <ref type="figure" target="#fig_5">5</ref> shows the evolution of classification accuracies on the PPI test dataset when different percentages of edges are removed from the graph. We compare three different strategies of selecting edges for removal: (1) top-k% edges sorted descending by log α ij , (2) bottom-k% edges sorted descending by log α ij , and (3) uniformly random k%. As we can see, SGAT identifies important edges accurately as removing them from the graph incurs a dramatically accuracy loss as compared to random edge removal or bottom-k% edge removal. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.7">Hyperparameter Tuning</head><p>SGAT has a few important hyperparameters, which affect the performance of SGAT significantly. In this section, we demonstrate the impact of them and discuss how we tune the hyperparameters for performance trade-off. One of the most important hyperparameters of SGAT is the λ in Eq. 6, which balances the classification loss (the first term) and edge sparsity (the second term). As λ increases, the L 0 sparsity regularization gets stronger. As a result, a large number of edges will be pruned away (i.e., z=0), but potentially it will incur a lower classification accuracy if informative edges are removed (i.e., over-pruning). We therefore select a λ to yield the highest edge prune rate, while still achieving a good predictive performance on the downstream classification tasks. Fig. <ref type="figure" target="#fig_6">6</ref> shows the results of  tuning λ on the PPI (top) and Texas (bottom) validation datasets. It can be observed that as λ increases, more edges are removed from the PPI and Texas datasets. However, the classification accuracies have different trends on PPI and Texas. As more edges are removed from PPI, the accuracy retains almost no changes when λ ≤ 2e -6, and drops significantly when λ &gt; 2e -6. This is because PPI is an assortative graph, in which local neighborhood provides useful information for feature aggregation, and pruning them from the graph in general incurs no or minor accuracy loss until a large λ that leads to over-pruning. In contrast, as more edges are removed from Texas, the accuracy increases at beginning when λ ≤ 5e-3 and plateaus afterwards. This is because Texas is a disassortative graph, in which local neighborhood provides more noise than useful information for feature aggregation, and pruning noisy edges from the graph typically improves classification accuracy until a large λ that leads to over-pruning. Similar patterns are observed on the other assortative and disassortative graphs used in our experiments. Based on the results in Fig. <ref type="figure" target="#fig_6">6</ref>, we choose λ = 2e-6 for PPI and λ = 5e-3 for Texas as they achieve the best balance between classification accuracy and edge sparsity.</p><p>Another important hyperparameter of SGAT is the number of heads K in Eq. 9. As K increases, SGAT has more capacity to learn from the data, but is more prone to overfitting. This is demonstrated in Fig. <ref type="figure" target="#fig_7">7</ref>, where we present the classification accuracies of SGAT on PPI and Texas as K increases. As we can see, when K = 2 SGAT achieves the best (or close to best) accuracies on both datasets. Similar trends are also observed on the other datasets. Therefore, in our experiments we choose K = 2 as the default.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.8">Visualization of Learned Features</head><p>Finally, we visualize the learned feature representations from the penultimate layer 7 of GAT and SGAT with t-7. The layer before the final FC layer for classification. SNE <ref type="bibr" target="#b48">[49]</ref>. The results on Cora and Texas are shown in Fig. <ref type="figure" target="#fig_8">8</ref>. It can be observed that SGAT and GAT learn similar representations on Cora when the graph is nearly noisyfree (e.g., assortative graphs), while SGAT learns a better representation with a higher class separability than GAT on Texas when the graph is very noisy (e.g., disassortative graphs), demonstrating the robustness of SGAT on learning from assortative and disassortative graphs. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.9">Discussion</head><p>Given a similar architecture and the same number of heads, one may expect that SGAT would be faster and more memory efficient than GAT since a large portion of edges can be removed by SGAT. However, our empirical study shows that both algorithms have a similar overall runtime and memory consumption. This is because learning sparse attention coefficients has the similar complexity as learning standard dense attention coefficients and storing feature representations (other than A and Z) consumes most of memory. Therefore, even though SGAT can remove a large portion of edges from a graph, it isn't faster or more memory efficient than GAT. One potential speed up of SGAT is that we can skip the computation associated with edges of z ≈ 0 during training. However, this heuristic will be an approximation because an edge with z ≈ 0 may be reactivated in later iterations during stochastic optimization, and this potentially will cause accuracy drop. We leave this as our future work.</p><p>In summary, the main advantage of SGAT is that it can identify noisy/task-irrelevant edges from both assortative and disassortative graphs to achieve a similar or improve classification accuracy, while the conventional GAT, GCN and GraphSage fail on noisy disassortative graphs due to their local aggregation mechanism. The robustness of SGAT is of practical importance as real-world graph-structured data are often very noisy, and a robust graph learning algorithm that can learn from both assortative and disassortative graphs is very critical.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">CONCLUSION</head><p>In this paper we propose sparse graph attention networks (SGATs) that integrate a sparse attention mechanism into graph attention networks (GATs) via an L 0 -norm regularization on the number of edges of a graph. To assign a single attention coefficient to each edge, SGATs further simplify the architecture of GATs by sharing one set of attention coefficients across all heads and all layers. This results in a robust graph learning algorithm that can detect and remove noisy/task-irrelevant edges from a graph in order to achieve a similar or improved accuracy on downstream classification tasks. Extensive experiments on seven assortative graphs and four disassortative graphs demonstrate the robustness of SGAT.</p><p>As for future extensions, we plan to investigate the applications of SGATs on detecting superficial or malicious edges injected by adversaries. We also plan to explore the application of sparse attention network of SGATs in unsupervised graph domain adaption (e.g. <ref type="bibr" target="#b49">[50]</ref>) to improve intergraph attention.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 1 .</head><label>1</label><figDesc>Fig. 1. The overview of SGATs. By attaching a binary mask to each edge, SGATs utilize a sparse attention mechanism (as the output of the mask generator) to guide model to remove noisy/task-irrelevant edges and yield an edge-sparsified graph. In the plot above, the dashed lines denote removed edges. More details are described in Sec. 3.</figDesc><graphic coords="3,152.31,49.11,126.88,138.76" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 2 .</head><label>2</label><figDesc>Fig. 2. Histogram of variance of attention coefficients of a 2-layer GAT with a 8-head attention on the Cora and Citeseer datasets. The variances of attention coefficients of majority of edges are close to 0, indicating GAT learns similar distributions of attention scores from all heads and all layers.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 3 .</head><label>3</label><figDesc>Fig. 3. The evolution of the graph of Zachary's Karate Club at different training epochs. SGAT can remove 46% edges from the graph while retaining almost the same accuracy at 96.88%. Nodes 0 and 33 are the labeled nodes, and the colors show the ground-truth labels. The video can be found at https://youtu.be/3Jhr26lXRl8.</figDesc><graphic coords="8,48.00,43.05,515.98,129.32" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Fig. 4 .</head><label>4</label><figDesc>Fig. 4. The evolution of classification accuracy (top) and number of kept edges (bottom) as a function of training epochs on the Cora, PPI and Texas test datasets.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Fig. 5 .</head><label>5</label><figDesc>Fig. 5. The evolution of classification accuracies on the PPI test dataset when different percentages of edges are removed from the graph. Three different strategies of selecting edges for removal are considered.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Fig. 6 .</head><label>6</label><figDesc>Fig. 6. The impact of λ to the classification accuracy and edge sparsity on the PPI (top) and Texas (bottom) validation dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Fig. 7 .</head><label>7</label><figDesc>Fig. 7. The evolution of classification accuracy of SGAT as a function of number of heads on the PPI and Texas datasets.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Fig. 8 .</head><label>8</label><figDesc>Fig. 8. t-SNE visualization of learned feature representations on Cora and Texas.</figDesc><graphic coords="10,324.23,395.45,119.77,89.81" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>TABLE 1</head><label>1</label><figDesc>Summary of the graph datasets used in the experiments</figDesc><table><row><cell></cell><cell>Type</cell><cell>Task</cell><cell>Nodes</cell><cell cols="5">Edges Features Classes #Neighbors H(G)</cell></row><row><cell>Cora</cell><cell>assortative</cell><cell>transductive</cell><cell>2,708</cell><cell>13,264</cell><cell>1,433</cell><cell>7</cell><cell>2.0</cell><cell>0.83</cell></row><row><cell>Citeseer</cell><cell>assortative</cell><cell>transductive</cell><cell>3,327</cell><cell>12,431</cell><cell>3,703</cell><cell>6</cell><cell>1.4</cell><cell>0.71</cell></row><row><cell>Pubmed</cell><cell>assortative</cell><cell>transductive</cell><cell>19,717</cell><cell>108,365</cell><cell>500</cell><cell>3</cell><cell>2.3</cell><cell>0.79</cell></row><row><cell cols="2">Amazon computers assortative</cell><cell>transductive</cell><cell>13,381</cell><cell>505,474</cell><cell>767</cell><cell>10</cell><cell>18.4</cell><cell>0.79</cell></row><row><cell>Amazon photo</cell><cell>assortative</cell><cell>transductive</cell><cell>7,487</cell><cell>245,812</cell><cell>745</cell><cell>8</cell><cell>15.9</cell><cell>0.84</cell></row><row><cell>Actor</cell><cell cols="2">disassortative transductive</cell><cell>7,600</cell><cell>60,918</cell><cell>931</cell><cell>5</cell><cell>4.4</cell><cell>0.24</cell></row><row><cell>Cornell</cell><cell cols="2">disassortative transductive</cell><cell>183</cell><cell>737</cell><cell>1,703</cell><cell>5</cell><cell>1.6</cell><cell>0.11</cell></row><row><cell>Texas</cell><cell cols="2">disassortative transductive</cell><cell>183</cell><cell>741</cell><cell>1,703</cell><cell>5</cell><cell>1.7</cell><cell>0.06</cell></row><row><cell>Wisconsin</cell><cell cols="2">disassortative transductive</cell><cell>251</cell><cell>1,151</cell><cell>1,703</cell><cell>5</cell><cell>2.0</cell><cell>0.16</cell></row><row><cell>PPI</cell><cell>assortative</cell><cell>inductive</cell><cell>56,944</cell><cell>818,716</cell><cell>50</cell><cell>121</cell><cell>6.7</cell><cell>-*</cell></row><row><cell>Reddit</cell><cell>assortative</cell><cell>inductive</cell><cell cols="2">232,965 114,848,857</cell><cell>602</cell><cell>41</cell><cell>246.0</cell><cell>0.81</cell></row></table><note><p>* PPI is a multi-label dataset, whose H(G) can not be calculated.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>are used to evaluate the performance of our algorithm in the transductive learning setting, where test graphs are included in training graphs for feature aggregation and</figDesc><table><row><cell>relationship between two documents, and node features are</cell></row><row><cell>the bag-of-words representations of document contents; the</cell></row><row><cell>goal is to classify documents into different categories. For</cell></row><row><cell>the co-purchase datasets, nodes represent products, edges</cell></row><row><cell>indicate two products are frequently purchased together,</cell></row><row><cell>and node features are the bag-of-words representations of</cell></row><row><cell>product reviews; similarly, the goal is to classify products</cell></row><row><cell>into different categories. Our experiments closely follow</cell></row><row><cell>the transductive learning setup of</cell></row></table><note><p>thus facilitates the learning of feature representations of test nodes for classification. The citation networks have low degrees (e.g., only 1-2 edges per node), while the copurchase datasets have higher degrees (e.g., 15-18 edges per node). Therefore, we can demonstrate the performance of SGAT on sparse graphs and dense graphs. For the citation networks, nodes represent documents, edges denote citation</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>TABLE 2</head><label>2</label><figDesc>Classification accuracies on seven assortative graphs for semi-supervised node classification. Results of GCNs on PPI and Reddit are trained in a transductive way. The results annotated with * are from our experiments, and the rest of results are from the corresponding papers. OOM indicates "out of memory". Results are the averages of 10 runs.</figDesc><table><row><cell>Datasets</cell><cell>Cora</cell><cell cols="2">Citeseer Pubmed</cell><cell>Amazon computer</cell><cell>Amazon Photo</cell><cell>PPI</cell><cell>Reddit</cell></row><row><cell>GCN [11]</cell><cell>81.5%</cell><cell>70.3%</cell><cell>79.0%</cell><cell>81.5%  *</cell><cell>91.2%  *</cell><cell>50.9%  *</cell><cell>94.38%  *</cell></row><row><cell>GraphSage [12]</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>61.2%</cell><cell>95.4%</cell></row><row><cell>GAT [13]  *</cell><cell>82.5%</cell><cell>70.9%</cell><cell>78.6%</cell><cell>81.5%</cell><cell>89.1%</cell><cell>98.3%</cell><cell>OOM</cell></row><row><cell>GAT-1head  *</cell><cell>82.1%</cell><cell>70.8%</cell><cell>77.4%</cell><cell>81.3%</cell><cell>89.7%</cell><cell>85.6%</cell><cell>92.6%</cell></row><row><cell>GAT-2head  *</cell><cell>83.5%</cell><cell>70.8%</cell><cell>78.3%</cell><cell>82.4%</cell><cell>90.4%</cell><cell>97.6%</cell><cell>93.5%</cell></row><row><cell>GAT-2head-top-k  *</cell><cell>82.8%</cell><cell>70.9%</cell><cell>78.2%</cell><cell>77.5%</cell><cell>85.6%</cell><cell>95.5%</cell><cell>93.3%</cell></row><row><cell>SGAT-1head  *</cell><cell>82.3%</cell><cell>70.6%</cell><cell>76.1%</cell><cell>81.1%</cell><cell>89.5%</cell><cell>93.6%</cell><cell>94.9%</cell></row><row><cell>SGAT-2head  *</cell><cell>83.0%</cell><cell>71.5%</cell><cell>78.3%</cell><cell>81.8%</cell><cell>89.9%</cell><cell>97.6%</cell><cell>95.8%</cell></row><row><cell>Edge Removed  *</cell><cell>2.0%</cell><cell>1.2%</cell><cell>2.2%</cell><cell>63.6%</cell><cell>42.3%</cell><cell>49.3%</cell><cell>80.8%</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table><note><p>* From our experiments. Note that DropEdge</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>TABLE 3</head><label>3</label><figDesc>Classification accuracies of different node classification algorithms on four disassortative graphs. Results are the averages of 10 runs.</figDesc><table><row><cell>Datasets</cell><cell>Actor</cell><cell>Cornell</cell><cell>Texas</cell><cell>Wisconsin</cell></row><row><cell>MLP  *</cell><cell>35.1</cell><cell>81.6</cell><cell>81.3</cell><cell>84.9</cell></row><row><cell>GAT [13]  *</cell><cell>34.6</cell><cell>55.9</cell><cell>55.4</cell><cell>53.5</cell></row><row><cell>SuperGAT [31]  *</cell><cell>30.4</cell><cell>57.6</cell><cell>61.1</cell><cell>60.1</cell></row><row><cell>DropEdge-GCN [26]  *</cell><cell>30.6</cell><cell>54.5</cell><cell>61.5</cell><cell>59.8</cell></row><row><cell>Geom-GCN [42]</cell><cell>31.6</cell><cell>60.8</cell><cell>67.6</cell><cell>64.1</cell></row><row><cell>PTDNet-GCN [30]  *</cell><cell>35.6</cell><cell>80.3</cell><cell>82.2</cell><cell>84.9</cell></row><row><cell>SGAT-2head  *</cell><cell>35.7</cell><cell>82.4</cell><cell>86.2</cell><cell>86.1</cell></row><row><cell>Edge Removed  *</cell><cell>88.1%</cell><cell>93.9%</cell><cell>95.0%</cell><cell>91.9%</cell></row><row><cell>*  From our experiments.</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">models that we discussed in related work: SuperGAT [31] 4 ,</cell></row><row><cell cols="5">DropEdge [26] 5 , and PTDNet [30] 6 . Since none of them</cell></row><row><cell cols="5">reported the performance on these disassortative graphs, we</cell></row><row><cell cols="5">follow the same experimental settings discussed above and</cell></row><row><cell cols="3">run their open source implementations.</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head></head><label></label><figDesc>illustrate the evolution of classification accuracy and number of edges kept by SGAT as a function of training epochs on the Cora, PPI and Texas test datasets. As we can see, SGAT removes 2% edges from Cora slowly during training (as Cora is a sparse graph), while it removes 49.3% edges from PPI and over 88.1% edges from Texas rapidly, indicating a significant edge redundancy in PPI and Texas.</figDesc><table /></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head n="6">ACKNOWLEDGMENT</head><p>We would like to thank the anonymous reviewers for their comments and suggestions, which helped improve the quality of this paper.</p></div>
+			</div>			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Line: Large-scale information network embedding</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Mei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International World Wide Web Conference</title>
+		<imprint>
+			<publisher>WWW</publisher>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Predicting multicellular function through multi-layer tissue networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Bioinformatics</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="issue">14</biblScope>
+			<biblScope unit="page" from="190" to="198" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Collective classification in network data</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">M</forename><surname>Namata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bilgic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Getoor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Gallagher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Eliassi-Rad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AI Magazine</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="93" to="106" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Graph convolutional matrix completion</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Van Den Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1706.02263</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Convolutional networks on graphs for learning molecular fingerprints</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Duvenaud</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Maclaurin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Aguilera-Iparraguirre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gomez-Bombarelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hirzel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Aspuru-Guzik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">P</forename><surname>Adams</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems (NIPS)</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Revisiting semisupervised learning with graph embeddings</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">W</forename><surname>Cohen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Representation learning on graphs: Methods and applications</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Data Engineering Bulletin</title>
+		<imprint>
+			<biblScope unit="volume">40</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="52" to="74" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">The graph neural network model</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Scarselli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Gori</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">C</forename><surname>Tsoi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hagenbuchner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Monfardini</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Neural Networks</title>
+		<imprint>
+			<biblScope unit="volume">20</biblScope>
+			<biblScope unit="page" from="61" to="80" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Spectral networks and locally connected networks on graphs</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bruna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zaremba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Szlam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lecun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Representation Learning (ICLR)</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Convolutional neural networks on graphs with fast localized spectral filtering</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Defferrard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Bresson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Vandergheynst</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NIPS</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Inductive representation learning on large graphs</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems (NIPS)</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Graph attention networks</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Measuring and relieving the over-smoothing problem for graph neural networks from the topological view</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Grarep: Learning graph representations with global structural information</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Xu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM International on Conference on Information and Knowledge Management (CIKM)</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Asymmetric transitivity preserving graph embedding</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Knowledge Discovery and Data mining</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Deepwalk: Online learning of social representations</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Skiena</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Knowledge Discovery and Data mining</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">node2vec: Scalable feature learning for networks</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Grover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Knowledge Discovery and Data mining</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Distributed representations of words and phrases and their compositionality</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">S</forename><surname>Corrado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Dean</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">26</biblScope>
+			<biblScope unit="page" from="3111" to="3119" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Glove: Global vectors for word representation</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pennington</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">D</forename><surname>Manning</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Empirical Methods in Natural Language Processing</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1532" to="1543" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Parallelizing word2vec in multi-core and many-core architectures</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Satish</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Dubey</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS workshop on Efficient Methods for Deep Neural Networks</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Show, attend and tell: Neural image caption generation with visual attention</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kiros</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Courville</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Zemel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Neural machine translation by jointly learning to align and translate</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bahdanau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Representation Learning (ICLR)</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Improved large-scale graph learning through ridge spectral sparsifications</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Calandriello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Koutis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lazaric</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Valko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Spectral sparsification in spectral clustering</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Chakeri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Farhidzadeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">O</forename><surname>Hall</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Dropedge: Towards deep graph convolutional networks on node classification</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Rong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Huang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Bayesian graph neural networks with adaptive connection sampling</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hasanzadeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Hajiramezanali</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Boluki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Duffield</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Narayanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Qian</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2006.04064</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">in arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Label-aware graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 29th ACM International Conference on Information Knowledge Management</title>
+		<meeting>the 29th ACM International Conference on Information Knowledge Management</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Robust graph representation learning via neural sparsification</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Zong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 37th International Conference on Machine Learning</title>
+		<meeting>the 37th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Learning to drop: Robust graph neural network via topological denoising</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Zong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 14th ACM International Conference on Web Search and Data Mining</title>
+		<meeting>the 14th ACM International Conference on Web Search and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">How to find your friendly neighborhood: Graph attention design with self-supervision</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Oh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Deeper insights into graph convolutional networks for semi-supervised learning</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X.-M</forename><surname>Wu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">32th AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Dropout: A simple way to prevent neural networks from overfitting</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Krizhevsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="page" from="1929" to="1958" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">Stochastic variational optimization</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Bird</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kunze</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Barber</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1809.04855</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Simple statistical gradient-following algorithms for connectionist reinforcement learning</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">J</forename><surname>Williams</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Machine Learning</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="issue">3-4</biblScope>
+			<biblScope unit="page" from="229" to="256" />
+			<date type="published" when="1992-05">May 1992</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Categorical reparameterization with gumbel-softmax</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Jang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Poole</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Rebar: Low-variance, unbiased gradient estimates for discrete latent variable models</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Tucker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mnih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">J</forename><surname>Maddison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lawson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Sohl-Dickstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems (NIPS)</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Backpropagation through the void: Optimizing control variates for black-box gradient estimation</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Grathwohl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Roeder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Duvenaud</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Learning sparse neural networks through l 0 regularization</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Louizos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Assortative mixing in networks</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">W</forename><surname>Zachary</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Physical review letters</title>
+		<imprint>
+			<biblScope unit="volume">89</biblScope>
+			<biblScope unit="issue">20</biblScope>
+			<biblScope unit="page">208701</biblScope>
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">struc2vec: Learning node representations from structural identity</title>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">F</forename><surname>Ribeiro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">H</forename><surname>Saverese</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">R</forename><surname>Figueiredo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Knowledge Discovery and Data Mining</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Geom-GCN: Geometric graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Pei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">C</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">-C</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Knowledge Discovery and Data Mining(KDD)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Pitfalls of graph neural network evaluation</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Shchur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mumme</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bojchevski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gunnemann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS Workshop on Relational Representation Learning</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Social influence analysis in large-scale networks</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Knowledge Discovery and Data Mining</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Rectified linear units improve restricted boltzmann machines</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Nair</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">E</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Adam: A method for stochastic optimization</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">Deep graph library: Towards efficient and scalable deep learning on graphs</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Gai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Smola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note>in ICLR 2019 Workshop on Representation Learning on Graphs and Manifolds</note>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">An information flow model for conflict and fission in small groups</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">W</forename><surname>Zachary</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Anthropological Research</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="452" to="473" />
+			<date type="published" when="1977">1977</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Visualizing data using t-sne</title>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">V D</forename><surname>Maaten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research (JMLR)</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="2579" to="2605" />
+			<date type="published" when="2008-11">Nov. 2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Unsupervised domain adaptive graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">WWW &apos;20: The Web Conference</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

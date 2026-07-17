@@ -1,0 +1,1031 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">MGAE: Masked Autoencoders for Self-Supervised Learning on Graphs</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2022-01-07">7 Jan 2022</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Qiaoyu</forename><surname>Tan</surname></persName>
+							<email>qytan@tamu.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Texas A&amp;M University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Ninghao</forename><surname>Liu</surname></persName>
+							<email>ninghao.liu@uga.edu</email>
+							<affiliation key="aff1">
+								<orgName type="institution">University of Georgia</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Xiao</forename><surname>Huang</surname></persName>
+							<email>xiaohuang@comp.polyu.edu.hk</email>
+							<affiliation key="aff2">
+								<orgName type="institution">The Hong Kong Polytechnic University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Rui</forename><surname>Chen</surname></persName>
+							<email>rui.chen1@samsung.com</email>
+							<affiliation key="aff3">
+								<orgName type="institution">Samsung Research America</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Soo-Hyun</forename><surname>Choi</surname></persName>
+							<email>soohyunc@gmail.com</email>
+							<affiliation key="aff4">
+								<orgName type="institution">Samsung Research America</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Xia</forename><surname>Hu</surname></persName>
+							<email>xia.hu@rice.edu</email>
+							<affiliation key="aff5">
+								<orgName type="institution">Rice University</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">MGAE: Masked Autoencoders for Self-Supervised Learning on Graphs</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2022-01-07">7 Jan 2022</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">6F3EC73AD0A18E3CB47FB1B1F4572F7C</idno>
+					<idno type="arXiv">arXiv:2201.02534v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:22+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We introduce a novel masked graph autoencoder (MGAE) framework to perform effective learning on graph structure data. Taking insights from self-supervised learning, we randomly mask a large proportion of edges and try to reconstruct these missing edges during training. MGAE has two core designs. First, we find that masking a high ratio of the input graph structure, e.g., 70%, yields a nontrivial and meaningful self-supervisory task that benefits downstream applications. Second, we employ a graph neural network (GNN) as an encoder to perform message propagation on the partially-masked graph. To reconstruct the large number of masked edges, a tailored cross-correlation decoder is proposed. It could capture the cross-correlation between the head and tail nodes of anchor edge in multigranularity. Coupling these two designs enables MGAE to be trained efficiently and effectively. Extensive experiments on multiple open datasets (Planetoid and OGB benchmarks) demonstrate that MGAE generally performs better than state-ofthe-art unsupervised learning competitors on link prediction and node classification.</p><p>Preprint. Under review.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Graph structure data is ubiquitous in real-world systems <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b1">2]</ref>, such as social networks, academic graphs, and biological interaction networks. Given that labels are often not available, unsupervised graph representation learning has attracted considerable attention in both academia and industry. The goal is to learn node representations to preserve the input graph structure <ref type="bibr" target="#b2">[3]</ref><ref type="bibr" target="#b3">[4]</ref><ref type="bibr" target="#b4">[5]</ref><ref type="bibr" target="#b5">[6]</ref>. Based on the learned representations, we could perform various unsupervised tasks, such as link prediction and anomaly detection. Also, we could directly apply off-the-shell learning algorithms to the learned representations to perform supervised tasks, such as node classification.</p><p>To learn node representations in a unsupervised manner, there are two lines of research. First, graph autoenocders, such as GNN encoder based autoenocders, are proved to be effective in many graph domains <ref type="bibr" target="#b6">[7,</ref><ref type="bibr" target="#b7">8]</ref> on node classification and link prediction tasks. It aims to reconstruct the original network structure (i.e., observed edges) for model training. Efforts have been devoted to exploring effective encoder networks. For example, GAE <ref type="bibr" target="#b3">[4]</ref> adopts the classical graph convolutional network (GCN) <ref type="bibr" target="#b8">[9]</ref> model as encoder, while GraphSage <ref type="bibr" target="#b9">[10]</ref> introduces an inductive variant of GCN for graph encoding. Second, graph self-supervised learning (GSSL) focuses on designing advanced pretext tasks for self-supervised training <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b11">12]</ref>. For example, DGI <ref type="bibr" target="#b12">[13]</ref> and GIC <ref type="bibr" target="#b13">[14]</ref> target to train GNN models by maximizing the mutual information <ref type="bibr" target="#b14">[15]</ref> between the node-level representation and the graph-level representation where the anchor node located in. GSSL methods could learn robust and powerful GNN models for graph encoding <ref type="bibr" target="#b15">[16]</ref>.</p><p>While edge reconstruction and edge dropping are common techniques in graph autoenocders and GSSL, masked autoencoding has never been explored for graphs. Its key idea is to remove a proportion of the input data and use the removed content to guide the traning. Masked autoencoding has been proven to be effective and efficient in modeling texts <ref type="bibr" target="#b16">[17]</ref> and images <ref type="bibr" target="#b17">[18]</ref>. Graph autoenocders take the complete graph as input and target at reconstructing the entire edges. In GSSL, one of the graph augmentation methods is to drop some edges <ref type="bibr" target="#b10">[11]</ref>. Edge dropping may not work well in many scenarios as shown in experiments. Its goal is to learn robust representations, instead of predicting the removed edges. Besides, in practice, its valid masking ratio value is less than 30%. Therefore, we ask: How to design appropriate masked autoencoding for graphs? What percentage of edges are really necessary to reconstruct the input graph and learn effective node representations?</p><p>In this paper, we give a positive answer to these open questions. We present a simple yet effective graph autoencoder framework named masked graph autoencoder (MGAE) for unsupervised graph representation learning. MGAE targets to randomly mask a large proportion of the input graph structure and then recover the masked edges. Different from traditional graph autoencoders, I) our GNN encoder operates only on partial network structure (without masked edges) for convolution, and II) our decoder is designed to capture the cross-correlation between the head and tail nodes of an anchor edge to effectively reconstruct the link from their latent representations (See Figure <ref type="figure">1</ref>). Under this design, our MGAE model can achieve a win-win scenario with a significant high masking ratio (e.g., 70%): it optimizes model performance while allowing the GNN encoder to process only a small portion (30%) of original graph structure. We summarize our main contributions:</p><p>• We introduce a novel graph autoencoder alternative, termed as masked graph autoencoder (MGAE), for graph-structured data. It is inspired by self-supervised learning and is not only robust and effective but also well suited for link prediction and node classification.</p><p>• We propose a tailored cross-correlation decoder to effectively utilize the noisy hidden representations incurred by the masked graph structure for edge reconstruction. This meticulous design allows us to perform a very high masking ratio (e.g., 70%) for edge masking, which also improves the effectiveness and efficiency.</p><p>• Extensive experiments demonstrate that MGAE performs better or sometimes on par with state-of-the-art competitors, across Planetoid and OGB bechmarks in terms of link prediction and node classification tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Problem Statement</head><p>Notations: We use boldface lowercase letters (e.g., x) to denote vectors, and boldface uppercase letters (e.g., X) to denote matrices. The v th row of X is represented as x v . We assume an undirected graph G = (V, E) with n nodes is given, where V and E denote the sets of nodes and edges, respectively. Each node v ∈ V has a F -dimensional attribute vector x v ∈ R F describing its properties. When node attributes are not available, x v can be initialized as a one-hot index vector or learnable parameters. To study graph representation learning under the autoencoder framework, we follow the literature <ref type="bibr" target="#b3">[4,</ref><ref type="bibr" target="#b4">5,</ref><ref type="bibr" target="#b18">19]</ref> introduced as below.</p><p>Graph Autoencoder (GAE). Given a graph G = (V, E), the goal is to learn an encoder network f : V × E -→ H that maps each node v ∈ V into a d-dimensional embedding vector h v ∈ R d , and a decoder network q : H -→ E that reconstructs the network structure (e.g., edges in E) from the latent space H. It is an unsupervised framework, where the key is to preserve the topological structure and node attributes in the latent space H through accurately recovering the observed edges in E. The performance of graph autoencoder is then evaluated by link prediction and node classification tasks.</p><p>Encoder. The encoder network is instantiated as GNNs models <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b9">10]</ref>, which are well-established representation learners on graphs. Following the message passing strategy <ref type="bibr" target="#b19">[20]</ref>, the core idea of GNNs is to update the representation of each node by aggregating itself and its neighbors' representations. Formally, at the k-th layer, we have,</p><formula xml:id="formula_0">h (k) v = COM(h (k-1) v , AGG({h (k-1) u : u ∈ N v })),<label>(1) where h (k)</label></formula><p>v denotes the embedding of node v at the k-th layer, and</p><formula xml:id="formula_1">N v = {u|u|e v,u ∈ E} is set of direct neighbors for node v. We often initialize h (0) v = x v in practice.</formula><p>The function AGG denotes the neighborhood aggregator. It selectively aggregates features from neighbors via either learnable attention weights <ref type="bibr" target="#b20">[21,</ref><ref type="bibr" target="#b21">22]</ref> or fixed combination weights determined by the graph topology <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b22">23]</ref>. To update node v, another function COM is used to combine the aggregated neighbor information and its own node embedding from previous layer. For a GNN model with K layers, there are K node representations {h</p><formula xml:id="formula_2">(1) v , h (2) v , • • • , h (K) v } being generated, where h (k)</formula><p>v captures the neighborhood structure within k hops. Decoder. To reconstruct the observed edges in G from the hidden space H, the decoder network is defined as an edge-wise similarity function. We want to predict the probability y v,u that edge e v,u exists. For example, some efforts <ref type="bibr" target="#b3">[4]</ref> estimate the likelihood via inner product, i.e., y v,u =</p><formula xml:id="formula_3">h (K) v • h (K) u</formula><p>, while some other work <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b23">24]</ref> parameterize the similarity function with multi-layer perceptron, i.e., y v,u = MLP(h</p><formula xml:id="formula_4">(K) v , h (K) u ).</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Masked Graph Autoencoder</head><p>We elaborate the core idea of the proposed Masked Graph Autoencoder (MGAE) framework in Figure <ref type="figure">1</ref>. It is a simple approach that reconstructs the original network structure given only partially observed edges. Like the traditional graph autoencoders, MGAE has a GNN encoder that maps each node into a latent embedding, and a decoder that recovers the original links in the input graph from the latent space. The differences are as follows: (1) we allow the GNN encoder to operate only on partial network structure (i.e., a portion of edges are masked); (2) a novel cross-correlation decoder is designed to reconstruct the masked edges from the latent representation by capturing the cross correlation between the head and tail nodes of an edge in different granularity. There are four components in our approach: network masking, GNN encoder, cross-correlation decoder, and the reconstruction target. We will introduce the details of them as below.</p><p>Network masking. We perturb the original graph G by randomly masking a subset of edges. Formally, we use E mask and E reserve to denote the edge sets that are masked out and remained, respectively, where E mask ∪ E reserve = E. To make the process more efficient, we adopt random sampling with a high masking ratio to obtain the masked edge set E mask . More sophisticated sampling strategies will be explored as future work. Specifically, we further consider two types of random sampling schemes to generate the masked input graphs. I. Undirected masking. We treat the link between node v and v as undirected. That is, e v,u and e u,v are equivalent, and only one copy is included in E. Therefore, performing random sampling over E, the masked edge set E mask is also undirected. II. Directed masking. The key assumption behind is that the links in the graph is directed.</p><p>Hence, e v,u and e u,v are different, and both of them are included in E. Deleting e v,u does not mean e u,v is also deleted. Therefore, after performing random sampling over E, the resultant masked edge set E mask is directed.</p><p>The main difference between the two masking schemes is that the undirected masking will make the reconstruction more challenging than the directed one. According to self-supervised principles, a more difficult task (e.g., masking a high ratio of edges) is expected to achieve better performance in theory. However, in network masking scenarios, we found that the best sampling strategy should be related to the network structure. For example, if the network is dense, it is better to adopt the tougher strategy (i.e., undirected masking). In contrast, if the original graph is sparse, the directed masking could be the better choice, since undirected masking may significantly destruct the neighborhood structure of nodes, leading to substantial expressive power degradation of GNN encoders. For example, in experiments, we found directed masking works better for OGB datasets, while undirected masking works better for Planetoid datasets.</p><p>GNN encoder. We follow standard GAE approaches to adopt the well-established GNN models shown in Eq.( <ref type="formula" target="#formula_0">1</ref>) as our encoder. Specifically, we consider GCN <ref type="bibr" target="#b8">[9]</ref> and GraphSage <ref type="bibr" target="#b9">[10]</ref> architectures as backbones. However, our encoder only operates on a small subset (e.g., 30%) of the full edge set E for message propagation. The edges in E mask are removed during training. This allows us to train the GNN encoder with reduced computation and memory costs. The masked edges are recovered by a tailored decoder, which will be introduced later. It is worth noting that, with the same masking ratio, the total number of edges being used for training is the same for both sampling strategies discussed above. This is because the message propagation in GNNs is bidirectional by default.</p><p>Cross-correlation decoder. The proposed MGAE decoder receives K hidden representation matrices {H (1) , H (2) , • • • , H (K) } generated by the GNN encoder. See Figure <ref type="figure">1</ref>. Each node v has K embedding vectors denoted by {h</p><formula xml:id="formula_5">(k)∈R d v } K k=1 , where h<label>(k)</label></formula><p>v is obtained by aggregating messages from neighbors of v within k hops defined by E reserve . Given that we mask a high ratio of edges in the original graph, the remained network structure (the adjacency matrix) spanned by the remained edge set E reserve is inevitably incomplete. Directly using the final-layer representation H (K) to reconstruct the masked edges is rather difficult. To tackle the challenge, we resort to modeling the correlation between two nodes in different granularities. Specifically, given an edge e v,u and their K hidden representations {h k v , h</p><p>v } K k=1 , we aim to capture their cross-correlations as below.</p><formula xml:id="formula_7">h ev,u = || K k,j=1 h (k) v h (j) u ,<label>(2)</label></formula><p>where || denotes concatenation and denotes the element-wise multiplication. Here h ev,u ∈ R dK 2 is the final representation for edge e v,u . h</p><formula xml:id="formula_8">(k) v h (j)</formula><p>u denotes the cross representation between node v and node u, considering their k-th order neighborhood and j-th order neighborhood, respectively. The key insight behind the cross representation is to highlight the common patterns of the two nodes in different granularity features. This operation is crucial to MGAE because the K latent embedding vectors themselves are incomplete with noise, so we have to identify their shared patterns as effective features for edge reconstruction. Additionally, we want to remark that K is usually a small number (e.g., K = 2) in graph autoencoders. Thus, the extra computation and memory costs are limited.</p><p>Reconstruction target. Different from traditional graph autoencoders, our MGAE recovers the original graph structure by learning to predict the masked edges E mask rather than the observed ones in E reserve . This setting is inspired by recent self-supervised learning in computer vision <ref type="bibr" target="#b17">[18]</ref>. By enforcing the MGAE decoder to only reconstruct the masked edges, our GNN encoder is robust to network noises and can encode graph information more effectively. We adopt the standard graph-based loss function to train our model.</p><formula xml:id="formula_9">L = - (v,u)∈E mask log exp(y vu ) z∈V exp(y vz ) ,<label>(3)</label></formula><p>where y v,u = MLP(h ev,u ) is the reconstructed score for edge e v,u , and MLP is a multilayer perceptron with ReLU activation function. In experiments, we adopt negative sampling <ref type="bibr" target="#b24">[25,</ref><ref type="bibr" target="#b25">26]</ref> Algorithm 1: Masked Graph Autoencoder (MGAE) Input: Graph G = (V, E), GNN encoder depth K, masking ratio ω, embedding dimension d; 1 while not converged do 2 Randomly masking G with ratio ω into two edge sets: E mask and E reserve ; to accelerate the optimization, since the sum operation in denominator od Eq.( <ref type="formula" target="#formula_9">3</ref>) is computational prohibitive. Our MGAE model is optimized via stochastic gradient descent outlined in Algorithm 1.</p><p>After training the MGAE model, similar to other graph autoencoder architectures, we can use the output of decoder to perform link prediction tasks on unseen edges. For node classification, we use the GNN encoder to generate representations for nodes in the graph. Then, we concatenate K representations of each node as its final representation fed into the classifier. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiments</head><p>We evaluate the performance of MGAE in a variety of open graph datasets. Specifically, we try to answer two questions. Q1: How effective is MGAE against the state-of-the-art models on link prediction and node classification? Q2: How does our model perform under different masking ratios?</p><p>Datasets and experimental settings. We evaluate the prediction performance of MGAE on six benchmark graph datasets including three Planetoid datasets <ref type="bibr" target="#b26">[27]</ref> (Cora, Citeseer and Pubmed), and three OGB datasets <ref type="bibr" target="#b23">[24]</ref> (ogbl-ddi, ogbl-collab, and ogbl-ppa). For node classification, we evaluate on five datasets including Cora, Citeseer and Pubmed and two OGB node classification datasets: ogbn-arxiv and ogbn-proteins. The data statistics are summarized in Table <ref type="table" target="#tab_1">1</ref>.</p><p>Our model is built upon Pytorch <ref type="bibr" target="#b27">[28]</ref> and PyG (PyTorch Geometric) library <ref type="bibr" target="#b28">[29]</ref>. We train MGAE for 200 epochs with Adam <ref type="bibr" target="#b29">[30]</ref> optimizer and early stopping with a patience of 50 epochs. There are three hyper-parameters in our model, i.e., masking ratio ω, embedding dimension d, and encoder layer K. We set K = 2 and ω = 0.7 by default if not specified. For embedding dimension, we fix d = 128 and d = 256 for Planetoid and OGB datasets, respectively. Besides, we apply undirected masking for Planetoid datasets and directed masking for OGB datasets as default.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Link Prediction</head><p>We start by answering Q1 based on link prediction tasks.</p><p>Baselines. We consider the following baselines methods. Three representative GAE models (GAE <ref type="bibr" target="#b8">[9]</ref>, GraphSAGE <ref type="bibr" target="#b9">[10]</ref>, and ARGE <ref type="bibr" target="#b4">[5]</ref>), and three self-supervised methods (DGI <ref type="bibr" target="#b12">[13]</ref>, GIC <ref type="bibr" target="#b13">[14]</ref>, and SelfTask-GNN <ref type="bibr" target="#b10">[11]</ref>). For fair comparison, we adopt EdgeMask as the self-supervised signals for SelfTask-GNN in experiments. We aim to provide a rigorous and fair comparison between different models on each dataset by using the same dataset splits and training procedure. To be specific, for  Planetoid datasets (Cora, CiteSeer, and PubMed), following <ref type="bibr" target="#b3">[4]</ref>, we randomly split all edges into three sets, i.e., the training set (85%), the validation set (5%), and the test set (10%), and evaluate the performance based on AUC and Average Precision (AP) scores. For OGB datasets (ogbl-ddi, ogbl-collab, and ogbl-ppa), we follow <ref type="bibr" target="#b23">[24]</ref> to split the datasets into three sets according to the split ratios summarized in Table <ref type="table" target="#tab_1">1</ref>, and evaluate their performance using Hit rate (Hits@N), where N is the number of nodes recalled. For our model, we consider two variants: MGAE-GCN and MGAE-SAGE meaning that we use the GCN and GraphSage architecture to implement our GNN encoder. Table <ref type="table" target="#tab_2">2</ref> and Table <ref type="table" target="#tab_3">3</ref> report the averaged results of 10 runs over Planetoid and OGB datasets, respectively. Jointly comparing the results on two tables, we have the following major observations.</p><p>• Our model MGAE performs better than graph autoencoder based baselines (AGRE, GAE, and GraphSage) on six datasets in almost all cases. Specifically, MGAE achieves comparable results with the best graph autoencoder baselines on ogbl-collab and ogbl-ppa datasets, while significantly outperforms them on other four datasets with great margin. In six datasets, MGAE obtains new state-of-the-art performance on Cora, PubMed and ogb-ddi datasets.</p><p>• Compared with self-supervised learning baselines (DGI, GIC, and SelfTask-GNN), our model MGAE achieves substantial performance gains on five out of six datasets. In particular, MGAE only loses to GIC on CiteSeer dataset while outperforms on other five datasets. Besides, we also observe that the performance gap between our model and three selfsupervised baselines increases on OGB datasets. This result shows that graph autoencoder architecture is more suitable for link prediction task on large-scale datasets.</p><p>• Another important observation is that none of our two variants MGAE-GCN and MGAE-SAGE can consistently outperforms the other in six datasets. For example, although GAE performs better than GraphSage on Cora and CiteSeer datasets, MGAE-SAGE outperforms MGAE-GCN on these two datasets. It indicates that the best GNN encoder for MGAE varies on different graph scenarios. • Another promising property of MGAE we want to remark is that the results in Table <ref type="table" target="#tab_2">2</ref> and<ref type="table" target="#tab_3">3</ref> are obtained under a high masking ratio (ω = 0.7), excepting ogbl-ppa. That is, we only feed 30% original edges of the original graph to GNN encoder. Therefore, MGAE is naturally more efficient than traditional graph autoencoder models, since message propagation is the most time-consuming process of GNN models. Besides, it also indicates that a lot of node connections in graph data are redundant. This observation is consistent with the motivations for structure learning <ref type="bibr" target="#b30">[31,</ref><ref type="bibr" target="#b31">32]</ref> or graph sparsification <ref type="bibr" target="#b32">[33,</ref><ref type="bibr" target="#b33">34]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Node Classification</head><p>In addition to link prediction, to further answer Q1, we evaluate our model on node classification over Planetoid (Cora, CiteSeer, and PubMed) and OGB (ogbn-arxiv and ogbn-protiens) datasets. We randomly split 10% of all edges into validation set and use the remained 90% edges as training set.</p><p>The validation set is used to tune hyperparameters. After the model is trained, we use the full set of edges as input to generate node representations for downstream evaluation. Specifically, we train a SVM classifier on the learned node representations of all models, and apply 5-fold cross-validation to estimate the performance. To avoid randomness, we repeat the process for 10 times and report the average result in terms of Accuracy (ACC.) for Core, CiteSeer, PubMed and ogbn-arxiv and AUC for ogbn-proteins following <ref type="bibr" target="#b25">[26,</ref><ref type="bibr" target="#b23">24]</ref>. We adopt the same baselines as link prediction settings, and report the result in Table <ref type="table" target="#tab_4">4</ref>. The major observations are made as follows.</p><p>• Our model MGAE performs consistently better than three graph-autoencoder based baselines (GCN, GraphSage, and ARGVA) across five datasets. Given that MGAE can obtain at least comparable results with classical graph autoencoders in link prediction task, it indicates that the proposed MGAE is a powerful graph autoencoder alternative.</p><p>• Compared with self-supervised learning based models (DGI, GIC, and SelfTask-GNN), our model loses to the best performance of them on two small datasets (Cora and CiteSeer). However, MGAE outperforms them on three large datasets (PubMed, obgn-arxiv, and ogbn-proteins) by a large margin.</p><p>• SelfTask-GNN is a closely related work to MGAE, since they all focus on randomly masking some edges as self-supervised training task. However, according to the results in Table <ref type="table" target="#tab_2">2</ref>, 3, and 4, SelfTask-GNN does not perform well compared to state-of-the-art baselines due to the limited decoder design and masking strategies. These results show that our MGAE model is the first work that can successfully adopt self-supervised learning to boost the performance of classical graph autoencoders.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Sensitivity Analysis</head><p>In this section, we conduct experiments to verify the impacts of masking ratios ω on our model MGAE (Q2). To provide a comprehensive evaluation of MGAE, we include SelfTask-GNN for comparison since it can be viewed as a variant of our model by replacing the cross-correlation decoder with a simple MLP network. Specifically, we vary ω from 0.1 to 0.9 with a step size 0.1. Figure <ref type="figure" target="#fig_1">2</ref> shows the results of MGAE-GCN and SelfTask-GNN on PubMed and ogbl-ddi datastes. Similar curves are observed on other datasets. From the figures, we have two major observations. • The performance of MGAE first increases with the increasing of masking ratio ω until it reaches 0.7, then it drops when ω further increases. Besides, our MGAE model performs relatively stable when ω is around 0.5 to 0.7. These results indicate the robustness of our model under high masking ratios.</p><p>• MGAE performs consistently better than SelfTask-GNN on the two datasets across different ω values, except when ω &lt; 0.2 on PubMed dataset. Besides, the performance gap is more significant when ω is around 0.5 and 0.7. These observations verify the effectiveness of our proposed cross-correlation decoder for self-supervised graph autoencoder training.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusion</head><p>We explore a novel masked graph autoencoder (MGAE) framework for unsupervised representation learning on graphs. It takes inspirations from self-supervised learning and can be viewed as a self-supervised graph autoencoder alternative. Different from vanilla graph autoencoder models, MGAE suggests to randomly mask a high proportion (i.e., 70%) of the original graph structure as input and reconstruct only the masked edges for model training. Specifically, we introduce two edge masking strategies: undirected masking and directed masking, to generate valid self-supervisory tasks.</p><p>Besides, we also propose a tailored cross-correlation decoder to effectively recover missing edges by capturing the cross representations between its head and tail nodes. Extensive experimental results across multiple open graph benchmarks validate the superiority of MGAE against state-of-the-art baselines in terms of link prediction and node classification tasks.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>3 4 5</head><label>45</label><figDesc>Perform GNN encoding on the reserved edge set E reserve according to Eq. (1); Obtain the cross representations of edges in E mask according to Eq. (2); Model update by minimizing the reconstruction loss over E mask according to Eq. (3);6 Return The trained MGAE model.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Performance of MGAE vs. SelfTask-GNN on link prediction with respect to ω.</figDesc><graphic coords="8,118.01,80.67,184.25,99.78" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>Dataset Statistics.</figDesc><table><row><cell>Data</cell><cell># Nodes</cell><cell># Edges</cell><cell cols="3"># Features Split ratio # Classes</cell></row><row><cell>Cora</cell><cell>2, 708</cell><cell>5, 429</cell><cell>1, 433</cell><cell>85/5/15</cell><cell>7</cell></row><row><cell>CiteSeer</cell><cell>3, 312</cell><cell>4, 660</cell><cell>3, 703</cell><cell>85/5/15</cell><cell>6</cell></row><row><cell>PubMed</cell><cell>19, 717</cell><cell>44, 338</cell><cell>500</cell><cell>85/5/15</cell><cell>3</cell></row><row><cell>ogbl-ddi</cell><cell>4, 267</cell><cell>1, 334, 889</cell><cell>-</cell><cell>80/10/10</cell><cell>-</cell></row><row><cell>ogbl-collab</cell><cell cols="2">235, 868 1, 285, 465</cell><cell>128</cell><cell>92/4/4</cell><cell>-</cell></row><row><cell>ogbl-ppa</cell><cell cols="2">576, 289 30, 326, 273</cell><cell>-</cell><cell>70/20/10</cell><cell>-</cell></row><row><cell>ogbn-arxiv</cell><cell cols="2">169, 343 30, 326, 273</cell><cell>128</cell><cell>-</cell><cell>40</cell></row><row><cell cols="3">ogbn-proteins 132, 534 39, 561, 252</cell><cell>8</cell><cell>-</cell><cell>112</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Link prediction results on Planetoid data with a masking ratio 0.7. The best results are highlighted. SelfTask-GNN 90.65 ± 0.50 91.55 ± 0.93 89.98 ± 0.45 91.52 ± 0.52 97.48 ± 0.12 97.11 ± 0.16 MGAE-GCN 93.52 ± 0.23 94.46 ± 0.24 93.29 ± 0.49 93.81 ± 0.40 98.45 ± 0.03 98.22 ± 0.05 MGAE-SAGE 95.05 ± 0.76 94.50 ± 0.86 94.85 ± 0.49 94.68 ± 0.34 97.38 ± 0.17 97.11 ± 0.19</figDesc><table><row><cell></cell><cell>Cora</cell><cell></cell><cell>CiteSeer</cell><cell></cell><cell>PubMed</cell></row><row><cell></cell><cell>AUC</cell><cell>AP</cell><cell>AUC</cell><cell>AP</cell><cell>AUC</cell><cell>AP</cell></row><row><cell>DGI</cell><cell cols="6">90.02 ± 0.80 90.61 ± 1.00 95.53 ± 0.40 95.72 ± 0.10 91.24 ± 0.60 92.23 ± 0.50</cell></row><row><cell>GIC</cell><cell cols="6">93.54 ± 0.60 93.33 ± 0.70 97.04 ± 0.50 96.80 ± 0.50 93.71 ± 0.30 93.54 ± 0.30</cell></row><row><cell>ARGE</cell><cell cols="6">92.40 ± 0.00 93.23 ± 0.00 91.94 ± 0.00 93.03 ± 0.00 96.81 ± 0.00 97.11 ± 0.00</cell></row><row><cell>GAE</cell><cell cols="6">91.09 ± 0.01 92.83 ± 0.03 90.52 ± 0.04 91.68 ± 0.05 96.40 ± 0.01 96.50 ± 0.02</cell></row><row><cell>SAGE</cell><cell cols="6">86.33 ± 1.06 88.24 ± 0.87 85.65 ± 2.56 87.90 ± 2.54 89.22 ± 0.87 89.44 ± 0.82</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 :</head><label>3</label><figDesc>Link prediction performance on OGB datasets with a masking ratio 0.7, excepting ogbl-ppa with masking ratio 0.4. Best results are highlighted. "OOM" means out of memory on a GeForce RTX 3090 GPU device (24GB). ± 5.07 51.56 ± 4.19 44.75 ± 1.07 52.30 ± 1.01 2.52 ± 0.47 10.82 ± 1.04 GraphSage 53.90 ± 4.74 65.80 ± 6.94 54.63 ± 1.12 60.23 ± 1.20 1.87 ± 0.67 8.92 ± 2.28 ARGE 20.43 ± 4.66 23.86 ± 6.53 28.39 ± 2.51 37.66 ± 1.98 0.41 ± 0.26 3.83 ± 0.84 SelfTask-GNN 42.26 ± 4.85 50.67 ± 6.02 33.03 ± 5.11 42.22 ± 7.14 0.65 ± 0.30 4.26 ± 1.27 MGAE-GCN 65.91 ± 3.50 75.02 ± 2.26 54.74 ± 1.06 61.01 ± 1.18 3.98 ± 1.33 9.97 ± 1.55 MGAE-SAGE 66.00 ± 9.49 75.18 ± 6.57 49.27 ± 0.96 55.44 ± 0.82 1.37 ± 0.38 4.79 ± 0.16</figDesc><table><row><cell></cell><cell cols="2">ogbl-ddi</cell><cell cols="2">ogbl-collab</cell><cell cols="2">ogbl-ppa</cell></row><row><cell></cell><cell>Hits@20</cell><cell>Hits@30</cell><cell>Hits@50</cell><cell>Hits@100</cell><cell>Hits@10</cell><cell>Hits@50</cell></row><row><cell>DGI</cell><cell cols="2">13.87 ± 4.81 15.31 ± 5.52</cell><cell>OOM</cell><cell>OOM</cell><cell>OOM</cell><cell>OOM</cell></row><row><cell>GIC</cell><cell cols="2">10.56 ± 6.77 13.29 ± 7.44</cell><cell>OOM</cell><cell>OOM</cell><cell>OOM</cell><cell>OOM</cell></row><row><cell>GCN</cell><cell>37.07</cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4 :</head><label>4</label><figDesc>Node classification performance on all datasets based on 70% randomly edge masking.</figDesc><table><row><cell>Method</cell><cell>Cora</cell><cell>CiteSeer</cell><cell>PubMed</cell><cell>ogbn-arxiv</cell><cell>ogbn-proteins</cell></row><row><cell></cell><cell>ACC.</cell><cell>ACC.</cell><cell>ACC.</cell><cell>ACC.</cell><cell>AUC</cell></row><row><cell>GCN</cell><cell cols="5">83.60 ± 0.52 63.37 ± 1.21 78.23 ± 1.63 66.01 ± 0.37 61.67 ± 0.35</cell></row><row><cell>GraphSage</cell><cell cols="5">74.30 ± 1.84 60.20 ± 2.15 81.96 ± 0.74 64.79 ± 2.91 55.39 ± 0.79</cell></row><row><cell>ARGVA</cell><cell cols="5">85.86 ± 0.72 73.10 ± 0.86 81.85 ± 1.01 50.06 ± 1.21 40.73 ± 0.68</cell></row><row><cell cols="6">SelfTask-GNN 84.69 ± 0.09 71.82 ± 0.13 83.92 ± 0.18 68.30 ± 0.02 60.93 ± 0.44</cell></row><row><cell>DGI</cell><cell cols="5">85.41 ± 0.34 74.51 ± 0.51 85.95 ± 0.66 67.08 ± 0.43 50.31 ± 0.55</cell></row><row><cell>GIC</cell><cell cols="5">87.70 ± 0.01 76.39 ± 0.02 85.99 ± 0.13 64.00 ± 0.22 48.55 ± 0.47</cell></row><row><cell>MGAE</cell><cell cols="5">86.15 ± 0.25 74.60 ± 0.06 86.91 ± 0.28 72.02 ± 0.05 63.33 ± 0.12</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Representation learning on graphs: Methods and applications</title>
+		<author>
+			<persName><forename type="first">Rex</forename><surname>William L Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Leskovec</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1709.05584</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Graph representation learning: A survey</title>
+		<author>
+			<persName><forename type="first">Fenxiao</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yun-Cheng</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C-C Jay</forename><surname>Kuo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">APSIPA Transactions on Signal and Information Processing</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Deepwalk: Online learning of social representations</title>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Perozzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rami</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Skiena</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</title>
+		<meeting>the 20th ACM SIGKDD international conference on Knowledge discovery and data mining</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="701" to="710" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Variational graph auto-encoders</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1611.07308</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">Adversarially regularized graph autoencoder for graph embedding</title>
+		<author>
+			<persName><forename type="first">Ruiqi</forename><surname>Shirui Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guodong</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jing</forename><surname>Long</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lina</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengqi</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zhang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1802.04407</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Deep representation learning for social network analysis</title>
+		<author>
+			<persName><forename type="first">Qiaoyu</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ninghao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xia</forename><surname>Hu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Frontiers in big Data</title>
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Network representation learning: A survey</title>
+		<author>
+			<persName><forename type="first">Daokun</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xingquan</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengqi</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE transactions on Big Data</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="3" to="28" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Revisiting graph neural networks for link prediction</title>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinglong</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Long</forename><surname>Jin</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2010.16103</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1609.02907</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Inductive representation learning on large graphs</title>
+		<author>
+			<persName><forename type="first">Rex</forename><surname>William L Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 31st International Conference on Neural Information Processing Systems</title>
+		<meeting>the 31st International Conference on Neural Information Processing Systems</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1025" to="1035" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Self-supervised learning on graphs: Deep insights and new direction</title>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tyler</forename><surname>Derr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haochen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yiqi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suhang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zitao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2006.10141</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Infogcl: Information-aware graph contrastive learning</title>
+		<author>
+			<persName><forename type="first">Dongkuan</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongsheng</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haifeng</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<author>
+			<persName><forename type="first">Petar</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Fedus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>William L Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Liò</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Devon</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hjelm</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1809.10341</idno>
+		<title level="m">Deep graph infomax</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Graph infoclust: Maximizing coarse-grain mutual information in graphs</title>
+		<author>
+			<persName><forename type="first">Costas</forename><surname>Mavromatis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Karypis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Pacific-Asia Conference on Knowledge Discovery and Data Mining</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="541" to="553" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<author>
+			<persName><forename type="first">Philip</forename><surname>Bachman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Devon</forename><surname>Hjelm</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Buchwalter</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1906.00910</idno>
+		<title level="m">Learning representations by maximizing mutual information across views</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Self-supervised learning: Generative or contrastive</title>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fanjin</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhenyu</forename><surname>Hou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Mian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhaoyu</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jing</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Knowledge and Data Engineering</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bert</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1810.04805</idno>
+		<title level="m">Pre-training of deep bidirectional transformers for language understanding</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<author>
+			<persName><forename type="first">Kaiming</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinlei</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saining</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanghao</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Piotr</forename><surname>Dollár</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ross</forename><surname>Girshick</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2111.06377</idno>
+		<title level="m">Masked autoencoders are scalable vision learners</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Viet Anh Tran, and Michalis Vazirgiannis. A degeneracy framework for scalable graph autoencoders</title>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Salha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Romain</forename><surname>Hennequin</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1902.08813</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Neural message passing for quantum chemistry</title>
+		<author>
+			<persName><forename type="first">Justin</forename><surname>Gilmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Samuel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><forename type="middle">F</forename><surname>Schoenholz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Riley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><forename type="middle">E</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Dahl</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1263" to="1272" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Graph attention networks</title>
+		<author>
+			<persName><forename type="first">Petar</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillem</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arantxa</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adriana</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>Lio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1710.10903</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">Ashish</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niki</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Llion</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aidan</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Łukasz</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Illia</forename><surname>Polosukhin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="5998" to="6008" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Simplifying graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amauri</forename><surname>Souza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Fifty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kilian</forename><surname>Weinberger</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="6861" to="6871" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Open graph benchmark: Datasets for machine learning on graphs</title>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marinka</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michele</forename><surname>Catasta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2005.00687</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Understanding negative sampling in graph representation learning</title>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chang</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongxia</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingren</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining</title>
+		<meeting>the 26th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1666" to="1676" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Ogblsc: A large-scale challenge for machine learning on graphs</title>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maho</forename><surname>Nakata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2103.09430</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Collective classification in network data</title>
+		<author>
+			<persName><forename type="first">Prithviraj</forename><surname>Sen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Galileo</forename><surname>Namata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mustafa</forename><surname>Bilgic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lise</forename><surname>Getoor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brian</forename><surname>Galligher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tina</forename><surname>Eliassi-Rad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AI magazine</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="93" to="93" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Pytorch: An imperative style, high-performance deep learning library</title>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Paszke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Gross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francisco</forename><surname>Massa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Bradbury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregory</forename><surname>Chanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Trevor</forename><surname>Killeen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zeming</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Natalia</forename><surname>Gimelshein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Antiga</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="8026" to="8037" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Fast graph representation learning with pytorch geometric</title>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>Eric Lenssen</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1903.02428</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Adam: A method for stochastic optimization</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ba</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Learning discrete structures for graph neural networks</title>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Franceschi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mathias</forename><surname>Niepert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Massimiliano</forename><surname>Pontil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>He</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="1972" to="1982" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Graph structure learning for robust graph neural networks</title>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaorui</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining</title>
+		<meeting>the 26th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="66" to="74" />
+		</imprint>
+	</monogr>
+	<note>Xianfeng Tang, Suhang Wang, and Jiliang Tang</note>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Robust graph representation learning via neural sparsification</title>
+		<author>
+			<persName><forename type="first">Cheng</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>Zong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongjin</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingchao</forename><surname>Ni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenchao</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haifeng</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="11458" to="11468" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Edge sparsification for graphs via meta-learning</title>
+		<author>
+			<persName><forename type="first">Guihong</forename><surname>Wan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haim</forename><surname>Schweitzer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2021 IEEE 37th International Conference on Data Engineering (ICDE)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="2733" to="2738" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

@@ -1,0 +1,1727 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Understanding the Generalizability of Link Predictors Under Distribution Shifts on Graphs</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-06-13">13 Jun 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Jay</forename><surname>Revolinsky</surname></persName>
+							<email>revolins@msu.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Michigan State University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Harry</forename><surname>Shomer</surname></persName>
+							<email>shomerha@msu.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Michigan State University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Michigan State University</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Understanding the Generalizability of Link Predictors Under Distribution Shifts on Graphs</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-06-13">13 Jun 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">D17A5E484D2C1D740BBB7C84518293AB</idno>
+					<idno type="arXiv">arXiv:2406.08788v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:12+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Recently, multiple models proposed for link prediction (LP) demonstrate impressive results on benchmark datasets. However, many popular benchmark datasets often assume that dataset samples are drawn from the same distribution (i.e., IID samples). In real-world situations, this assumption is often incorrect; since uncontrolled factors may lead train and test samples to come from separate distributions. To tackle the distribution shift problem, recent work focuses on creating datasets that feature distribution shifts and designing generalization methods that perform well on the new data. However, those studies only consider distribution shifts that affect nodeand graph-level tasks, thus ignoring link-level tasks. Furthermore, relatively few LP generalization methods exist. To bridge this gap, we introduce a set of LP-specific data splits which utilizes structural properties to induce a controlled distribution shift. We verify the shift's effect empirically through evaluation of different SOTA LP methods and subsequently couple these methods with generalization techniques. Interestingly, LP-specific methods frequently generalize poorly relative to heuristics or basic GNN methods. Finally, this work provides analysis to uncover insights for enhancing LP generalization.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Link Prediction (LP) is concerned with predicting unseen links (i.e., edges) between two nodes in a graph <ref type="bibr" target="#b0">[1]</ref>. The task has a wide variety of applications including: recommender systems, <ref type="bibr" target="#b1">[2]</ref>, knowledge graph completion <ref type="bibr" target="#b2">[3]</ref>, protein-interaction <ref type="bibr" target="#b3">[4]</ref>, and drug discovery <ref type="bibr" target="#b4">[5]</ref>. Traditionally, LP was performed using heuristics that model the pairwise interaction between two nodes <ref type="bibr" target="#b5">[6,</ref><ref type="bibr" target="#b6">7,</ref><ref type="bibr" target="#b7">8]</ref>. Recently, the success of Graph Neural Networks (GNNs) <ref type="bibr" target="#b8">[9]</ref>, have prompted their usage in LP <ref type="bibr" target="#b9">[10,</ref><ref type="bibr" target="#b10">11]</ref>. However, they have been shown to be inadequate for LP, as they are unable to properly capture the joint representation of a pair of nodes <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b12">13]</ref>. To combat this problem, recent methods (i.e., GNN4LP) empower GNNs with the necessary information to capture the pairwise interaction of two nodes <ref type="bibr" target="#b13">[14,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b10">11,</ref><ref type="bibr" target="#b15">16]</ref> and demonstrate tremendous ability to model LP on real-world datasets <ref type="bibr" target="#b16">[17]</ref>.</p><p>While recent methods have shown promise, current benchmarks <ref type="bibr" target="#b16">[17]</ref> assume that the training and evaluation data are all drawn from the same structural feature distribution. This assumption often collapses in real-world scenarios, where the structural feature (i.e., covariate) distribution may shift from training to evaluation. Therefore, it's often necessary for models to generalize to samples whose newly-introduced feature distribution differs from the the training dataset <ref type="bibr" target="#b17">[18,</ref><ref type="bibr" target="#b18">19,</ref><ref type="bibr" target="#b19">20,</ref><ref type="bibr" target="#b20">21]</ref>.</p><p>If we consider the graphs in Figure <ref type="figure" target="#fig_0">1</ref> as snapshots pulled from a social network with which a node represents a user and an edge represents a connection between users. Our task is to predict new interactions (the dotted-lines) that will form between existing users. Then, an ideal LP model trained on the first graph would learn a representation that captures the pairwise relations of the connected nodes <ref type="bibr" target="#b10">[11]</ref> to make effective predictions. However, this model would likely fail to generalize to the graphs with "blue" and "green" links, since the representations necessary to capture these pairwise relations would require tracking unseen numbers of CNs. To resolve this, our proposed data splitting strategy generates and controls for this scenario in real-world datasets, providing a means from which new models may solve this problem. Furthermore, while numerous methods work to account for distribution shifts within graph machine learning <ref type="bibr" target="#b21">[22]</ref>, there remains little work doing so for LP. Specifically, we observe that (1) No Benchmark Datasets: Current graph benchmark datasets designed with a quantifiable distribution shift are focused solely on the node and graph tasks <ref type="bibr" target="#b22">[23,</ref><ref type="bibr" target="#b23">24]</ref>, with none existing for LP. (2) Absence of Foundational Work: There is no existing work that gives a comprehensive overview of the types of distribution shifts relevant to LP. Current methods are primarily focused on detecting and alleviating anomalies within node-and graph-level tasks <ref type="bibr" target="#b24">[25,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b25">26,</ref><ref type="bibr" target="#b26">27,</ref><ref type="bibr" target="#b27">28,</ref><ref type="bibr" target="#b28">29,</ref><ref type="bibr" target="#b29">30,</ref><ref type="bibr" target="#b21">22]</ref>. Additionally, few methods exist which are explicitly designed for correcting distribution shift in LP <ref type="bibr" target="#b30">[31,</ref><ref type="bibr" target="#b31">32,</ref><ref type="bibr" target="#b32">33,</ref><ref type="bibr" target="#b22">23]</ref>. Also, other LP generalization methods that have been argued to implicitly improve generalization in this shifted scenario remain crucially untested <ref type="bibr" target="#b33">[34,</ref><ref type="bibr" target="#b34">35]</ref>.</p><p>To tackle these problems, this work proposes the following contributions:</p><p>• Creating Datasets with Meaningful Distribution Shifts. LP requires pairwise structural considerations <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b35">36]</ref>. Additionally, when considering realistic settings <ref type="bibr" target="#b36">[37]</ref> or distribution shift <ref type="bibr" target="#b37">[38]</ref>, GNN4LP models perform poorly relative to models used in graph <ref type="bibr" target="#b38">[39,</ref><ref type="bibr" target="#b39">40]</ref> and node classification <ref type="bibr" target="#b40">[41,</ref><ref type="bibr" target="#b41">42]</ref>. To better understand distribution shifts, we use key structural LP heuristics to split the links into train/validation/test splits. By using LP heuristics to split the data, we induce shifts in the underlying feature distribution of the links, which are relevant to their existence <ref type="bibr" target="#b35">[36]</ref>.</p><p>• Benchmarking Current LP Methods. To our surprise, GNN4LP models struggle more than simpler methods when generalizing to data produced by our proposed strategy. Despite the existence of generalization methods that aids link prediction model performance in standard scenarios, there is no means to account for distribution shift and then generalize to our proposed structural distribution shift without re-training the LP model <ref type="bibr" target="#b23">[24,</ref><ref type="bibr" target="#b30">31,</ref><ref type="bibr" target="#b37">38]</ref>. This reduces the reliability of LP models in-production, since the model will likely to fail to generalize and then require integration into expensive/time-consuming frameworks before re-training on the shifted dataset. This work quantifies the performance of current SOTA LP models and provides analysis for a better foundation to correct this issue. We further quantify the effects of LP generalization methods, finding that they also struggle to generalize to different structural distributions.</p><p>The remainder of this paper is structured as follows. In Section 2, we provide background on the heuristics, models, and generalization methods used in LP. In Section 3, we detail how the heuristics relate to our proposed splitting strategy and formally introduce said strategy. Lastly, in Section 4, we benchmark a selection of LP models and generalization methods on our proposed splitting strategy, followed by analysis with the intent of understanding the effects of the new strategy.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>LP Heuristics: Classically, neighborhood heuristics, which measure characteristics between source and target edges, have functioned as the primary means of predicting links. These heuristics show limited effectiveness with a relatively-high variability in results, due to the complicated irregularity within graph datasets, which only grows worse as the dataset grows larger <ref type="bibr" target="#b0">[1]</ref>. Regardless of this, state-of-the-art GNN4LP models have integrated these neighborhood heuristics into their architectures to elevate link prediction results <ref type="bibr" target="#b15">[16,</ref><ref type="bibr" target="#b14">15]</ref>.</p><p>For a given heuristic function, u and v represent the source and target nodes in a potential link (u, v), N (v) is the set of all edges connected to the node v, and f (v i,i+1 ) is a function that considers all paths of length i that being at node that starts at v. We consider the following few heuristics:</p><p>Common Neighbors <ref type="bibr" target="#b5">[6]</ref>: The number of neighbors shared by two nodes u and v,</p><formula xml:id="formula_0">CN(u, v) = |N (u) ∩ N (v)|.<label>(1)</label></formula><p>Preferential Attachment <ref type="bibr" target="#b0">[1]</ref>: The product of the number of neighbors (i.e., the degree) for nodes u and v,</p><formula xml:id="formula_1">PA(u, v) = |N (u)| × |N (v)|.<label>(2)</label></formula><p>Shortest Path Length <ref type="bibr" target="#b0">[1]</ref>: The length path between u and v which considers the smallest possible sum Σ of length n-nodes,</p><formula xml:id="formula_2">SP(u, v) = arg min Σ (Σ n-1 i=1 f (v i,i+1 )).<label>(3)</label></formula><p>GNNs for Link Prediction (GNN4LP): LP's current SOTA methods rely on GNNs to constitute a given model's backbone. The most common choice is the Graph Convolutional Network (GCN) <ref type="bibr" target="#b8">[9]</ref>, which defines a simplified convolution operator that considers a node's multi-hop neighborhood.</p><p>The final score (i.e., probability) of a link existing considers the final representation of both nodes. However, <ref type="bibr" target="#b11">[12]</ref> have shown that such methods aren't suitably expressive for LP, as they ignore vital pairwise information that exists between both nodes. To account for this, SEAL <ref type="bibr" target="#b10">[11]</ref> conditions the message passing on both nodes in the target link by applying a node-labelling trick to the enclosed k-hop neighborhood. They demonstrate that this can result in a suitably expressive GNN for LP. NBFNet <ref type="bibr" target="#b42">[43]</ref> conditions the message passing on a single node in the target link by parameterizing the generalized Bellman-Ford algorithm. In practice, it's been shown that conditional message passing is prohibitively expensive to run on many LP datasets <ref type="bibr" target="#b14">[15]</ref>. Instead, recent methods pass both the standard GNN representations and an additional pairwise encoding into the scoring function for prediction. For the pairwise encoding, Neo-GNN <ref type="bibr" target="#b43">[44]</ref> considers the higher-order overlap between neighborhoods. BUDDY <ref type="bibr" target="#b14">[15]</ref> uses the subgraph counts surrounding a target link, which is estimated by using subgraph sketching. Neural Common-Neighbors with Completion (NCNC) <ref type="bibr" target="#b15">[16]</ref> encodes the enclosed 1-hop neighborhood of both nodes. Lastly, LPFormer <ref type="bibr" target="#b13">[14]</ref> adapts a transformer to learn the pairwise information between two nodes.</p><p>Generalization in Link Prediction: Generalization methods for LP rely on a mix of link and node features in order to improve LP model performance. DropEdge <ref type="bibr" target="#b44">[45]</ref> randomly removes edges with increasing probability from the training adjacency matrix, allowing for different views of the graph. Edge Proposal Sets (EPS) <ref type="bibr" target="#b33">[34]</ref> considers two models -a filter and rank model. The filter model is used to augment the graph with new edges that are likely to be true, while the rank method is used to score the final prediction. <ref type="bibr" target="#b34">[35]</ref> defines Topological Concentration (TC), which considers the overlap in subgraph features of a node with each of it's neighbors. It demonstrates that it correlates well with performance of individual links in LP. To improve the performance of links with a low TC, it considers a re-weighting strategy that places more emphasis on links with a lower TC.</p><p>Counter-Factual Link Prediction (CFLP) <ref type="bibr" target="#b31">[32]</ref> conditions a pre-trained model with edges that contain information counter to the original adjacency matrix. The intent is that the counter-factual links will provide information that is not present in a given dataset.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Benchmark Dataset Construction</head><p>In this section, we attempt to induce a shift in each dataset's structural features/covariates by proposing a strategy for identifying important structural measures. A structural measure's importance is determined by how closely-associated it is with how links form within the graph. We further explain how to use these importance measures for generating new splits.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Types of Distribution Shifts</head><p>We consider inducing distribution shifts by splitting the links based on key structural properties which affect link formation and thereby LP. We consider three type of metrics: Local structural information, Global structural information, and Preferential Attachment. Recent work by <ref type="bibr" target="#b45">[46]</ref> has shown the importance of local and global structural information for LP. Furthermore, due to the scale-free nature of many real-world graphs and how it relates to link formation <ref type="bibr" target="#b46">[47]</ref>, we also consider Preferential Attachment. A representative metric is then chosen for each of the three types, shown as follows:</p><p>(1) Common Neighbors (CNs): CNs measure local structural information by considering only those nodes connected to the target and source nodes. A real-world case for CNs is whether you share mutual friends with a random person, thus determining if they are your "friend-of-a-friend" <ref type="bibr" target="#b7">[8]</ref>. CNs plays a large role in GNN4LP, given that NCNC <ref type="bibr" target="#b15">[16]</ref> and EPS <ref type="bibr" target="#b33">[34]</ref> integrate CNs into their framework and achieve SOTA performance. Furthermore even on complex real-world datasets, CNs achieves competitive performance against more advanced neural models <ref type="bibr" target="#b16">[17]</ref>. To control for the effect of CNs, the relevant splits will consider thresholds which include more CNs.</p><p>(2) Shortest Path (SP): SP captures a graph's global structural information, thanks to the shortestpath between a given target and source node representing the most efficient path for reaching the target <ref type="bibr" target="#b47">[48]</ref>. The shift in global structure caused by splitting data with SP can induce a scenario where a model must learn how two dissimilar nodes form a link with one another <ref type="bibr" target="#b48">[49]</ref>, which is comparable to the real-world scenario where two opponents co-operate with one another <ref type="bibr" target="#b49">[50,</ref><ref type="bibr" target="#b50">51]</ref>.</p><p>(3) Preferential Attachment (PA): PA captures the scale-free property of larger graphs by multiplying the degrees between two given nodes <ref type="bibr" target="#b46">[47]</ref>. When applied to graph generation, PA produces synthetic Barabasi-Albert (BA) graphs which retain the scale-free property to effectively simulate the formation of new links in real-world graphs, such as the World Wide Web <ref type="bibr" target="#b46">[47,</ref><ref type="bibr" target="#b51">52]</ref>. Similar to CNs, the relevant PA splits will consider thresholds that integrate higher PA values.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Dataset Splitting Strategy</head><p>In the last subsection we described the different types of metrics to induce distribution shifts for LP.</p><p>The metrics cover fundamental structural properties that influence the formation of new links. We now describe how we use these measures to split the dataset into train/validation/test splits to induce such shifts.</p><p>In order to build datasets with structural shift, we apply a given neighborhood heuristic to score each link. This score is then compared to a threshold (i train , i valid ) to categorize a link as a dif-ferent sample. As denoted in Alg. 1, the heuristic score of the link (u, v) is h(u, v). The link falls into: training when h(u, v) &lt; i train , validation when i train ≤ h(u, v) &lt; i valid , and testing when h(u, v) &gt; i valid . The training graph is constructed from the training edges extracted from the original OGB dataset <ref type="bibr" target="#b16">[17]</ref>. Validation and testing samples extracted from this training graph are limited to 100k edges maximum and subsequently removed to prevent test-leakage. The full algorithm is detailed in Algorithm 1 with additional details in Appendix B.</p><p>With Figure <ref type="figure" target="#fig_2">2</ref>, we provide a small example of how splits are produced by our proposed splitting strategy. Specifically, Figure <ref type="figure" target="#fig_2">2</ref>  Finally, to test the effect of different threshold values on performance, we further adjust the i train and i valid thresholds to produce 3 varying splits by CNs and PA and 2 varying splits for the SP thresholds. These variations in splits were chosen based on two conditions. 1) A given sampled edge contains structural information within the user-defined threshold. The core idea is that a training split with a more generous threshold and therefore more structural information will give the model an easier time generalizing to testing samples.</p><p>2) The final dataset split contains a sufficient number of samples, so as to provide enough data within each split for a model to generalize to. Given the limited size of the SP split samples and based on condition 2), the SP splits were limited to 2 variants, see Appendix B for more information.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiments</head><p>To bridge the gap for GNN4LP generalizing under distribution shifts, this work addresses the following questions: (RQ1) Can SOTA GNN4LPs generalize under our proposed distribution shifts? (RQ2) Can current LP generalization methods further boost the performance of current methods? and (RQ3) What components of the proposed distribution shift are affecting the LP model's performance?</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Experimental Setup</head><p>Datasets: We consider the ogbl-collab and ogbl-ppa datasets <ref type="bibr" target="#b16">[17]</ref> to represent tasks in two different domains, allowing a comprehensive study of the generalization of LP under distribution shift.</p><p>For both datasets, we create multiple splits corresponding to each structural property detailed in Section 3.2. For the "forward" split, denoted as (X, Y, Z), an increase in Y and Z indicates more structural information available to the training adjacency matrix. The "inverse" split swaps the training and testing splits from their counterpart in the "forward" split, resulting in the training adjacency matrix losing access to structural information as X and Y increase. See Appendix E for more details.</p><p>GNN4LP Methods: We consider multiple SOTA GNN4LP methods including: NCNC <ref type="bibr" target="#b15">[16]</ref>, BUDDY <ref type="bibr" target="#b14">[15]</ref>, and LPFormer <ref type="bibr" target="#b13">[14]</ref>. We further consider GCN <ref type="bibr" target="#b8">[9]</ref> as a simpler GNN baseline. Lastly, we also consider the Resource Allocation (RA) <ref type="bibr" target="#b6">[7]</ref> heuristic. Additional models, such as SEAL <ref type="bibr" target="#b11">[12]</ref> and Neo-GNN <ref type="bibr" target="#b43">[44]</ref> are not considered due to runtime considerations coupled with the relative effectiveness from the variety of currently-selected GNN4LP methods, with differences detailed in Section 2.</p><p>Generalization Methods: We also consider enhancing the performance of different LP models with multiple generalization techniques. This includes DropEdge <ref type="bibr" target="#b44">[45]</ref>, which randomly removes a portion of edges from the training adjacency matrix. Edge Proposal Sets (EPS) <ref type="bibr" target="#b33">[34]</ref> utilizes one GNN4LP method to filter edges based on their common neighbors and another method to rank the top-k filtered edges in the training adjacency matrix. Lastly, we consider Topological Concentration (TC) <ref type="bibr" target="#b34">[35]</ref>, which re-weights the edges within the training adjacency matrix based on the structural information captured by the TC metric. Note: we did not run Counterfactual LP <ref type="bibr" target="#b31">[32]</ref> due to experiencing an out-of-memory error on all tested dataset splits.</p><p>Evaluation Setting: We consider the standard evaluation procedure in LP, in which every positive validation/test sample is compared against M negative samples. The goal is that the model should output a higher score (i.e., probability) for positive sample than the negatives. To create the negatives, we make use of the HeaRT evaluation setting <ref type="bibr" target="#b36">[37]</ref> which generates M negatives samples per positive sample according to a set of common LP heuristics. In our study, we set M = 250 and use CNs as the heuristic in HeaRT.</p><p>Evaluation Metrics: We evaluate all methods using multiple ranking metrics as a standard practice in LP literature <ref type="bibr" target="#b36">[37]</ref>. This includes the mean reciprocal rank (MRR) and Hits@20.</p><p>Hyperparameters: All methods were tuned on permutations of learning rates in {1e -2 , 1e -3 } and dropout in {0.1, 0.3}. Otherwise, we used the recommended hyperparameters for each method according to their official implementations. Each model was trained and tested over five seeds to obtain the mean and standard deviations of their results. Given the significant time complexity of training and testing on the customized ogbl-ppa datasets, NCNC and LPFormer were tuned on a single seed, followed by an evaluation of the tuned model on five separate seeds. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Results for GNN4LP</head><p>In order to provide a unified perspective on how distribution shift affects link prediction models, each GNN4LP method was trained and tested across five seeded runs on versions of ogbl-collab and ogbl-ppa split by Common Neighbors, Shortest-Path, and Preferential-Attachment. Examining the results, we have the two following key observations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Observation 1: Poor Performance of GNN4LP</head><p>As shown in Tables <ref type="table" target="#tab_4">3,</ref><ref type="table" target="#tab_1">1</ref>, and 2, both RA and GCN consistently out-perform GNN4LP models. In Table <ref type="table" target="#tab_1">1</ref>, RA is overwhelmingly the best-performing, achieving performance more than ten percent higher than the next closest model. However the results for the ogbl-ppa forward split, as shown in Given ogbl-ppa's reduction in performance and the superiority of simpler methods with ogbl-collab, the structural shift induced by our proposed splitting strategy makes it difficult for GNN4LP to generalize. A key consideration for this result is our proposed splitting strategy's direct effect on graph structure, which implicitly shifts features if structure is correlated to the features, much like how spatio-temporal <ref type="bibr" target="#b32">[33]</ref> and size <ref type="bibr" target="#b22">[23]</ref> shift affect an input graph.  As shown in Figure <ref type="figure" target="#fig_3">3</ref>, regardless of whether a model is tested on a "Forward" or "Inverse" split; subsequent splits from the same heuristic alter the structural information available across all splits and result in gradual change in the given model's performance. It is interesting to note that the results for ogbl-ppa and ogbl-collab nearly mirror one another for any given "Forward" split, where an ogbl-ppa split increases the respective ogbl-collab decreases. On the "Inverse" split, a stark increase is seen across most splits, which indicates that increasingly-available structural information in the training adjacency matrix yields improved LP performance <ref type="bibr" target="#b15">[16]</ref>. The fact that these results include splits produced by Preferential-Attachment, Global Structural Information, and Local Structural Information further indicates the importance of any structural information when training LP models <ref type="bibr" target="#b45">[46]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Results for Generalization Methods</head><p>In this section, we apply DropEdge <ref type="bibr" target="#b44">[45]</ref>, EPS <ref type="bibr" target="#b33">[34]</ref>, and TC <ref type="bibr" target="#b41">[42]</ref> on the previously benchmarked GCN <ref type="bibr" target="#b8">[9]</ref> and BUDDY <ref type="bibr" target="#b14">[15]</ref> to determine the feasibility of LP models' generalization under our proposed distribution shift.</p><p>Observation 1: LP-Specific Generalization Methods Struggle. As demonstrated in Table <ref type="table" target="#tab_7">6</ref>, the two generalization methods specific to LP: TC <ref type="bibr" target="#b34">[35]</ref> and EPS <ref type="bibr" target="#b33">[34]</ref> fail to improve the performance of our tested LP models. EPS always results in a decrease of performance from our baseline, indicating a failure to fix the change in performance that our splitting strategy's structural shift brings. To validate this, we calculate Earth Mover's Distance (EMD) <ref type="bibr" target="#b52">[53]</ref> between the heuristic scores of the training and testing splits. As shown in Figure <ref type="figure">4</ref>, EPS updates the training adjacency matrix to alter the distance between the sampled distributions; given the results in Table <ref type="table" target="#tab_7">6</ref>, generalizing under our proposed structural shift surpasses the scope of simply updating the training graph's structure.  TC results in a decrease of performance for ogbl-collab and no change in performance for ogbl-ppa. This is likely due to the thresholds imposed by our strategy which separates splits. There is no distinguishable overlap between sampled distributions: TC can't re-weight the training adjacency matrix in order to improve LP generalization <ref type="bibr" target="#b34">[35,</ref><ref type="bibr" target="#b53">54]</ref>. This result runs contrary to current work, where re-weighting is effective for handling distribution shifts in other graph tasks <ref type="bibr" target="#b54">[55]</ref> and even computer vision <ref type="bibr" target="#b55">[56]</ref>.</p><p>Observation 2: DropEdge Occasionally Works. Additionally, as demonstrated in Table <ref type="table" target="#tab_7">6</ref>, DropEdge <ref type="bibr" target="#b44">[45]</ref> is the only generalization method that improves the performance of our tested LP methods on all splits for ogbl-collab, although it has a small detrimental effect on ogbl-ppa. This result is interesting given that DropEdge is not LP-specific and ogbl-collab has an inherent distribution shift involved in predicting unseen author collaborations <ref type="bibr" target="#b16">[17,</ref><ref type="bibr" target="#b32">33]</ref>. However, Figure <ref type="figure">4</ref> indicates that DropEdge only has a significant effect on EMD when handling the "Inverse" ogbl-collab CN split, indicating that the performance improvement is due to the change in the adjacency matrix structure, Figure <ref type="figure">4</ref>: The EMD values calculated between the heuristic scores of training and testing samples. Note: The tested heuristics correspond to their labelled splits, so as to simulate the dataset splitting.</p><p>not the change in the distance between sample distributions. Additional EMD results are detailed in the Appendix within Tables <ref type="table" target="#tab_12">13</ref> and<ref type="table" target="#tab_13">14</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Discussion</head><p>Does GNN4LP generalize and do LP generalization methods work? As demonstrated by the results of the LP4GNN models and LP generalization methods in Section 4 and relative to their baseline results <ref type="bibr" target="#b16">[17]</ref>, all tested models fail to generalize and only DropEdge <ref type="bibr" target="#b44">[45]</ref> improves LP performance when handling the proposed distribution shift.</p><p>How is the proposed distribution shift affecting performance? When considering the EMD calculations for the training and testing samples, it appears that adjustments to the structure of the training adjacency matrix are ineffective for enabling models to generalize under our proposed distribution shift. Regarding the current landscape of LP models and generalization methods, a new framework or architecture, similar to <ref type="bibr" target="#b32">[33]</ref>, that leverages disentangled learning in regards to structural shift may remedy the problem generated by our proposed dataset splitting strategy.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusion</head><p>This work proposes a simple dataset splitting strategy for inducing structural shift relevant for link prediction. The effect of this structural shift was then benchmarked on ogbl-collab and ogbl-ppa and shown to pose a unique challenge for current SOTA LP models and generalization methods. Further analysis with EMD calculations demonstrated that generalization under this new structural shift may require techniques which go beyond influencing the structure of the graph data. As such, our proposed dataset splitting strategy provides a new challenge for SOTA LP models and opportunities to expand research for generalizing under structural shifts.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Heuristic Choice</head><p>Resource Allocation and Adamic-Adar Index were not considered for splitting strategies given that they build upon the original Common Neighbor formulation. We acknowledge this may lead to interesting analysis on how higher-order heuristics could influence distribution shifts, however it is redundant given our intentions to induce distinct structural scenarios to the test LP models using just link prediction heuristics for splitting strategies.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Splitting Strategy -Additional Algorithmic Details</head><p>This section provides additional details about the way data was formatted before being used as input for Algorithm 1 of our proposed splitting strategy and the intuition behind how Preferential-Attachment and Shortest-Path work within the splitting strategy. The details on the algorithm includes:</p><p>• Validation and Testing Edges are limited to 100k edges total.</p><p>• PPA Training Edges are limited to 3 million edges total.</p><p>• Negative Testing and Validation edges are produced via HeaRT <ref type="bibr" target="#b36">[37]</ref>.</p><p>• Validation and testing edges that are duplicated with training edges are removed from the edge index.</p><p>• In order to provide overlap within a given dataset, validation and testing edges that do not connect to training nodes are removed from the edge index.</p><p>• After sampling the necessary training edges, the adjacency matrix is extracted from the edge index, converted to an undirected graph and has any edge weights standardized to 1.</p><p>Common Neighbors, Preferential-Attachment and Shortest-Path, as shown in Figure <ref type="figure" target="#fig_2">2</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Size of Dataset Samples</head><p>In this section we detail the number of training, validation, and test edges for all of the newly created splits detailed in Section 3. There are in Tables <ref type="table">7</ref> and<ref type="table">8</ref> for ogbl-collab and ogbl-ppa, respectively. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E Additional Training Details</head><p>This section provides relevant details about training and reproducing results not mentioned in Section 4.1:</p><p>• NCNC for all datasets and splits, besides the ogbl-ppa PA splits, considers the 'NCNC2' variant of NCNC with an added depth argument of 2 <ref type="bibr" target="#b15">[16]</ref>. For the ogbl-ppa PA splits, we apply a depth argument of just 1 in order to ensure that a single seeded run does not exceed 24 hour runtime.</p><p>• All experiments were conducted with a single A6000 48GB GPU and 1TB of available system RAM. • Please consult the project README for building the project, loading data, and re-creating results.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>F Dataset Licenses</head><p>The dataset splitting strategy proposed in this paper is built using Pytorch Geometric (PyG). As such, this project's software and the PyG datasets are freely-available under the MIT license.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>G Limitations</head><p>The proposed dataset splitting strategy is restricted to inducing distribution shifts solely with neighborhood heuristics. So, it does not consider other types of distribution shifts that are possible within the link prediction task (i.e. spatio-temporal <ref type="bibr" target="#b32">[33]</ref> or size <ref type="bibr" target="#b22">[23]</ref> shift). Additionally, since the neighborhood heuristics compute discrete scores produced from an input graph's structural information and effectively training GNN4LP models requires no leakage with validation/testing, it may be difficult to determine the correct thresholds to extract a meaningful number of samples. For Common Neighbors and Preferential-Attachment, this is especially relevant with smaller training graphs, given that larger and/or denser graphs have inherently more edges. Therefore, larger and denser graphs have inherently more possible Common Neighbors and Preferential-Attachment scores. For Shortest-Path, splitting can be exceptionally difficult for denser graphs, as demonstrated with the tiny split sizes for ogbl-ppa in Table <ref type="table">8</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>H Impact Statement</head><p>Our proposed dataset splitting strategy mimics the formatting of PyTorch Geometric datasets. This means that our strategy is simple to implement, enabling future work involved with understanding this type of structural shift for link prediction and promoting beginner-friendly practices for artificial intelligence research. Additionally, since the structural shift we propose in this article affects reallife systems, which integrate link prediction models, this research can provide a foundation for the improvement of relevant technologies; which holds positive ramifications for society and future research. No apparent risk is related to the contribution of this work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I Exclusion of non-LP Generalization Methods</head><p>Given that this study is focused on elevating the current understanding for how link prediction models handle the generalized-case of structural shift, our focus was on two objectives: 1) producing and then benchmarking meaningful dataset splits relevant to structural shift in LP, 2) improving understanding on whether generalization methods specifically designed for LP aid GNN4LP on datasets shifted by our proposed splitting strategy. Given the lack of testing for LP-specific generalization methods under any form of distribution shift, our focus on 2) is especially pertinent in order to improve understanding on how LP-specific generalization methods aid performance under distribution shift. We refer readers to <ref type="bibr" target="#b32">[33]</ref> for more information on how non-specific generalization methods aid performance for link prediction models under spatio-temporal shift.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: A "realistic" example where sampled edges are represented with dotted lines. The additional edges cause a structural shift where the model learns with more Common Neighbors (CNs). Red = 0 CNs, Blue = 1 CN, Green = 2 CNs.</figDesc><graphic coords="2,147.60,72.00,316.81,93.25" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head></head><label></label><figDesc>(a) demonstrates the outcome of the CN split labelled "(0,1,2)" where sampled edges pulled from the: black-dotted line = training (no CNs), red-dotted line = validation, (1 CN), and blue-dotted line = testing (≥2 CNs). See Appendix B for information on Figure 2(b) and Figure 2(c).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: An example of the three splitting strategies: (a) Common Neighbors, (b) Preferential-Attachment, (c) Shortest-Path. The dashed lines represent a cut on the source and target node that forms a given edge for our splitting strategy. The color of the line distinguishes the score assigned by the heuristic.</figDesc><graphic coords="5,131.86,231.60,87.12,66.43" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :</head><label>3</label><figDesc>Figure3: The mean scores of the best-performing GNN4LP models tested with our proposed splitting strategy. Each line represents a given dataset and split, arranged uniformly between figures. In the case of decreasing performance, the model with the highest average values was selected.</figDesc><graphic coords="8,147.60,72.00,316.81,125.44" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>1 SP</head><label>1</label><figDesc>(a), 2(b), and 2(c) respectively, are interchangeable within the dataset splitting strategy. Details about how Common Neighbors functions within the strategy are included in Section 3.2. Figure 2(b) and Figure 2(c) serve as toy examples and do not correspond directly to any dataset splits tested within our study. However, the examples illustrated within Figure 2(b) and Figure 2(c) do correspond to how their given heuristic functions within our splitting strategy.For Figure2(b) or Preferential-Attachment, it determines the degrees between a given source and target node and then multiples the two to produce the score, based on that score, the sample is then sorted into a new dataset split.For Figure2(c) or Shortest-Path, the heuristic determines the score by determining the minimum number of nodes necessary to reach the target node from the source node. If there is a link between the two nodes, we remove the link and then re-add to the adjacency matrix after the score calculation. The final Shortest-Path score applies the calculated shortest-path length, SP (u, v) as the denominator in a ratio of (u,v) , which is then used to sort the sample into it's respective dataset split.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>ogbl-collab results on the Forward splits. Results reported in MRR with the best bolded and the second best underlined.</figDesc><table><row><cell>Models</cell><cell></cell><cell>CN Splits</cell><cell></cell><cell cols="2">SP Splits</cell><cell></cell><cell>PA Splits</cell><cell></cell></row><row><cell></cell><cell>(0, 1, 2)</cell><cell>(0, 2, 4)</cell><cell>(0, 3, 5)</cell><cell>(∞, 6, 4)</cell><cell>(∞, 4, 3)</cell><cell cols="3">(0, 50, 100) (0, 100, 200) (0, 150, 250)</cell></row><row><cell>RA</cell><cell>32.22</cell><cell>29.74</cell><cell>29.86</cell><cell>33.87</cell><cell>33.91</cell><cell>36.87</cell><cell>26.78</cell><cell>24.07</cell></row><row><cell>GCN</cell><cell cols="8">12.92 ± 0.31 15.20 ± 0.16 17.54 ± 0.19 10.29 ± 0.52 12.94 ± 0.59 20.78 ± 0.25 14.66 ± 0.20 14.03 ± 0.15</cell></row><row><cell>BUDDY</cell><cell cols="8">17.48 ± 1.19 15.47 ± 0.57 16.60 ± 0.89 16.20 ± 1.40 16.42 ± 2.30 21.27 ± 0.74 14.04 ± 0.76 13.06 ± 0.53</cell></row><row><cell>NCNC</cell><cell cols="6">9.00 ± 1.02 13.99 ± 1.35 15.04 ± 1.25 14.43 ± 1.36 18.33 ± 1.24 12.76 ± 1.60</cell><cell>6.66 ± 1.24</cell><cell>6.48 ± 1.53</cell></row><row><cell cols="2">LPFormer 4.27 ± 1.17</cell><cell cols="2">13.7 ± 1.48 25.36 ± 2.04</cell><cell>4.6 ± 3.15</cell><cell cols="4">15.7 ± 2.87 25.31 ± 5.67 11.98 ± 3.12 12.43 ± 6.62</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>ogbl-ppa results on the Forward splits. Results reported in MRR with the best bolded and the second best underlined.</figDesc><table><row><cell>Models</cell><cell></cell><cell>CN Splits</cell><cell></cell><cell cols="2">SP Splits</cell><cell></cell><cell>PA Splits</cell><cell></cell></row><row><cell></cell><cell>(0, 1, 2)</cell><cell>(0, 2, 4)</cell><cell>(0, 3, 5)</cell><cell>(∞, 6, 4)</cell><cell>(∞, 4, 3)</cell><cell cols="3">(0, 5k, 10k) (0, 10k, 20k) (0, 15k, 25k)</cell></row><row><cell>RA</cell><cell>4.71</cell><cell>4.45</cell><cell>4.38</cell><cell>32.57</cell><cell>19.84</cell><cell>3.9</cell><cell>3.14</cell><cell>2.72</cell></row><row><cell>GCN</cell><cell cols="6">8.13 ± 0.38 7.51 ± 0.32 7.12 ± 1.05 5.40 ± 0.57 5.56 ± 0.21 4.19 ± 0.43</cell><cell>4.98 ± 0.52</cell><cell>5.95 ± 0.28</cell></row><row><cell>BUDDY</cell><cell cols="6">7.90 ± 0.32 3.83 ± 0.24 3.06 ± 0.06 1.24 ± 0.02 5.87 ± 0.16 3.93 ± 0.98</cell><cell>6.38 ± 3.48</cell><cell>2.48 ± 0.03</cell></row><row><cell>NCNC</cell><cell cols="6">4.26 ± 0.45 6.87 ± 0.36 6.32 ± 0.57 8.91 ± 7.46 5.55 ± 0.45 8.00 ± 0.60</cell><cell>6.90 ± 1.46</cell><cell>8.00 ± 0.78</cell></row><row><cell cols="7">LPFormer 3.28 ± 0.63 2.46 ± 0.51 4.84 ± 0.73 9.83 ± 5.92 4.94 ± 0.62 9.27 ± 1.78</cell><cell>9.03 ± 1.6</cell><cell>9.07 ± 2.43</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 2 ,</head><label>2</label><figDesc>indicate LPFormer as the best-performing model on the PA split, albeit with a much lower average score than those demonstrated within the ogbl-collab forward split.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 3 :</head><label>3</label><figDesc>Mean LP model rank on all splits, determined by Hits@20.</figDesc><table><row><cell>Models</cell><cell cols="2">Forward Inverse</cell></row><row><cell>RA</cell><cell>2.06</cell><cell>3.67</cell></row><row><cell>GCN</cell><cell>2.75</cell><cell>2.80</cell></row><row><cell>BUDDY</cell><cell>3.31</cell><cell>3.33</cell></row><row><cell>NCNC</cell><cell>3.44</cell><cell>2.80</cell></row><row><cell>LPFormer</cell><cell>3.44</cell><cell>2.40</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 4 :</head><label>4</label><figDesc>ogbl-collab results on the Inverse splits. Results reported in MRR with the best bolded and the second best underlined.</figDesc><table><row><cell>Models</cell><cell></cell><cell>CN Splits</cell><cell></cell><cell cols="2">SP Splits</cell><cell></cell><cell>PA Splits</cell><cell></cell></row><row><cell></cell><cell>(2, 1, 0)</cell><cell>(4, 2, 0)</cell><cell>(5, 3, 0)</cell><cell>(4, 6, ∞)</cell><cell>(3, 4, ∞)</cell><cell cols="3">(100, 50, 0) (200, 100, 0) (250, 150, 0)</cell></row><row><cell>RA</cell><cell>0.6</cell><cell>4.79</cell><cell>15.9</cell><cell>0.69</cell><cell>0.63</cell><cell>33.09</cell><cell>42.28</cell><cell>44.14</cell></row><row><cell>GCN</cell><cell cols="2">5.78 ± 0.19 5.91 ± 0.05</cell><cell cols="5">7.07 ± 0.11 8.69 ± 0.47 6.47 ± 0.37 21.38 ± 0.27 13.36 ± 0.24</cell><cell>11.95 ± 0.35</cell></row><row><cell>BUDDY</cell><cell cols="2">3.70 ± 0.13 3.55 ± 0.09</cell><cell cols="5">5.40 ± 0.04 6.73 ± 0.32 3.71 ± 0.39 24.95 ± 0.92 15.52 ± 0.73</cell><cell>13.36 ± 0.83</cell></row><row><cell>NCNC</cell><cell cols="7">1.89 ± 1.27 16.48 ± 1.30 19.69 ± 1.52 1.62 ± 0.72 1.08 ± 0.73 14.86 ± 1.59 18.67 ± 2.75</cell><cell>17.39 ± 2.12</cell></row><row><cell cols="3">LPFormer 2.01 ± 0.95 3.87 ± 0.74</cell><cell cols="6">8.36 ± 0.63 3.16 ± 0.62 1.86 ± 0.48 17.76 ± 2.01 27.56 ± 9.10 24.04 ± 11.35</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 5 :</head><label>5</label><figDesc>ogbl-ppa results on the Inverse splits. Results reported in MRR with the best bolded and the second best underlined.</figDesc><table><row><cell>Models</cell><cell></cell><cell>CN Splits</cell><cell></cell><cell cols="2">SP Splits</cell><cell></cell><cell>PA Splits</cell><cell></cell></row><row><cell></cell><cell>(2, 1, 0)</cell><cell>(4, 2, 0)</cell><cell>(5, 3, 0)</cell><cell>(4, 6, ∞)</cell><cell>(3, 4, ∞)</cell><cell cols="3">(10k, 5k, 0) (20k, 10k, 0) (25k, 15k, 0)</cell></row><row><cell>RA</cell><cell>0.53</cell><cell>0.92</cell><cell>1.17</cell><cell>0.65</cell><cell>0.54</cell><cell>7.4</cell><cell>5.81</cell><cell>5.08</cell></row><row><cell>GCN</cell><cell cols="6">3.52 ± 0.09 3.02 ± 0.09 2.94 ± 0.05 10.53 ± 0.48 3.38 ± 0.11 1.55 ± 0.07</cell><cell>1.29 ± 0.02</cell><cell>1.28 ± 0.03</cell></row><row><cell>BUDDY</cell><cell cols="6">1.60 ± 0.05 2.47 ± 0.07 2.56 ± 0.08 9.91 ± 0.32 3.03 ± 0.06 3.15 ± 0.16</cell><cell>2.55 ± 0.16</cell><cell>2.37 ± 0.02</cell></row><row><cell>NCNC</cell><cell cols="6">2.37 ± 0.15 8.54 ± 0.74 9.04 ± 0.92 5.56 ± 1.02 1.34 ± 0.56 7.33 ± 0.74</cell><cell>6.02 ± 0.85</cell><cell>5.55 ± 0.77</cell></row><row><cell cols="4">LPFormer 6.04 ± 0.41 4.23 ± 0.46 3.87 ± 0.1</cell><cell>5.9 ± 1.76</cell><cell cols="3">1.38 ± 0.46 14.43 ± 4.45 8.43 ± 3.46</cell><cell>6.27 ± 3.87</cell></row><row><cell cols="7">Observation 2: Performance Differs By Both Split Type and Thresholds.</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 6 :</head><label>6</label><figDesc>The mean change in performance for all splits for a given generalization methods applied to GCN.</figDesc><table><row><cell></cell><cell></cell><cell>ogbl-collab</cell><cell></cell><cell></cell><cell>ogbl-ppa</cell><cell></cell></row><row><cell>Methods</cell><cell cols="6">Forward Inverse Overall Forward Inverse Overall</cell></row><row><cell>DropEdge</cell><cell>+4%</cell><cell>+2%</cell><cell>+3%</cell><cell>-1%</cell><cell>0%</cell><cell>-0.5%</cell></row><row><cell>EPS</cell><cell>-39%</cell><cell>-40%</cell><cell>-40%</cell><cell>-35%</cell><cell>-15%</cell><cell>-25%</cell></row><row><cell>TC</cell><cell>-9%</cell><cell>-35%</cell><cell>-22%</cell><cell>0%</cell><cell>0%</cell><cell>0%</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 9 :</head><label>9</label><figDesc>ogbl-collab results on the forward and inverse splits when using DropEdge and TC.</figDesc><table><row><cell></cell><cell></cell><cell cols="2">DropEdge</cell><cell></cell><cell>TC</cell></row><row><cell>Heuristic</cell><cell>Split</cell><cell>GCN</cell><cell>BUDDY</cell><cell>GCN</cell><cell>BUDDY</cell></row><row><cell></cell><cell>(0, 1, 2)</cell><cell cols="4">13.92 ± 0.78 15.54 ± 0.98 12.26± 0.28 11.27 ± 2.03</cell></row><row><cell></cell><cell>(0, 2, 4)</cell><cell cols="4">15.85 ± 0.25 16.16 ± 0.17 12.62± 0.57 12.39 ± 1.43</cell></row><row><cell>CN</cell><cell>(0, 3, 5)</cell><cell cols="4">17.75 ± 0.11 16.34 ± 0.17 13.3± 0.47 14.99 ± 1.69</cell></row><row><cell></cell><cell>(2, 1, 0)</cell><cell>5.96 ± 0.17</cell><cell>2.61 ± 0.09</cell><cell>4.95 ±0.16</cell><cell>5.28 ± 0.05</cell></row><row><cell></cell><cell>(4, 2, 0)</cell><cell cols="2">6.14 ± 0.065 2.88 ± 0.11</cell><cell>5.37 ±0.13</cell><cell>5.23 ± 0.05</cell></row><row><cell></cell><cell>(5, 3, 0)</cell><cell>7.20 ± 0.15</cell><cell>4.99 ± 0.08</cell><cell>6.04± 0.07</cell><cell>6.03 ± 0.10</cell></row><row><cell></cell><cell>(∞, 6, 4)</cell><cell cols="4">11.94 ± 0.46 12.31 ± 0.51 11.42 ±0.43 7.25 ± 0.81</cell></row><row><cell>SP</cell><cell>(∞, 4, 3)</cell><cell cols="4">13.87 ± 0.43 17.11 ± 1.02 12.88± 0.43 9.33 ± 1.66</cell></row><row><cell></cell><cell>(4, 6, ∞)</cell><cell>9.18 ± 0.52</cell><cell>5.34 ± 0.43</cell><cell>9.09± 4.74</cell><cell>6.88 ± 0.30</cell></row><row><cell></cell><cell>(3, 4, ∞)</cell><cell>6.71 ± 0.13</cell><cell>2.93 ± 0.18</cell><cell>3.57± 2.30</cell><cell>6.24 ± 0.13</cell></row><row><cell></cell><cell cols="5">(0, 50, 100) 20.76 ± 0.19 21.35 ± 0.36 17.55±0.57 18.82 ± 1.35</cell></row><row><cell></cell><cell cols="3">(0, 100, 200) 14.57 ± 0.20 13.84 ± 0.64</cell><cell>13.22±1.1</cell><cell>12.13±1.04</cell></row><row><cell>PA</cell><cell cols="4">(0, 150, 250) 13.78 ± 0.28 12.85 ± 0.78 13.03±0.24</cell><cell>10.63±0.55</cell></row><row><cell></cell><cell cols="3">(100, 50, 0) 21.34 ± 0.65 26.09 ± 0.62</cell><cell>6.4 ± 0.2</cell><cell>15.84 ± 1.13</cell></row><row><cell></cell><cell cols="3">(200, 100, 0) 12.89 ± 0.59 15.68 ± 0.85</cell><cell>4.3 ± 0.14</cell><cell>9.15 ± 0.39</cell></row><row><cell></cell><cell cols="3">(250, 150, 0) 11.68 ± 0.37 13.13 ± 0.94</cell><cell>4.4 ± 0.16</cell><cell>6.7 ± 0.2</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 10 :</head><label>10</label><figDesc>ogbl-ppa results on the forward and inverse splits when using DropEdge and TC.</figDesc><table><row><cell></cell><cell></cell><cell cols="2">DropEdge</cell><cell></cell><cell>TC</cell></row><row><cell>Heuristic</cell><cell>Split</cell><cell>GCN</cell><cell>BUDDY</cell><cell>GCN</cell><cell>BUDDY</cell></row><row><cell></cell><cell>(0, 1, 2)</cell><cell cols="4">8.20 ± 0.34 7.83 ± 0.27 OOM 5.27 ± 0.34</cell></row><row><cell></cell><cell>(0, 2, 4)</cell><cell cols="4">7.39 ± 0.33 3.83 ± 0.25 OOM 2.91 ± 0.06</cell></row><row><cell>CN</cell><cell>(0, 3, 5)</cell><cell cols="4">6.04 ± 0.32 3.06 ± 0.06 OOM 2.67 ± 0.13</cell></row><row><cell></cell><cell>(2, 1, 0)</cell><cell cols="4">3.50 ± 0.16 1.61 ± 0.04 OOM 3.44 ± 0.08</cell></row><row><cell></cell><cell>(4, 2, 0)</cell><cell cols="3">3.01 ± 0.07 2.47 ± 0.07 OOM</cell><cell>3.45 ± 0.1</cell></row><row><cell></cell><cell>(5, 3, 0)</cell><cell cols="4">2.97 ± 0.06 2.56 ± 0.08 OOM 3.55 ± 0.13</cell></row><row><cell></cell><cell>(∞, 6, 4)</cell><cell cols="3">6.17 ± 0.76 3.86 ± 0.39 OOM</cell><cell>4.0 ± 0.29</cell></row><row><cell>SP</cell><cell>(∞, 4, 3)</cell><cell cols="4">5.55 ± 0.22 5.87 ± 0.16 OOM 4.82 ± 0.39</cell></row><row><cell></cell><cell>(4, 6, ∞)</cell><cell cols="4">3.44 ± 0.17 3.86 ± 0.39 OOM 13.2 ± 0.45</cell></row><row><cell></cell><cell>(3, 4, ∞)</cell><cell cols="4">15.69 ± 0.54 5.87 ± 0.16 OOM 2.89 ± 0.09</cell></row><row><cell></cell><cell>(0, 50, 100)</cell><cell cols="4">4.19 ± 0.43 3.93 ± 0.98 OOM 3.62 ± 0.21</cell></row><row><cell></cell><cell cols="5">(0, 10k, 20k) 4.98 ± 0.52 6.38 ± 3.48 OOM 3.13 ± 0.12</cell></row><row><cell>PA</cell><cell cols="5">(0, 15k, 25k) 5.95 ± 0.28 2.49 ± 0.01 OOM 3.33 ± 1.38</cell></row><row><cell></cell><cell>(10k, 5k, 0)</cell><cell>1.51 ± 0.02</cell><cell cols="3">3.13 ± 0.1 OOM 1.78 ± 0.16</cell></row><row><cell></cell><cell cols="5">(20k, 10k, 0) 1.25 ± 0.07 2.56 ± 0.19 OOM 1.5 ± 0.0008</cell></row><row><cell></cell><cell cols="5">(25k, 15k, 0) 1.28 ± 0.03 2.40 ± 0.03 OOM 1.53 ± 0.04</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 11 :</head><label>11</label><figDesc>ogbl-collab results on the forward and inverse splits when using EPS for each given Filter + Rank model configuration.</figDesc><table><row><cell>Heuristic</cell><cell>Split</cell><cell cols="4">GCN + BUDDY BUDDY + GCN RA + GCN RA + BUDDY</cell></row><row><cell></cell><cell>(0, 1, 2)</cell><cell>8.50 ± 1.10</cell><cell>5.81 ± 0.11</cell><cell>7.42 ± 0.12</cell><cell>3.94 ± 0.51</cell></row><row><cell></cell><cell>(0, 2, 4)</cell><cell>12.85 ± 0.83</cell><cell>5.31 ± 0.22</cell><cell>7.07 ± 0.16</cell><cell>6.61 ± 0.30</cell></row><row><cell>CN</cell><cell>(0, 3, 5)</cell><cell>15.35 ± 0.96</cell><cell>5.88 ± 0.16</cell><cell>7.52 ± 0.13</cell><cell>7.16 ± 0.09</cell></row><row><cell></cell><cell>(2, 1, 0)</cell><cell>5.46 ± 0.11</cell><cell>4.90 ± 0.08</cell><cell>5.24 ± 0.14</cell><cell>4.32 ± 0.19</cell></row><row><cell></cell><cell>(4, 2, 0)</cell><cell>5.36 ± 0.12</cell><cell>4.62 ± 0.16</cell><cell>5.27 ± 0.09</cell><cell>4.45 ± 0.12</cell></row><row><cell></cell><cell>(5, 3, 0)</cell><cell>5.96 ± 0.06</cell><cell>5.17 ± 0.09</cell><cell>5.15 ± 0.26</cell><cell>4.93 ± 0.11</cell></row><row><cell></cell><cell>(∞, 6, 4)</cell><cell>7.38 ± 0.82</cell><cell>7.10 ± 0.43</cell><cell>7.38 ± 0.42</cell><cell>3.84 ± 0.59</cell></row><row><cell>SP</cell><cell>(∞, 4, 3)</cell><cell>9.60 ± 0.39</cell><cell>6.24 ± 0.52</cell><cell>7.07 ± 0.46</cell><cell>7.63 ± 0.25</cell></row><row><cell></cell><cell>(4, 6, ∞)</cell><cell>6.86 ± 1.13</cell><cell>6.51 ± 0.24</cell><cell>6.11 ± 0.48</cell><cell>6.86 ± 1.13</cell></row><row><cell></cell><cell>(3, 4, ∞)</cell><cell>6.47 ± 0.24</cell><cell>4.86 ± 0.38</cell><cell>5.23 ± 0.23</cell><cell>6.47 ± 0.24</cell></row><row><cell></cell><cell>(0, 50, 100)</cell><cell>15.92 ± 1.01</cell><cell>13.84 ± 0.14</cell><cell>13.23 ± 0.21</cell><cell>15.92 ± 1.01</cell></row><row><cell></cell><cell>(0, 100, 200)</cell><cell>9.47 ± 0.31</cell><cell>10.85 ± 0.11</cell><cell>10.71 ± 0.10</cell><cell>9.47 ± 0.31</cell></row><row><cell>PA</cell><cell>(0, 150, 250)</cell><cell>9.60 ± 0.41</cell><cell>10.33 ± 0.15</cell><cell>9.96 ± 0.06</cell><cell>9.60 ± 0.41</cell></row><row><cell></cell><cell>(100, 50, 0)</cell><cell>14.34 ± 1.05</cell><cell>5.23 ± 0.28</cell><cell>5.07 ± 0.21</cell><cell>14.34 ± 1.05</cell></row><row><cell></cell><cell>(200, 100, 0)</cell><cell>8.35 ± 0.34</cell><cell>3.06 ± 0.08</cell><cell>2.93 ± 0.06</cell><cell>8.35 ± 0.34</cell></row><row><cell></cell><cell>(250, 150, 0)</cell><cell>5.50 ± 0.33</cell><cell>3.14 ± 0.14</cell><cell>2.79 ± 0.07</cell><cell>5.50 ± 0.33</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_11"><head>Table 12 :</head><label>12</label><figDesc>ogbl-ppa results on the forward and inverse splits when using EPS for each given Filter +</figDesc><table><row><cell cols="2">Rank model configuration.</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Heuristic</cell><cell>Split</cell><cell cols="4">GCN + BUDDY BUDDY + GCN RA + GCN RA + BUDDY</cell></row><row><cell></cell><cell>(0, 1, 2)</cell><cell>4.48 ± 0.33</cell><cell>OOM</cell><cell>3.53 ± 0.03</cell><cell>4.04 ± 0.26</cell></row><row><cell></cell><cell>(0, 2, 4)</cell><cell>3.79 ± 0.28</cell><cell>OOM</cell><cell>3.35 ± 0.03</cell><cell>3.42 ± 0.20</cell></row><row><cell>CN</cell><cell>(0, 3, 5)</cell><cell>3.16 ± 0.10</cell><cell>OOM</cell><cell>3.22 ± 0.04</cell><cell>2.95 ± 0.13</cell></row><row><cell></cell><cell>(2, 1, 0)</cell><cell>3.19 ± 0.08</cell><cell>OOM</cell><cell>2.79 ± 0.11</cell><cell>2.58 ± 0.09</cell></row><row><cell></cell><cell>(4, 2, 0)</cell><cell>3.25 ± 0.09</cell><cell>OOM</cell><cell>2.64 ± 0.02</cell><cell>3.04 ± 0.05</cell></row><row><cell></cell><cell>(5, 3, 0)</cell><cell>3.36 ± 0.13</cell><cell>OOM</cell><cell>2.55 ± 0.09</cell><cell>3.10 ± 0.15</cell></row><row><cell></cell><cell>(∞, 6, 4)</cell><cell>4.00 ± 0.20</cell><cell>OOM</cell><cell>2.09 ± 0.17</cell><cell>3.89 ± 0.23</cell></row><row><cell>SP</cell><cell>(∞, 4, 3)</cell><cell>5.53 ± 0.92</cell><cell>OOM</cell><cell>5.18 ± 0.51</cell><cell>5.53 ± 0.94</cell></row><row><cell></cell><cell>(4, 6, ∞)</cell><cell>14.41 ± 0.67</cell><cell>OOM</cell><cell>6.46 ± 0.84</cell><cell>13.63 ± 0.97</cell></row><row><cell></cell><cell>(3, 4, ∞)</cell><cell>2.93 ± 0.15</cell><cell>OOM</cell><cell>2.48 ± 0.06</cell><cell>2.51 ± 0.14</cell></row><row><cell></cell><cell>(0, 50, 100)</cell><cell>3.66 ± 0.38</cell><cell>OOM</cell><cell>4.34 ± 0.06</cell><cell>3.66 ± 0.38</cell></row><row><cell></cell><cell>(0, 100, 200)</cell><cell>3.19 ± 0.22</cell><cell>OOM</cell><cell>4.23 ± 0.03</cell><cell>3.19 ± 0.22</cell></row><row><cell>PA</cell><cell>(0, 150, 250)</cell><cell>2.88 ± 0.06</cell><cell>OOM</cell><cell>3.78 ± 0.07</cell><cell>2.88 ± 0.06</cell></row><row><cell></cell><cell>(100, 50, 0)</cell><cell>2.05 ± 0.05</cell><cell>OOM</cell><cell>1.43 ± 0.05</cell><cell>2.05 ± 0.04</cell></row><row><cell></cell><cell>(200, 100, 0)</cell><cell>1.67 ± 0.03</cell><cell>OOM</cell><cell>1.26 ± 0.02</cell><cell>1.65 ± 0.05</cell></row><row><cell></cell><cell>(250, 150, 0)</cell><cell>1.66 ± 0.02</cell><cell>OOM</cell><cell>1.30 ± 0.02</cell><cell>1.64 ± 0.03</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_12"><head>Table 13 :</head><label>13</label><figDesc>EMD calculations for ogbl-collab on the forward and inverse splits. Scores with a distance multiple-times different than the baseline are in bold</figDesc><table><row><cell>Heuristic</cell><cell>Split</cell><cell cols="4">Baseline DropEdge EPS -GCN EPS -BUDDY</cell></row><row><cell></cell><cell>(0, 1, 2)</cell><cell>1.31</cell><cell>1.31</cell><cell>6.62</cell><cell>3.6</cell></row><row><cell></cell><cell>(0, 2, 4)</cell><cell>1.6</cell><cell>1.6</cell><cell>4.91</cell><cell>2.52</cell></row><row><cell>CN</cell><cell>(0, 3, 5)</cell><cell>1.45</cell><cell>1.65</cell><cell>3.82</cell><cell>2.22</cell></row><row><cell></cell><cell>(2, 1, 0)</cell><cell>1.87</cell><cell>1.15</cell><cell>1.71</cell><cell>2.91</cell></row><row><cell></cell><cell>(4, 2, 0)</cell><cell>2.26</cell><cell>1.49</cell><cell>1.29</cell><cell>2.99</cell></row><row><cell></cell><cell>(5, 3, 0)</cell><cell>2.28</cell><cell>1.52</cell><cell>0.314</cell><cell>2.14</cell></row><row><cell></cell><cell>(∞, 6, 4)</cell><cell>5.93</cell><cell>5.94</cell><cell>0.012</cell><cell>0.012</cell></row><row><cell>SP</cell><cell>(∞, 4, 3)</cell><cell>5.35</cell><cell>5.38</cell><cell>0.002</cell><cell>0.003</cell></row><row><cell></cell><cell>(4, 6, ∞)</cell><cell>3.6</cell><cell>3.53</cell><cell>1.22</cell><cell>1.22</cell></row><row><cell></cell><cell>(3, 4, ∞)</cell><cell>1.85</cell><cell>1.78</cell><cell>3.17</cell><cell>3.23</cell></row><row><cell></cell><cell>(0, 50, 100)</cell><cell>1.87</cell><cell>1.89</cell><cell>2.94</cell><cell>3.42</cell></row><row><cell></cell><cell>(0, 100, 200)</cell><cell>2.29</cell><cell>2.32</cell><cell>3.59</cell><cell>2.72</cell></row><row><cell>PA</cell><cell>(0, 150, 250)</cell><cell>2.34</cell><cell>2.36</cell><cell>3.73</cell><cell>3.08</cell></row><row><cell></cell><cell>(100, 50, 0)</cell><cell>4.29</cell><cell>4.3</cell><cell>3.31</cell><cell>2.48</cell></row><row><cell></cell><cell>(200, 100, 0)</cell><cell>3.79</cell><cell>3.82</cell><cell>2.84</cell><cell>0.78</cell></row><row><cell></cell><cell>(250, 150, 0)</cell><cell>3.48</cell><cell>3.5</cell><cell>2.7</cell><cell>2.48</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_13"><head>Table 14 :</head><label>14</label><figDesc>EMD calculations for ogbl-ppa on the forward and inverse splits.</figDesc><table><row><cell>Heuristic</cell><cell>Split</cell><cell cols="2">Baseline DropEdge</cell><cell>EPS</cell></row><row><cell></cell><cell>(0, 1, 2)</cell><cell>2.82</cell><cell>2.82</cell><cell>&gt;24hrs</cell></row><row><cell></cell><cell>(0, 2, 4)</cell><cell>3.13</cell><cell>3.13</cell><cell>&gt;24hrs</cell></row><row><cell>CN</cell><cell>(0, 3, 5)</cell><cell>3.05</cell><cell>3.19</cell><cell>&gt;24hrs</cell></row><row><cell></cell><cell>(2, 1, 0)</cell><cell>3.1</cell><cell>2.36</cell><cell>&gt;24hrs</cell></row><row><cell></cell><cell>(4, 2, 0)</cell><cell>3.3</cell><cell>2.55</cell><cell>&gt;24hrs</cell></row><row><cell></cell><cell>(5, 3, 0)</cell><cell>3.19</cell><cell>2.44</cell><cell>&gt;24hrs</cell></row><row><cell></cell><cell>(∞, 6, 4)</cell><cell>5.81</cell><cell>5.84</cell><cell>&gt;24hrs</cell></row><row><cell>SP</cell><cell>(∞, 4, 3)</cell><cell>1.36</cell><cell>1.4</cell><cell>&gt;24hrs</cell></row><row><cell></cell><cell>(4, 6, ∞)</cell><cell>2.14</cell><cell>2.14</cell><cell>&gt;24hrs</cell></row><row><cell></cell><cell>(3, 4, ∞)</cell><cell>0.72</cell><cell>0.72</cell><cell>&gt;24hrs</cell></row><row><cell></cell><cell>(0, 5k, 10k)</cell><cell>2.55</cell><cell>2.55</cell><cell>&gt;24hrs</cell></row><row><cell></cell><cell>(0, 10k, 20k)</cell><cell>2.76</cell><cell>2.76</cell><cell>&gt;24hrs</cell></row><row><cell>PA</cell><cell>(0, 15k, 25k)</cell><cell>2.78</cell><cell>2.78</cell><cell>&gt;24hrs</cell></row><row><cell></cell><cell>(10k, 5k, 0)</cell><cell>2.96</cell><cell>2.96</cell><cell>&gt;24hrs</cell></row><row><cell></cell><cell>(20k, 10k, 0)</cell><cell>2.68</cell><cell>2.68</cell><cell>&gt;24hrs</cell></row><row><cell></cell><cell>(25k, 15k, 0)</cell><cell>2.48</cell><cell>2.48</cell><cell>&gt;24hrs</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D Dataset Results</head><p>In this section, we include all of the results for each experiment conducted on the generalization methods and EMD calculations. Results from Tables 9, 10, 11, and 12 were used for the calculations demonstrated in Figure <ref type="figure">6</ref>. Figure <ref type="figure">4</ref> was constructed from results within Table <ref type="table">13</ref>.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">The link prediction problem for social networks</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Liben</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">-</forename><surname>Nowell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jon</forename><surname>Kleinberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the twelfth international conference on Information and knowledge management</title>
+		<meeting>the twelfth international conference on Information and knowledge management</meeting>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+			<biblScope unit="page" from="556" to="559" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Graph neural networks for social recommendation</title>
+		<author>
+			<persName><forename type="first">Wenqi</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qing</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dawei</forename><surname>Yin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The world wide web conference</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="417" to="426" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Learning entity and relation embeddings for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Yankai</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuan</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI conference on artificial intelligence</title>
+		<meeting>the AAAI conference on artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">29</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Network-based prediction of protein interactions</title>
+		<author>
+			<persName><forename type="first">Katja</forename><surname>István A Kovács</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kerstin</forename><surname>Luck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Spirohn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carl</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sadie</forename><surname>Pollis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenting</forename><surname>Schlabach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dae-Kyum</forename><surname>Bian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nishka</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>Kishore</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nature communications</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">1240</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Application of network link prediction in drug discovery</title>
+		<author>
+			<persName><forename type="first">Khushnood</forename><surname>Abbas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alireza</forename><surname>Abbasi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shi</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ling</forename><surname>Niu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laihang</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bolun</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Shi-Min</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qambar</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hasan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">BMC bioinformatics</title>
+		<imprint>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="page" from="1" to="21" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Clustering and preferential attachment in growing networks</title>
+		<author>
+			<persName><surname>Mark Ej Newman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Physical review E</title>
+		<imprint>
+			<biblScope unit="volume">64</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page">25102</biblScope>
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Predicting missing links via local information</title>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Linyuan</forename><surname>Lü</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi-Cheng</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The European Physical Journal B</title>
+		<imprint>
+			<biblScope unit="volume">71</biblScope>
+			<biblScope unit="page" from="623" to="630" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Friends and neighbors on the web</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lada</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eytan</forename><surname>Adamic</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Adar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Social networks</title>
+		<imprint>
+			<biblScope unit="volume">25</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="211" to="230" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Variational graph auto-encoders</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1611.07308</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Link prediction based on graph neural networks</title>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixin</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page">31</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Labeling trick: A theory of using graph neural networks for multi-node representation learning</title>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinglong</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Long</forename><surname>Jin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="9061" to="9073" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">On the equivalence between positional node embeddings and structural graph representations</title>
+		<author>
+			<persName><forename type="first">Balasubramaniam</forename><surname>Srinivasan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bruno</forename><surname>Ribeiro</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Lpformer: An adaptive graph transformer for link prediction</title>
+		<author>
+			<persName><forename type="first">Harry</forename><surname>Shomer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haitao</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juanhui</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Graph neural networks for link prediction with subgraph sketching</title>
+		<author>
+			<persName><forename type="first">Benjamin</forename><surname>Paul Chamberlain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Shirobokov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emanuele</forename><surname>Rossi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabrizio</forename><surname>Frasca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Markovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nils</forename><surname>Hammerla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Michael M Bronstein</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hansmire</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2209.15486</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Neural common neighbor with completion for link prediction</title>
+		<author>
+			<persName><forename type="first">Xiyuan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haotong</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Twelfth International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Open graph benchmark: Datasets for machine learning on graphs</title>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marinka</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michele</forename><surname>Catasta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="22118" to="22133" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">A fine-grained analysis on distribution shift</title>
+		<author>
+			<persName><forename type="first">Olivia</forename><surname>Wiles</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sven</forename><surname>Gowal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Florian</forename><surname>Stimberg</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sylvestre-Alvise</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ira</forename><surname>Rebuffi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Krishnamurthy</forename><surname>Ktena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Dvijotham</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Cemgil</surname></persName>
+		</author>
+		<idno>ArXiv, abs/2110.11328</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Wild-time: A benchmark of in-the-wild distribution shift over time</title>
+		<author>
+			<persName><forename type="first">Huaxiu</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Caroline</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bochuan</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoonho</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pang</forename><surname>Wei W Koh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chelsea</forename><surname>Finn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Koyejo</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Mohamed</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Agarwal</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">D</forename><surname>Belgrave</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Cho</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Oh</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="10309" to="10324" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Improving out-of-distribution robustness via selective augmentation</title>
+		<author>
+			<persName><forename type="first">Huaxiu</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sai</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Linjun</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weixin</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Zou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chelsea</forename><surname>Finn</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 39th International Conference on Machine Learning</title>
+		<editor>
+			<persName><forename type="first">Kamalika</forename><surname>Chaudhuri</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Stefanie</forename><surname>Jegelka</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Le</forename><surname>Song</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Csaba</forename><surname>Szepesvari</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Gang</forename><surname>Niu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sivan</forename><surname>Sabato</surname></persName>
+		</editor>
+		<meeting>the 39th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2022-07">Jul 2022</date>
+			<biblScope unit="volume">162</biblScope>
+			<biblScope unit="page" from="17" to="23" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Size-invariant graph representations for graph classification extrapolations</title>
+		<author>
+			<persName><forename type="first">Beatrice</forename><surname>Bevilacqua</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yangze</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bruno</forename><surname>Ribeiro</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="837" to="851" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Out-of-distribution generalization on graphs: A survey</title>
+		<author>
+			<persName><forename type="first">Haoyang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ziwei</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenwu</forename><surname>Zhu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2202.07987</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Ood link prediction generalization capabilities of message-passing gnns in larger test graphs</title>
+		<author>
+			<persName><forename type="first">Yangze</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gitta</forename><surname>Kutyniok</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bruno</forename><surname>Ribeiro</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="20257" to="20272" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">A closer look at distribution shifts and out-of-distribution generalization on graphs</title>
+		<author>
+			<persName><forename type="first">Mucong</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kezhi</forename><surname>Kong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiuhai</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Kirchenbauer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Micah</forename><surname>Goldblum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Wipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Furong</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Goldstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS 2021 Workshop on Distribution Shifts: Connecting Methods and Applications</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">Empowering graph representation learning with test-time graph transformation</title>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiayuan</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yozen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neil</forename><surname>Shah</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2210.03561</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Alleviating structural distribution shift in graph anomaly detection</title>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiangnan</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhenguang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huamin</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yongdong</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Sixteenth ACM International Conference on Web Search and Data Mining</title>
+		<meeting>the Sixteenth ACM International Conference on Web Search and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="357" to="365" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Graph out-of-distribution generalization via causal intervention</title>
+		<author>
+			<persName><forename type="first">Qitian</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fan</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenxiao</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyi</forename><surname>Bao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junchi</forename><surname>Yan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the ACM on Web Conference 2024</title>
+		<meeting>the ACM on Web Conference 2024</meeting>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+			<biblScope unit="page" from="850" to="860" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">A data-centric framework to endow graph neural networks with out-of-distribution detection ability</title>
+		<author>
+			<persName><forename type="first">Yuxin</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cheng</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuluo</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jixi</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chuan</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junping</forename><surname>Du</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining</title>
+		<meeting>the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="638" to="648" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Energy-based out-of-distribution detection for graph neural networks</title>
+		<author>
+			<persName><forename type="first">Qitian</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yiting</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenxiao</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junchi</forename><surname>Yan</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2302.02914</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Unleashing the power of graph data augmentation on covariate distribution shift</title>
+		<author>
+			<persName><forename type="first">Yongduo</forename><surname>Sui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qitian</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiancan</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qing</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Longfei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiangnan</forename><surname>He</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">36</biblScope>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Fakeedge: Alleviate dataset shift in link prediction</title>
+		<author>
+			<persName><forename type="first">Kaiwen</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yijun</forename><surname>Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhichun</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nitesh</forename><surname>Chawla</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Learning on Graphs Conference</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="56" to="57" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Learning from counterfactual links for link prediction</title>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daheng</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenhao</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Jiang</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="26911" to="26926" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Dynamic graph neural networks under spatio-temporal distribution shift</title>
+		<author>
+			<persName><forename type="first">Zeyang</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ziwei</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haoyang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhou</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenwu</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="6074" to="6089" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">Edge proposal sets for link prediction</title>
+		<author>
+			<persName><forename type="first">Abhay</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qian</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Linda</forename><surname>Sijia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Omkar</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Horace</forename><surname>Bhalerao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ser-Nam</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Austin</forename><forename type="middle">R</forename><surname>Lim</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Benson</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2106.15810</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title level="m" type="main">A topological perspective on demystifying gnn-based link prediction performance</title>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuying</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunchao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xueqi</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neil</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tyler</forename><surname>Derr</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2310.04612</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<monogr>
+		<title level="m" type="main">Demystifying structural disparity in graph neural networks: Can one size fit all? Advances in Neural Information Processing Systems</title>
+		<author>
+			<persName><forename type="first">Haitao</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhikai</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haoyu</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neil</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+			<biblScope unit="volume">36</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Evaluating graph neural networks for link prediction: Current pitfalls and new benchmarking</title>
+		<author>
+			<persName><forename type="first">Juanhui</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harry</forename><surname>Shomer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haitao</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shenglai</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neil</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dawei</forename><surname>Yin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">36</biblScope>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Pitfalls in link prediction with graph neural networks: Understanding the impact of target-link inclusion &amp; better practices</title>
+		<author>
+			<persName><forename type="first">Jing</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuhang</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Vassilis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shengyi</forename><surname>Ioannidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Qian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Ai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danai</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Koutra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 17th ACM International Conference on Web Search and Data Mining</title>
+		<meeting>the 17th ACM International Conference on Web Search and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+			<biblScope unit="page" from="994" to="1002" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Pooling architecture search for graph classification</title>
+		<author>
+			<persName><forename type="first">Lanning</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huan</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quanming</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiqiang</forename><surname>He</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 30th ACM International Conference on Information and Knowledge Management, CIKM &apos;21</title>
+		<meeting>the 30th ACM International Conference on Information and Knowledge Management, CIKM &apos;21</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2021-10">October 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">Large-scale robust deep auc maximization: A new surrogate loss and empirical studies on medical image classification</title>
+		<author>
+			<persName><forename type="first">Zhuoning</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yan</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Milan</forename><surname>Sonka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianbao</forename><surname>Yang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<title level="m" type="main">Label deconvolution for node representation learning on large-scale attributed graphs against learning bias</title>
+		<author>
+			<persName><forename type="first">Zhihao</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fanghua</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanzhu</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Defu</forename><surname>Lian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jieping</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Feng</forename><surname>Wu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2309.14907</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<monogr>
+		<title level="m" type="main">Learning on large-scale text-attributed graphs via variational inference</title>
+		<author>
+			<persName><forename type="first">Jianan</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chaozhuo</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qian</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xing</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Neural bellman-ford networks: A general graph neural network framework for link prediction</title>
+		<author>
+			<persName><forename type="first">Zhaocheng</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zuobai</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Louis-Pascal</forename><surname>Xhonneux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="29476" to="29490" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Neo-gnns: Neighborhood overlap-aware graph neural networks for link prediction</title>
+		<author>
+			<persName><forename type="first">Seongjun</forename><surname>Yun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seoyoon</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junhyun</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jaewoo</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hyunwoo J</forename><surname>Kim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="13683" to="13694" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Dropedge: Towards deep graph convolutional networks on node classification</title>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Rong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenbing</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tingyang</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junzhou</forename><surname>Huang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<monogr>
+		<author>
+			<persName><forename type="first">Haitao</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juanhui</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harry</forename><surname>Shomer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bingheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenqi</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neil</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2310.00793</idno>
+		<title level="m">Revisiting link prediction: A data perspective</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Emergence of scaling in random networks</title>
+		<author>
+			<persName><forename type="first">Albert-László</forename><surname>Barabási</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Réka</forename><surname>Albert</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Science</title>
+		<imprint>
+			<biblScope unit="volume">286</biblScope>
+			<biblScope unit="issue">5439</biblScope>
+			<biblScope unit="page" from="509" to="512" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<monogr>
+		<title level="m" type="main">Artificial Intelligence: A Modern Approach</title>
+		<author>
+			<persName><forename type="first">Stuart</forename><surname>Russell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Norvig</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<publisher>Prentice Hall Press</publisher>
+			<pubPlace>USA</pubPlace>
+		</imprint>
+	</monogr>
+	<note>3rd edition</note>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">The paradox of second-order homophily in networks</title>
+		<author>
+			<persName><forename type="first">Anna</forename><surname>Evtushenko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jon</forename><surname>Kleinberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Scientific Reports</title>
+		<imprint>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">13360</biblScope>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<monogr>
+		<title level="m" type="main">Micromotives and macrobehavior ww norton &amp; company</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Schelling</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1978">1978</date>
+			<pubPlace>New York, NY</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Threshold models of collective behavior</title>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Granovetter</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American journal of sociology</title>
+		<imprint>
+			<biblScope unit="volume">83</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="1420" to="1443" />
+			<date type="published" when="1978">1978</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Statistical mechanics of complex networks</title>
+		<author>
+			<persName><forename type="first">Réka</forename><surname>Albert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Albert-László</forename><surname>Barabási</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Reviews of Modern Physics</title>
+		<imprint>
+			<biblScope unit="volume">74</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="47" to="97" />
+			<date type="published" when="2002-01">January 2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">A metric for distributions with applications to image databases</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Rubner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Tomasi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">J</forename><surname>Guibas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Sixth International Conference on Computer Vision</title>
+		<imprint>
+			<publisher>IEEE Cat</publisher>
+			<date type="published" when="1998">1998</date>
+			<biblScope unit="page" from="59" to="66" />
+		</imprint>
+	</monogr>
+	<note>98CH36271)</note>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Ood-gnn: Out-of-distribution generalized graph neural network</title>
+		<author>
+			<persName><forename type="first">Haoyang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ziwei</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenwu</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Knowledge and Data Engineering</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Model agnostic sample reweighting for out-of-distribution learning</title>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yong</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Renjie</forename><surname>Pi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weizhong</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Renzhe</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="27203" to="27221" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Rethinking importance weighting for deep learning under distribution shift</title>
+		<author>
+			<persName><forename type="first">Tongtong</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nan</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gang</forename><surname>Niu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Masashi</forename><surname>Sugiyama</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="11996" to="12007" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

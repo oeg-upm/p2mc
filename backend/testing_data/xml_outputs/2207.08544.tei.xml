@@ -1,0 +1,588 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Hardware-agnostic Computation for Large-scale Knowledge Graph Embeddings</title>
+				<funder ref="#_D44h6Y2">
+					<orgName type="full">German Federal Ministry for Economic Affairs and Energy (BMWi)</orgName>
+				</funder>
+				<funder ref="#_ADvgmHD">
+					<orgName type="full">German Federal Ministry of Education and Research (BMBF)</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2022-07-18">18 Jul 2022</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Caglar</forename><surname>Demir</surname></persName>
+							<email>caglardemir8@gmail.com</email>
+							<affiliation key="aff0">
+								<orgName type="department">Data Science Group</orgName>
+								<orgName type="institution">Paderborn University</orgName>
+								<address>
+									<country key="DE">Germany</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Axel-Cyrille</forename><surname>Ngonga</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Data Science Group</orgName>
+								<orgName type="institution">Paderborn University</orgName>
+								<address>
+									<country key="DE">Germany</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Hardware-agnostic Computation for Large-scale Knowledge Graph Embeddings</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2022-07-18">18 Jul 2022</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">09077701C27EF04A23E3F57A9C9CA36D</idno>
+					<idno type="arXiv">arXiv:2207.08544v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:37+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>Knowledge Graph Embeddings</term>
+					<term>Hardware-agnostic Computation</term>
+					<term>Continual Training Code metadata Nr. Code metadata description</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Knowledge graph embedding research has mainly focused on learning continuous representations of knowledge graphs towards the link prediction problem. Recently developed frameworks can be effectively applied in research related applications. Yet, these frameworks do not fulfill many requirements of real-world applications. As the size of the knowledge graph grows, moving computation from a commodity computer to a cluster of computers in these frameworks becomes more challenging. Finding suitable hyperparameter settings w.r.t. time and computational budgets are left to practitioners. In addition, the continual learning aspect in knowledge graph embedding frameworks is often ignored, although continual learning plays an important role in many real-world (deep) learning-driven applications. Arguably, these limitations explain the lack of publicly available knowledge graph embedding models for large knowledge graphs. We developed a framework based on the frameworks DASK, Pytorch Lightning and Hugging Face to compute embeddings for large-scale knowledge graphs in a hardware-agnostic manner, which is able to address real-world challenges pertaining to the scale of real application. We provide an open-source version of our framework along with a hub of pre-trained models having more than 11.4 B parameters 2 .</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Knowledge Graphs (KGs) represent structured collections of facts <ref type="bibr" target="#b0">[1]</ref> and are being used in many challenging applications, including web search, question answering, and recommender systems <ref type="bibr" target="#b1">[2]</ref>. Despite their usefulness in many applications, most knowledge graphs are incomplete, i.e., contain missing links. The task of identifying missing links in knowledge graphs is referred to as link prediction. In the last decade, a plethora of Knowledge Graph Embedding (KGE) approaches have been successfully applied to tackle various tasks including the link prediction task <ref type="bibr" target="#b1">[2]</ref>. KGE models aim to learn continuous vector representations (embeddings) for entities and relations tailored towards the link prediction task.</p><p>Knowledge Graph Embeddings and Challenges: Let E and R represent the sets of entities and relations. A KG is often formalised as a set of triples G = {(h, r, t)} ⊆ E × R × E where each triple contains two entities h, t ∈ E and a relation r ∈ R <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b1">2]</ref>. Most KGE models are defined as a parametrized scoring function φ Θ : E ×R×E → R such that φ Θ (h, r, t) ideally signals the likelihood of (h, r, t) is true <ref type="bibr" target="#b1">[2]</ref>. In a simple setting, Θ contains an entity embedding matrix E ∈ R |E|×d and a relation embedding matrix R ∈ R |R|×d , where d stands for the embedding vector size. Given the triples (Barack, Married, Michelle) and (Michelle, HasChild, Malia) ∈ G, a good scoring function is expected to return high scores for (Barack, HasChild, Malia) and (Michelle, Married, Barack), while returning a considerably lower score for (Malia, HasChild, Barack). To compute a single score, embeddings of entities and relations are retrieved from E, R and trilinear d-dimension vector multiplication is performed, i.e., φ(Barack, HasChild, Malia) = Barack • HasChild • Malia (see <ref type="bibr" target="#b3">[4]</ref>).</p><p>As |G| increases, the total training time of learning good representations Θ increases. This magnifies the importance of effective parallelism. This is often realised as data parallelism which stores a copy of a KGE model in available CPUs or GPUs. Most available frameworks including KGE frameworks rely on this paradigm (see PyKEEN <ref type="bibr" target="#b4">[5]</ref> and libkge <ref type="bibr" target="#b5">[6]</ref>. A |G|, |E| and |R| grow, Θ often does not fit in a GPU. This limitation gives a rise to model parallelism and sharded training. Through FairScale <ref type="bibr" target="#b6">[7]</ref> or DeepSpeed techniques <ref type="bibr" target="#b7">[8]</ref> provided within Pytorch Lightning <ref type="bibr" target="#b8">[9]</ref>, our framework effectively partitions Θ into available CPUs and GPUs, instead of plain cloning. This allows to train gigantic models (&gt;11 B parameters). PyKEEN <ref type="bibr" target="#b4">[5]</ref> and libkge <ref type="bibr" target="#b5">[6]</ref> lack of the model parallelism feature among many other features such as the deployment service.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Description</head><p>Hardware-agnostic Computation: The core goal of our framework is to facilitate learning large-scale knowledge graph embeddings in an hardware-agnostic manner. Hence, practitioners can use our framework to learn embeddings of KG on commodity hardware as well as a cluster of computers without chaining a single line of code. We based our framework on Pytorch Lightning <ref type="bibr" target="#b8">[9]</ref> and DASK <ref type="bibr" target="#b9">[10]</ref>. Pytorch Lightning allows our framework to use multi-CPUs,-GPU and even -TPUs in an hardware-agnostic manner. This implies that many important decisions at finding a suitable configuration for the learning process can be made automatically, i.e., finding a batch size that optimally fits in to the memory, scaling to cluster of computers. We observe that most embedding frameworks rely on a single core while reading and preprocessing the input KG. As the size of KG grows, this design decision becomes an increasing hindrance to scalability and increases the total runtime. Moreover, the process of the reading, preprocessing, and indexing an input KG is often intransparent to practitioners. That means that as the size of KG grows, practitioners are not informed about the current stage of the total computation. Through a DASK dashboard, our framework shares details about all steps of computation with users. The DASK dashboard can be used to used to analyse the reading and preprocessing steps in a fine-grained manner when computation is moved from a commodity computer to cluster of computers. Finding suitable configuration: Our framework dynamically suggests a suitable configuration setting for a given dataset and available computational resources. This includes many features, e.g., finding most memory efficient integer data type for indexing, batch size, embedding vector size as well as learning rate for a given input configuration. Currently, we are working on forging our framework with Auto-Machine Learning techniques to facilitate the usage of framework by novice users. By this, we aim to share our expert knowledge with practitioners to that their computational and time budgets can be effectively utilized. Computational and time budgets of practitioners play an important role in real-world successful Machine Learning (ML) applications <ref type="bibr" target="#b10">[11]</ref>.</p><p>Continual Learning and Deployment: Our framework continues to assist practitioners after the embedding learning process. In many ML applications, the input data evolves with the time. Hence, continual learning plays an important role in successful applications of ML models <ref type="bibr" target="#b11">[12]</ref>. Yet, most KGE frameworks do not provide means for continual learning. To alleviate this issue, our framework can be used to train KGE models on non-static data. Moreover, practitioners can deploy their model in a web-application without writing a single line of code as in our github repostiory.</p><p>Extendability: The software design of our framework allows practitioners to solely focus on their novel ideas, instead of engineering. For instance, a new model can be implemented in our framework without an effort. Inheriting from BaseKGE class, a new embedding model can be readily included into our framework. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Summary of Initial Experimental Results:</head><p>We used the most recent DBpedia 2021 benchmark dataset 3 to evaluate our framework in depth. Our experiments suggest that a state-of-the-art KGE model with more than 11.4B parameters can be successfully trained and applied in link prediction, and relation prediction 4 . We refer to the project page for the details and log files about pretrained models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Software Impact</head><p>Our framework facilitates the use of KGE models on large KGs without requiring expert knowledge in software engineering. Hence, it helps practitioners to spend more time on generating value by using embedding models, instead of investing it into engineering for large-scale experiments.Our framework is now being deployed in real use cases within the funded research projects mentioned in the acknowledgements.</p><p>Limitations and future improvements: We plan to investigate (1) pseudo-labeling to leverage unlabelled data, (2) Auto-ML for the embedding model design, and (3) state-of-the-art continue learning techniques.</p><p>Scholarly Publications: Our framework have been effectively used to learn knowledge graphs embeddings in several published works <ref type="bibr" target="#b12">[13]</ref>, <ref type="bibr" target="#b2">[3]</ref>, <ref type="bibr" target="#b13">[14]</ref>, <ref type="bibr" target="#b3">[4]</ref>, <ref type="bibr" target="#b14">[15]</ref>, <ref type="bibr" target="#b15">[16]</ref>, and <ref type="bibr" target="#b16">[17]</ref>.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>Figure 1: Including an implementation of state-of-the-art Embedding model in our framework.</figDesc><table><row><cell>class ComplEx ( BaseKGE ) :</cell></row><row><cell>def __init__ ( self , args ) :</cell></row><row><cell>super () . __init__ ( args )</cell></row><row><cell>self . name = ' ComplEx '</cell></row><row><cell>def forward_tri pl es ( self , x : torch . Tensor ) -&gt; torch . Tensor :</cell></row><row><cell># ( 1 ) Retrieve Embedding Vectors</cell></row><row><cell>head_ent_emb , rel_ent_emb , tail_ent_emb = self . g e t _ t r i p l e _ r e p r e s e n t a t i o n( x )</cell></row><row><cell># ( 2 ) Split ( 1 ) into real and imaginary parts .</cell></row><row><cell>emb_head_real , emb_head_imag = torch . hsplit ( head_ent_emb , 2 )</cell></row><row><cell>emb_rel_real , emb_rel_imag = torch . hsplit ( rel_ent_emb , 2 )</cell></row><row><cell>emb_tail_real , emb_tail_imag = torch . hsplit ( tail_ent_emb , 2 )</cell></row><row><cell># ( 3 ) Compute Hermitian inner product .</cell></row><row><cell>real_real_re al = ( emb_head_real * emb_rel_real * emb_tail_real ) . sum ( dim = 1 )</cell></row><row><cell>real_imag_im ag = ( emb_head_real * emb_rel_imag * emb_tail_imag ) . sum ( dim = 1 )</cell></row><row><cell>imag_real_im ag = ( emb_head_imag * emb_rel_real * emb_tail_imag ) . sum ( dim = 1 )</cell></row><row><cell>imag_imag_re al = ( emb_head_imag * emb_rel_imag * emb_tail_real ) . sum ( dim = 1 )</cell></row><row><cell>return real_real_rea l + real_imag_im ag + imag_real_im ag -imag_imag_rea l</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>Corresponding Author</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>https://github.com/dice-group/dice-embeddings</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><p>Acknowledgements: This work has been supported by the <rs type="funder">German Federal Ministry of Education and Research (BMBF)</rs> within the project <rs type="projectName">DAIKIRI</rs> under the grant no <rs type="grantNumber">01IS19085B</rs> and by the the <rs type="funder">German Federal Ministry for Economic Affairs and Energy (BMWi)</rs> within the project <rs type="projectName">RAKI</rs> under the grant no <rs type="grantNumber">01MD19012B</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funded-project" xml:id="_ADvgmHD">
+					<idno type="grant-number">01IS19085B</idno>
+					<orgName type="project" subtype="full">DAIKIRI</orgName>
+				</org>
+				<org type="funded-project" xml:id="_D44h6Y2">
+					<idno type="grant-number">01MD19012B</idno>
+					<orgName type="project" subtype="full">RAKI</orgName>
+				</org>
+			</listOrg>
+
+			<div type="availability">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>C1 Current code version v3 C2 Permanent link to code/repository used for this code version https://github.com/dice-group/dice-embeddings C3 Permanent link to Reproducible Capsule https://codeocean.com/capsule/6862303/tree/v1 C4</p></div>
+			</div>
+
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hogan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Blomqvist</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Cochez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Amato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>De Melo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Gutierrez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">E L</forename><surname>Gayo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kirrane</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Neumaier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Polleres</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2003.02320</idno>
+		<title level="m">Knowledge graphs</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">A review of relational machine learning for knowledge graphs</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Gabrilovich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the IEEE</title>
+		<imprint>
+			<biblScope unit="volume">104</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="11" to="33" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<author>
+			<persName><forename type="first">C</forename><surname>Demir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A.-C</forename><forename type="middle">N</forename><surname>Ngomo</surname></persName>
+		</author>
+		<title level="m">Eighteenth Extended Semantic Web Conference -Research Track</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note>Convolutional complex knowledge graph embeddings</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Kronecker decomposition for knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Demir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lienen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A.-C. Ngonga</forename><surname>Ngomo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 33rd ACM Conference on Hypertext and Social Media, HT &apos;22</title>
+		<meeting>the 33rd ACM Conference on Hypertext and Social Media, HT &apos;22<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="1" to="10" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">PyKEEN 1.0: A Python Library for Training and Evaluating Knowledge Graph Embeddings</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ali</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Berrendorf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">T</forename><surname>Hoyt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Vermue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sharifzadeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lehmann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="issue">82</biblScope>
+			<biblScope unit="page" from="1" to="6" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<author>
+			<persName><forename type="first">S</forename><surname>Broscheit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kochsiek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Betz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gemulla</surname></persName>
+		</author>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="165" to="174" />
+		</imprint>
+	</monogr>
+	<note>LibKGE -A knowledge graph embedding library for reproducible research</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Fairscale: A general purpose modular pytorch library for high performance and large scale training</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Baines</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bhosale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Caggiano</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Lefaudeux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Liptchinsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rabbat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sheiffer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sridhar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Xu</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Deepspeed: System optimizations enable training deep learning models with over 100 billion parameters</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Rasley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rajbhandari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Ruwase</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>He</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining</title>
+		<meeting>the 26th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="3505" to="3506" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">Pytorch lightning, GitHub</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Falcon</surname></persName>
+		</author>
+		<ptr target="https://github.com/PyTorchLightning/pytorch-lightning3" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page">6</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Dask: Parallel computation with blocked algorithms and task scheduling</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rocklin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 14th Python in Science Conference</title>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Huff</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">J</forename><surname>Bergstra</surname></persName>
+		</editor>
+		<meeting>the 14th Python in Science Conference</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="130" to="136" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">The tradeoffs of large scale learning</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Bottou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Bousquet</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">20</biblScope>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<author>
+			<persName><forename type="first">T</forename><surname>Diethe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Borchert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Thereska</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Balle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Lawrence</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1903.05202</idno>
+		<title level="m">Continual learning in practice</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Convolutional hypercomplex embeddings for link prediction</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Demir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Moussallem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Heindorf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A.-C. Ngonga</forename><surname>Ngomo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of The 13th Asian Conference on Machine Learning</title>
+		<editor>
+			<persName><forename type="first">V</forename><forename type="middle">N</forename><surname>Balasubramanian</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">I</forename><surname>Tsang</surname></persName>
+		</editor>
+		<meeting>The 13th Asian Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">157</biblScope>
+			<biblScope unit="page" from="656" to="671" />
+		</imprint>
+	</monogr>
+	<note>Proceedings of Machine Learning Research</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">A shallow neural model for relation prediction</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Demir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Moussallem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A.-C</forename><forename type="middle">N</forename><surname>Ngomo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2021 IEEE 15th International Conference on Semantic Computing (ICSC)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="179" to="182" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Tab2onto: Unsupervised semantification with knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">M</forename><surname>Zahera</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Heindorf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Balke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Haupt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Voigt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Walter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Witter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A.-C. Ngonga</forename><surname>Ngomo</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<publisher>ESWC</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Learning concept lengths accelerates concept learning in alc</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Kouagou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Heindorf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Demir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A.-C</forename><forename type="middle">N</forename><surname>Ngomo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Nineteenth Extended Semantic Web Conference -Research Track</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">Evolearner: Learning description logics with evolutionary algorithms</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Heindorf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Blubaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Dusterhus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Werner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Golani Nandkumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Demir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A.-C. Ngonga</forename><surname>Ngomo</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<publisher>ACM</publisher>
+			<biblScope unit="page" from="818" to="828" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

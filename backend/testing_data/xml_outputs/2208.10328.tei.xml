@@ -1,0 +1,651 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Repurposing Knowledge Graph Embeddings for Triple Representation via Weak Supervision</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">St</forename><forename type="middle">Alexander</forename><surname>Kalinowski</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Information Science Drexel University Philadelphia</orgName>
+								<address>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+							<affiliation key="aff1">
+								<orgName type="department">Department of Information Science Drexel University Philadelphia</orgName>
+								<address>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Repurposing Knowledge Graph Embeddings for Triple Representation via Weak Supervision</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="MD5">F2C3226EEDCF5F39906A6DE645A4A3E0</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:38+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>triple embedding</term>
+					<term>knowledge graph embedding</term>
+					<term>weakly supervised learning</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>The majority of knowledge graph embedding techniques treat entities and predicates as separate embedding matrices, using aggregation functions to build a representation of the input triple. However, these aggregations are lossy, i.e. they do not capture the semantics of the original triples, such as information contained in the predicates. To combat these shortcomings, current methods learn triple embeddings from scratch without utilizing entity and predicate embeddings from pre-trained models. In this paper, we design a novel fine-tuning approach for learning triple embeddings by creating weak supervision signals from pre-trained knowledge graph embeddings. We develop a method for automatically sampling triples from a knowledge graph and estimating their pairwise similarities from pre-trained embedding models. These pairwise similarity scores are then fed to a Siamese-like neural architecture to fine-tune triple representations. We evaluate the proposed method on two widely studied knowledge graphs and show consistent improvement over other state-of-the-art triple embedding methods on triple classification and triple clustering tasks.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>Knowledge graphs (KG) are a paradigm for representing head entities (subjects), tail entities (objects) and the predicates between them ( h, p, t triples) and form a computational-basis for the Semantic Web. Due to their size and incompleteness, many approaches have been developed for compressed representations of KGs, with the majority of these approaches relying on low-dimensional vector representations, henceforth referred to as embeddings. These embeddings have been shown to be highly effective in link prediction and knowledge graph completion tasks. However, almost all methods encode entities and predicates in their own independent embedding vectors, requiring additional functions to combine the resulting vectors into a single 'triple' representation. Such 'triple' embeddings have applications in many downstream tasks, including relation extraction <ref type="bibr" target="#b0">[1]</ref> and e-commerce predictions <ref type="bibr" target="#b1">[2]</ref>.</p><p>Functions explored in the literature typically combine the head and tail entity representations for a composite 'triple' representation, with good performance on simple, homogeneous graphs. Knowledge graphs, on the other hand, are heterogeneous multi-graphs where each predicate edge is associated with a particular semantic label, thus causing issues with the traditional methods of aggregation for triple representation.</p><p>In a heterogeneous multi-graph, there may exist multiple different predicates between two entities. For example, a person, David Lynch, can play the role of both an actor and a director in a particular piece of work, in this case the television series Twin Peaks: "David Lynch"actor in -"Twin Peaks", and "David Lynch" -director of -"Twin Peaks". Triple representations that rely only on an aggregation of the embeddings of the head and tail entities miss the contextual information contained in the multitude of predicates. An alternate approach for encoding a triple is to include the embeddings of all three components of the triple. However, aggregations of all three components may offset the information encoded in the entity and predicate embeddings. For example, a main category of KG embedding approaches is translation-based models such as TransE <ref type="bibr" target="#b2">[3]</ref>. These models assume that predicates can be modelled as translations from the head entity to the tail entity, h + p ≈ t. When combining these representations into a triple, a simple mechanism would be to sum or average all component vectors that comprise the triple, i.e. e triple = h + p + t where e triple represents the embedding vector of the entire triple h, p, t . Clearly, this is problematic given the assumption that h + p ≈ t, substitution into the equation (I) would lead to a representation of the triple that is twice the embedding of the tail entity, i.e.</p><formula xml:id="formula_0">e triple = h + p + t ≈ t + t = 2t</formula><p>where the relational semantics of the triple, including any information about the predicate involved, are entirely lost.</p><p>To treat a knowledge graph triple as a first-class object and represent it as a single vector, Triple2vec <ref type="bibr" target="#b1">[2]</ref> learns triple embeddings completely from scratch, based on the idea of random walks on the line graph of the original graph. Building new triple representations from scratch ignores the information already captured in embedding algorithms designed for link prediction. In contrast, we believe that knowledge graph embedding methods still maintain their merits, yet require reworking to craft a triple representation. Rather than building these triple embeddings from scratch, we aim at re-usability and flexibility. Following suit with the works detailed in <ref type="bibr" target="#b3">[4]</ref>, we build a post-processing and fine-tuning technique to re-use knowledge graph embeddings, saving on computational cost, arXiv:2208.10328v1 [cs.CL] 22 Aug 2022 especially in the case where pre-trained models are readily available <ref type="bibr" target="#b4">[5]</ref>.</p><p>The key idea of our method is to learn triple embeddings by post-processing pre-trained entity and predicate embeddings in a weakly supervised manner. Our main inspiration comes from the ideas of semantic textual similarity <ref type="bibr" target="#b5">[6]</ref> and Siamese neural networks <ref type="bibr" target="#b6">[7]</ref>. Figure <ref type="figure">1</ref> illustrates the architecture of our system. The method consists of two main components (labeled as (B) and (C) in Figure <ref type="figure">1</ref>). In the first component (B), we propose a novel method for generating weak supervision signals by combining pre-trained entity and predicate embeddings (from (A)) in a semantic way. In the second component (C), we apply these signals to fine-tune triple embeddings composed by a Siamese-like deep neural network.</p><p>Following the pioneering work in Triple2vec <ref type="bibr" target="#b1">[2]</ref> on evaluating triple embeddings, we also used the tasks of triple classification and triple clustering and compared their approach to our new proposed methodology. When evaluated on two widely studied knowledge graphs, our method consistently surpasses all baselines.</p><p>The rest of the paper is organized as follows. Section II presents preliminaries and formalizes the problem. Section III describes the process of sampling triples and building pairwise triple similarity scores. Section IV presents the weakly supervised method for learning triple embeddings. Section V describes the evaluation settings and process. Section VI analyzes the evaluation results in comparison to baselines. Section VII discusses related work. Finally, Section VIII concludes the paper with ideas on future improvements.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. PROBLEM FORMULATION</head><p>A knowledge graph is a 3-tuple G = (E, P, T ), where E is a set of entities, P is a set of predicates, and T is a set of triples h, p, t connecting a head entity h ∈ E to a tail entity t ∈ E by a predicate p ∈ P as an edge. A knowledge graph embedding (KGE) method is function f e : E → R d which encodes entities v ∈ E as d-dimensional vectors e v ∈ R d and predicates r ∈ P as a scoring functions f r :</p><formula xml:id="formula_1">R d × R d → R.</formula><p>The PTSS triple embedding problem is to find a function g : T → R d such that g reuses the output of KGE functions to encode each triple as a d-dimensional vector. In this paper, we implement g via weak supervision signals from KGE similarity scores.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. BUILDING TRIPLE SIMILARITY SCORES</head><p>We begin by building weak supervision signals for learning triple embeddings. We seek signals corresponding to similarity measures between the triples that share a single element (somewhat similar), those that share multiple elements (more similar), and those that do not share any elements (not similar). Unfortunately, knowledge graph benchmark datasets (i.e. WordNet or FreeBase) do not have explicit measures of the similarity between two triples. Building these similarity scores could require subjective human labelling, usually accomplished through crowdsourcing, as is done with semantic textual similarity (STS) tasks <ref type="bibr" target="#b5">[6]</ref>. Rather than trust human judgment of these similarities, we build a scoring mechanism based on the low-dimensional, pre-trained embeddings of the entities and predicates that compose each triple.</p><p>Let G be a KG and f a corresponding KGE function. For triples h, p, t with h, t ∈ E and p ∈ P , the embeddings learned through f may already encode vector space notions of similarities between entities and predicates. For example, two entities sharing many properties and relationships will participate in many of the same triples, and we assume that their respective embeddings should exhibit these similarities. This assumption is highly dependent on the selection of the pre-trained embedding function f , and there exists a line of research into how much semantic information these embeddings actually encode <ref type="bibr" target="#b7">[8]</ref>. We can use these embeddings, henceforth referred to as seed embeddings, as a means to proxy pairwise triple similarity scores. Specifically, given two triples T a = h a , p a , t a and T b = h b , p b , t b in the knowledge graph, we define the pairwise triple similarity score (PTSS) between T a and T b as an average of the similarities between the embeddings of their head entities, tail entities, and predicates, respectively. Formally, P T SS(T a , T b ) = avg(sim(e ha , e h b ), sim(e pa , e p b ), sim(e ta , e t b )), where e ha is the embedding vector of the head entity h a and so on, avg(x, y, z) computes an average of its arguments, and the function sim(e 1 , e 2 ) is a function for computing the similarities of two embeddings. The similarity function sim(e 1 , e 2 ) could be an arbitrary function capturing the geometric structures in KG embedding spaces. In our work, we choose cosine similarity and arithmetic mean, leaving the evaluation of more general functions to future work. Our evaluation demonstrates that these simple functions generate useful weak supervision signals.</p><p>For the proposed weakly supervised training, we extract from the knowledge graph a set of training examples containing both "positive" and "negative" examples. For a triple T a = h a , p a , t a , we define positive training examples as a set of potential candidate matches. In particular, triple T a is composed of three elements, or three potential 'slots' to match on: the head, the tail and the predicate. For each 'slot' we identify candidate matches as follows. Select N other triples with the same head entity, N other triples with the same tail entity, N other triples with the same predicate. For negative examples, we select N other triples with no commonalities in any available slot. In instances where the set of candidate matches has cardinality less than N , we add the entire set to be scored. Thus, for each triple in the graph, we build a set of at most 4N triples to compare and contrast with.</p><p>These scores and training examples can then be utilized as an input to a fine-tuning process to convert the lowdimensional representations of entities and predicates into low-dimensional representations of the composite triple. For any arbitrary knowledge graph, we can build these similarity estimates in an automated way given that we specify an initial embedding function f , a similarity function sim(e 1 , e 2 ), an Fig. <ref type="figure">1</ref>. The architecture of the weakly supervised learning system for triple embeddings. (A) The input of the system consists of a knowledge graph and its pre-trained entity and predicate embeddings. (B) A sampling method automatically draws pairs of triples for generating pairwise triple similarity scores (PTSS). (C) A Siamiese-like neural network takes a pair of triples and composes an initial triple embedding using the constituent embeddings. Initial embeddings are forward propagated through the network with the resulting outputs scored by a similarity function. Error between this score and the PTSS is used to refine the parameters of the entire network. (D) After training, the system is able to generate embeddings for all triples.</p><p>averaging function avg(x, y, z), and a sampling parameter N . We note that these scores are not meant to be gold standard labels; instead, they are utilized as weak supervision signals to bootstrap the triple similarity training process.</p><p>IV. LEARNING TRIPLE EMBEDDINGS For learning triple embeddings, we define a Siamese-like neural network that takes two triples as input and initializes values at an embedding layer. The network subsequently forward propagates the values at the embedding layer through a series of encoding (ENC) layers. The final layer is a scoring (SCO) layer where the network computes the cosine similarity of the representations. This score is then compared to the estimated pairwise similarity scores (PTSS) defined in the previous section, with the errors back-propagated through the network. To update the triple embeddings, we make the embedding layer tunable and use the final values as the triple embeddings. In many neural network approaches, embedding layers are typically initialized randomly or following the Xavier normalization scheme <ref type="bibr" target="#b8">[9]</ref>. In our approach, we are leveraging pre-trained knowledge graph embeddings, and thus use this information as a starting point for the initialization of this layer. We experiment with five aggregation methods for combining the embeddings of the head and tail entities into a triple representation. Four of these aggregation methods are utilized in <ref type="bibr" target="#b9">[10]</ref>; here, we introduce a fifth: the concatenation of the head and tail vectors. These choices are outlined in Table <ref type="table">I</ref>. We investigate the impacts of these aggregation functions to the learned triple embeddings in conjunction with the selected underlying KGE methods. The results provide insights for adopting or generalizing our methods in future applications.</p><p>Formally, an encoding (ENC) and scoring (SCO) layer of the network is defined as</p><formula xml:id="formula_2">o a = σ(W 1 (e Ta ) + b 1 ) o b = σ(W 1 (e T b ) + b 1 ) ŝ = cos(o a , o b ) L = M SE(s a,b , ŝ)</formula><p>where e Ta and e T b are embeddings of two triples T a and T b , W 1 is a shared dense linear layer, b 1 the bias of that layer, and σ a non-linearity, in this case hyperbolic tangent. </p><formula xml:id="formula_3">[f (u) f (v)] i = f i (u)+f i (v) 2 Hadamard (HAD) [f (u) f (v)] i = f i (u) * f i (v) Weighted-L1 (L1) |f i (u) -f i (v)| Weighted-L2 (L2) |f i (u) -f i (v)| 2 Concatenation (HT) [f (u) f (v)] i = f i (u) f i (v) Notes:</formula><p>' * ' denotes element-wise product operation. ' ' denotes vector concatenation operation.</p><p>The outputs o 1 and o 2 are then compared using cosine similarity to produce a final estimate of the similarity between the two inputs, ŝ. The loss is defined as the mean squared error between the computed similarity ŝ and the estimated pairwise triple similarity score s a,b = P T SS(T a , T b ) defined in Section III. For our experiments, we use a single encoding and scoring layer (ENC-SCO layer) to measure the efficacy of the weakly supervised approach. We note that many of these layers could be stacked to arbitrary depth. Our evaluation shows that a single layer can lead to significant improvements over the baselines and aligns with our goal of re-usability in compute-restricted environments. We leave the evaluation of more complex network structures for future applications.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>V. EVALUATION</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Data Sets Selection</head><p>In line with Triple2vec <ref type="bibr" target="#b1">[2]</ref>, we construct two tasks, triple classification and triple clustering, to evaluate our learned embeddings. However, we deviate from their work in selection of our benchmark datasets and utilize two wellestablished knowledge graphs, WordNet (WN18RR) and Freebase (FB15K-237). Summary statistics for both datasets are presented in Table <ref type="table">II</ref>. These benchmark datasets were selected for two reasons. First, FB15K-237 and WN18RR are utilized as a benchmark for all of the seed knowledge graph embedding methods we tested. The frequency of usage in the research community also allows us to take advantage of publicly available, pre-trained models, such as those found in LibKGE <ref type="bibr" target="#b4">[5]</ref>. Secondly, these graphs are complex in nature, making our evaluation more reflective of knowledge graphs that occur in practice.</p><p>Important to our discussion is the underlying topology of these graphs. We note that neither graph is connected, meaning that a random walker on each graph may fail to find a path between two arbitrarily selected nodes. Furthermore, the distributions of strongly and weakly connected components are very different. WN18RR presents itself as a denser graph: more strongly and weakly connected components as compared to FB15K-237, which is sparser and has only six weakly connected components. The differences in the graph topologies are an important factor for us to consider in the analysis of our results, especially in comparison to the Triple2vec approach which is dependent on random walks over the graph. Of particular interest to our approach is the number of triples that contain multiple predicates between the head and tail entities. In WN18RR, this occurs very infrequently; the overwhelming majority of triples contain a single predicate. On the other hand, 16% of triples found in FB15K-237 contain more than one predicate. From this difference, we would expect our approach to have a greater impact on triple classification metrics when applied to FB15K-237 over WN18RR.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Triple Classification Task</head><p>To test the efficacy of our proposed model, we probe the resulting triple embeddings for their ability to predict their respective predicate labels. Following the work of <ref type="bibr" target="#b10">[11]</ref> and <ref type="bibr" target="#b1">[2]</ref>, we perform this classification using both a low-capacity and high-capacity model. For our low-capacity model, we employ one-vs-rest logistic regression, providing the model with triple representations as features and the predicate indices as labels. For the high-capacity model, we replace the logistic regression with a multi-layer perceptron with 512 hidden nodes, trained with the Adam optimizer and batch size of 256 for a total of 10 epochs. In each case, we split the triples into training and test sets, with the training set comprising of 80% of the total triples with the remaining 20% for testing, repeated using five non-overlapping folds. Both models are then evaluated on their respective Micro-F1 scores.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Triple Clustering Task</head><p>Motivated by work on word embedding regularities <ref type="bibr" target="#b11">[12]</ref>, we wish to probe the triple embedding spaces generated in our experiments to measure the degree to which they exhibit an underlying structure. Our hypothesis is that embedding techniques that exhibit higher degrees of clusterability are able to capture more of the semantics expressed in the input triples. To formalize this notion, we introduce a definition of clusterability <ref type="bibr" target="#b12">[13]</ref>. For some dataset X ⊆ R n , a description of the clusterability of X is a function c : X → v where v ∈ R is a real value. Here, v is a measure of how strong a clustering presence is in the underlying set X. As t-SNE plots, such as those in the clustering evaluation of <ref type="bibr" target="#b1">[2]</ref>, can be difficult to tune and interpret <ref type="bibr" target="#b13">[14]</ref>, we choose to evaluate clusterability via a metric, although code for generating these plots is included in our open source implementation. Our process for measuring embedding space clusterability is as follows. For each triple embedding space, we apply k-means clustering, selecting k to be the number of known predicates in the graph. To measure the quality of these clusters, we select the Calinski-Harabasz (CH) index <ref type="bibr" target="#b14">[15]</ref>, which is the ratio of between cluster dispersion to within cluster dispersion. Mathematically, this score is computed as</p><formula xml:id="formula_4">v = Tr(B k ) Tr(W k ) × n T -k k -1 ,</formula><p>where n T is the number of triples, k the number of clusters, Tr(B k ) the trace of the between cluster dispersion matrix and Tr(W k ) the trace of the within cluster dispersion matrix. Higher values of the CH metric indicate a better fit of the kmeans partitioning. This metric has an added benefit in that it tends to be inflated for convex clusters; we hypothesize convex structures will allow for well-defined areas corresponding to the predicates we seek to predict.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Experimental Design</head><p>We choose several popular knowledge graph embedding models for seed embeddings, including TransE, DistMult, RESCAL, ConvE, RotatE and ComplEx (See Section VII for more details). We leverage the open source LibKGE package and associated pre-trained models <ref type="bibr" target="#b4">[5]</ref> for their implementations. These pre-trained models have undergone extensive hyperparameter tuning to achieve the highest link prediction accuracies. For comparison with Triple2vec, we use an implementation provided by the authors <ref type="bibr" target="#b1">[2]</ref>, extended to our benchmark knowledge graphs and trained for 30 epochs. To minimize the impact of the choice of embedding dimensionality on the triple classification task, we train Triple2vec with dimension matching the dimension of pre-trained models from our approach and set the hyperparameter for the number of walks to be 10.</p><p>For all of our experiments, we set the PTSS hyperparameter N to be 5, selected randomly from the set of all candidate matches, although we note that this hyperparameter deserves further investigation and tuning to measure its full effect. We depend on the embedding dimension of each pre-trained knowledge graph model to be the input dimension of each triple embedding space. For the remainder of model training, we set the batch size to 128, optimize using Adam with an initial learning rate of 2e-3 and warm up each model using 10 percent of the training data.</p><formula xml:id="formula_5">( F B 1 5 K , C o m p l E x ) ( F B 1 5 K , C o n v E ) ( F B 1 5 K , D i s t M u l t ) ( F B 1 5 K , R E S C A L ) ( F B 1 5 K , R o t a t E ) ( F B 1 5 K , T r a n s E )</formula><p>( F B 1 5 K , T r i p l e 2 v e c ) </p><formula xml:id="formula_6">( W N 1 8 R R , C o m p l E x ) ( W N 1 8 R R , C o n v E ) ( W N 1 8 R R , D i s t M u l t ) ( W N 1 8 R R , R E S C A L ) ( W N 1 8 R R , R o t a t E ) ( W N 1 8 R R , T</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Implementation and Baselines</head><p>We dub our proposed method as PTSS in the evaluation. The source code implementation is available here 1 . The baselines to which we compare our method are (1) the state-of-the-art triple embeddings method, Triple2vec <ref type="bibr" target="#b1">[2]</ref> and (2) aggregated pre-trained KG embeddings by applying the operators in Table <ref type="table">I</ref> without our PTSS fine-tuning.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VI. ANALYSIS OF RESULTS</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Comparison of Triple2vec and PTSS</head><p>Overall, we find that the vectors generated by PTSS serve as better features for triple classification than those generated from Triple2vec. Figure <ref type="figure" target="#fig_0">2</ref> show the comparison of Micro-F1 scores between Triple2vec and the best performing model and aggregation combinations from our PTSS approach. On WN18RR, our low-capacity models perform better than, but on par with, the results of Triple2vec, while our triple vectors serve as better features for the high-capacity classifier. The best model, a combination of TransE seed vectors and weighted-L2 aggregation, has F1 score of 0.6723, while Triple2vec representations with equal dimension only achieves F1 score of 0.4008. The performance gains are even more dramatic on FB15K-237. Our best model (RotatE seed vectors with aggregation by concatenation) achieves F1 score of 0.7949 while the best Triple2vec representation of equal dimension only reaches 0.059. The rationale for such a gap in performance on FB15K-237 comes from the topology of the graph; fewer connected components and lower degree means random walks are more likely to reach dead ends. Triple2vec was inherently designed to take advantage of these random walkers; hence, when the graph is less densely connected, fewer pieces of information are available for their approach to learn from. Our approach is not dependent on random walks and is invariant to the underlying graphs topology. In comparison to Triple2vec, we 1 https://github.com/yur7nd/ptss also note that our approach is more computationally efficient. Building the line graph G L from the input knowledge graph G can be burdensome, with a cost of O(|T | 2 + costW eight), where costW eight is a factor for computing edge weights (see VII-C). In comparison, building the PTSS dataset can be accomplished in O(4N × |T |) where N |T |.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Assessing the Aggregation Operator</head><p>We analyze the impact of the aggregation operations on the triple classification performance. We find that there is no clear aggregation function that consistently outperforms all others. For WN18RR, two models showed best performance using the Hadamard product (ComplEx and ConvE), two models with top performance using weighted-L1 (DistMult and TransE), while RESCAL and RotatE performed best with the concatenation and average operators, respectively. On FB15K-237, ComplEx and DistMult performed best with the Hadamard product, ConvE and RESCAL with weighted-L2 and RotatE and TransE with the concatenation operator. These results are counter to our intuition; our expectation, aligned with results of other lines of research <ref type="bibr" target="#b9">[10]</ref>, was that Hadamard product would consistently outperform all other operators. It was interesting to note that the performance of these operators with respect to the selected embedding model was also inconsistent across datasets. Only the ComplEx model showed best performance when combined with the Hadamard product for both datasets. We also note that while simple, the concatenation method does yield positive results for three of our tests: in conjunction with RESCAL on WN18RR and with RotatE and TransE on FB15K-237. We expected this simple concatenation to benefit from a performance boost due to the extra triple feature dimensionality (twice that of all other approaches due to the nature of vector concatenation), yet we do not see a consistent boost across the board. This is further explained by the correlation of triple feature dimensionality with model performance, which has a neutral correlation of 0.143. Given the lack of concrete evidence suggesting that any aggregation operator is superior, we recommend treating this choice as a hyperparameter to be tuned when applying our methodology to novel knowledge graphs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Quality of Input Embeddings</head><p>We compare the quality of the input seed embeddings to the results of the triple classification task. As the input embeddings are all trained for the link prediction task, we present their reported MRR, Hits@1, Hits@3 and Hits@10 from <ref type="bibr" target="#b4">[5]</ref> and assess the correlation of these metrics with our reported Micro-F1 scores on triple classification. Actual performance metrics from <ref type="bibr" target="#b4">[5]</ref> are reproduced with the best triple classification Micro-F1 scores in Tables <ref type="table">III</ref> and<ref type="table" target="#tab_5">IV</ref>.</p><p>We find little evidence of consistent, strong positive correlations between performance on the link prediction task and performance on the triple classification task (ρ = -0.6377 and ρ = 0.4285 for FB15K-237 and WN18RR, respectively). It is important to note that the best performance on the link prediction task does not imply best performance on  triple classification. Our architecture is not merely a passthrough mechanism-we are able to add semantics back to triple representations that were previously lost in the pretrained embedding models. It is also interesting to note that poor performing models on the link prediction task can still be re-purposed to yield strong triple embeddings. On WN18RR, the TransE approach has the worst performance for link prediction, but produces entity and predicate embeddings that can be best used for the pairwise triple similarity scoring required by our model. For the more complex data in FB15K-237, increasing the complexity of the pre-trained embeddings does help performance on the triple classification task-more complicated models such as RotatE and ConvE are able to achieve superior performance. As with the impact of the aggregation operator, the choice of which model used to seed the entity and predicate embeddings entirely depends on the underlying dataset; there is no silver bullet that always achieves superior performance. The inability to find a clear, consistent winner across all our experiments further highlights an important feature of our approach: flexibility. Our methodology is general enough to be adapted to different aggregation operators and sets of pretrained embeddings, all dependent on the complexity of the knowledge graph being investigated.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Ablation of PTSS</head><p>In addition to measuring the impact of the seed embeddings, we also analyze the lift in Micro-F1 our method provides over simply using the initialized vectors as features in the triple classification task. We restrict the triple classification task to include only triples with multiple predicates between the head and the tail. This allows us to asses the impact our architecture has on the problem area identified in Section I, namely, the missing predicate information when aggregating the head and tail representations. These metrics are shown in Figure <ref type="figure" target="#fig_1">3</ref>.</p><p>In every case, we see a lift in triple classification Micro-F1 on triples with multiple predicates when using our approach. As suspected, this increase is greater on FB15K-237, where 20% of the graph features such triples. Even on WN18RR, where the multi-predicate issue is less prevalent, we still see higher-quality triple embedding vectors generated from the PTSS approach. For FB15K-237, the two best performing models are generated from using ConvE and RotatE as seed vectors, indicating that these seed approaches may have increased capacity for encoding multi-predicate information into the head and tail embeddings due to their more complex architectures and scoring functions. This concurs with our findings in the ablation of PTSS, where ConvE and RotatE as seed embeddings to our approach outperformed their respective pretrained models.</p><formula xml:id="formula_7">( F B 1 5 K , C o m p l E x ) ( F B 1 5 K , C o n v E ) ( F B 1 5 K , D i s t M u l t ) ( F B 1 5 K , R E S C A L ) ( F B 1 5 K , R o t a t E ) ( F B 1 5 K , T r a n s E ) ( W N 1 8 R R , C o m p l E x ) ( W N 1 8 R R , C o n v E ) ( W N 1 8 R R , D i s t M u l t ) ( W N 1 8 R R , R E S C A L ) ( W N 1 8 R R , R o t a t E ) ( W N 1 8 R R , T</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Analysis of Clusterability</head><p>We report the Calinski-Harabasz index for all triple embedding spaces in Table <ref type="table" target="#tab_5">V</ref>. For both datasets, we find higher CH scores for the PTSS approach over Triple2vec. Additionally, scores are across the board higher on FB15K-237 than WN18RR, indicating we are able to learn higher-quality vectors from this graph. To test our hypothesis that triple vectors demonstrating greater clusterability will perform well on the triple classification task, we measure the correlations between these two scores. There is a strong, positive correlation (ρ = 0.7820) between the CH metric and Micro-F1 scores on the triple classification task for Freebase. The correlation is weaker for WN18RR, where the embeddings generated from PTSS alone have correlation of ρ = 0.5421 with the CH index. When analyzing the CH scores on FB15K-237, we find that the triple embedding spaces generated using ConvE and RotatE lead to the highest scores and thus are most clusterable. This agrees with our findings in overall triple classification performance and our ablation of the PTSS mechanism. These two approaches lead to the highest-quality triple embedding spaces; these spaces cluster well with respect to the predicate labels, and this clusterability is a factor in performance on the triple classification task. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VII. RELATED WORK</head><p>We cover the requisite background on the knowledge graph embedding models tested in our experiments. For a full coverage of these techniques, please see <ref type="bibr" target="#b15">[16]</ref>. These methods fall into three main groups: translation-based models, semanticmatching models, and graph-based models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Translational Models</head><p>The intuition behind translation-based models is to build vector representations of h, p, t such that h + p ≈ t. Model choices then depend on which space or spaces the entities and relations are embedded in as well as the scoring function used to help the model learn to differentiate between true triples from the graph and noise triples that do not reflect real-world facts. TransE <ref type="bibr" target="#b2">[3]</ref> is the simplest of these models. It embeds entities and predicates by using a distance function defined by</p><formula xml:id="formula_8">f p (h, t) = -h + p -t 1/2<label>(1)</label></formula><p>While this model is simple, it struggles to properly encode one to many triples, where a single relation may hold between a head entity and several tail entities. An entire family of translation-based models exists, adding various complexities and constraints to the embedding spaces and operations used to best recover the relations described in the original graph.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Semantic-matching Models</head><p>While the translational assumption h + p ≈ t gives good geometric intuition as to the types of relations learned during model training, it is prohibitive for a wide class of relations, including those with anti-symmetric or complex properties. Semantic-matching models deviate away from the distancebased assumption and focus on using similarity-based scoring functions to recover facts from the low-dimensional representations of entities and relations. Rather than relying on norms and translations, these methods leverage dot-product-like scoring functions to measure angles between low-dimensional representations, sometimes referred to as 'semantic energy' functions. The simplest of such models is RESCAL <ref type="bibr" target="#b16">[17]</ref>, which relies on a tensor representation of the underlying knowledge graph X, where each entry of the tensor X ijk = 1 if the fact is represented in the knowledge graph, otherwise zero. This tensor can then be factorized into latent components,</p><formula xml:id="formula_9">X k ≈ AP k A for k = 1, . . . , r</formula><p>where P k is a matrix of dimension r × r representing interactions between each corresponding component and A contains the r dimensional representations of the entities. Thus, for each (h, t) pair, we can compute the likelihood they participate in the k-th relation as</p><formula xml:id="formula_10">f k (h, t) = h P k t.</formula><p>Contrasted with translation-based models, RESCAL takes advantage of vector products while capturing interactions between elements of each entity and all relations. In a simplification, DistMult <ref type="bibr" target="#b17">[18]</ref> requires each P k to be diagonal, reducing the parameters of the model while sacrificing some of its representational capacity. This reduction in capacity is especially felt when modeling anti-symmetric relations as interactions in these diagonal matrices have no notion of directionality. To circumvent this issue, the ComplEx <ref type="bibr" target="#b18">[19]</ref> model allows for the low-dimensional representations to live in the complex space C. The scoring function used by the ComplEx model is defined as</p><formula xml:id="formula_11">f k (h, t) = ( h, p k , t ) where p k ∈ C r .</formula><p>By allowing the representations to be complex-valued, the model can handle the asymmetries of many relations present in knowledge graphs, yet score the likelihoods of facts existing using only the real-valued vectors. The RotatE approach also utilizes complex-valued representations, but it also models each individual relation as a rotation between the head and tail entities. This additional parameterization allows for increased learning capacity with the end goal of capturing antisymmetry, inversion, and composition. The work of <ref type="bibr" target="#b19">[20]</ref> takes this one step further, defining the ConvE model where entities interact through the convolution operator. This introduces ad-ditional non-linearities through which the model can increase the capacity for learning complicated relational structures.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Graph Models</head><p>Besides exploiting the information in knowledge graph triples through translational or factorization models, graphical approaches seek to exploit information contained in the graph's structure itself. This represents a shift from thinking of knowledge graphs embeddings of having separate embedding spaces for entities and relations. In the work of <ref type="bibr" target="#b9">[10]</ref>, the authors capture this shift by suggesting aggregation methods for combining nodes (entities in the KG) to represent edges (triples in the KG). We reproduce the summary of these operators along with new aggregation methods we use in our study in Table <ref type="table">I</ref>.</p><p>In order to generate node embeddings to use with these aggregation schemes, the node2vec approach utilizes random walks over the graph to generate sequences of nodes, where each sequence is treated as a sentence and fed into a word2vec-like model <ref type="bibr" target="#b9">[10]</ref>. In our experiments, we consider the Triple2vec [2] approach, which directly learns triple representations without using aggregations of nodes by converting the original graph G to a line graph G L . To reflect edge weights in this new line graph, the authors introduce the triple frequency and inverse triple frequency, defined as</p><formula xml:id="formula_12">T F (p i , p j ) = log(1 + C i,j ) IT F (p j , E) = log |E| |p i : C i,j &gt; 0|</formula><p>where C i,j counts the number of times the predicates p i and p j link the same heads and tails, and E is the set of edges. They use these metrics to build a symmetric matrix C M (i, j) = T F (p i , p j ) × IT F (p j , E) to represent a vector for each predicate in the graph; each vector in C M can then be used to build a matrix of pairwise similarities between predicates, denoted M R . This weighting scheme is expected to push the embeddings of triples with similar predicates to similar neighborhoods in the embedding space; we hypothesize that if this metric is effective, the resulting triple embedding vectors should serve as good features for triple classification. Given this weighted line graph, a random walk strategy to create sequences of triples is then applied. The walk-based nature of this approach suits small, connected graphs and hence may not extend to larger, heterogeneous and complex-typed knowledge graphs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Post-Processing of Embeddings</head><p>Aside from leveraging previous knowledge graph embedding models, our work introduces a novel way of repurposing these embeddings for alternate tasks. This work was inspired by post-processing procedures for word and sentence embeddings, many of which are detailed in <ref type="bibr" target="#b3">[4]</ref>. A key idea in this area is to regularize the embedding space, leaning on the notion of isotropy of the space to better reflect pairwise similarities, which we directly estimate in an unsupervised way in our approach. The first of these was published by <ref type="bibr" target="#b20">[21]</ref>, who utilize pre-trained word embeddings, average the corresponding vectors for each word in a sentence for a singular representation, and then modify that representation using principal component analysis and singular value decomposition. The authors find that many of the dimensions used in the sentence representation are unnecessary and subsequently introduce noise; the application of PCA/SVD reduces this noise and builds more compact features that retain the majority of the learned information. The removal of these dominating components, some of which merely reflect the frequency of a word in the underlying corpus, leads to more robust representation. In the work of <ref type="bibr" target="#b21">[22]</ref>, the authors leverage a pre-trained word2vec model (GloVe <ref type="bibr" target="#b22">[23]</ref> in their case). By analyzing the geometry of the subspace generated by building a matrix A ∈ R d×n for d-dimensional embeddings of the n words in a given sentence, the authors build a new orthogonal basis vector that captures the general semantics of the words and their contexts. Applying a sliding window QR factorization to the matrix A and re-weighting by three metrics: a word's novelty, significance, and uniqueness-a new semantically motivated sentence representation is generated. Not only is the approach computationally efficient, but it allows for the re-purposing of pre-trained word vectors, such as those from GloVe, allowing for new representations to be generated using no new training data. The work of <ref type="bibr" target="#b0">[1]</ref> found that these sentence representations best align with low-dimensional knowledge graph representations; we hope to extend their work utilizing our novel triple representations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VIII. CONCLUSION AND FUTURE WORK</head><p>In this work, we introduce an approach for re-using pretrained knowledge graph embeddings for the purpose of building explicit triple representations. To this end, we introduce the pairwise triple similarity score as a means of bootstrapping similarity scores between triples in a weakly supervised way. Using these scores, we develop a novel model to build semantically motivated triple embeddings. We show that this model consistently beats the state-of-the-art method, Triple2vec, on two well-known knowledge graph benchmarks. Future work on our methodology involves additional hyperparameter tuning, an ablation study on the impact of the number of pairwise triple similarity score samples and expansion to other knowledge graph benchmark datasets. We are also interested in investigating alternatives to our PTSS scoring scheme that may better leverage information contained in the pre-trained seed embeddings, such as including the notion of triple frequency and inverse triple frequency used to calculate predicate weights in <ref type="bibr" target="#b1">[2]</ref>.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 2 .</head><label>2</label><figDesc>Fig. 2. Comparison of Micro-F1 scores for Triple2vec and PTSS for the triple classification task. For display purposes, we selected the best performing model/aggregation combination.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 3 .</head><label>3</label><figDesc>Fig. 3. Comparison of Micro-F1 scores for pre-trained KGE models with and without the fine-tuning of PTSS for the triple classification task, restricted to the multi-predicate triples from each graph.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>TABLE V CALINSKI</head><label>V</label><figDesc>-HARABASZ SCORES FOR EVALUATING THE QUALITY OF K-MEANS CLUSTERING ON EACH RESPECTIVE TRIPLE EMBEDDING SPACE.</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell>WN18RR</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>d=32</cell><cell>d=64</cell><cell>d=128</cell><cell>d=256</cell><cell>d=512</cell><cell>d=1024</cell></row><row><cell>Triple2vec</cell><cell>1.0809</cell><cell>1.1909</cell><cell>1.1211</cell><cell>1.0642</cell><cell>1.0904</cell><cell>1.1031</cell></row><row><cell>Agg.</cell><cell>ComplEx</cell><cell>ConvE</cell><cell>DistMult</cell><cell>RESCAL</cell><cell>RotatE</cell><cell>TransE</cell></row><row><cell>HT</cell><cell>10.3760</cell><cell>13.1284</cell><cell>1.4678</cell><cell>11.1171</cell><cell>4.3188</cell><cell>19.5217</cell></row><row><cell>Had.</cell><cell>19.1498</cell><cell>23.7984</cell><cell>1.9967</cell><cell>19.2833</cell><cell>5.0234</cell><cell>93.6061</cell></row><row><cell>Avg.</cell><cell>9.8583</cell><cell>16.0167</cell><cell>2.4876</cell><cell>12.4854</cell><cell>12.5828</cell><cell>28.7761</cell></row><row><cell>L1</cell><cell>12.3999</cell><cell>14.1780</cell><cell>4.2113</cell><cell>10.6682</cell><cell>9.0190</cell><cell>74.1507</cell></row><row><cell>L2</cell><cell>15.8628</cell><cell>17.9349</cell><cell>1.7894</cell><cell>11.9538</cell><cell>2.3756</cell><cell>88.6926</cell></row><row><cell></cell><cell></cell><cell></cell><cell>FB15K-237</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>d=32</cell><cell>d=64</cell><cell>d=128</cell><cell>d=256</cell><cell>d=512</cell><cell>d=1024</cell></row><row><cell>Triple2vec</cell><cell>0.9838</cell><cell>1.000</cell><cell>0.9976</cell><cell>0.9875</cell><cell>0.9924</cell><cell>0.9989</cell></row><row><cell>Agg.</cell><cell>ComplEx</cell><cell>ConvE</cell><cell>DistMult</cell><cell>RESCAL</cell><cell>RotatE</cell><cell>TransE</cell></row><row><cell>HT</cell><cell>260.9607</cell><cell cols="2">472.0966 254.6109</cell><cell>3.0954</cell><cell>489.9187</cell><cell>282.7902</cell></row><row><cell>Had.</cell><cell>266.2164</cell><cell cols="2">454.5830 258.2619</cell><cell>157.2214</cell><cell cols="2">447.6694 185.8585</cell></row><row><cell>Avg.</cell><cell>255.6484</cell><cell cols="2">454.1992 247.7288</cell><cell>4.2279</cell><cell cols="2">454.4069 295.6048</cell></row><row><cell>L1</cell><cell>261.3924</cell><cell cols="2">450.9421 253.9956</cell><cell>2.9730</cell><cell cols="2">454.5488 298.8541</cell></row><row><cell>L2</cell><cell>253.7461</cell><cell cols="2">459.0331 252.6248</cell><cell>4.6564</cell><cell cols="2">450.9278 181.9362</cell></row></table></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGMENT</head><p>We would like to acknowledge the authors of Triple2vec [2], who shared their implementation to serve as a baseline for comparison. We would also like to thank the maintainers of LibKGE [5] for providing the pre-trained knowledge graph embedding models.</p></div>
+			</div>			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Exploring sentence embedding structures for semantic relation extraction</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kalinowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>An</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2021 International Joint Conference on Neural Networks (IJCNN)</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="1" to="7" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Learning triple embeddings from knowledge graphs</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Fionda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Pirrò</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020-04">Apr. 2020</date>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="3874" to="3881" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multi-relational data</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>García-Durán</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 26: 27th Annual Conference on Neural Information Processing Systems (NeurIPS)</title>
+		<editor>
+			<persName><forename type="first">C</forename><forename type="middle">J C</forename><surname>Burges</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">L</forename><surname>Bottou</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Z</forename><surname>Ghahramani</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><forename type="middle">Q</forename><surname>Weinberger</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="2787" to="2795" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">An empirical study on postprocessing methods for word embeddings</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mousavi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">R</forename><surname>De Sa</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">LibKGE -A knowledge graph embedding library for reproducible research</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Broscheit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kochsiek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Betz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gemulla</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="165" to="174" />
+		</imprint>
+	</monogr>
+	<note>System Demonstrations</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Semeval-2017 task 1: Semantic textual similarity multilingual and crosslingual focused evaluation</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Cer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Diab</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Agirre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Lopez-Gazpio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Specia</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 11th International Workshop on Semantic Evaluation</title>
+		<meeting>the 11th International Workshop on Semantic Evaluation</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note>SemEval-2017</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Sentence-bert: Sentence embeddings using siamese bert-networks</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Reimers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Gurevych</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="page">2019</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Do embeddings actually capture knowledge graph semantics?</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-C</forename><surname>Kalo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W.-T</forename><surname>Balke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Krestel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Eighteenth Extended Semantic Web Conference</title>
+		<imprint>
+			<publisher>ESWC) -Research Track</publisher>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Understanding the difficulty of training deep feedforward neural networks</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Glorot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research -Proceedings Track</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="249" to="256" />
+			<date type="published" when="2010-01">01 2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Node2vec: Scalable feature learning for networks</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Grover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, KDD &apos;16</title>
+		<meeting>the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, KDD &apos;16<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="855" to="864" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">SentEval: An evaluation toolkit for universal sentence representations</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Conneau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kiela</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Eleventh International Conference on Language Resources and Evaluation (LREC 2018)</title>
+		<meeting>the Eleventh International Conference on Language Resources and Evaluation (LREC 2018)<address><addrLine>Miyazaki, Japan</addrLine></address></meeting>
+		<imprint>
+			<publisher>European Language Resources Association (ELRA)</publisher>
+			<date type="published" when="2018-05">May 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Exploiting similarities among languages for machine translation</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><forename type="middle">V</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Sutskever</surname></persName>
+		</author>
+		<idno>abs/1309.4168</idno>
+	</analytic>
+	<monogr>
+		<title level="j">CoRR</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">To cluster, or not to cluster: An analysis of clusterability methods</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Adolfsson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ackerman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">C</forename><surname>Brownstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Pattern Recognition</title>
+		<imprint>
+			<biblScope unit="volume">88</biblScope>
+			<biblScope unit="page" from="13" to="26" />
+			<date type="published" when="2019-04">Apr 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">How to use t-sne effectively</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wattenberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Viegas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Johnson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Distill</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">A dendrite method for cluster analysis</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Caliński</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ja</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Communications in Statistics -Theory and Methods</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page">1974</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding: A survey of approaches and applications</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Knowledge and Data Engineering</title>
+		<imprint>
+			<biblScope unit="page" from="1" to="1" />
+			<date type="published" when="2017-09">09 2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">A three-way model for collective learning on multi-relational data</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H.-P</forename><surname>Kriegel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th International Conference on International Conference on Machine Learning, ICML&apos;11</title>
+		<meeting>the 28th International Conference on International Conference on Machine Learning, ICML&apos;11<address><addrLine>Madison, WI, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Omnipress</publisher>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="809" to="816" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Deng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">3rd International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2015">2015. 2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Knowledge graph completion via complex tensor factorization</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">R</forename><surname>Dance</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">É</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Bouchard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research (JMLR)</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="issue">130</biblScope>
+			<biblScope unit="page" from="1" to="38" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Pasquale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pontus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Riedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 32th AAAI Conference on Artificial Intelligence</title>
+		<meeting>the 32th AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2018-02">February 2018</date>
+			<biblScope unit="page" from="1811" to="1818" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">A simple but tough-to-beat baseline for sentence embeddings</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Arora</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">5th International Conference on Learning Representations (ICLR)</title>
+		<meeting><address><addrLine>Toulon, France</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017-01">2017. Jan. 2017</date>
+			<biblScope unit="volume">5</biblScope>
+		</imprint>
+	</monogr>
+	<note>th International Conference on Learning Representations</note>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Parameter-free sentence embedding via orthogonal basis</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference EMNLP-IJCNLP</title>
+		<meeting>the 2019 Conference EMNLP-IJCNLP</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Glove: Global vectors for word representation</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pennington</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Manning</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2014 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2014-10">Oct. 2014</date>
+			<biblScope unit="page" from="1532" to="1543" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

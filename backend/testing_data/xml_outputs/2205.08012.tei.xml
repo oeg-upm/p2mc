@@ -1,0 +1,1485 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">CascadER: Cross-Modal Cascading for Knowledge Graph Link Prediction</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2022-09-23">23 Sep 2022</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Tara</forename><surname>Safavi</surname></persName>
+							<email>tsafavi@umich.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Michigan</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Doug</forename><surname>Downey</surname></persName>
+							<email>dougd@allenai.org</email>
+							<affiliation key="aff1">
+								<orgName type="laboratory">Allen Institute for Artificial Intelligence (AI2)</orgName>
+							</affiliation>
+							<affiliation key="aff2">
+								<orgName type="institution">Northwestern University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Tom</forename><surname>Hope</surname></persName>
+							<email>tomh@allenai.org</email>
+							<affiliation key="aff1">
+								<orgName type="laboratory">Allen Institute for Artificial Intelligence (AI2)</orgName>
+							</affiliation>
+							<affiliation key="aff3">
+								<orgName type="institution">The Hebrew University of Jerusalem</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">CascadER: Cross-Modal Cascading for Knowledge Graph Link Prediction</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2022-09-23">23 Sep 2022</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">0BD858282E83A314EF08D13FE267664E</idno>
+					<idno type="arXiv">arXiv:2205.08012v2[cs.CL]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T10:33+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Knowledge graph (KG) link prediction is a fundamental task in artificial intelligence, with applications in natural language processing, information retrieval, and biomedicine. Recently, promising results have been achieved by leveraging cross-modal information in KGs, using ensembles that combine knowledge graph embeddings (KGEs) and contextual language models (LMs). However, existing ensembles are either (1) not consistently effective in terms of ranking accuracy gains or (2) impractically inefficient on larger datasets due to the combinatorial explosion problem of pairwise ranking with deep language models. In this paper, we propose a novel tiered ranking architecture CascadER to maintain the ranking accuracy of full ensembling while improving efficiency considerably. CascadER uses LMs to rerank the outputs of more efficient base KGEs, relying on an adaptive subset selection scheme aimed at invoking the LMs minimally while maximizing accuracy gain over the KGE. Extensive experiments demonstrate that CascadER improves MRR by up to 9 points over KGE baselines, setting new state-of-the-art performance on four benchmarks while improving efficiency by one or more orders of magnitude over competitive crossmodal baselines. Our empirical analyses reveal that diversity of models across modalities and preservation of individual models' confidence signals help explain the effectiveness of CascadER, and suggest promising directions for cross-modal cascaded architectures.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Knowledge graphs (KGs) are critical ingredients for applications across natural language processing, information retrieval, and biomedicine <ref type="bibr" target="#b40">[Weikum et al., 2021]</ref>. Motivated by the observation that most KGs have high precision but low coverage, the goal of knowledge graph link prediction, also known as KG completion, is to automatically augment KGs with new factual information by predicting missing links between entities <ref type="bibr" target="#b24">[Nickel et al., 2015]</ref>.</p><p>Link prediction is typically framed as a ranking problem in a multi-relational graph <ref type="bibr" target="#b1">[Bordes et al., 2013]</ref>: Given a query consisting of a head entity (e.g., aspirin) and relation type (e.g., treats), the task is to rank candidate tail entities by the likelihood that they answer the query and form a factual link the graph. Currently, the prevailing approach is to learn vector representations of entities and relations, or knowledge graph embeddings (KGEs), and use vector composition functions to score candidate links <ref type="bibr" target="#b27">[Ruffinelli et al., 2020]</ref>. While often effective at modeling structural KG patterns <ref type="bibr" target="#b29">[Sun et al., 2019]</ref>, KGEs typically do not leverage textual information like entity descriptions in KGs, even though such texts help ameliorate KG sparsity and improve ranking accuracy <ref type="bibr" target="#b42">[Xie et al., 2016</ref><ref type="bibr" target="#b4">, Chandak et al., 2022]</ref>.</p><p>Figure <ref type="figure">1</ref>: CascadER maintains accuracy (y-axis) while improving efficiency (x-axis) by 1+ orders of magnitude over our most competitive ensemble baseline on CoDEx-M. We use a three-tier CascadER with dynamic pruning at quantiles q = 0.5 and q = 0.9 ( § 3.3).</p><p>To address this gap, recent studies have proposed to ensemble KGEs with advanced language models (LMs) like BERT <ref type="bibr" target="#b8">[Devlin et al., 2019]</ref> in order to integrate structure and text for link prediction <ref type="bibr" target="#b22">[Nadkarni et al., 2021</ref><ref type="bibr" target="#b36">, Wang et al., 2021]</ref>. These studies suggest the promise of cross-modal ensembles, but results are inconclusive due to two challenges. First, the cross-modal ensembles achieving the largest gains rely on impractically expensive models that require jointly encoding pairs of texts with deep LMs <ref type="bibr" target="#b22">[Nadkarni et al., 2021]</ref>, greatly increasing the computational cost of inference-e.g., from a few minutes with a KGE to one month with an LM on the same dataset <ref type="bibr" target="#b17">[Kocijan and Lukasiewicz, 2021]</ref>). Second, the cross-modal ensembles that rely on more efficient "Siamese" dual-encoder LM architectures do not necessarily improve performance over KGEs alone <ref type="bibr" target="#b36">[Wang et al., 2021]</ref>.</p><p>In this paper, we introduce a novel cross-modal ensemble that simultaneously maximizes ranking accuracy, i.e., mean reciprocal rank (MRR) and hits@k, while maintaining efficiency. Our approach, CascadER, is a tiered ranking architecture that uses a sequence of LMs of increasing complexity to adaptively reweight and rerank the outputs of more efficient base KGEs. CascadER relies on a novel subset selection scheme: At each tier t of the architecture, we predict the minimal set of candidates that should progress to be reweighted at tier t + 1. By passing progressively smaller sets of outputs from one tier to the next, CascadER balances accuracy gain and efficiency, as it minimizes invocation of the more computationally complex LMs further down the cascade. Evaluated on five link prediction datasets, CascadER achieves state-of-the-art performance, improving MRR over the strongest KGE baseline by up to 9 points, while also improving efficiency by orders of magnitude over our most accurate but computationally intensive ensemble baseline (Figure <ref type="figure">1</ref>). Our qualitative analyses illuminate how cross-modal ensembling uniquely exploits complementary signals among graph and text models: We observe that promoting diversity and preserving confidence signals among the models in the ensemble help explain CascadER's excellent performance, suggesting promising directions for research in cross-modal cascaded architectures.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Preliminaries</head><p>In this section, we provide preliminaries on single-modality and cross-modal approaches for link prediction. We discuss additional related work in Appendix A.1.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Problem definition</head><p>We consider the task of ranking-based link prediction in a knowledge graph G consisting of entities E, relations R, and factual (head, relation, tail ) triples (h, r, t) ∈ E × R × E. The link prediction task consists of two directionalities: Score all tail entities t ∈ E to "answer queries"-that is, complete known KG links-(h, r, ?), and score all head entities ĥ ∈ E to answer queries (?, r, t). The evaluation metrics are mean reciprocal rank (MRR), or the average reciprocal of each gold answer entity's rank over all queries, and hits@k, or the proportion of queries for which the gold answer entity is ranked in the top-k candidates.</p><p>A link prediction model is a scoring function f : E × R × E → R that outputs real values indicating the plausibility of factual links in G. At inference time, assume that we have N test link prediction queries. For each query we have |E| potential answers, which are the entities in the KG. We define a query-answer score matrix S ∈ R Ntest×|E| , in which S ij denotes the predicted probability that entity j answers link prediction query i to form a factual link in G. Then, for each query i, all candidate entities j are ranked by their score descending, and the model's ranking accuracy is evaluated using these rankings.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Single-modality link prediction</head><p>Structure-based The most competitive structure-only approaches to link prediction are shallow knowledge graph embeddings (KGEs), which are decoder models that train entity and relation embeddings by optimizing with ranking losses. The main architectural distinction among different KGEs is how embeddings are combined to produce ranking scores for links, as both additive <ref type="bibr" target="#b1">[Bordes et al., 2013</ref><ref type="bibr" target="#b29">, Sun et al., 2019]</ref> and multiplicative <ref type="bibr" target="#b44">[Yang et al., 2015</ref><ref type="bibr" target="#b33">, Trouillon et al., 2016</ref><ref type="bibr" target="#b0">, Balazevic et al., 2019]</ref> scoring functions have been proposed. For details, we refer the reader to relevant surveys <ref type="bibr" target="#b38">[Wang et al., 2017</ref><ref type="bibr" target="#b13">, Ji et al., 2020]</ref>.</p><p>Text-based Recent text-based approaches to link prediction rely on advanced encoder language models (LMs) like BERT <ref type="bibr" target="#b8">[Devlin et al., 2019]</ref> based on the Transformer architecture <ref type="bibr" target="#b34">[Vaswani et al., 2017]</ref>. Let X h = [w 1 , . . . , w h ] denote the description of head entity h and X t = [w 1 , . . . , w t ] the description of tail entity t; for example, given the entity aspirin, a corresponding description could be "aspirin is known as a salicylate and a nonsteroidal anti-inflammatory drug." Siamese or dual-encoder link prediction approaches assume two LMs, potentially with shared weights <ref type="bibr" target="#b36">[Wang et al., 2021]</ref>. As input, one LM takes the head entity description [[CLS], X h , [SEP]] and the other takes the tail entity description [[CLS], X t , [SEP]], where [CLS] and [SEP] refer to the LM's special classification and delimiter tokens. Both encoders output embeddings of their inputs, which are optimized such that linked entity pairs in the KG are scored highly compared to negative samples. 1  In contrast to dual-encoders, cross-encoder LM approaches pack entity description pairs into a single sequence [[CLS], X h , [SEP], X t , [SEP]], and perform full cross-attention over all tokens in the sequence <ref type="bibr" target="#b45">[Yao et al., 2019</ref><ref type="bibr" target="#b22">, Nadkarni et al., 2021]</ref>. At the output of the encoder, these approaches stack a scoring layer and train with ranking loss <ref type="bibr" target="#b16">[Kim et al., 2020]</ref>. Cross-encoder LMs are typically more powerful for pairwise text ranking than dual-encoders <ref type="bibr" target="#b20">[Luan et al., 2021]</ref>. However, they are less efficient. Whereas dual-encoders can precompute all text embeddings and score text pairs at test time with fast vector dot products <ref type="bibr" target="#b14">[Karpukhin et al., 2020]</ref>, cross-encoders must jointly encode and score each text pair, which is impractically slow for large-scale text ranking <ref type="bibr" target="#b26">[Reimers and Gurevych, 2019]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3">Cross-modal link prediction</head><p>Structure and text have recently been integrated for link prediction by ensembling KGEs and LMs with additive reweighting <ref type="bibr" target="#b36">[Wang et al., 2021</ref><ref type="bibr" target="#b22">, Nadkarni et al., 2021]</ref>. Given a query i and candidate answer j, additive reweighting outputs a new link prediction score as the convex combination of the base models' scores:</p><formula xml:id="formula_0">S ens ij = α • S KGE ij + (1 -α) • S LM ij ,<label>(1)</label></formula><p>where the weight α ∈ [0, 1] is a hyperparameter tuned on a held-out set.</p><p>As shown in Figure <ref type="figure">1</ref>, additive reweighting can significantly improve link prediction ranking accuracy, up to 4 points MRR. However, Figure <ref type="figure">1</ref> also shows that ensembling increases inference complexity. Whereas the base KGE requires under one minute to score all query-answer pairs on a single NVIDIA Quadro RTX 8000 GPU, the KGE + dual-encoder ensemble takes around 3 hours, and the KGE + cross-encoder ensemble takes over 11 days on the same hardware. This added expense is due to the fact that deep Transformer LMs typically consist of 12+ layers, and the complexity of Transformer encoding scales quadratically with the input length. Moreover, as discussed previously, cross-encoders must jointly encode all query/answer pairs, which further increases their computational cost.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Methodology</head><p>Assuming we are willing to pay some computational cost to improve link prediction performance, how can we achieve the accuracy of the cross-encoder ensemble while maintaining the efficiency of the dual-encoder ensemble, as shown in Figure <ref type="figure">1</ref>? Our answer is CascadER, a cross-modal cascade architecture that achieves a delicate balance between these goals.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">CascadER overview</head><p>As illustrated in Figure <ref type="figure" target="#fig_0">2</ref>, CascadER is a progressive reranking architecture. We first obtain a base set of link prediction scores with an efficient KGE, then use increasingly complex LMs to rerank the base scores on progressively smaller sets of outputs-specifically, only the highly-ranked, most promising candidates, while leaving the rankings of the less promising candidates static. CascadER thus benefits from the performance gains of cross-modal ensembles without the full computational overhead (c.f. Figure <ref type="figure">1</ref>).</p><p>As input, we are given n ≥ 2 trained link prediction models {f (i) , i = 1 . . . n} consisting of one KGE and one or more LMs. We sort the models by computational complexity, leading to an ordered sequence (f (1) , . . . , f (n) ) in which f (1) is the KGE and the subsequent models are LMs in ascending order of complexity (i.e., dual-encoders before cross-encoders). We first use the KGE to score all query/answer pairs in the inference set, leading to a score matrix S (1) ∈ R Ntest×|E| in which S</p><p>(1) ij denotes the KGE's plausibility score between query i and entity j. Then, at each tier t = 1, . . . , n -1, we apply a pruning function that, for each i ⊆ E to be reranked by the next-tier LM f (t+1) ; we postpone the discussion of pruning strategies to § 3.2 and 3.3.</p><p>For link prediction query i (that is, a query entity and relation type) and candidate answer entity j, we define the additive reranking function between tiers t and t + 1 as follows:</p><formula xml:id="formula_1">I j∈E (t) i α (t) • S (t) ij + 1 -α (t) • S (t+1) ij + I j ∈E (t) i S (t) ij ,<label>(2)</label></formula><p>in which I denotes the set indicator function, S</p><p>ij denotes the query-answer score output at tier t, and α (t) ∈ [0, 1] is a hyperparameter that controls the additive influence of model f (t)  in reranking the candidates in E (t) i . Intuitively, (2) states that if the candidate answer entity j is within the subset E (t) i of candidates progressed to tier t + 1, then we reweight its score with that of model f (t+1) at tier t + 1, else we do not reweight its score.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Static candidate pruning</head><p>Candidate pruning with CascadER should balance two aims: (1) Coverage: For each link prediction query (h, r, ?) or (?, r, t), progress a sufficiently large set of candidate entities to the following tier, in order to increase coverage of the correct candidates; and (2) Efficiency: Progress as few candidates as possible to avoid unnecessarily invoking the next-tier reranking model on candidates that would not benefit from it.</p><p>A straightforward pruning approach used in information retrieval cascades is to progress only the top-k candidates from tier to tier using a predefined, global value of k <ref type="bibr" target="#b37">[Wang et al., 2011</ref><ref type="bibr" target="#b21">, Matsubara et al., 2020]</ref>. This value helps control the accuracy-efficiency tradeoff, as a smaller k decreases coverage of promising candidates but improves efficiency, whereas a larger k increases coverage of promising candidates but incurs more computational cost. Formally, given query i and a selected value of k, we define static pruning as selecting the subset of candidates</p><formula xml:id="formula_3">E (t) i such that E (t) i = arg max E (t) i ⊂E and |E (t) i |=k |E| j=1 S (t) ij .</formula><p>The key challenge with static pruning is selecting the "right" value of k. One solution is to set k ad-hoc, e.g., k = 100 <ref type="bibr" target="#b21">[Matsubara et al., 2020]</ref>. However, this approach may result in suboptimal performance from the accuracy or efficiency perspectives. To address this challenge, we propose a more principled strategy that searches for the best value of k per dataset and per tier t of the cascade. Given tier t and held-out query i, we obtain the cascade's rank R (t) i of the gold answer entity. We construct a distribution of ranks R (t) i over all hold-out queries, and use quantiles of this distribution to choose the grid of k (t) over which to search. For example, quantiles of 0.5, 0.75, and 0.9 means that we search over k i , which ensures that our selected k (t) is tailored to each dataset and each tier of reranking.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Dynamic candidate pruning</head><p>We propose to extend static pruning to an adaptive dynamic pruning approach. At any tier t of CascadER, we improve the quality of the current ranking by predicting how many top-ranked candidates for each query we should progress to the next tier. That is, given a query i and tier t, we predict an integer k(t) i that represents the number of candidates to progress to tier t + 1. To achieve this, we train a lightweight model to predict the rank of the gold answer entity using quantile regression <ref type="bibr" target="#b18">[Koenker and Hallock, 2001]</ref>. Formally, given a quantile q and the rank of the gold answer entity R (t) i at tier t, we train a regressor to predict</p><formula xml:id="formula_4">k(t) i by minimizing L q ( k(t) i , R<label>(t)</label></formula><formula xml:id="formula_5">i ) = max q(R (t) i - k(t) i ), (q -1)(R (t) i - k(t) i ) .</formula><p>As input features, we represent the i-th query by its sorted |E|-dimensional score distribution</p><formula xml:id="formula_6">S (t) i1 , . . . S (t)</formula><p>i|E| from tier t of the cascade, hypothesizing that these score distributions encode uncertainty information correlated to the relative "difficulty" of queries. In practice, we implement our regressor as a single-layer MLP trained on a random half of the dev set, and validated on the remaining dev examples.<ref type="foot" target="#foot_0">2</ref> We will subsequently show that this approach boosts CascadER's ability to balance accuracy and efficiency compared to static pruning.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Evaluation</head><p>As introduced in § 2.1, we evaluate CascadER for the link prediction task. Our evaluation metrics are MRR and hits@k for k ∈ {1, 3, 10}. Following the literature standard <ref type="bibr" target="#b27">[Ruffinelli et al., 2020]</ref>, we report metrics in the filtered setting to avoid false negatives.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Datasets</head><p>We consider the following link prediction benchmarks, as shown in Table <ref type="table" target="#tab_0">1</ref>: FB15K-237 <ref type="bibr">[Toutanova and Chen, 2015]</ref>, WN18RR <ref type="bibr" target="#b7">[Dettmers et al., 2018]</ref>, CoDEx-S and CoDEx-M <ref type="bibr" target="#b28">[Safavi and Koutra, 2020</ref><ref type="bibr">], and RepoDB [Brown and Patel, 2017</ref><ref type="bibr" target="#b22">, Nadkarni et al., 2021]</ref>. In terms of content, FB15K-237, CoDEx-S, and CoDEx-M comprise encyclopedic knowledge drawn from Freebase and Wikidata, WN18RR is a subset of the WordNet semantic network, and RepoDB is a subset of the RepoDB drug repurposing biomedical database <ref type="bibr">[Brown and Patel, 2017]</ref>. For all datasets, we use the standard splits provided by the authors. We use the entity descriptions provided by <ref type="bibr" target="#b36">Wang et al. [2021]</ref> for FB15K-237 and WN18RR, <ref type="bibr" target="#b22">Nadkarni et al. [2021]</ref> for RepoDB, and <ref type="bibr" target="#b28">Safavi and Koutra [2020]</ref> for CoDEx-S and CoDEx-M.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Baselines KGE baselines</head><p>We consider the competitive RESCAL <ref type="bibr" target="#b23">[Nickel et al., 2011]</ref>, TransE <ref type="bibr" target="#b1">[Bordes et al., 2013]</ref>, ComplEx <ref type="bibr" target="#b33">[Trouillon et al., 2016]</ref>, and RotatE <ref type="bibr" target="#b29">[Sun et al., 2019]</ref> KGEs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>LM baselines</head><p>We consider the StAR dual-encoder architecture <ref type="bibr" target="#b36">[Wang et al., 2021]</ref> and the KG-BERT cross-encoder architecture <ref type="bibr" target="#b45">[Yao et al., 2019]</ref>, both trained in a multi-task setting with triple classification, margin ranking, and relation classification losses following the literature <ref type="bibr" target="#b16">[Kim et al., 2020]</ref>. Due to the inference cost of KG-BERT on the larger datasets FB15K-237 and WN18RR (e.g., around one month for FB15K-237 <ref type="bibr" target="#b17">[Kocijan and Lukasiewicz, 2021]</ref>), we report performance for these datasets from <ref type="bibr" target="#b16">[Kim et al., 2020]</ref>.</p><p>Ensemble baselines We consider the following additive ensembling baselines as defined in § 2.3: KGE + KGE ensembles the two strongest KGE baselines in terms of dev MRR; KGE + StAR <ref type="bibr" target="#b36">[Wang et al., 2021]</ref> ensembles the best KGE with StAR; and KGE + KG-BERT <ref type="bibr" target="#b22">[Nadkarni et al., 2021]</ref> ensembles the best KGE with KG-BERT.</p><p>SOTA We report the best published performance of which we are aware as of April 2022: NBFNet <ref type="bibr" target="#b46">[Zhu et al., 2021]</ref> on FB15K-237, self-adaptive KGE + LM ensembling <ref type="bibr" target="#b36">[Wang et al., 2021]</ref> on WN18RR, and ComplEx for the CoDEx datasets. Note that RepoDB has not been considered under the full entity ranking setting before, as <ref type="bibr" target="#b22">Nadkarni et al. [2021]</ref> used a partial sample of negatives for each test query, so we do not report SOTA for RepoDB.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">CascadER</head><p>Our first-tier KGE in CascadER is the best-performing baseline KGE in terms of dev MRR. We search for the optimal cascade in terms of dev MRR among the following hyperparameters: The choice of LMs (StAR dual-encoder, KG-BERT cross-encoder, or both); candidate pruning strategy (static versus dynamic); quantile q ∈ {0.5, 0.75, 0.9, 0.95}; and weighting hyperparameter α (t) ∈ [0.05, 0.95] at each tier. Appendix A.2 provides additional details on hardware, software, and model selection.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Inference budget</head><p>We imposed an inference time limit on CascadER and all baselines. First, we set a global maximum inference time of 24 hours on a single NVIDIA Quadro RTX 8000 GPU with 48 GB of RAM as a hard limit. Then, we set dataset-specific budgets ≤ 24H roughly as a function of the test set size and KG size. For example, WN18RR has fewer test queries and shorter text lengths (Table <ref type="table" target="#tab_0">1</ref>) than FB15K-237, but 3× as many answer entities. Given a budget of 24H for FB15K-237, our largest dataset, we decided to allow 25% of that time to WN18RR to account for these differences. Concretely, we set inference time limits to 2 hours for our two smallest datasets CoDEx-S and RepoDB, 24 hours for our two largest datasets CoDEx-M and FB15K-237, and 6 hours for WN18RR. To understand the impact of our chosen time limits, we vary these budgets in an ablation in § 4.5.   We also remark that full additive ensembling is not necessary to maximize accuracy. Our KGE + KG-BERT additive ensemble baseline is competitive on CoDEx-S and RepoDB, but it encounters out-of-time errors on the other datasets. By contrast, CascadER achieves state-of-the-art or competitive performance on all five datasets while staying within our time limits. This suggests that full additive ensembling is not necessary to achieve the majority of gains in link prediction, and that cascaded reranking is sufficient.  We use quantiles q ∈ {0.5, 0.75, 0.9, 0.95, 1} in our analyses and exclude any quantiles that lead to CascadER exceeding our inference time limit of 24 hours.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.5">Results and discussion</head><p>Pareto curve analysis We provide a Pareto curve analysis to characterize the accuracyefficiency tradeoff of CascadER. In Figure <ref type="figure" target="#fig_2">3</ref>, we plot the accuracy (dev MRR) and efficiency (inference cost in wall-clock time) against CascadER's key hyperparameters, the candidate pruning strategy and the number of tiers. We observe that dynamic pruning balances accuracy and efficiency better than static pruning. Figure <ref type="figure" target="#fig_2">3a</ref> shows that dynamic pruning leads to steeper MRR improvements than static pruning, with comparable inference times.</p><p>Consistent with the information retrieval literature <ref type="bibr" target="#b21">[Matsubara et al., 2020</ref><ref type="bibr" target="#b20">, Luan et al., 2021]</ref>, cross-encoders improve ranking performance more than their dual-encoder counterparts. Figure <ref type="figure" target="#fig_2">3b</ref> confirms that two-tiered CascadER with a cross-encoder is much more accurate than two-tiered CascadER with a dual-encoder. At an inference time of around 1000 seconds, our two-tiered dual-encoder and cross-encoder architectures achieve 0.3683 and 0.3738 MRR respectively, suggesting that reranking very few candidates with a cross-encoder is often more beneficial than reranking many candidates with a dual-encoder.</p><p>Parameter comparison A natural question is whether CascadER's improvement is simply a result of increased representational capacity, i.e., more parameters. Depending on the dataset, the number of KGE parameters is on the order of 100K-10M, scaling linearly (for most architectures) with the number of entities and relations in the KG. By contrast, each LM, when implemented with BERT-Base, has roughly 100M parameters, regardless of KG size; therefore, CascadER has more parameters than all KGE baselines. However, note that LMs alone for the link prediction task are not competitive with KGEs, as shown in Tables <ref type="table" target="#tab_1">2</ref> and<ref type="table" target="#tab_2">3</ref>, which suggests that increased parameter count does not fully explain performance improvement. Moreover, the Pareto improvements we observe are in comparison to ensembles of the same number of parameters (e.g., 2-tier dual-encoding CascadER vs 2-tier cross-encoding CascadER, Figure <ref type="figure" target="#fig_2">3b</ref>), where we achieve up to an order of magnitude efficiency improvement at the same or better accuracy.</p><p>Inference budget ablation We next analyze the impact of changing the inference budget ( § 4.4) on CascadER's performance. As shown in  Qualitative analysis Finally, we elucidate the benefits of cross-modal ensembling from the perspective of model diversity, a key characteristic of effective ensembles <ref type="bibr" target="#b18">[Kuncheva and Whitaker, 2003]</ref>. We explore two simple facets of diversity between pairs of models in an ensemble. The first is rank correlation, or the Pearson correlation coefficient of the gold answer ranks between two models. As shown in Table <ref type="table" target="#tab_6">5</ref>, rank correlation is highest between pairs of KGEs and lowest between the KGE and cross-encoder. This observation corresponds well with ensemble performance, as we find that the most "diverse" ensembles in terms of rank correlation (i.e., those that combine a KGE + cross-encoder) are the most competitive.</p><p>Next, we consider each model's empirical score distributions to two queries in Figure <ref type="figure" target="#fig_3">4</ref>. The figure demonstrates that the cross-encoder's score distributions are skewed left compared to those of the KGE and the dual-encoder. Moreover, we find that this trend holds across queries and datasets, suggesting a fundamental difference in scoring behavior. We hypothesize that cross-encoders may filter out irrelevant candidate answers to queries more aggressively, perhaps because they model term overlap between text pairs with relatively high precision compared to dual-encoder models that do not use cross-attention <ref type="bibr" target="#b20">[Luan et al., 2021]</ref>. Again, this finding corresponds well with ranking performance, as the model pairs with more diverse score distributions (i.e., KGEs and cross-encoders) make stronger cascades.</p><p>Finally, having established the importance of diversity, we answer the question: When ensembling highly diverse models, how crucial is additive reweighting as defined in (1), versus simply summing the models' individual scores without reweighting? Across all datasets, we observe CascadER's dev MRR drops 6-8 points without reweighting (see Appendix A.3 for exact comparisons). To explain this phenomenon, we investigate the average margin between the gold answer and all negative candidates for a query, i.e., for query i with gold tail entity j + and N -negative candidates j -, the average margin is defined as 1   In Figure <ref type="figure" target="#fig_5">5</ref>, we plot the gold ranks and reciprocal ranks of answer entities on CoDEx-M against their average margins with and without reweighting a KGE + cross-encoder ensemble.</p><formula xml:id="formula_7">N - j -S + ij -S - ij .</formula><p>We observe that the correlation between margins and gold ranks is higher under additive reweighting, which suggests that reweighting helps preserve the confidence signals in the base models' margins, whereas ensembling without reweighting dilutes these signals.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Conclusion</head><p>In this paper, we considered the task of KG link prediction with cross-modal ensembles. Motivated by the inherent accuracy-efficiency tradeoff, we proposed CascadER, a novel cross-modal reranking architecture that uses deep language models to rerank the outputs of knowledge graph embeddings. We showed that CascadER achieves state-of-the-art performance on multiple link prediction benchmarks by effectively combining structure and text, while improving efficiency over our strongest ensemble baseline by orders of magnitude.</p><p>Our work opens up several avenues for future research. For one, more advanced candidate pruning strategies may further increase the efficiency of CascadER while maintaining accuracy. For another, "hybrid" LMs that attempt to interpolate between the efficiency of dual-encoders and the effectiveness of cross-encoders <ref type="bibr" target="#b15">[Khattab and</ref><ref type="bibr">Zaharia, 2020, Luan et al., 2021]</ref> may improve CascadER's ability to balance these two desiderata. Finally, extensions of CascadER may help solve the inductive link prediction, in which novel entities/relations are presented at test time <ref type="bibr" target="#b9">[Galkin et al., 2022]</ref>, as contextual LMs are naturally inductive and can correct the shortcomings of transductive KGEs in this setting.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: CascadER sequential reranking architecture.</figDesc><graphic coords="5,111.60,90.86,388.78,86.89" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head></head><label></label><figDesc>(a) Dynamic pruning balances accuracy and efficiency better than static pruning. (b) CascadER is effective at any level of cost constraint compared to the base KGE.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure3: Top-left corner is best: Pareto curve analysis on the dev set of FB15K-237. We use quantiles q ∈ {0.5, 0.75, 0.9, 0.95, 1} in our analyses and exclude any quantiles that lead to CascadER exceeding our inference time limit of 24 hours.</figDesc><graphic coords="9,311.43,90.86,151.20,85.39" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: The cross-encoder's score distributions are skewed left compared to the KGE's and dual-encoder's score distributions. Shown are two randomly-selected link prediction queries from CoDEx-M. The trends in the plots hold across queries and datasets.</figDesc><graphic coords="11,170.97,90.86,129.60,82.10" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head></head><label></label><figDesc>(a) KGE + cross-enc. without reweighting (b) KGE + cross-enc. with reweighting</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Ensembling with additive reweighting preserves the correlation between gold answer ranks and average margins.</figDesc><graphic coords="11,311.43,235.83,203.04,84.56" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Statistics of the existing KG link prediction datasets considered in our experiments. Avg. desc. length refers to the average description of an entity in the KG. equal to the median, 75th percentile, and 90th percentile of ranks R</figDesc><table><row><cell>(t)</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>CascadER outperforms or is competitive with the state of the art on FB15K-237 and WN18RR. Bold + underline: Best performance. Underline: Second-best performance. The performance of StAR, KG-BERT, and SOTA are reported from papers referenced in 4.2. OOT refers to out-of-time using our inference cost budget ( § 4.4).</figDesc><table><row><cell></cell><cell></cell><cell cols="2">FB15K-237</cell><cell></cell><cell></cell><cell cols="2">WN18RR</cell><cell></cell></row><row><cell></cell><cell>MRR</cell><cell>H@1</cell><cell>H@3</cell><cell>H@10</cell><cell>MRR</cell><cell>H@1</cell><cell>H@3</cell><cell>H@10</cell></row><row><cell>RESCAL</cell><cell cols="4">0.3559 0.2629 0.3926 0.5406</cell><cell>0.4666</cell><cell>0.4387</cell><cell>0.4797</cell><cell>0.5172</cell></row><row><cell>TransE</cell><cell cols="4">0.3128 0.2206 0.3473 0.4973</cell><cell>0.2278</cell><cell>0.0531</cell><cell>0.3682</cell><cell>0.5201</cell></row><row><cell>ComplEx</cell><cell cols="4">0.3477 0.2533 0.3836 0.5359</cell><cell>0.4749</cell><cell>0.4381</cell><cell>0.4898</cell><cell>0.5474</cell></row><row><cell>RotatE</cell><cell cols="4">0.3333 0.2396 0.3676 0.5218</cell><cell>0.4781</cell><cell>0.4395</cell><cell>0.4941</cell><cell>0.5527</cell></row><row><cell>StAR</cell><cell>0.296</cell><cell>0.205</cell><cell>0.322</cell><cell>0.482</cell><cell>0.401</cell><cell>0.243</cell><cell>0.491</cell><cell>0.709</cell></row><row><cell>KG-BERT</cell><cell>0.267</cell><cell>0.172</cell><cell>0.298</cell><cell>0.458</cell><cell>0.331</cell><cell>0.203</cell><cell>0.383</cell><cell>0.597</cell></row><row><cell>KGE + KGE</cell><cell cols="4">0.3630 0.2672 0.4016 0.5535</cell><cell>0.4900</cell><cell>0.4521</cell><cell>0.5016</cell><cell>0.5617</cell></row><row><cell>KGE + StAR</cell><cell cols="4">0.3643 0.2709 0.3989 0.5522</cell><cell>0.5385</cell><cell>0.4716</cell><cell>0.5645</cell><cell>0.6651</cell></row><row><cell cols="2">KGE + KG-BERT OOT</cell><cell>OOT</cell><cell>OOT</cell><cell>OOT</cell><cell>OOT</cell><cell>OOT</cell><cell>OOT</cell><cell>OOT</cell></row><row><cell>SOTA</cell><cell cols="4">0.415 0.321 0.454 0.599</cell><cell>0.551</cell><cell>0.459</cell><cell>0.594</cell><cell>0.732</cell></row><row><cell>CascadER</cell><cell cols="4">0.3860 0.2903 0.4231 0.5782</cell><cell cols="4">0.5651 0.4756 0.6126 0.7379</cell></row><row><cell></cell><cell></cell><cell cols="2">CoDEx-M</cell><cell></cell><cell></cell><cell cols="2">RepoDB</cell><cell></cell></row><row><cell></cell><cell>MRR</cell><cell>H@1</cell><cell>H@3</cell><cell>H@10</cell><cell>MRR</cell><cell>H@1</cell><cell>H@3</cell><cell>H@10</cell></row><row><cell>RESCAL</cell><cell>0.3173</cell><cell>0.2444</cell><cell>0.3477</cell><cell>0.4557</cell><cell>0.4351</cell><cell>0.3144</cell><cell>0.4903</cell><cell>0.6767</cell></row><row><cell>TransE</cell><cell>0.3026</cell><cell>0.2232</cell><cell>0.3363</cell><cell>0.4535</cell><cell>0.3472</cell><cell>0.2043</cell><cell>0.3728</cell><cell>0.6400</cell></row><row><cell>ComplEx</cell><cell>0.3365</cell><cell>0.2624</cell><cell>0.3701</cell><cell>0.4758</cell><cell>0.4620</cell><cell>0.3406</cell><cell>0.5225</cell><cell>0.7043</cell></row><row><cell>RotatE</cell><cell>OOM</cell><cell>OOM</cell><cell>OOM</cell><cell>OOM</cell><cell>0.2971</cell><cell>0.1811</cell><cell>0.4903</cell><cell>0.5314</cell></row><row><cell>StAR</cell><cell>0.2726</cell><cell>0.1888</cell><cell>0.3042</cell><cell>0.4342</cell><cell>0.3472</cell><cell>0.2043</cell><cell>0.4102</cell><cell>0.6400</cell></row><row><cell>KG-BERT</cell><cell>OOT</cell><cell>OOT</cell><cell>OOT</cell><cell>OOT</cell><cell>0.2991</cell><cell>0.1602</cell><cell>0.3428</cell><cell>0.5996</cell></row><row><cell>KGE + KGE</cell><cell>0.3466</cell><cell>0.2695</cell><cell>0.3808</cell><cell>0.4925</cell><cell>0.4637</cell><cell>0.3398</cell><cell>0.5262</cell><cell>0.7081</cell></row><row><cell>KGE + StAR</cell><cell>0.3554</cell><cell>0.2767</cell><cell>0.3901</cell><cell>0.5064</cell><cell>0.4774</cell><cell>0.3496</cell><cell>0.5434</cell><cell>0.7208</cell></row><row><cell>KGE + KG-BERT</cell><cell>OOT</cell><cell>OOT</cell><cell>OOT</cell><cell>OOT</cell><cell>0.5101</cell><cell>0.3713</cell><cell>0.5771</cell><cell>0.7799</cell></row><row><cell>SOTA</cell><cell>0.3365</cell><cell>0.2624</cell><cell>0.3701</cell><cell>0.4758</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell>CascadER</cell><cell cols="4">0.3830 0.2998 0.4221 0.5423</cell><cell cols="4">0.5156 0.3817 0.5831 0.7814</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 :</head><label>3</label><figDesc>CascadER achieves state-of-the-art test performance on CoDEx-M and RepoDB.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head></head><label></label><figDesc>Table 2 and 3 provide link prediction performance results for FB15K-237 and WN18RR, and CoDEx-M and RepoDB, respectively; Table 7 in Appendix A.3 provides results on CoDEx-S, omitted here for brevity. We observe that CascadER achieves robust and appreciable gains over baselines across datasets, setting a new state of the art on WN18RR, CoDEx-S, CoDEx-M, and RepoDB, and performing second to the reported SOTA on FB15K-237. It outperforms the best KGE by up to 8.70 points MRR (WN18RR) and the best LM by up to 16.84 points MRR (RepoDB), demonstrating that cross-modal ensembling can significantly improve upon single-modality approaches.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4 ,</head><label>4</label><figDesc>CascadER's performance does not change drastically when tightening the budget. Halving the inference budget for CoDEx-M from 24H to 12H, we get a test accuracy of 0.3787 MRR for CascadER, a</figDesc><table><row><cell></cell><cell cols="2">CoDEx-M WN18RR</cell></row><row><cell>Best baseline</cell><cell>0.3554</cell><cell>0.5510</cell></row><row><cell>CascadER, half budget</cell><cell>0.3787</cell><cell>0.5590</cell></row><row><cell>CascadER, full budget</cell><cell>0.3830</cell><cell>0.5651</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 4 :</head><label>4</label><figDesc>CascadER still maintains SOTA performance (MRR) under tightened inference budgets: Inference time limit ablation. "Full budget" refers to the time limits imposed in § 4.4, and "half budget" refers to a time limit of half that.</figDesc><table><row><cell></cell><cell cols="3">(KGE, KGE) (KGE, dual-enc.) (KGE, cross-enc.)</cell></row><row><cell>RepoDB</cell><cell>0.7371</cell><cell>0.3494</cell><cell>0.2025</cell></row><row><cell>CoDEx-S</cell><cell>0.8081</cell><cell>0.7265</cell><cell>0.6163</cell></row><row><cell>CoDEx-M</cell><cell>0.6471</cell><cell>0.5406</cell><cell>0.4865</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 5 :</head><label>5</label><figDesc>The ranks of gold answers are least correlated (Pearson's correlation coefficient, all p-values 0) between the KGE and the cross-encoder on the dev set, suggesting that these two model types provide the most diverse or complementary link prediction performance. drop of &lt; 1 point MRR from our best CascadER under 24H, and still an improvement of 2 points MRR over the next-best baseline. Similarly, halving the inference budget for WN18RR from 6H to 3H, we again observe a drop of &lt; 1 point MRR.</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_0"><p>Note that if the dev set is unavailable, we can alternatively hold out a small subset of train examples.</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Appendix A.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.1 Additional related work</head><p>Joint modeling on KGs The task of inferring novel links in KGs has been widely studied.</p><p>The most prevalent approaches are structure-only KG embeddings <ref type="bibr" target="#b23">[Nickel et al., 2011</ref><ref type="bibr" target="#b1">, Bordes et al., 2013</ref><ref type="bibr" target="#b33">, Trouillon et al., 2016</ref><ref type="bibr" target="#b29">, Sun et al., 2019</ref><ref type="bibr" target="#b0">, Balazevic et al., 2019</ref><ref type="bibr" target="#b13">, Ji et al., 2020]</ref>. That said, prior to the advent of pretrained contextual LMs, a few cross-modal structure and text approaches for link prediction were proposed <ref type="bibr">[Toutanova et al., 2015</ref><ref type="bibr">, 2016</ref><ref type="bibr" target="#b42">, Xie et al., 2016]</ref>. Such approaches rely on convolutional text representation architectures to obtain embeddings of entities or relations using, e.g., entity descriptions <ref type="bibr" target="#b42">[Xie et al., 2016]</ref> or textual relation mentions <ref type="bibr">[Toutanova et al., 2015]</ref>. These text-based embeddings are then composed using structural KG embedding scoring functions to score novel links in the KG.</p><p>More recently, motivated by the successes of Transformer language models, pretrained Transformer LMs like BERT <ref type="bibr" target="#b8">[Devlin et al., 2019]</ref> have begun to gain traction for variants of the link prediction task <ref type="bibr" target="#b45">[Yao et al., 2019</ref><ref type="bibr" target="#b16">, Kim et al., 2020</ref><ref type="bibr" target="#b6">, Daza et al., 2021</ref><ref type="bibr" target="#b36">, Wang et al., 2021</ref><ref type="bibr" target="#b22">, Nadkarni et al., 2021]</ref>. The approaches most related to CascadER are the ensembles considered by <ref type="bibr" target="#b36">Wang et al. [2021]</ref> and <ref type="bibr" target="#b22">Nadkarni et al. [2021]</ref>, both of which construct additive ensembles of structural KG embeddings and contextual LMs. Compared to these baseline ensembles, CascadER improves accuracy and/or efficiency over both.</p><p>Cascade models Multi-stage cascade ensembles have been successful in computer vision <ref type="bibr" target="#b35">[Viola and</ref><ref type="bibr">Jones, 2001, Wang et al., 2022</ref>] and text retrieval <ref type="bibr" target="#b37">[Wang et al., 2011</ref><ref type="bibr" target="#b5">, Chen et al., 2017</ref><ref type="bibr" target="#b10">, Gallagher et al., 2019</ref><ref type="bibr" target="#b19">, Lin et al., 2021]</ref>. Recently, several studies have proposed to use BERT as a late-stage ranker in multi-stage document retrieval <ref type="bibr" target="#b25">[Nogueira et al., 2019]</ref> and passage retrieval <ref type="bibr" target="#b21">[Matsubara et al., 2020]</ref> pipelines. Similar to our work, these studies are motivated by the observation that using BERT in a multi-stage cascaded setting can significantly boost retrieval accuracy while maintaining efficiency <ref type="bibr" target="#b19">[Lin et al., 2021]</ref>. Yet other studies have attempted to balance the effectiveness-efficiency tradeoff by proposing dual-encoding architectures that are more efficient but usually less effective than cross-encoder BERT models for information retrieval <ref type="bibr" target="#b26">[Reimers and Gurevych, 2019</ref><ref type="bibr" target="#b12">, Humeau et al., 2020</ref><ref type="bibr" target="#b14">, Karpukhin et al., 2020</ref><ref type="bibr" target="#b43">, Xiong et al., 2020</ref><ref type="bibr" target="#b15">, Khattab and Zaharia, 2020]</ref>. Our work builds upon all of these important insights, which have been instrumental in scaling contextual LMs to large-scale text ranking. As far as we are aware, we are the first to bridge these ideas with the traditional graph learning task of link prediction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 Model selection</head><p>We implement all KG embeddings using the open-source LibKGE PyTorch library <ref type="bibr" target="#b2">[Broscheit et al., 2020]</ref>. We use the pretrained KGE checkpoints provided by LibKGE for FB15K-237 and WN18RR. For the other datasets, we follow a similar hyperparameter tuning strategy to that proposed by <ref type="bibr" target="#b27">Ruffinelli et al. [2020]</ref> for tuning our KGE baselines.</p><p>We implement all LMs with the Huggingface transformers PyTorch library <ref type="bibr" target="#b41">[Wolf et al., 2020]</ref> using the same base language model, which is BERT-Base <ref type="bibr" target="#b8">[Devlin et al., 2019]</ref> for all benchmarks except RepoDB, and PubMedBERT <ref type="bibr" target="#b11">[Gu et al., 2021]</ref> for RepoDB. We use the following hyperparameters: Batch size of 16, learning rate of 10 -5 , and 10 epochs. We use a maximum sequence length of 32, 64, and 256 respectively for WN18RR, RepoDB, and all other datasets. For the dual-encoder LM we use 16 negative samples per positive. For the cross-encoder LM we use 2 negative samples per positive.</p><p>For all of the ensemble baselines and CascadER, we tune the weighting hyperparameter α ∈ [0.05, 0.95]. All experiments are conducted on a single NVIDIA Quadro RTX 8000 GPU with 48 GB of RAM. All main results reported in the paper use a three-tiered structure with no pruning between tiers one and two and dynamic pruning at q = 0.9 between tiers two and three. We provide exact wall-clock inference time for CascadER in Table <ref type="table">6</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3 Additional results</head><p>Results on CoDEx-S Table <ref type="table">7</ref> provides link prediction performance on the CoDEx-S dataset <ref type="bibr" target="#b28">[Safavi and Koutra, 2020]</ref>. CascadER again achieves state-of-the-art performance on this dataset, suggesting its wide applicability across KGs. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Importance of additive reweighting</head></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Tensor factorization for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Ivana</forename><surname>Balazevic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carl</forename><surname>Allen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothy</forename><surname>Hospedales</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Tucker</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D19-1522</idno>
+		<ptr target="https://aclanthology.org/D19-1522" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)<address><addrLine>Hong Kong, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019-11">November 2019</date>
+			<biblScope unit="page" from="5185" to="5194" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Translating embeddings for modeling multi-relational data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Garcia-Duran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">LibKGE -a knowledge graph embedding library for reproducible research</title>
+		<author>
+			<persName><forename type="first">Samuel</forename><surname>Broscheit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adrian</forename><surname>Kochsiek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Betz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rainer</forename><surname>Gemulla</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-demos.22</idno>
+		<ptr target="https://aclanthology.org/2020.emnlp-demos.22" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations<address><addrLine>Online</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2020-10">October 2020</date>
+			<biblScope unit="page" from="165" to="174" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">A standard database for drug repositioning</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Adam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chirag J</forename><surname>Brown</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Patel</surname></persName>
+		</author>
+		<ptr target="https://www.nature.com/articles/sdata201729" />
+	</analytic>
+	<monogr>
+		<title level="j">Scientific data</title>
+		<imprint>
+			<biblScope unit="volume">4</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="7" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Building a knowledge graph to enable precision medicine</title>
+		<author>
+			<persName><forename type="first">Payal</forename><surname>Chandak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kexin</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marinka</forename><surname>Zitnik</surname></persName>
+		</author>
+		<idno type="DOI">10.1101/2022.05.01.489928v2</idno>
+		<ptr target="https://www.biorxiv.org/content/10.1101/2022.05.01" />
+	</analytic>
+	<monogr>
+		<title level="j">bioRxiv</title>
+		<imprint>
+			<biblScope unit="volume">489928</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Efficient cost-aware cascade ranking in multi-stage retrieval</title>
+		<author>
+			<persName><forename type="first">Ruey-Cheng</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Gallagher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roi</forename><surname>Blanco</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J Shane</forename><surname>Culpepper</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3077136.3080819</idno>
+		<ptr target="https://dl.acm.org/doi/pdf/10.1145/3077136.3080819" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 40th International ACM SIGIR Conference on Research and Development in Information Retrieval</title>
+		<meeting>the 40th International ACM SIGIR Conference on Research and Development in Information Retrieval</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="445" to="454" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Inductive entity representations from text via link prediction</title>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Daza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Cochez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Groth</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3442381.3450141</idno>
+		<ptr target="https://dl.acm.org/doi/pdf/10.1145/3442381.3450141" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Web Conference 2021</title>
+		<meeting>the Web Conference 2021</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="798" to="808" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Convolutional 2d knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Dettmers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Minervini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pontus</forename><surname>Stenetorp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">BERT: Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N19-1423</idno>
+		<ptr target="https://www.aclweb.org/anthology/N19-1423" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long and Short Papers</title>
+		<meeting>the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Minneapolis, Minnesota</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019-06">June 2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="4171" to="4186" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">An open challenge for inductive link prediction on knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Mikhail</forename><surname>Galkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Berrendorf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><surname>Tapley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hoyt</forename></persName>
+		</author>
+		<idno type="arXiv">arXiv:2203.01520</idno>
+		<ptr target="https://arxiv.org/pdf/2203.01520" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Joint optimization of cascade ranking models</title>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Gallagher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruey-Cheng</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roi</forename><surname>Blanco</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J Shane</forename><surname>Culpepper</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3289600.3290986</idno>
+		<ptr target="https://dl.acm.org/doi/pdf/10.1145/3289600.3290986" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twelfth ACM International Conference on Web Search and Data Mining</title>
+		<meeting>the Twelfth ACM International Conference on Web Search and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="15" to="23" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Domain-specific language model pretraining for biomedical natural language processing</title>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Tinn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Lucas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naoto</forename><surname>Usuyama</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tristan</forename><surname>Naumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hoifung</forename><surname>Poon</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3458754</idno>
+		<ptr target="https://dl.acm.org/doi/pdf/10.1145/3458754" />
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Computing for Healthcare (HEALTH)</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="23" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Poly-encoders: Architectures and pre-training strategies for fast and accurate multi-sentence scoring</title>
+		<author>
+			<persName><forename type="first">Samuel</forename><surname>Humeau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kurt</forename><surname>Shuster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marie-Anne</forename><surname>Lachaux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/pdf/1905.01969.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<author>
+			<persName><forename type="first">Shaoxiong</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shirui</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Erik</forename><surname>Cambria</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pekka</forename><surname>Marttinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philip</forename><forename type="middle">S</forename><surname>Yu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2002.00388</idno>
+		<ptr target="https://arxiv.org/pdf/2002.00388.pdf" />
+		<title level="m">A survey on knowledge graphs: Representation, acquisition and applications</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Dense passage retrieval for open-domain question answering</title>
+		<author>
+			<persName><forename type="first">Vladimir</forename><surname>Karpukhin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Barlas</forename><surname>Oguz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sewon</forename><surname>Min</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ledell</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Edunov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-main.550</idno>
+		<ptr target="https://aclanthology.org/2020.emnlp-main.550" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2020-11">November 2020</date>
+			<biblScope unit="page" from="6769" to="6781" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Colbert: Efficient and effective passage search via contextualized late interaction over bert</title>
+		<author>
+			<persName><forename type="first">Omar</forename><surname>Khattab</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matei</forename><surname>Zaharia</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3397271.3401075</idno>
+		<ptr target="https://dl.acm.org/doi/pdf/10.1145/3397271.3401075" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 43rd International ACM SIGIR conference on research and development in Information Retrieval</title>
+		<meeting>the 43rd International ACM SIGIR conference on research and development in Information Retrieval</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="39" to="48" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Multi-task learning for knowledge graph completion with pre-trained language models</title>
+		<author>
+			<persName><forename type="first">Bosung</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Taesuk</forename><surname>Hong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Youngjoong</forename><surname>Ko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jungyun</forename><surname>Seo</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.coling-main.153</idno>
+		<ptr target="https://aclanthology.org/2020.coling-main" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th International Conference on Computational Linguistics</title>
+		<meeting>the 28th International Conference on Computational Linguistics<address><addrLine>Barcelona, Spain (Online)</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020-12">December 2020</date>
+			<biblScope unit="page" from="1737" to="1743" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Knowledge base completion meets transfer learning</title>
+		<author>
+			<persName><forename type="first">Vid</forename><surname>Kocijan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Lukasiewicz</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.emnlp-main.524</idno>
+		<ptr target="https://aclanthology.org/2021.emnlp-main.524" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2021 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Dominican Republic</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2021-11">November 2021</date>
+			<biblScope unit="page" from="6521" to="6533" />
+		</imprint>
+		<respStmt>
+			<orgName>Online and Punta Cana</orgName>
+		</respStmt>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Measures of diversity in classifier ensembles and their relationship with the ensemble accuracy</title>
+		<author>
+			<persName><forename type="first">Roger</forename><surname>Koenker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><forename type="middle">F</forename><surname>Hallock</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Ludmila</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Kuncheva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">J</forename><surname>Whitaker</surname></persName>
+		</author>
+		<idno type="DOI">10.1023/A:1022859003006.pdf</idno>
+		<ptr target="https://link.springer.com/content/pdf/10.1023/A:1022859003006.pdf" />
+	</analytic>
+	<monogr>
+		<title level="j">Journal of economic perspectives</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="181" to="207" />
+			<date type="published" when="2001">2001. 2003</date>
+		</imprint>
+	</monogr>
+	<note>Machine learning</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Pretrained transformers for text ranking: Bert and beyond</title>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rodrigo</forename><surname>Nogueira</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Yates</surname></persName>
+		</author>
+		<idno type="DOI">10.2200/S01123ED1V01Y202108HLT053</idno>
+		<ptr target="https://www.morganclaypool.com/doi/pdfplus/10.2200/S01123ED1V01Y202108HLT053" />
+	</analytic>
+	<monogr>
+		<title level="j">Synthesis Lectures on Human Language Technologies</title>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="1" to="325" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Sparse, dense, and attentional representations for text retrieval</title>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Luan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Eisenstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Collins</surname></persName>
+		</author>
+		<idno type="DOI">10.1162/tacl_a_00369</idno>
+		<ptr target="https://aclanthology.org/2021.tacl-1.20" />
+	</analytic>
+	<monogr>
+		<title level="j">Transactions of the Association for Computational Linguistics</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="329" to="345" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Reranking for efficient transformer-based answer selection</title>
+		<author>
+			<persName><forename type="first">Yoshitomo</forename><surname>Matsubara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thuy</forename><surname>Vu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alessandro</forename><surname>Moschitti</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3397271.3401266</idno>
+		<ptr target="https://dl.acm.org/doi/pdf/10.1145/3397271.3401266" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval</title>
+		<meeting>the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1577" to="1580" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Scientific language models for biomedical knowledge base completion: An empirical study</title>
+		<author>
+			<persName><forename type="first">Rahul</forename><surname>Nadkarni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Wadden</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Iz</forename><surname>Beltagy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hannaneh</forename><surname>Hajishirzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Hope</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/pdf/2106.09700.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">3rd Conference on Automated Knowledge Base Construction</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">A three-way model for collective learning on multi-relational data</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hans-Peter</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kriegel</surname></persName>
+		</author>
+		<ptr target="https://icml.cc/2011/papers/438_icmlpaper.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">A review of relational machine learning for knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Nickel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evgeniy</forename><surname>Volker Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gabrilovich</surname></persName>
+		</author>
+		<ptr target="https://ieeexplore.ieee.org/document/7358050" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE</title>
+		<meeting>the IEEE</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">104</biblScope>
+			<biblScope unit="page" from="11" to="33" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<author>
+			<persName><forename type="first">Rodrigo</forename><surname>Nogueira</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kyunghyun</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Lin</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1910.14424</idno>
+		<title level="m">Multi-stage document ranking with bert</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Sentence-BERT: Sentence embeddings using Siamese BERT-networks</title>
+		<author>
+			<persName><forename type="first">Nils</forename><surname>Reimers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Iryna</forename><surname>Gurevych</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D19-1410</idno>
+		<ptr target="https://aclanthology.org/D19-1410" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)<address><addrLine>Hong Kong, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019-11">November 2019</date>
+			<biblScope unit="page" from="3982" to="3992" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">You can teach an old dog new tricks! on training knowledge graph embeddings</title>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Ruffinelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samuel</forename><surname>Broscheit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rainer</forename><surname>Gemulla</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/pdf?id=BkxSmlBFvr" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">CoDEx: A Comprehensive Knowledge Graph Completion Benchmark</title>
+		<author>
+			<persName><forename type="first">Tara</forename><surname>Safavi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danai</forename><surname>Koutra</surname></persName>
+		</author>
+		<ptr target="https://aclanthology.org/2020.emnlp-main.669" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2020-11">November 2020</date>
+			<biblScope unit="page" from="8328" to="8350" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Rotate: Knowledge graph embedding by relational rotation in complex space</title>
+		<author>
+			<persName><forename type="first">Zhiqing</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhi-Hong</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian-Yun</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Observed versus latent features for knowledge base and text inference</title>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACL CVSC Workshop</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Representing text for joint embedding of text and knowledge bases</title>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Pantel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hoifung</forename><surname>Poon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pallavi</forename><surname>Choudhury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Gamon</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D15-1174</idno>
+		<ptr target="https://aclanthology.org/D15-1174" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2015 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2015 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Lisbon, Portugal</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2015-09">September 2015</date>
+			<biblScope unit="page" from="1499" to="1509" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Compositional learning of embeddings for relation paths in knowledge base and text</title>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Victoria</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hoifung</forename><surname>Poon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Quirk</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P16-1136</idno>
+		<ptr target="https://aclanthology.org/P16-1136" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Berlin, Germany</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2016-08">August 2016</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="1434" to="1444" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Complex embeddings for simple link prediction</title>
+		<author>
+			<persName><forename type="first">Théo</forename><surname>Trouillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Welbl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Éric</forename><surname>Gaussier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Bouchard</surname></persName>
+		</author>
+		<ptr target="http://proceedings.mlr.press/v48/trouillon16.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">Ashish</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niki</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Llion</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aidan</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Łukasz</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Illia</forename><surname>Polosukhin</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2017/file/3" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 31st International Conference on Neural Information Processing Systems</title>
+		<meeting>the 31st International Conference on Neural Information Processing Systems</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="6000" to="6010" />
+		</imprint>
+	</monogr>
+	<note>f5ee243547dee91fbd053c1c4a845aa-Paper.pdf</note>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Rapid object detection using a boosted cascade of simple features</title>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Viola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Jones</surname></persName>
+		</author>
+		<ptr target="https://ieeexplore.ieee.org/iel5/7768/21353/00990517.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2001 IEEE computer society conference on computer vision and pattern recognition</title>
+		<meeting>the 2001 IEEE computer society conference on computer vision and pattern recognition</meeting>
+		<imprint>
+			<date type="published" when="2001">2001. 2001</date>
+			<biblScope unit="volume">1</biblScope>
+		</imprint>
+	</monogr>
+	<note>CVPR</note>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Structureaugmented text representation learning for efficient knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guodong</forename><surname>Long</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyi</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ying</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Chang</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3442381.3450043</idno>
+		<ptr target="https://dl.acm.org/doi/pdf/10.1145/3442381.3450043" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Web Conference 2021</title>
+		<meeting>the Web Conference 2021</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="1737" to="1748" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">A cascade ranking model for efficient ranked retrieval</title>
+		<author>
+			<persName><forename type="first">Lidan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Donald</forename><surname>Metzler</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2009916.2009934</idno>
+		<ptr target="https://dl.acm.org/doi/pdf/10.1145/2009916.2009934" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 34th international ACM SIGIR conference on Research and development in Information Retrieval</title>
+		<meeting>the 34th international ACM SIGIR conference on Research and development in Information Retrieval</meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="105" to="114" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Knowledge graph embedding: A survey of approaches and applications</title>
+		<author>
+			<persName><forename type="first">Quan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhendong</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Guo</surname></persName>
+		</author>
+		<ptr target="https://ieeexplore.ieee.org/iel7/69/4358933/08047276.pdf" />
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Knowledge and Data Engineering</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">12</biblScope>
+			<biblScope unit="page" from="2724" to="2743" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Wisdom of committees: An overlooked approach to faster and more accurate models</title>
+		<author>
+			<persName><forename type="first">Xiaofang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Kondratyuk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Christiansen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kris</forename><forename type="middle">M</forename><surname>Kitani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yair</forename><surname>Alon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elad</forename><surname>Eban</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/pdf?id=MvO" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2022">2022. 2t0vbs4</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Machine knowledge: Creation and curation of comprehensive knowledge bases</title>
+		<author>
+			<persName><forename type="first">Gerhard</forename><surname>Weikum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luna</forename><surname>Xin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabian</forename><forename type="middle">M</forename><surname>Razniewski</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Suchanek</surname></persName>
+		</author>
+		<idno type="DOI">10.1561/1900000064</idno>
+		<ptr target="https://www.nowpublishers.com/article/DownloadSummary/DBS-064" />
+	</analytic>
+	<monogr>
+		<title level="j">Found. Trends Databases</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="issue">2-4</biblScope>
+			<biblScope unit="page" from="108" to="490" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Transformers: State-of-the-art natural language processing</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Wolf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lysandre</forename><surname>Debut</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Victor</forename><surname>Sanh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julien</forename><surname>Chaumond</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clement</forename><surname>Delangue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anthony</forename><surname>Moi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pierric</forename><surname>Cistac</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Rault</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Remi</forename><surname>Louf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Morgan</forename><surname>Funtowicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joe</forename><surname>Davison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Shleifer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clara</forename><surname>Patrick Von Platen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yacine</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julien</forename><surname>Jernite</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Canwen</forename><surname>Plu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Teven</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sylvain</forename><surname>Le Scao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mariama</forename><surname>Gugger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quentin</forename><surname>Drame</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Lhoest</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Rush</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-demos.6</idno>
+		<ptr target="https://aclanthology.org/2020.emnlp-demos.6" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations<address><addrLine>Online</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2020-10">October 2020</date>
+			<biblScope unit="page" from="38" to="45" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Representation learning of knowledge graphs with entity descriptions</title>
+		<author>
+			<persName><forename type="first">Ruobing</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyuan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jia</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huanbo</forename><surname>Luan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+		<ptr target="https://ojs.aaai.org/index.php/AAAI/article/view/10329/10188" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">30</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Approximate nearest neighbor negative contrastive learning for dense text retrieval</title>
+		<author>
+			<persName><forename type="first">Lee</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenyan</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ye</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kwok-Fung</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jialin</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><forename type="middle">N</forename><surname>Bennett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junaid</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arnold</forename><surname>Overwijk</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/pdf?id=zeFrfgyZln" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Embedding entities and relations for learning and inference in knowledge bases</title>
+		<author>
+			<persName><forename type="first">Bishan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Deng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<monogr>
+		<title level="m" type="main">Kg-bert: Bert for knowledge graph completion</title>
+		<author>
+			<persName><forename type="first">Liang</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengsheng</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Luo</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1909.03193</idno>
+		<ptr target="https://arxiv.org/pdf/1909.03193.pdf?ref=https://githubhelp.com" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">Neural bellman-ford networks: A general graph neural network framework for link prediction</title>
+		<author>
+			<persName><forename type="first">Zhaocheng</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zuobai</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Louis-Pascal</forename><surname>Xhonneux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Tang</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2021/hash/f6" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">34</biblScope>
+		</imprint>
+	</monogr>
+	<note>a673f09493afcd8b129a0bcf1cd5bc-Abstract.html</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

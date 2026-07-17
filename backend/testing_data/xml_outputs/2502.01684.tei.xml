@@ -1,0 +1,888 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Leveraging Joint Predictive Embedding and Bayesian Inference in Graph Self Supervised Learning</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2025-04-01">1 Apr 2025</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Srinitish</forename><surname>Srinivasan</surname></persName>
+							<email>srinitish.srinivasan2021@vitstudent.ac.in</email>
+							<affiliation key="aff0">
+								<orgName type="department">School of Computer Science and Engineering</orgName>
+								<orgName type="institution">Vellore Institute of Technology</orgName>
+							</affiliation>
+							<affiliation key="aff1">
+								<orgName type="department">School of Computer Science and Engineering</orgName>
+								<orgName type="institution">Vellore Institute of Technology</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Leveraging Joint Predictive Embedding and Bayesian Inference in Graph Self Supervised Learning</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2025-04-01">1 Apr 2025</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">5FC86274A0254B2F9E54E10DE05B0B28</idno>
+					<idno type="arXiv">arXiv:2502.01684v3[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:23+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Graph representation learning has emerged as a cornerstone for tasks like node classification and link prediction, yet prevailing self-supervised learning (SSL) methods face challenges such as computational inefficiency, reliance on contrastive objectives, and representation collapse. Existing approaches often depend on feature reconstruction, negative sampling, or complex decoders, which introduce training overhead and hinder generalization. Further, current techniques which address such limitations fail to account for the contribution of node embeddings to a certain prediction in the absence of labeled nodes. To address these limitations, we propose a novel joint embedding predictive framework for graph SSL that eliminates contrastive objectives and negative sampling while preserving semantic and structural information. Additionally, we introduce a semantic-aware objective term that incorporates pseudo-labels derived from Gaussian Mixture Models (GMMs), enhancing node discriminability by evaluating latent feature contributions. Extensive experiments demonstrate that our framework outperforms state-of-the-art graph SSL methods across benchmarks, achieving superior performance without contrastive loss or complex decoders. Key innovations include (1) a non-contrastive, view-invariant joint embedding predictive architecture, (2) leveraging single context and multiple targets relationship between subgraphs, and (3) GMM-based pseudo-label scoring to capture semantic contributions. This work advances graph SSL by offering a computationally efficient, collapse-resistant paradigm that bridges spatial and semantic graph features for downstream tasks. The code for our paper can be found at https://github.com/Deceptrax123/JPEB-GSSL.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Graph representation learning has found widespread adoption in Social Network Analysis, Recommendation Systems, Computer Vision and Natural Language <ref type="bibr">ProcessingWu et al. (2020)</ref>. It aims to learn lowdimensional embeddings of nodes or subgraphs while preserving their underlying spatial and spectral features. These learned embeddings can then be used on downstream tasks such as node classification <ref type="bibr" target="#b12">(Maekawa et al., 2022)</ref>, link prediction <ref type="bibr" target="#b26">(Zhang &amp; Chen, 2018</ref>) and community detection <ref type="bibr" target="#b11">(Li et al., 2024)</ref> by training taskspecific decoders or classification layers on the learned embeddings keeping the backbone frozen. Such an approach reduces the computational complexity and training time on downstream tasks. Though Graph Neural Networks(GNNs) have gained popularity over time, they require a certain number of labelled nodes to perform well. Further, owing to the complexity of graph representations spatially, it is often challenging to pre-train graphs and transfer the learned embeddings to downstream tasks.</p><p>Graph Self Supervised learning has been widely studied in the literature to facilitate graph representation learning. This includes methods such as Node2Vec, DGI <ref type="bibr" target="#b21">(Veličković et al., 2018)</ref>, MVGRL <ref type="bibr" target="#b4">(Hassani &amp; Khasahmadi, 2020)</ref>, GRACE <ref type="bibr" target="#b27">(Zhu et al., 2020)</ref> etc. Although these methods have achieved state-of-the-art results on several social networks, they rely heavily on either graph reconstruction/feature reconstruction, remasking or generating contrastive views by negative sampling, which is a computationally expensive process on large graphs. Graph-SSL methods that rely on reconstruction (generative methods) are decoder variant, meaning they depend on the decoder architecture(inner product decoder or symmetrical feature reconstruction). Such networks might require additional feature propagation steps such as skip connections to prevent vanishing gradients and retain learned information. Furthermore, most methods tend to use more layers or stack multiple encoders to capture long-range node interactions, which increases training complexity and leads to poor performance in downstream tasks due to over-smoothing. This diminishes the model's ability to effectively discriminate between nodes effectively <ref type="bibr" target="#b22">(Wang et al., 2024)</ref>.</p><p>To address the limitations of existing methods, we introduce a joint embedding predictive framework that predicts subgraph embeddings of randomly sampled targets given a context conditioned on a latent variable z. The framework employs two encoders: a context encoder, which processes subgraphs sampled by randomly dropping nodes and updates its parameters dynamically through gradient descent, and a target encoder, whose weights are maintained as a moving average of the context encoder. The target encoder processes the original graph (without any view augmentations) to generate target node representations. Subsequently, three subgraphs are sampled from the latent space by randomly masking the target node representations. These sampled subgraphs are then fed into a global mean pooling operation to compute their embeddings, which serve as targets for a single context. To prevent representational collapse, we incorporate positional information of target nodes into the context embeddings before deriving subgraph views. A predictor network then maps the context embeddings with target positional information to the corresponding target embeddings. However, optimizing solely on context-target embeddings risks overlooking the graph's semantic information. To overcome this, we enhance node representations by introducing an additional term to the objective function, scoring pseudo-labels predicted from the node embeddings. This is achieved by fitting a Gaussian Mixture Model (GMM) on the embeddings and evaluating the contribution of each latent feature to the pseudo-labels. Through this design, we present a graph augmentation and view invariant self-supervised learning technique that avoids the need for negative samples or contrastive objectives based on mutual information estimators. This offers a robust alternative for representation learning in graph-based applications.</p><p>We list our main contributions as follows:</p><p>• We introduce a novel graph self supervised learning method based on a joint predictive embedding paradigm which bypasses contrastive objectives such as Mutual Information(MI) Estimators, contrastive example generation techniques such as negative sampling and avoids noisy features.</p><p>• Through our technique, we account for representation collapse by sampling multiple target embeddings for a single context, thereby enhancing the spread of node representations, and by providing positional information of target nodes to the context subgraph.</p><p>• We also account for contribution of node embeddings to pseudo-label level predictions by incorporating an additional term to the joint predictive objective. This is given by scoring pseudo-labels generated by fitting a Gaussian Mixture Model(GMM) on the learned node embeddings.</p><p>• We conduct extensive experiments demonstrating that our approach significantly outperforms previous state-of-the-art Graph Self-Supervised Learning (G-SSL) methods. Additionally, we provide a thorough emperical efficiency analysis highlighting the model's efficiency and scalability.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>2.1 Unsupervised Representation Learning on Graphs <ref type="bibr">(Jin et al., 2021b)</ref> proposes a method for composing multiple self-supervised tasks for GNNs. They introduce a pseudo-homophily measure to evaluate representation quality without labels. <ref type="bibr" target="#b25">(Zhang et al., 2021)</ref> proposed the removal of negative sampling and MI estimator optimization entirely. The authors propose a loss function that contains an invariance term that maximizes correlation between embeddings of the two views and a decorrelation term that pushes different feature dimensions to be uncorrelated. <ref type="bibr" target="#b5">(Hou et al., 2022)</ref> employs a re-mask decoding strategy and uses expressive GNN decoders instead of Multi-Layer Perceptrons(MLPs) enabling the model to learn more meaningful compressed representations. It lays focus on masked feature reconstruction rather than structural reconstruction. <ref type="bibr" target="#b4">(Hassani &amp; Khasahmadi, 2020)</ref> proposed MVGRL that makes use of two graph views and a discriminator to maximize mutual information between node embeddings from a first-order view and graph embeddings from a second-order view. It leverages both node and graphlevel embeddings and avoids the need for explicit negative sampling. <ref type="bibr" target="#b8">(Ju et al., 2022)</ref> proposed ParetoGNN which simultaneously learns from multiple pretext tasks spanning different philosophies. It uses a multiple gradient descent algorithm to dynamically reconcile conflicting learning objectives, showing state-of-the-art performance in node classification, clustering, link prediction and community prediction. <ref type="bibr" target="#b1">(Ding et al., 2023)</ref> introduced multi-scale feature propagation to capture long-range node interactions without oversmoothing. The authors also enhance inter-cluster separability and intra-cluster compactness by inferring cluster prototypes using a Bayesian non-parametric approach via Dirichlet Process Mixture Models(DPMMs). <ref type="bibr" target="#b19">(Thakoor et al., 2021)</ref> makes use of simple graph augmentations such as random node feature and edge masking, making it easier to implement on large graphs while achieving state-of-the-art results.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Bootstrapping Methods</head><p>It leverages a cosine similarity-based objective to make the predicted target representations closer to the true representations. <ref type="bibr">(Jin et al., 2021a)</ref> introduced a Siamese network architecture comprising an online and target encoder with momentum-driven update steps for the target. The authors propose 2 contrastive objectives i.e cross-network and cross view-contrastiveness. The Cross-network contrastive objective incorporates negative samples to push disparate nodes away in different graph views to effectively learn topological information.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3">Joint Predictive Embedding Methods</head><p>Joint predictive embedding has been explored in the field of computer vision and audio recognition. <ref type="bibr" target="#b0">(Assran et al., 2023)</ref> introduced I-JEPA which eliminates the need for hand-crafted augmentations and image reconstruction. They make use of a joint-embedding predictive model that predicts representations of masked image regions in an abstract feature space rather than in pixel space, allowing the model to focus on highlevel semantic structures. It makes use of a Vision Transformer(ViT) with a multi-block masking strategy ensuring that the predictions retain semantic integrity. <ref type="bibr" target="#b2">(Fei et al., 2023)</ref> extends the masked-modeling principle from vision to audio, enabling self-supervised learning on spectrograms. The key technical contribution is the introduction of a curriculum masking strategy, which transitions from random block masking to time-frequency-aware masking, addressing the strong correlations in audio spectrograms.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Methodology</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Preliminaries</head><p>Consider the definition of a Graph G = (V, E). Let V be the set of vertices {v 1 , v 2 , v 3 ....v nv } and E be the set of edges {e 1 , e 2 , e 3 ...e ne }. n v , n e are the number of nodes and edges respectively in G. Each node in V is characterized by a d dimensional vector. This is the initial signal that is populated by either bag of words or binary values depending on the problem considered.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Loss Function</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.1">Joint Predictive Optimization</head><p>We sample a subgraph G ′ from graph G by dropping a set of nodes according to a Bernoulli distribution parameterized by success probability p 1 . The subgraph G ′ is passed into the context encoder to output node embeddings H ′ of dimensions d ′ . Meanwhile, the graph G is passed into the target encoder to generate node embeddings H with the same dimensions as H ′ . At the latent space, we sample 3 target subgraphs from the 1 , H ′ 2 , H ′ 3 , conditioned on latent variable H ′ . We then frame the objective function for the joint predictive component as follows,</p><formula xml:id="formula_0">L J (Θ C , Θ R ) = 1 T Σ k=T k=1 ||H ′ k -H t k || 2 (1)</formula><p>where T is the total number of targets, Θ C is the weight matrix of the context encoder and Θ R is the weight matrix of the target encoder. The objective is computed at the latent space with no reconstruction/negative sampling involved.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.2">Node Feature Contribution Optimization</head><p>The node embeddings H ′ obtained from passing G ′ into the context encoder are fit in a Gaussian Mixture Model(GMM). We aim to obtain,</p><formula xml:id="formula_1">p(z k = 1|h ′ n ) = p(h ′ n |z k = 1)p(z k = 1) Σ j=K j=1 p(h ′ n |z j = 1)p(z j = 1) (2)</formula><p>where z is a latent variable that takes 2 values: one if h ′ comes from Gaussian k, and zero otherwise. We can obtain,</p><formula xml:id="formula_2">p(z k = 1) = π k (3) p(h ′ n |z k = 1) = N (h ′ n |µ k , Σ k ) (4)</formula><p>where π k is the mixing coefficient such that,</p><formula xml:id="formula_3">Σ k=K k=1 π k = 1 (5)</formula><p>On replacing these equations in eq.2, we obtain</p><formula xml:id="formula_4">p(z k = 1|h ′ n ) = π k N (h ′ n |µ k , Σ k ) Σπ j N (h ′ n |µ j , Σ j ) = γ(z nk )<label>(6)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E-Step:</head><p>In the E-Step, we aim to evaluate,</p><formula xml:id="formula_5">Q(θ * , θ) = E[ln p(H ′ , Z|θ * )] = Σ Z p(Z|H ′ , θ) ln p(H ′ , Z|θ * ) (7)</formula><p>from eq.6, we can substitute γ in the above equation as,</p><formula xml:id="formula_6">Q(θ * , θ) = Σ Z γ(z nk ) ln p(H ′ , Z|θ * ) (8)</formula><p>On finding the complete likelihood of the model, we finally have,</p><formula xml:id="formula_7">Q(θ * , θ) = Σ N n=1 Σ K k=1 γ(z nk )[ln π k + ln N (h ′ n |µ k , Σ k )]<label>(9)</label></formula><p>M-Step: In the M-Step, we aim to find updated parameters θ * as follows,</p><formula xml:id="formula_8">θ * = arg max θ Q(θ * , θ) (10)</formula><p>Considering the restriction, Σ K k=1 π k = 1, eq.9 is modified as follows,</p><formula xml:id="formula_9">Q(θ * , θ) = Σ N n=1 Σ K k=1 γ(z nk )[ln π k + ln N (h ′ n |µ k , Σ k )] -λ(Σ k=K k=1 π k -1)<label>(11)</label></formula><p>The parameters are then determined by finding the maximum likelihood of Q. On taking the derivative with respect to π k , µ k , Σ k and rearranging terms, we finally obtain the update equations for the parameters as follows,</p><formula xml:id="formula_10">π k = Σ n=N n=1 γ(z nk ) N (12) µ * k = N n=1 γ(z nk )h ′ n N n=1 γ(z nk ) (13) * k = N n=1 γ(z nk )(h ′ n -µ k )(h ′ n -µ k ) T N n=1 γ(z nk )<label>(14)</label></formula><p>Parameter Θ C Update: Let V g be a vector of pseudo-labels obtained for each node from the Gaussian Mixture Model(GMM) and V k be the vector of pseudo-labels obtained by clustering node embeddings H ′ by K-Means. We update the context encoder parameters Θ c with the following objective,</p><formula xml:id="formula_11">L G =    0.5( V T g H ′ ΣVg||Vg|| - V T k H ′ ΣV k ||V k || )/β, if| V T g H ′ ΣVg||Vg|| - V T k H ′ ΣV k ||V k || | &lt; β | V T g H ′ ΣVg||Vg|| - V T k H ′ ΣV k ||V k || | -0.5β, otherwise<label>(15)</label></formula><p>In the above equation, the context encoder parameters Θ c are updated by the smooth L 1 loss function.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.3">Final objective</head><p>The context encoder parameters Θ C are finally updated as follows,</p><formula xml:id="formula_12">L = L J + L G (16) Θ C ← optimize(Θ c , α, ∂ Θ c L) (17)</formula><p>where, α is the learning rate for the Adam optimizer. The weights of the context and target encoder are randomly initialized by a standard normal distribution. A cosine annealing learning rate scheduler with early stopping is used in all experiments.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Description of Components and Operations</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.1">Context Encoder</head><p>The node features from G ′ are passed into the context encoder. The context encoder is a simple 3-layer GCN encoder which predicts 128, 256 and 512 features in each layer respectively. The forward propagation for each layer is described as follows,</p><formula xml:id="formula_13">X ′ = g( D -1 2 Â D =1 2 XΘ) (18) Â = A + I (<label>19</label></formula><formula xml:id="formula_14">)</formula><p>where D is the degree matrix, Â is the adjacency matrix with added self-loops and Θ is the learned weights matrix. g is a non-linear function. We use ReLU for the first two layers and Tanh for the final layer. The context encoder is an online encoder whose weights are updated by gradient descent.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.2">Target Encoder</head><p>The target encoder inputs node features from G. Similar to the context encoder, it is a 3-layer GCN encoder with same number of hidden, output dimensions and forward propagation steps. The weights of the target encoder are updated as a moving average of the context encoder as follows,</p><formula xml:id="formula_15">Θ R s = mΘ R s-1 + (1 -m)Θ C s (<label>20</label></formula><formula xml:id="formula_16">)</formula><p>where Θ R is the weights matrix of the target encoder, Θ C is the weights of the context encoder, m is the momentum parameter and s refers to the sth iteration.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.3">Predictor</head><p>The predictor consists of 2 GCN layers, both predicting 512 features. The activation function g for both layers is Tanh, in line with the final layer of the target encoder. We use Tanh since it is a bounded function, thus stabilizing the loss computation and optimization.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.4">Global Mean Pooling Operation</head><p>The global mean pool operation for a graph G is given as follows,</p><formula xml:id="formula_17">r = 1 N Σ n=N n=1 x n (21)</formula><p>where x n refers to the node features of node n and N is the total number of nodes in graph G</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4">Implementation Details</head><p>For all experiments, we use the Adam Optimizer(Kingma, 2014) and cosine annealing learning rate scheduler with warm restarts. No regularization techniques such as dropout, L 1 or L 2 have been employed since they tend to reduce performance. For learning rates, we perform a search with values corresponding to the search space {0.5, 0.1, 0.05, 0.01, 0.001}. We set the value of the momentum update parameter m to 0.9. The number of epochs was set to 50,000 with early stopping. All experiments were conducted on an M2 Macbook Pro with 8GB CPU.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiments</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Experimental Setting</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.1">Datasets</head><p>In our experiments, we evaluate our proposed framework on seven publicly available benchmark datasets for node representation learning and classification. The datasets are, namely, Cora <ref type="bibr" target="#b17">(Sen et al., 2008)</ref>, Pubmed <ref type="bibr" target="#b15">(Namata et al., 2012)</ref>, Citeseer <ref type="bibr" target="#b17">(Sen et al., 2008)</ref>, Amazon Photos <ref type="bibr" target="#b18">(Shchur et al., 2018)</ref>, Amazon Computers <ref type="bibr" target="#b18">(Shchur et al., 2018)</ref>, Coauthor CS <ref type="bibr" target="#b18">(Shchur et al., 2018)</ref> and WikiCS <ref type="bibr" target="#b13">(Mernyei &amp; Cangea, 2020)</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.2">Evaluation Methodology</head><p>The embeddings are evaluated on node classification, whose performance is quantified by accuracy. We follow the same evaluation protocol as used in <ref type="bibr" target="#b20">(Veličković et al., 2017)</ref>, <ref type="bibr" target="#b1">(Ding et al., 2023)</ref>, <ref type="bibr" target="#b8">(Ju et al., 2022)</ref> etc. All scores for baselines have been obtained from previously published papers.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.3">Evaluation Protocol</head><p>For all downstream tests, we follow the linear evaluation protocol on graphs where the parameters of the backbone/encoder are frozen during inference time. Only the prediction head, which is a single GCN layer, is trained for node classification. For evaluation purposes, we use the default number for train/val/test splits for the citation networks i.e. Cora, Pubmed, Citeseer which are 500 validation and 1000 testing nodes. The train/val/test splits for the remaining datasets, namely, Amazon Photos, Amazon Computers and Coauthor CS are according to <ref type="bibr" target="#b18">(Shchur et al., 2018)</ref>. For WikiCS we use the publicly available splits. Unless otherwise mentioned, performance is averaged over 10 independent runs with different random seeds and splits for all seven evaluation datasets. We report the mean and standard deviation obtained across 10 runs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.4">Environment</head><p>To ensure a fair comparison, for all datasets, we use the same number of layers for the GNN encoder and the same number of features at each hidden layer. The encoder predicts 512 hidden features in the latent space for all datasets. The number of output features of the final classification head is the only parameter varied. We use a Cosine Annealing learning rate scheduler with warm restarts after 75 epochs, and early stopping is employed for all experiments.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Evaluation Results</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.1">Performance on Node Classification on small and large graphs</head><p>As mentioned earlier, we use the linear evaluation protocol and report the mean and standard deviation of classification accuracy on the test nodes over 10 runs on different folds or splits with different seeds. We compare our proposed approach with supervised and fine-tuned model baselines. For semi-supervised node classification, we compare our proposed approach against Multi Layer Perceptron(MLP),Graph Convolution Network(GCN) <ref type="bibr" target="#b10">(Kipf &amp; Welling, 2016)</ref>, Graph Attention Network(GAT) <ref type="bibr" target="#b20">(Veličković et al., 2017)</ref>, Simplified GCN <ref type="bibr" target="#b23">(Wu et al., 2019)</ref>, Logistic Regression and GraphSAGE <ref type="bibr" target="#b3">(Hamilton et al., 2017)</ref>. For GraphSAGE, we use the mean, maxpool and meanpool variants as described in <ref type="bibr" target="#b18">(Shchur et al., 2018)</ref>. We have compared our model's performance against semi-supervised baselines in table 2. For self-supervised and fine-tuned node classification, we compare our proposed approach against DGI, MVGRL(Hassani &amp; Khasahmadi, 2020), GRACE <ref type="bibr" target="#b27">(Zhu et al., 2020)</ref>, CCA-SSG <ref type="bibr" target="#b25">(Zhang et al., 2021)</ref>, SUGRL <ref type="bibr" target="#b14">(Mo et al., 2022)</ref>, S3-CL <ref type="bibr" target="#b1">(Ding et al., 2023)</ref>, GraphMAE <ref type="bibr" target="#b5">(Hou et al., 2022)</ref>, GMI <ref type="bibr" target="#b16">(Peng et al., 2020)</ref>, BGRL <ref type="bibr" target="#b19">(Thakoor et al., 2021)</ref> and ParetoGNN <ref type="bibr" target="#b8">(Ju et al., 2022)</ref> on small and large graphs. In semi-supervised node classification (Table <ref type="table" target="#tab_1">2</ref>), our method achieves the highest accuracy across all baselines. On self-supervised classification followed by fine-tuning, we evaluate our proposed model against two specific fields of data i.e Planetoid datasets and larger, more stable datasets such as Amazon Computers, Photos and WikiCS. Table <ref type="table" target="#tab_2">3</ref> compares our model's performance against strong baselines on Planetoid datasets. We show that our model performs extremely well on smaller datasets by outperforming all baselines on Cora and Citeseer with extremely competitive results on Pubmed. Table <ref type="table" target="#tab_3">4</ref> contains the performance of our model against strong baselines for Photos, Computers, Coauthor CS and WikiCS. Our model consistently achieves competitive scores against baselines by outperforming baselines on Photos and CS while remaining competitive on Computers and WikiCS .These results underscore the approach's adaptability and strong performance across diverse dataset sizes. Owing to the ability of our proposed approach to avoid noisy features, representation collapse, and leverage semantic information, our proposed model performs well on small and unstable datasets such as Cora and Citeseer and large datasets such as Amazon, Coauthor and WikiCS. 89.8 ± 0.9 77.0 ± 0.9 85.7 ± 1.0 94.5 ± 0.5 88.0 ± 0.6 94.5 ± 0.4</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.2">Study on GMM Cluster Optimization</head><p>In this section, we evaluate the significance of the constraint in our loss function. Our approach combines learning sub-graph embeddings with optimizing node embeddings using pseudo-labels derived from a Gaussian Mixture Model (GMM). These pseudo-labels, converted to normalized scores, serve as a constraint in the original loss function for subgraph embeddings. Table <ref type="table" target="#tab_4">5</ref> illustrates the performance of our method with and without this constraint, demonstrating a substantial improvement when the GMM-derived pseudo-label scores are incorporated. This finding is particularly noteworthy as it indicates that computationally expensive processes like negative sampling, commonly used in graph contrastive learning, may not be essential for optimizing node embeddings. Our approach thus offers a more efficient alternative while maintaining, and even enhancing, performance in graph representation learning tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.3">Study on Momentum Parameter m</head><p>Figure <ref type="figure" target="#fig_1">2</ref> represents the change in performance with respect to the momentum parameter on the citeseer dataset. The ideal values for m may range between 0.8 and 0.9. As m → 1, the weights of the target encoder update by very small steps, thereby slowing down learning. This is further indicated by the drop in performance. For all our experiments, we use m = 0.9.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.4">Efficiency Analysis for Scalability</head><p>We evaluate the model's efficiency in terms of the parameter size and memory consumption. We show that our model is among the most efficient of all baselines while outperforming most baselines. We compare the efficiency of our proposed model against reported baselines in table 6.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.5">Study on Performance against Test Time Node Feature Distortion</head><p>We evaluate the performance of our method on node classification by augmenting the test splits. We sample p percentage test nodes randomly and replace their node features with points sampled from a standard Gaussian distribution. We evaluate the performance of the distorted test nodes on Amazon Computers,  WikiCS, Amazon Photos and Coauthor CS by varying p between 10% and 40% and report their performance differences in table 7. In this study, we only use WikiCS, Co-author and Amazon networks since Planetoid datasets tend to be unstable on evaluation as indicated in <ref type="bibr" target="#b18">(Shchur et al., 2018)</ref>. Despite no further fine-tuning on distorted node features, the average performance drop on Amazon Photos and Computers is only 2.96% and 4.01% respectively. This indicates the ability of the joint framework to generalize on noise-augmented views as well. According to our hypothesis, we believe this is due to the nature of joint predictive embedding learning where a higher variation in context and target embeddings is required for better generalization. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusion</head><p>In this paper, we propose a novel Graph Self-Supervised Learning (Graph-SSL) framework that combines joint predictive embedding and pseudo-labeling to effectively capture global knowledge while avoiding noisy features and bypassing contrastive methods such as negative sampling and reconstruction. The joint predictive embedding framework leverages the context-target relationship between node embeddings in the latent space by predicting multiple target embeddings for a single context. This approach, combined with the optimization of node feature contributions to pseudo-labels, enables a lightweight Graph Neural Network (GNN) encoder to capture intricate patterns in both graph structure and node features without requiring the stacking of multiple layers or encoders. Additionally, our method addresses the node representation collapse problem by incorporating information from multiple targets for a single context, ensuring robust and diverse embeddings. Through extensive experiments on multiple benchmark graph datasets, we demonstrate that our proposed framework achieves superior performance compared to several state-of-the-art graph self-supervised learning methods.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Overall Framework Diagram</figDesc><graphic coords="4,72.00,81.87,531.52,281.92" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Variation of accuracy with respect to momentum parameter m on Citeseer</figDesc><graphic coords="10,102.74,81.86,403.20,302.40" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>. Details on number of nodes, edges and features are given in table 1. Cora consists of 2708 scientific publications classified into one of seven classes, Citeseer consists of 3312 scientific publications classified into one of six classes and Pubmed consists of 19717 scientific publications pertaining to diabetes classified into one of three classes. In Amazon Photos and Amazon Computers, nodes represent goods and edges represent that two goods are frequently bought together. The product reviews are represented as bag-of-words features. Coauthor CS contains paper keywords for each author's papers. Nodes represent authors that are connected by an edge if they co-authored a paper. WikiCS is a dataset derived from Wikipedia with nodes corresponding to Computer Science articles and edges based on hyperlinks. The 10 classes represent different branches of Computer Science.</figDesc><table><row><cell></cell><cell cols="3">Table 1: Dataset Details</cell><cell></cell></row><row><cell>Dataset</cell><cell cols="4">Nodes Edges Features Classes</cell></row><row><cell>Cora</cell><cell>2,708</cell><cell>10,556</cell><cell>1,433</cell><cell>7</cell></row><row><cell>Citeseer</cell><cell>3,327</cell><cell>9,104</cell><cell>3,703</cell><cell>6</cell></row><row><cell>Pubmed</cell><cell>19,717</cell><cell>88,648</cell><cell>500</cell><cell>3</cell></row><row><cell>Amazon Photos</cell><cell>7,650</cell><cell>238,612</cell><cell>745</cell><cell>8</cell></row><row><cell cols="3">Amazon Computers 13,752 491,722</cell><cell>767</cell><cell>10</cell></row><row><cell>Coauthor CS</cell><cell cols="2">18,333 163,788</cell><cell>6,805</cell><cell>15</cell></row><row><cell>WikiCS</cell><cell cols="2">11,701 216,123</cell><cell>300</cell><cell>10</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Semi-Supervised Node Classification. The values indicate the accuracy achieved on node classification by several methods. A higher value indicates better performance. The best score is marked in bold and the second-best score is underlined. N/A indicates that the score was not reported for a particular dataset by the original authors.</figDesc><table><row><cell>Method</cell><cell>Cora</cell><cell>Citeseer</cell><cell>Pubmed</cell><cell>Photos</cell><cell cols="2">Computers Coauthor CS</cell></row><row><cell>MLP</cell><cell>55.2 ± 0.4</cell><cell>46.5 ± 0.5</cell><cell>71.4 ± 0.3</cell><cell>78.5 ± 0.2</cell><cell>44.9 ± 5.8</cell><cell>76.5 ± 0.3</cell></row><row><cell>GCN</cell><cell>81.5 ± 1.3</cell><cell>71.9 ± 1.9</cell><cell>77.8 ± 2.9</cell><cell>91.2 ± 1.2</cell><cell>82.6 ± 2.4</cell><cell>91.1 ± 0.5</cell></row><row><cell>GAT</cell><cell>81.8 ± 0.3</cell><cell>71.4 ± 1.8</cell><cell>78.7 ± 2.3</cell><cell>85.7 ± 20.3</cell><cell>78.0 ± 19.0</cell><cell>90.5 ± 0.6</cell></row><row><cell>Simplified GCN</cell><cell>81.5 ± 0.2</cell><cell>73.1 ± 0.1</cell><cell>79.7 ± 0.4</cell><cell>88.3 ± 1.1</cell><cell>N/A</cell><cell>91.5 ± 0.3</cell></row><row><cell>GraphSage Mean</cell><cell>79.2 ± 7.7</cell><cell>71.6 ± 1.9</cell><cell>77.4 ± 2.2</cell><cell>91.4 ± 1.3</cell><cell>82.4 ± 1.8</cell><cell>91.3 ± 2.8</cell></row><row><cell>GraphSage MaxPool</cell><cell>76.6 ± 1.9</cell><cell>67.5 ± 2.3</cell><cell>76.1 ± 2.3</cell><cell>90.4 ± 1.3</cell><cell>N/A</cell><cell>85.0 ± 1.1</cell></row><row><cell>GraphSage MeanPool</cell><cell>77.9 ± 2.4</cell><cell>68.6 ± 2.4</cell><cell>76.5 ± 2.4</cell><cell>90.7 ± 1.6</cell><cell>79.9 ± 2.3</cell><cell>89.6 ± 0.9</cell></row><row><cell>Logistic Regression</cell><cell>57.1 ± 2.3</cell><cell>61.0 ± 2.2</cell><cell>64.1 ± 3.1</cell><cell>73.0 ± 6.5</cell><cell>64.1 ± 5.7</cell><cell>86.4 ± 0.9</cell></row><row><cell>Ours</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 : Self Supervised Pre-Training followed by classification on Planetoid Datasets.</head><label>3</label><figDesc>The values indicate the accuracy achieved on node classification by several SSL methods. A higher value indicates better performance. The best score is marked in bold and the second-best score is underlined.</figDesc><table><row><cell>Method</cell><cell>Cora</cell><cell>Citeseer</cell><cell>Pubmed</cell></row><row><cell>DGI</cell><cell>81.7 ± 0.6</cell><cell>71.5 ± 0.7</cell><cell>77.3 ± 0.6</cell></row><row><cell>MVGRL</cell><cell>82.9 ± 0.7</cell><cell>72.6 ± 0.7</cell><cell>79.4 ± 0.3</cell></row><row><cell>GRACE</cell><cell>80.0 ± 0.4</cell><cell>71.7 ± 0.6</cell><cell>79.5 ± 1.1</cell></row><row><cell>CCA-SSG</cell><cell>84.2 ± 0.4</cell><cell>73.1 ± 0.3</cell><cell>81.6 ± 0.4</cell></row><row><cell>SUGRL</cell><cell>83.4 ± 0.5</cell><cell>73.0 ± 0.4</cell><cell>81.9 ± 0.3</cell></row><row><cell>S3-CL</cell><cell>84.5 ± 0.4</cell><cell>74.6 ± 0.4</cell><cell>80.8 ± 0.3</cell></row><row><cell cols="2">GraphMAE 84.2 ± 0.4</cell><cell>73.1 ± 0.4</cell><cell>83.9 ± 0.3</cell></row><row><cell>GMI</cell><cell>82.7 ± 0.2</cell><cell>73.3 ± 0.3</cell><cell>77.3 ± 0.6</cell></row><row><cell>BGRL</cell><cell>83.8 ± 1.6</cell><cell cols="2">72.3 ± 0.9 86.0 ± 0.3</cell></row><row><cell>Ours</cell><cell cols="3">89.8 ± 0.9 77.0 ± 0.9 85.7 ± 1.0</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 4 : Self Supervised Pre-Training followed by classification on datasets mentioned in Shchur et al. (2018) and WikiCS.</head><label>4</label><figDesc>The best score for each dataset is marked in bold and the second-best score is underlined.</figDesc><table><row><cell>Method</cell><cell>Photos</cell><cell cols="2">Computers Coauthor CS</cell><cell>WikiCS</cell></row><row><cell>DGI</cell><cell>91.6 ± 0.2</cell><cell>83.9 ± 0.5</cell><cell>92.1 ± 0.6</cell><cell>75.3 ± 0.1</cell></row><row><cell>GRACE</cell><cell>92.1 ± 0.5</cell><cell>86.7 ± 0.8</cell><cell>93.2 ± 0.4</cell><cell>77.5 ± 0.6</cell></row><row><cell>BGRL</cell><cell>93.2 ± 0.3</cell><cell>90.3 ± 0.2</cell><cell>93.3 ± 0.1</cell><cell>80.0 ± 0.1</cell></row><row><cell>ParetoGNN</cell><cell>93.8 ± 0.3</cell><cell>90.7 ± 0.2</cell><cell>92.2 ± 0.1</cell><cell>82.9 ± 0.1</cell></row><row><cell>MVGRL</cell><cell>93.2 ± 0.3</cell><cell>87.5 ± 0.1</cell><cell>92.1 ± 0.1</cell><cell>77.5 ± 0.1</cell></row><row><cell cols="2">Random Weights 92.1 ± 0.5</cell><cell>86.5 ± 0.4</cell><cell>91.6 ± 0.3</cell><cell>78.9 ± 0.6</cell></row><row><cell>Ours</cell><cell>94.5 ± 0.5</cell><cell>88.0 ± 0.6</cell><cell>94.5 ± 0.4</cell><cell>82.4 ± 1.0</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 5 : Ablation Study for Loss Function.</head><label>5</label><figDesc>The best score for each dataset is marked in bold.</figDesc><table><row><cell>Method</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Cora Citeseer Pubmed Photos Computers Coauthor CS WikiCS</head><label></label><figDesc></figDesc><table><row><cell>Without Bayesian Inference</cell><cell>89.0</cell><cell>74.1</cell><cell>84.2</cell><cell>93.4</cell><cell>85.0</cell><cell>93.2</cell><cell>81.5</cell></row><row><cell>With Bayesian Inference</cell><cell>89.8</cell><cell>77.0</cell><cell>85.7</cell><cell>94.5</cell><cell>88.0</cell><cell>94.5</cell><cell>82.4</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 6 : Efficiency Comparison among Baselines on Cora, Pubmed, and Citeseer</head><label>6</label><figDesc></figDesc><table /><note><p>. Lower the number of parameters, more efficient is the model</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Methods Cora Citeseer Pubmed Memory (GB) Params Memory (GB) Params Memory (GB) Params</head><label></label><figDesc></figDesc><table><row><cell>DGI</cell><cell>3.73</cell><cell>7.3 × 10 5</cell><cell>3.85</cell><cell>1.9 × 10 6</cell><cell>3.66</cell><cell>2.6 × 10 5</cell></row><row><cell>GMI</cell><cell>4.06</cell><cell>9.9 × 10 5</cell><cell>4.20</cell><cell>2.2 × 10 6</cell><cell>3.93</cell><cell>5.2 × 10 5</cell></row><row><cell>MVGRL</cell><cell>2.25</cell><cell>9.9 × 10 5</cell><cell>2.55</cell><cell>2.2 × 10 6</cell><cell>2.37</cell><cell>5.2 × 10 5</cell></row><row><cell>SUGRL</cell><cell>1.57</cell><cell>9.7 × 10 5</cell><cell>1.71</cell><cell>2.6 × 10 6</cell><cell>1.70</cell><cell>3.9 × 10 5</cell></row><row><cell>S 3 -CL</cell><cell>1.37</cell><cell>7.3 × 10 5</cell><cell>1.62</cell><cell>1.9 × 10 6</cell><cell>1.54</cell><cell>2.6 × 10 5</cell></row><row><cell>Ours</cell><cell>0.70</cell><cell>3.5 × 10 5</cell><cell>0.80</cell><cell>6.4 × 10 5</cell><cell>1.90</cell><cell>2.3 × 10 5</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 7 :</head><label>7</label><figDesc>Performance on distorting node features at test time. Values represent the percentage decrease in the model's performance compared to its original score. A lower value indicates better performance.</figDesc><table><row><cell cols="5">Ratio Photos Computers Coauthor CS WikiCS</cell></row><row><cell>0.10</cell><cell>-3.3%</cell><cell>-3.8%</cell><cell>-3.3%</cell><cell>-8.9%</cell></row><row><cell>0.15</cell><cell>-0.8%</cell><cell>-3.4%</cell><cell>-1.2%</cell><cell>-9.7%</cell></row><row><cell>0.20</cell><cell>-3.7%</cell><cell>-3.3%</cell><cell>-3.3%</cell><cell>-13.6%</cell></row><row><cell>0.25</cell><cell>-2.9%</cell><cell>-4.6%</cell><cell>-7.7%</cell><cell>-12.6%</cell></row><row><cell>0.30</cell><cell>-3.9%</cell><cell>-4.3%</cell><cell>-5.9%</cell><cell>-13.2%</cell></row><row><cell>0.35</cell><cell>-2.4%</cell><cell>-4.0%</cell><cell>-6.6%</cell><cell>-12.3%</cell></row><row><cell>0.40</cell><cell>-3.7%</cell><cell>-4.7%</cell><cell>-9.6%</cell><cell>-15.2%</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Declarations</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.1 Availability of Data and Materials</head><p>The datasets used in all experiments during this study are available in a publicly accessible repository. They can be obtained at https://pytorch-geometric.readthedocs.io/en/latest/modules/datasets.html</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 Code Availability</head><p>The codes used for all experiments in this study are designed by us and is available at https://github. com/Deceptrax123/JPEB-GSSL</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3 Conflict of Interest</head><p>The authors declare that they have no conflicts of interest to report regarding the present study.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Self-supervised learning from images with a joint-embedding predictive architecture</title>
+		<author>
+			<persName><forename type="first">Mahmoud</forename><surname>Assran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quentin</forename><surname>Duval</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ishan</forename><surname>Misra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Piotr</forename><surname>Bojanowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pascal</forename><surname>Vincent</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Rabbat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yann</forename><surname>Lecun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Ballas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition</title>
+		<meeting>the IEEE/CVF Conference on Computer Vision and Pattern Recognition</meeting>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="15619" to="15629" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Eliciting structural and semantic global knowledge in unsupervised graph contrastive learning</title>
+		<author>
+			<persName><forename type="first">Kaize</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yancheng</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yingzhen</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huan</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="volume">37</biblScope>
+			<biblScope unit="page" from="7378" to="7386" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">A-jepa: Joint-embedding predictive architecture can listen</title>
+		<author>
+			<persName><forename type="first">Zhengcong</forename><surname>Fei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mingyuan</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junshi</forename><surname>Huang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2311.15830</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Inductive representation learning on large graphs</title>
+		<author>
+			<persName><forename type="first">Will</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhitao</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">30</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Contrastive multi-view representation learning on graphs</title>
+		<author>
+			<persName><forename type="first">Kaveh</forename><surname>Hassani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amir</forename><surname>Hosein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Khasahmadi</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="4116" to="4126" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Graphmae: Self-supervised masked graph autoencoders</title>
+		<author>
+			<persName><forename type="first">Zhenyu</forename><surname>Hou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yukuo</forename><surname>Cen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiao</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongxia</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chunjie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining</title>
+		<meeting>the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="594" to="604" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Multi-scale contrastive siamese networks for self-supervised graph representation learning</title>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yizhen</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan-Fang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chen</forename><surname>Gong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chuan</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shirui</forename><surname>Pan</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2105.05682</idno>
+		<imprint>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Automated self-supervised learning for graphs</title>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaorui</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiangyu</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neil</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2106.05470</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">Multi-task self-supervised graph neural networks enable stronger task generalization</title>
+		<author>
+			<persName><forename type="first">Mingxuan</forename><surname>Ju</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qianlong</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenhao</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neil</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanfang</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chuxu</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2210.02016</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kingma</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6980</idno>
+		<title level="m">Adam: A method for stochastic optimization</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1609.02907</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Contrastive deep nonnegative matrix factorization for community detection</title>
+		<author>
+			<persName><forename type="first">Yuecheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jialong</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chuan</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zibin</forename><surname>Zheng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICASSP 2024-2024 IEEE International Conference on Acoustics, Speech and Signal Processing</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2024">2024</date>
+			<biblScope unit="page" from="6725" to="6729" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Beyond real-world benchmark datasets: An empirical study of node classification with gnns</title>
+		<author>
+			<persName><forename type="first">Seiji</forename><surname>Maekawa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Koki</forename><surname>Noda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuya</forename><surname>Sasaki</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="5562" to="5574" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Wiki-cs: A wikipedia-based benchmark for graph neural networks</title>
+		<author>
+			<persName><forename type="first">Péter</forename><surname>Mernyei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cătălina</forename><surname>Cangea</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2007.02901</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Simple unsupervised graph representation learning</title>
+		<author>
+			<persName><forename type="first">Yujie</forename><surname>Mo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liang</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoshuang</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaofeng</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI conference on artificial intelligence</title>
+		<meeting>the AAAI conference on artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="page" from="7797" to="7805" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Query-driven active surveying for collective classification</title>
+		<author>
+			<persName><forename type="first">Galileo</forename><surname>Namata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>London</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lise</forename><surname>Getoor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bert</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Edu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">10th international workshop on mining and learning with graphs</title>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page">1</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Graph representation learning via graphical mutual information maximization</title>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenbing</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minnan</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qinghua</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Rong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tingyang</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junzhou</forename><surname>Huang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of The Web Conference</title>
+		<meeting>The Web Conference</meeting>
+		<imprint>
+			<date type="published" when="2020">2020. 2020</date>
+			<biblScope unit="page" from="259" to="270" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Collective classification in network data</title>
+		<author>
+			<persName><forename type="first">Prithviraj</forename><surname>Sen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Galileo</forename><surname>Namata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mustafa</forename><surname>Bilgic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lise</forename><surname>Getoor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brian</forename><surname>Galligher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tina</forename><surname>Eliassi-Rad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AI magazine</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="93" to="93" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Pitfalls of graph neural network evaluation</title>
+		<author>
+			<persName><forename type="first">Oleksandr</forename><surname>Shchur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Mumme</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aleksandar</forename><surname>Bojchevski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Günnemann</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1811.05868</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Large-scale representation learning on graphs via bootstrapping</title>
+		<author>
+			<persName><forename type="first">Shantanu</forename><surname>Thakoor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Corentin</forename><surname>Tallec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohammad</forename><forename type="middle">Gheshlaghi</forename><surname>Azar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mehdi</forename><surname>Azabou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eva</forename><forename type="middle">L</forename><surname>Dyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Remi</forename><surname>Munos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Petar</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michal</forename><surname>Valko</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2102.06514</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Graph attention networks</title>
+		<author>
+			<persName><forename type="first">Petar</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillem</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arantxa</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adriana</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>Lio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1710.10903</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<author>
+			<persName><forename type="first">Petar</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Fedus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>William L Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Liò</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Devon</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hjelm</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1809.10341</idno>
+		<title level="m">Deep graph infomax</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Graph aggregating-repelling network: Do not trust all neighbors in heterophilic graphs</title>
+		<author>
+			<persName><forename type="first">Yuhu</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinyong</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chunxia</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shiming</forename><surname>Xiang</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.neunet.2024.106484</idno>
+		<ptr target="https://www.sciencedirect.com/science/article/pii/S0893608024004088" />
+	</analytic>
+	<monogr>
+		<title level="j">Neural Networks</title>
+		<idno type="ISSN">0893-6080</idno>
+		<imprint>
+			<biblScope unit="volume">178</biblScope>
+			<date type="published" when="2024">106484. 2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Simplifying graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amauri</forename><surname>Souza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Fifty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kilian</forename><surname>Weinberger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="6861" to="6871" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">A comprehensive survey on graph neural networks</title>
+		<author>
+			<persName><forename type="first">Zonghan</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shirui</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fengwen</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guodong</forename><surname>Long</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengqi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philip</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE transactions on neural networks and learning systems</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="4" to="24" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">From canonical correlation analysis to self-supervised graph neural networks</title>
+		<author>
+			<persName><forename type="first">Hengrui</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qitian</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junchi</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Wipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philip</forename><forename type="middle">S</forename><surname>Yu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="76" to="89" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Link prediction based on graph neural networks</title>
+		<author>
+			<persName><forename type="first">Muhan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixin</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page">31</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<author>
+			<persName><forename type="first">Yanqiao</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yichen</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Feng</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qiang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shu</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liang</forename><surname>Wang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2006.04131</idno>
+		<title level="m">Deep graph contrastive representation learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

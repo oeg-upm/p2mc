@@ -1,0 +1,2616 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">ConceptFormer: Towards Efficient Use of Knowledge-Graph Embeddings in Large Language Models</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2025-04-10">10 Apr 2025</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Joel</forename><surname>Barmettler</surname></persName>
+							<email>joel.barmettler@uzh.ch</email>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Zurich Zurich</orgName>
+								<address>
+									<country key="CH">Switzerland</country>
+								</address>
+							</affiliation>
+							<affiliation key="aff1">
+								<address>
+									<country>Luca Rossetto</country>
+								</address>
+							</affiliation>
+							<affiliation key="aff2">
+								<address>
+									<settlement>Dublin</settlement>
+									<country key="IE">Ireland</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">ConceptFormer: Towards Efficient Use of Knowledge-Graph Embeddings in Large Language Models</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2025-04-10">10 Apr 2025</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">1E70B6799840BB1D56B82FC7CE3B5A9C</idno>
+					<idno type="arXiv">arXiv:2504.07624v1[cs.CL]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-05-18T11:25+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>Retrieval Augmented Generation</term>
+					<term>Knowledge-Graph Embedding</term>
+					<term>Knowledge Injection</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Retrieval Augmented Generation (RAG) has enjoyed increased attention in the recent past and recent advancements in Large Language Models (LLMs) have highlighted the importance of integrating world knowledge into these systems. Current RAG methodologies often modify the internal architecture of pre-trained language models (PLMs) or rely on textifying knowledge graphs (KGs), which is inefficient in terms of token usage. This paper introduces ConceptFormer, a new approach to augment LLMs with structured knowledge from KGs, such as Wikidata, without altering their internal structure or relying on textual input of KGs. ConceptFormer operates in the LLM embedding vector space, creating and injecting concept vectors that encapsulate the information of the KG nodes directly. Trained in conjunction with a frozen LLM, ConceptFormer generates a comprehensive lookup table that maps KG nodes to their respective concept vectors. The approach aims to enhance the factual recall capabilities of LLMs by enabling them to process these concept vectors natively, thus enriching them with structured world knowledge in an efficient and scalable manner. Our experiments demonstrate that the addition of concept vectors to GPT-2 0.1B substantially increases its factual recall ability (Hit@10) by up to 272% when tested on sentences from Wikipedia and up to 348% on synthetically generated sentences. Even injecting only a single concept vector into the prompt increases factual recall ability (Hit@10) by up to 213% on Wikipedia sentences, significantly outperforming RAG with graph textification while consuming 130x fewer input tokens.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>Large Language Models (LLMs) have demonstrated exceptional potential in various natural language processing tasks, including conversational agents, summarization, and information retrieval (IR). They are typically trained on large-scale, general-purpose (text) corpora and optimized via self-supervision objectives <ref type="bibr" target="#b20">[21]</ref>. Through this pretraining, LLMs acquire substantial amounts of knowledge, which is implicitly stored within their model weights <ref type="bibr" target="#b37">[38,</ref><ref type="bibr" target="#b55">56]</ref>. However, such implicit storage can lead to inefficient knowledge retrieval and risks of outdated, biased, or incomplete information, ConceptFormer creates a vector embedding for the detected entity that is compatible with the LLMs input embedding space. The resulting concept vector (displayed in green) is shown to capture the essence of the entity far better than the original token embedding vectors alone, leading to more knowledgeable output generated by the LLM (displayed in red).</p><p>posing key obstacles for retrieval-augmented generation (RAG) and knowledge-intensive IR tasks <ref type="bibr" target="#b19">[20,</ref><ref type="bibr" target="#b24">25,</ref><ref type="bibr" target="#b27">28]</ref>.</p><p>A common approach to enhance knowledge retention in LLMs is through corpus curation or expansion, which has shown promise in reducing hallucinations <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b45">46]</ref>. But simply improving or enlarging the training corpus does not always resolve deeper IR challenges such as domain-specific knowledge retrieval or real-time updates <ref type="bibr" target="#b13">[14,</ref><ref type="bibr" target="#b42">43]</ref>. Models still frequently hallucinate or omit key facts <ref type="bibr" target="#b28">[29,</ref><ref type="bibr" target="#b34">35]</ref>, especially in specialized domains where domain shifts are inevitable <ref type="bibr" target="#b46">[47]</ref>. Research has shown that growing the parameter count of LLMs can improve factual recall <ref type="bibr" target="#b17">[18]</ref>, but even large models like ChatGPT still struggle to accurately retrieve and articulate structured knowledge, e.g., from DBPedia <ref type="bibr" target="#b39">[40,</ref><ref type="bibr" target="#b50">51]</ref>. Such difficulties reflect broader IR concerns: a system's inability to efficiently retrieve relevant concepts hampers downstream tasks like question answering, recommendation, and conversational search.</p><p>To address these challenges in knowledge-intensive scenarios, Knowledge Graphs (KGs) <ref type="bibr" target="#b15">[16,</ref><ref type="bibr" target="#b29">30]</ref> have emerged as a valuable structured resource. KGs-such as Wikidata <ref type="bibr" target="#b44">[45]</ref>-capture accurate, upto-date, and domain-rich factual information. Making this graphbased knowledge accessible to LLMs is a longstanding goal in IR research, especially for retrieval-augmented generation and question answering <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b52">53]</ref>. Popular RAG-focused approaches typically rely on "textification" of graph edges or nodes <ref type="bibr" target="#b9">[10,</ref><ref type="bibr" target="#b21">22]</ref>, concatenating them into the LLM prompt. While effective, this strategy consumes large portions of the model's context window and can introduce noise <ref type="bibr" target="#b54">[55]</ref>.</p><p>Consider a conversational IR system that must answer a user's query about a niche topic (e.g., "What type of mustache did Albert Einstein famously sport?"). If the system is forced to feed hundreds of tokens of textified KG neighbors into the LLM prompt for every entity, it risks hitting context limits or drowning in irrelevant details. An alternative is to embed this knowledge in a more compact form, seamlessly integrating it with the user query inside the LLM's embedding space. Such a solution would not only save tokens but also yield more targeted retrieval results, echoing a core IR theme: balancing retrieval accuracy with efficiency.</p><p>In this paper, we introduce ConceptFormer, a novel, token-efficient way to integrate KGs into any pre-trained LLM without modifying its internal architecture or retraining its core parameters. Rather than textifying knowledge, ConceptFormer injects concept vectors derived from the KG directly into the LLM's input embedding space. Figure <ref type="figure" target="#fig_0">1</ref> illustrates how entity recognition links a text mention ("Albert Einstein") to its corresponding Wikidata node, and Con-ceptFormer learns to produce a small set of dense concept vectors that augment or replace the naive token embeddings. These vectors natively encode the most relevant graph-neighborhood information, enabling the LLM to integrate structured knowledge with minimal context overhead.</p><p>The contributions of this paper are threefold: <ref type="bibr" target="#b0">(1)</ref> We present ConceptFormer, a flexible mechanism to embed KG nodes into the LLM prompt space, enabling IR scenarios that demand large-scale or domain-specific factual retrieval without altering the LLM architecture. <ref type="bibr" target="#b1">(2)</ref> We introduce new datasets-Tri-REx, T-REx Bite, and T-REx Star-specifically designed to evaluate next-token and factual-recall tasks.These datasets facilitate measuring how well LLMs retrieve, re-rank, and generate entity-level facts. <ref type="bibr" target="#b2">(3)</ref> We empirically demonstrate that ConceptFormer achieves up to 348% improvement in factual recall (Hit@10) on synthetic sentences, and up to 272% improvement on Wikipedia-based sentences, compared to a GPT-2 0.1B baseline. Remarkably, even a single concept vector yields a competitive recall boost while consuming 130× fewer tokens than text-based RAG. We make all datasets, as well as our implementation <ref type="foot" target="#foot_0">1</ref> and pre-trained models <ref type="bibr" target="#b1">[2]</ref> freely available for download.</p><p>Whereas most KG-enhanced LLM research focuses on the text representation of knowledge <ref type="bibr" target="#b25">[26,</ref><ref type="bibr" target="#b40">41,</ref><ref type="bibr" target="#b53">54]</ref>, we focus on vector-based injection that compresses graph information directly within the LLM's input space. We deliberately chose GPT-2 0.1B <ref type="bibr" target="#b36">[37]</ref> for our experiments due to its comparatively small size and simple architecture. However, the technique extends to larger LMs with minimal adaptation.</p><p>We structure the remainder of the paper as follows: Section 2 surveys related methods of retrieval-augmented generation, prompttuning, and knowledge-graph enhancements. Section 3 describes the newly introduced datasets and their alignment with IR tasks. Section 4 details the ConceptFormer architecture, its training process, and how it injects compressed KG embeddings into prompts. Section 5 presents extensive experimental results, including comparisons to RAG baselines, analysis of token usage, and a questionanswering scenario. Section 6 concludes with implications for retrieval-based LLM applications and future work.</p><p>By demonstrating a vector-centric approach to knowledge injection that preserves the LLM's original weights, we hope to inspire further IR research on KG-based efficient, up-to-date retrieval for knowledge-intensive generation tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">RELATED WORK</head><p>ConceptFormer intersects several research areas that are central to information retrieval (IR) in the presence of Large Language Models (LLMs). We situate our work among (i) retrieval-augmented generation (RAG), (ii) KG-enhanced LLMs, (iii) token compression or "gisting, " (iv) prompt tuning, and (v) pseudo-word embeddings for multimodal or specialized concepts.</p><p>Retrieval-Augmented Generation (RAG). Retrieval-augmented generation (RAG) <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b19">20]</ref> enhances LLM-based text generation by retrieving relevant external data before or during text generation, thus grounding model outputs in factual information from structured or unstructured sources. In conventional IR pipelines, this approach is reminiscent of query expansion or contextualization: the user query (or partial text) is augmented with retrieved documents, enabling the LLM to generate content that more accurately reflects the retrieved evidence.</p><p>A straightforward yet potent variant is graph textification, wherein a knowledge graph (KG) is linearized into textual templates <ref type="bibr" target="#b9">[10]</ref>. For instance, every subject-predicate-object triple can be converted into a text phrase and concatenated with the user query. Works like Brate et al. <ref type="bibr" target="#b6">[7]</ref> and Li et al. <ref type="bibr" target="#b21">[22]</ref> rely on these textual expansions to harness structured knowledge in an LLM's generation process. While effective, this strategy often imposes heavy token overhead, straining context windows and introducing potential noise when many graph edges are involved. By contrast, ConceptFormer avoids textifying knowledge. Rather than inserting hundreds of tokens describing a KG neighborhood, it transforms the KG node (and its adjacency information) into a small set of dense, learned vectors directly injected into the LLM's embedding space. This significantly reduces context usage while preserving the ability to retrieve and integrate graph-based evidence.</p><p>KG-Enhanced LLMs for IR. Beyond RAG, multiple lines of research aim to integrate KG information into an LLM's representation. Early works frequently required extensive architecture modifications or additional training heads. For example: DKPLM <ref type="bibr" target="#b53">[54]</ref> dynamically updates language models with knowledge extraction and pseudo-token injections, altering model layers and unfreezing part of the network. CoLAKE <ref type="bibr" target="#b40">[41]</ref> builds a hybrid word-knowledge graph and modifies both the embedding and encoder layers of the Transformer, training an LLM from scratch. K-Bert <ref type="bibr" target="#b25">[26]</ref>, KnowBert <ref type="bibr" target="#b31">[32]</ref>, and KP-PLM <ref type="bibr" target="#b47">[48]</ref> each propose new attention or injection layers, partially or fully overriding a model's internal architecture. K-Adapter <ref type="bibr" target="#b49">[50]</ref> appends adapters specialized in certain types of knowledge. While these methods effectively enhance LLMs with structured knowledge, most are tailored to encoder-only models (e.g., BERT) or require partial fine-tuning of the LLM. This complicates their usage in RAG deployments, where one may prefer to keep large-scale pretrained models intact to preserve existing capabilities.</p><p>ConceptFormer aligns with these methods in its goal -making KG information accessible to the LLM -but preserves the fundamental architecture of a decoder-only LLM by operating strictly at the input-embedding level. In RAG scenarios with minimal inference memory or a preference for plug-and-play modules, ConceptFormer can be combined with a standard LLM in a non-invasive way. Furthermore, its concept vectors can be precomputed and stored for fast retrieval, eliminating inference overhead of reconstructing graph neighbors on the fly.</p><p>Gist Tuning and Prompt Compression. Gist tuning <ref type="bibr" target="#b30">[31]</ref> condenses lengthy prompts into more compact "gist tokens. " Similar to knowledge textification, large prompt expansions can degrade performance or exceed context limits in tasks that rely on extensive background passages. By training a compressor to produce a short sequence of learnable tokens, gist tuning reduces the number of tokens needed, often maintaining high-quality generation.</p><p>The idea of compressing large bodies of text into a minimal embedding resonates with ConceptFormer, where entire KG neighborhoods are expressed as a few concept vectors. Instead of elaborating text expansions, ConceptFormer forms a high-level "gist" of an entity's local subgraph. This is especially beneficial in retrieval-based LLM use cases: the context window is left free for user queries or additional data, yet the LLM still has access to structured knowledge.</p><p>Prompt Tuning and Continuous Prompts. Prompt tuning approaches <ref type="bibr" target="#b22">[23,</ref><ref type="bibr" target="#b26">27,</ref><ref type="bibr" target="#b35">36]</ref> freeze most or all of an LLM's parameters, introducing continuous embeddings ("prefix vectors" or "soft prompts") that steer the model's behavior. This differs from typical fine-tuning, which updates the model's internal weights and can lead to catastrophic forgetting of original capabilities. For IR tasks involving many domain-specific expansions or diverse subtasks, preserving the LLM's core weights can be advantageous.</p><p>ConceptFormer extends this paradigm: rather than encoding a generic style or instruction, it injects entity-centric knowledge. Each KG node is accompanied by one or more learned embedding vectors that store local relational context. This is akin to "soft prompts" but specifically aimed at knowledge injection in a RAG setting.</p><p>Pseudo-Words for Specialized Concepts. A related vein of research addresses new concept acquisition in LLMs by inserting "pseudo words" into the model's input space. In multimodal or domainadaptation contexts, these pseudo tokens can represent, for instance, novel visual concepts <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b43">44]</ref> or domain-specific terms. The idea is to attach new semantics to an otherwise unused token embedding, enabling the model to integrate or reference the concept during generation.</p><p>ConceptFormer similarly represents new concepts (KG entities) via dense vectors, though it differs by focusing on subgraph-level knowledge, not just an image or a single domain label. By mapping an entire entity neighborhood into a few vectors, it preserves the relational structure in a compressed embedding. This synergy of local graph information and token-space injection allows LLMs to more accurately recall factual connections relevant for IR tasks such as entity-centric question answering, knowledge-grounded summarization, or domain-targeted retrieval.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">DATASETS</head><p>Information retrieval tasks often require evaluating whether a model can retrieve the correct pieces of knowledge and ground its responses in accurate facts. Large Language Models generally learn from massive corpora that blend linguistic and factual content (e.g., Wikipedia), but such corpora alone are often suboptimal when the goal is to infuse new facts or systematically measure how effectively a model recalls or generates factual information in a controlled manner.</p><p>To address this issuem we introduce three datasets-T-REx Bite, Tri-REx, and T-REx Star-that build upon the foundation of the T-REx dataset <ref type="bibr" target="#b8">[9]</ref>. While T-REx links Wikipedia sentences to Wikidata triples, it was not designed specifically for next-token prediction. By contrast, our datasets provide explicit structures that facilitate both knowledge injection and retrieval-based LLM evaluations, addressing key limitations of T-REx and its LAMA-based extensions <ref type="bibr" target="#b32">[33,</ref><ref type="bibr" target="#b33">34]</ref>. These limitations include the assumption of single-token objects, uneven coverage of knowledge, and inadequate alignment with the needs of decoder-only LLMs often used in IR settings.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">T-REx Bite</head><p>T-REx Bite <ref type="bibr" target="#b2">[3]</ref> adapts T-REx to the next-token-prediction paradigm by ensuring that, in each text snippet, the subject appears before the object. This alignment mimics real-world scenarios in which a model sees partial information (the subject and some context) and must then predict or "retrieve" the missing object. To keep snippets manageable within the limited context windows of smaller language models (such as GPT-2), each snippet is capped at 512 characters. We further require that the snippet explicitly mentions both subject and object, does not start a new sentence at the object,  By applying these constraints, we obtain about 6.4 million short "bites" for training, 0.92 million for testing, and 0.75 million for validation. Each bite is a compact piece of Wikipedia text that retains the original clarity and diversity of T-REx but is tailored to ensure a direct subject-object alignment. This structure lets researchers readily evaluate how well an LLM completes the object token(s) given the preceding subject. The dataset naturally accommodates multi-token objects under modern sub-word tokenization, removing the single-token assumptions of LAMA-like methods.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Tri-REx</head><p>Although T-REx Bite is useful, it still relies on Wikipedia text that many models may have partially seen during their pretraining phase. To create a scenario free from such potential contamination, we introduce Tri-REx <ref type="bibr" target="#b4">[5]</ref>. Instead of extracting text from Wikipedia, Tri-REx synthesizes short subject-predicate-object sentences using Mistral 7B <ref type="bibr" target="#b16">[17]</ref> in a few-shot prompting fashion. For example, a triple (Albert Einstein, facial hair, walrus moustache) might generate "Dr. Albert Einstein wore a bushy walrus moustache." Each generated sentence is automatically filtered for coherence, correct mention of both subject and object, and accurate preservation of the S-P-O relationships, resulting in high-quality synthetic data. An illustration of a datapoint from Tri-REx is given in Figure <ref type="figure" target="#fig_1">2</ref>.</p><p>Tri-REx comprises 21.5 million training sentences, 0.9 million test sentences, and 1.7 million validation sentences, each of which is typically under 30 tokens. This collection stands out because it is intentionally free of pretraining overlap: models cannot simply rely on memorized Wikipedia text. Instead, they must learn or leverage newly provided knowledge sources (e.g., concept vectors from ConceptFormer) to recover the correct object tokens during next-token prediction. Researchers can thus verify whether a RAG technique or knowledge-injection approach genuinely conveys facts to a model, rather than merely triggering recall of memorized text.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">T-REx Star</head><p>While T-REx Bite and Tri-REx focus on textual input, they do not explicitly embed the wider graph structure that connects subject entities to their neighbors. T-REx Star <ref type="bibr" target="#b3">[4]</ref> fills this gap by providing star-topology subgraphs from Wikidata for each entity that appears as a subject in T-REx. Each entity's local subgraph is represented in JSON format, includes up to 100 neighbors ranked by PageRank <ref type="bibr" target="#b41">[42]</ref>, and stores both node (Q-ID, English label, PageRank) and edge (P-ID, relation label) metadata. The JSON structure is easily loaded into tools such as NetworkX <ref type="bibr" target="#b14">[15]</ref>, enabling further graph-based processing or embedding.</p><p>Crucially, T-REx Star aligns with T-REx Bite and Tri-REx by using a consistent partitioning scheme. Every entity that serves as a subject in one of the three datasets appears in exactly one split (train, validation, or test). Entities may nonetheless appear as objects in multiple splits if they are neighbors of different subjects. This consistency is important for fair comparisons of LLM performance across training and evaluation sets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4">Relevance and Utility for IR</head><p>By design, these three datasets complement one another and support a broad range of IR-driven studies:</p><p>T-REx Bite preserves the naturalness of original Wikipedia text. It is suitable for real-world RAG setups where subject-object pairs appear in an authentic linguistic context. Evaluating next-token prediction on T-REx Bite reveals how effectively the model can fill in factual objects without exceeding realistic context limits.</p><p>Tri-REx sheds potential contamination by synthesizing new S-P-O sentences for each entity-neighbor pair. It thus focuses the learning and evaluation strictly on externally provided facts, an ideal setup for measuring how well knowledge-injection approaches can impart new or domain-specific information into an LLM.</p><p>T-REx Star explicitly includes the surrounding Wikidata structure for each entity, enabling research into how local graph neighborhoods can inform retrieval-augmented LLM usage. Instead of textifying these subgraphs, systems like ConceptFormer can inject them efficiently as a small set of learned embeddings.</p><p>All three datasets share consistent train, validation, and test splits based on subject partitioning, ensuring controlled experimentation in knowledge retrieval and generation tasks. They are publicly released alongside this work to foster new approaches that integrate structured knowledge into LLMs without over-relying on textual expansions. By offering both natural and synthetic data, with or without explicit KG neighborhoods, these resources aim to push the boundaries of how IR systems can leverage knowledge injection for next-token and factual-recall evaluations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">METHOD</head><p>ConceptFormer is designed to inject compact, graph-based knowledge into a Large Language Model (LLM) without altering the LLM's internal architecture. In the context of information retrieval, this design choice is essential: large pretrained models are often deployed "as is" due to computational constraints or fear of catastrophic forgetting. By operating purely at the input embedding level, ConceptFormer seamlessly integrates with most decoder-only LLMs and can be flexibly applied in retrieval-augmented generation, entity-centric search, or domain-specific IR pipelines.</p><p>At a high level, ConceptFormer can be viewed as a modular knowledge injector:</p><p>(1) Entity Detection and Linking: Given a user query or partial text (e.g., "Albert Einstein was a. . . "), an off-the-shelf Named Entity Recognition (NER) and entity linker identifies "Albert Einstein" and retrieves its corresponding node ID (Q_ID) in Wikidata or any other KG. (2) Subgraph Extraction: A star topology subgraph around the entity is fetched, containing its immediate neighbors and the edges (predicates) connecting them. In our experiments ( §3), subgraphs are pre-extracted from T-REx Star.</p><p>(3) ConceptFormer Vector Generation: The extracted node and edge embeddings are fed into ConceptFormer, yielding concept vectors that capture the local neighborhood. (4) Prompt Extension: These concept vectors are appended to the existing input embeddings of the subject, forming a richer representation that the LLM processes natively (Figure <ref type="figure" target="#fig_2">3</ref>).</p><p>This procedure allows an LLM to incorporate structured graph knowledge with minimal prompt overhead. Unlike text-based RAG approaches that concatenate large textual expansions (sometimes hundreds of tokens), ConceptFormer only inserts 𝑛 vectors per entity-where 𝑛 is typically far smaller (e.g., 1 to 20 vectors). As a result, it significantly reduces context consumption, freeing up tokens for user text or system instructions in real-world RAG scenarios.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Architecture of ConceptFormer</head><p>ConceptFormer takes as input a star topology subgraph anchored on a central entity, which we denote as 𝐶. That entity has 𝑚 neighbors 𝑁 1 , . . . , 𝑁 𝑚 and corresponding edge (predicate) embeddings 𝐸 1 , . . . , 𝐸 𝑚 . Formally, each neighbor 𝑁 𝑖 is a fixed-dimensional vector (e.g., 768 D) representing the neighbor's label or textual description, and each edge 𝐸 𝑖 is similarly embedded. These embeddings can be derived using off-the-shelf text embedding models (e.g., GPT-2, Word2Vec) or specialized methods like TransE <ref type="bibr" target="#b5">[6]</ref> or PBG <ref type="bibr" target="#b18">[19]</ref>.</p><p>In line with Liang et al. <ref type="bibr" target="#b23">[24]</ref>, we separate (i) the node/edge embedding step from (ii) the alignment and compression step. The former yields 𝐶, 𝑁 , 𝐸 with dimension dim 𝑖 , and the latter is where ConceptFormer's trainable parameters reside.</p><p>ConceptFormer implements 𝑛 parallel concept vector generator blocks. Each of these generators learns a Key (𝐾 𝑛 ), Query (𝑄 𝑛 ), Value (𝑉 𝑛 ), and Output (𝑂 𝑛 ) transformation through linear layers with weights 𝑊 𝑄 𝑛 , 𝑊 𝑘 𝑛 , 𝑊 𝑉 𝑛 , and 𝑊 𝑂 𝑛 . The output of each concept attention layer is an intermediate concept vector (1, dim 𝑖 ), see Equations 1-4.</p><p>Each 𝑂 𝑛 is then processed through an output transformation shared by all concept attention generators to produce the final concept vectors, see Equation <ref type="formula">5</ref>. This transformation is critical for converting concept vectors into a format compatible with the LLM's input space, a technique also employed in other papers to bridge the gap between graph representations like TransE and LLM text embeddings <ref type="bibr" target="#b56">[57]</ref>. The output dimension dim 𝑜 of this layer is defined by the input token embedding used by the LLM. Its hidden dimension is a free parameter, which we set to 1228 in our experiments. In our work, we generated the node and edge embeddings by simply forwarding their label through an LLM and averaged the last hidden layer. ConceptFormer trains multiple, parallel, and fully independent concept vector generator blocks, each implementing an attention mechanism in which the central node becomes the query Q, the concatenated neighbouring nodes and corresponding edges become the key K, and the neighbouring nodes become the values V. Finally, a shared dense network transforms the output of each concept vector generator block into the input embedding space of the LLM.</p><formula xml:id="formula_0">𝑄 𝑛 = 𝐶𝑊 𝑄 𝑛<label>(1)</label></formula><formula xml:id="formula_1">𝐾 𝑛 = 𝑁𝑊 𝐾 𝑛 + 𝐸<label>(2)</label></formula><formula xml:id="formula_2">𝑉 𝑛 = 𝑁𝑊 𝑉 𝑛 (<label>3</label></formula><formula xml:id="formula_3">)</formula><formula xml:id="formula_4">𝑂 𝑛 = 𝑠𝑜 𝑓 𝑡𝑚𝑎𝑥 𝑄 𝑛 𝐾 𝑛 𝑇 √ dim 𝑖 𝑉 𝑛 𝑊 𝑂 𝑛 (4) concept vector 𝑛 = 𝐿𝑒𝑎𝑘𝑦𝑅𝑒𝐿𝑢 (𝑂 𝑛 𝑊 𝑃 1 )𝑊 𝑃 2 (5)</formula><p>ConceptFormer can be fine-tuned to adapt to a new LLM, making it a versatile tool that can be integrated with various language models. The output of ConceptFormer is a set of 𝑛 concept vectors, forming a matrix of size (𝑛, dim 𝑜 ). This matrix represents the transformed knowledge from the input subgraph, ready to be fed into the LLM for enriched language generation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Training Objectives and Stages</head><p>We first train ConceptFormer on synthetic sentences from Tri-REx ( §3), which are deliberately unseen by the base LLM. This ensures that the LLM cannot trivially predict the correct object from memorized textual patterns. In other words, it must rely on the knowledge embedded in the concept vectors. minimizing the cross-entropy loss over the ground-truth tokens.</p><p>Since the LLM is frozen, gradient updates only affect ConceptFormer parameters. Over repeated batches, ConceptFormer learns to encode the subgraph in a way that helps the LLM correctly predict the object tokens, even though the LLM itself has not been fine-tuned on these unseen facts. After pre-training, we further refine ConceptFormer using realworld text from T-Rex Bite, ensuring it transfers from the synthetic domain to more natural, context-rich sentences. This second stage is crucial to avoid an over-simplified reliance on "triplet schemas" alone. Concretely:</p><p>• We apply the same next-token prediction objective on truncated real sentences from Wikipedia, referencing the same entity subgraphs. • The concept vectors must adapt to the varied, noisier style of genuine Wikipedia text rather than the neatly structured synthetic statements.</p><p>This two-stage training (synthetic → real text) has proved effective in our experiments ( §5), allowing ConceptFormer to handle both contrived and authentic RAG use cases-ranging from short fact queries to more elaborate, context-dependent queries.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Implementation Details and Training Hyperparameters</head><p>In our experiments, each concept vector generator block uses linear transformations of dimension dim 𝑖 → dim 𝑖 , with dim 𝑖 typically 768. The subsequent MLP has one hidden layer of size 1228, using a LeakyReLU activation. We vary the number of parallel blocks 𝑛 ∈ {1, 2, 3, 4, 5, 10, 15, 20}, balancing performance and memory overhead. We adopt AdamW with weight decay of 0.01 and a constant learning rate, typically 6 × 10 -5 , determined via grid or Bayesian hyperparameter search. We freeze all LLM weights, ensuring stable optimization for ConceptFormer alone.</p><p>We batch multiple subgraphs and partial sentences, limiting each to a maximum token length (e.g., 512) for GPT-2 compatibility. We early-stop if validation loss does not improve after one full epoch in either the synthetic or real-data stage, preventing overfitting to narrower patterns. Once training is complete, ConceptFormer can be used in two ways:</p><p>(1) On-the-Fly Generation: For each entity mention encountered during inference, dynamically retrieve its subgraph and run it through ConceptFormer to produce concept vectors. This supports real-time updates if the KG changes frequently but requires additional inference computation. (2) Precomputed Lookup Table : For static KGs like a fixed snapshot of Wikidata, generate concept vectors for all entities offline and store them in a giant key-value map. During inference, simply fetch the relevant concept vectors for each detected entity, incurring near-zero overhead.</p><p>The second approach is often attractive in IR systems with stable or slow-changing knowledge bases, as it avoids re-running Con-ceptFormer repeatedly for the same entities.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">EXPERIMENTS</head><p>In this section, we investigate how well a Large Language Model can recall facts from a knowledge graph, with a particular focus on Wikidata. We frame our experiments from an IR perspective: the model is presented with partial text (akin to a user query plus some context) and must retrieve or recall the factual object entity. By isolating knowledge-intensive tasks, we aim to show how Concept-Former enables compact knowledge integration without exceeding context budgets or re-training the LLM.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Evaluation Paradigm and Metrics</head><p>We base our experiments on the Tri-REx and T-REx Bite datasets introduced in Section 3. Both sets consist of sentences truncated just before the mention of a target object entity (e.g., "Albert Einstein was a. . . "), and the LLM is tasked with predicting the next tokens corresponding to the true entity label.</p><p>To quantify recall, we adopt the widely used Hit@k metric. For an object label split into 𝑇 tokens, we record the rank (𝑟 𝑡 ) of each token 𝑡 in the model's output logits. The sequence rank is taken as 𝑟 = max{𝑟 1 , . . . , 𝑟 𝑇 }, and it counts as a "hit" if 𝑟 ≤ 𝑘 (i.e., all tokens appear in the top-𝑘 predictions at their respective timesteps). This approach is robust to multi-token entities, a common challenge in IR tasks involving named entities ("New York Times" vs. "NYT").</p><p>Restricting to Hit@1 (top-1 predictions) may understate the model's factual knowledge, since many facts can be phrased in multiple correct ways. For retrieval tasks, we are interested in whether the ground-truth can appear at all among the top few candidates. Hence we primarily highlight Hit@10, though we report Hit@1 and Hit@5 for completeness. A large gap between Hit@1 and Hit@10 may also reveal potential user experience differences in real-world IR.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Baseline Evaluation</head><p>We begin by establishing baseline performance for six LLMs of varying sizes and architectures: • GPT-2 0.1B, 0.3B, 0.7B, 1.5B <ref type="bibr" target="#b36">[37]</ref> • LLaMA-2 3B, 7B <ref type="bibr" target="#b42">[43]</ref> Each model is evaluated as is, without any knowledge injection. We measure Hit@1, Hit@5, and Hit@10 on the test splits of Tri-REx and T-REx Bite. Table <ref type="table" target="#tab_1">1</ref> (rows without RAG or CF) shows that larger models consistently outperform their smaller counterparts across both datasets, reflecting well-known scaling trends <ref type="bibr" target="#b17">[18]</ref>. The gap between Tri-REx and T-REx Bite is particularly striking at Hit@1: performance on the Wikipedia-based T-REx Bite is often 5-10× higher than on the synthetic Tri-REx, suggesting that the model leverages memorized textual patterns from its pretraining corpus. This phenomenon highlights a key challenge: generalizing beyond memorized facts to new or rare knowledge.</p><p>Moreover, LLaMA-2 variants (3B and 7B) display notably better results than GPT-2 models of even larger parameter counts (e.g., GPT-2 1.5B), implying that architecture and training methodology can greatly influence factual recall in IR tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">RAG with Graph Textification</head><p>We next compare ConceptFormer to a text-based retrieval-augmented generation (RAG) approach. Specifically, for each subject entity, we retrieve its 1-hop neighbors from Wikidata and textify them into a short passage appended to the LLM prompt <ref type="bibr" target="#b9">[10,</ref><ref type="bibr" target="#b21">22]</ref>.</p><p>We use a simple template-based approach to convert a graph neighbourhood to text. The performance varied significantly depending on the injection template used, sometimes leading to over a 100% difference in outcomes, consistent with findings from <ref type="bibr" target="#b26">[27]</ref>. We observed that using a template in the form "Subject ({predicate_1}: {object_1}, {predicate_2}: {object_2}, ...)" performed particularly bad, while "Subject, {predicate_1} {object_1}, {predicate_2} {object_2}, ... ", a template also used by <ref type="bibr" target="#b7">[8]</ref>, performed best. However, this can easily span 100-800 tokens for well-known entities, consuming a significant portion of the LLM's context window.</p><p>In Table <ref type="table" target="#tab_1">1</ref>, rows labeled "+ RAG" show large gains relative to the baseline. For smaller GPT-2 models, these gains can exceed 6× at Hit@10. This underscores the potential of structured knowledge for IR if it is integrated effectively. However, the token overhead is substantial (on average 130 tokens per subject, but up to 800 for famous concepts), making it impractical in scenarios where multiple enriched entities appear in a single query. We also find that performance can degrade for large neighborhoods due to knowledge noise <ref type="bibr" target="#b25">[26]</ref>, in line with prior findings that excessive context can overwhelm the model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">ConceptFormer Evaluation</head><p>ConceptFormer takes a vector-based approach to knowledge integration, drastically reducing the number of extra tokens needed for an entity's subgraph. We instantiate ConceptFormer with GPT-2 0.1B (125M parameters) to test whether a small model's lack of knowledge can be compensated by structured prompts in concept-vector format. We employ the two-stage training scheme introduced in Section 4:</p><p>(1) Pre-training on Tri-REx: We freeze GPT-2 0.1B and optimize ConceptFormer to generate the correct next tokens for synthetic subject-predicate-object sentences. This fosters reliance on external subgraph data, since the model cannot simply recall them from memorization. (2) Fine-tuning on T-REx Bite: We continue training Con-ceptFormer on real Wikipedia sentences. This step ensures the approach generalizes to authentic textual contexts, not just the minimal triplets from the synthetic set.</p><p>To explore the trade-off between vector capacity and prompt overhead, we train ConceptFormer variants with 𝑛 ∈ {1, 2, 3, 4, 5, 10, 15, 20}. Each variant sees the same star subgraphs, but it can produce more or fewer concept vectors.</p><p>Table <ref type="table" target="#tab_1">1</ref> (rows labeled "GPT-2 0.1B + CF-𝑛") and Figure <ref type="figure" target="#fig_5">4</ref> illustrate that going from 𝑛 = 1 to 𝑛 = 15 markedly improves Hit@1 and Hit@10. Beyond 15, we see diminishing or no returns, suggesting that around 10-15 vectors are enough to cover typical 1-hop neighborhoods in Tri-REx. For GPT-2 0.1B, certain CF-𝑛 models even outperform LLaMA-2 7B, a 50× larger model, in Hit@1-a striking result indicating that concept vectors can encode essential knowledge more compactly than the model's own parameters.</p><p>After fine-tuning on real sentences, Table <ref type="table" target="#tab_1">1</ref> shows the final performance. Notably, CF-15 yields a Hit@1 of 46.7% and Hit@10 of 72.5%-about a 10× gain over baseline GPT-2 0.1B. Even a single concept vector (𝑛 = 1) outperforms text-based RAG for GPT-2 0.1B at Hit@1 (33.3% vs. 6.6%), while consuming 130× fewer tokens on average.</p><p>Figure <ref type="figure">5</ref> highlights the trade-off: graph textification saturates the input context, particularly for well-known subjects, whereas ConceptFormer retains high accuracy with minimal vector overhead. This is pivotal for IR scenarios where multiple enriched entities may appear simultaneously.  Following Liu et al. <ref type="bibr" target="#b25">[26]</ref>, we partition subjects into:</p><p>• Niche Concepts (1-10 neighbors): Often less-known entities. CF-15 significantly outperforms RAG here, likely because text expansions for these entities are short, but the LLM still benefits from the learned concept representation. Overall, ConceptFormer maintains high recall across varying entity degrees, making it attractive for IR tasks spanning rare to wellknown topics.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.5">Question Answering on WebQSP</head><p>To further validate ConceptFormer in an IR-like question answering context, we evaluate it on the WebQuestions Semantic Parsing (We-bQSP) dataset <ref type="bibr" target="#b51">[52]</ref>. Since WebQSP originally references Freebase, we use a Wikidata-linked variant <ref type="bibr" target="#b38">[39]</ref>. After filtering questions with missing or incompatible subgraphs, we form 2,463 question-answer pairs, each labeled with the relevant entity's node ID. We adapt GPT-2 0.1B to a prompt template: "Question: [Q]? Answer:", then measure whether the correct entity label emerges in the top-𝑘 logits. As many questions have multiple valid answers or synonyms, we adopt a looser Hit@5 threshold: if any correct label is in the top-5 tokens, we consider it a recall success.</p><p>Table <ref type="table" target="#tab_3">2</ref> compares:</p><p>• Baseline GPT-2 0.1B: 0% Hit@1, effectively guessing randomly for these specialized QA prompts. • + RAG (Graph Textification): Gains up to 1.4% Hit@5 for GPT-2 0.1B, or 13.0% for GPT-2 1.5B, but still low absolute performance. • + ConceptFormer-10 (CF-10): Achieves 7.6% Hit@1 and 28.3% Hit@5, vastly surpassing the LLaMA-2 7B result of under 1% Hit@1. While these numbers are modest compared to specialized QA systems that can reach 75%+ <ref type="bibr" target="#b48">[49]</ref>, they demonstrate that an off-theshelf 0.1B-parameter LLM can become domain-aware through Con-ceptFormer's vector-based injection. This highlights a path for using small LLMs in domain-oriented IR tasks (e.g., specialized KBs) without re-training a massive model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.6">Additional Studies: Multi-Hop and Global Alignments</head><p>Although our experiments focus on 1-hop subgraphs, Concept-Former can, in principle, be extended to multi-hop neighborhoods. Similarly, using globally aligned node embeddings (e.g., from PBG <ref type="bibr" target="#b18">[19]</ref>) conferred no consistent advantage over simpler text-based embeddings. We hypothesize that ConceptFormer itself internalizes enough global structure through repeated 1-hop exposures.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.7">Summary of Findings</head><p>Across a spectrum of evaluation settings:</p><p>• Even a single concept vector (𝑛 = 1) can boost GPT-2 0.1B from near-zero performance to competitive results while consuming ∼ 100× fewer tokens than text-based graph expansions. • 15 concept vectors emerges as an effective upper bound for 1-hop neighborhoods, pushing recall higher but still remaining token-efficient. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">CONCLUSION</head><p>This paper presented ConceptFormer, a novel approach to augment Large Language Models with structured knowledge from Knowledge Graphs without modifying their internal architecture. Our experiments demonstrated that ConceptFormer significantly enhances the factual recall abilities of GPT-2 0.1B. This improvement is attributed to the efficient transformation of KG information into compact and informative concept vectors. The method of creating and injecting concept vectors into the LLM input space offers a powerful way to enrich LLMs with current and detailed world knowledge while preserving token space for user queries or other contextual IR prompts.</p><p>From an IR perspective, ConceptFormer provides a solution for knowledge-intensive tasks such as query expansion, entity-centric retrieval, and knowledge-grounded question answering. By embedding graph information at the input-embedding level rather than via verbose textual expansions, ConceptFormer reduces the risk of context-window saturation-making it highly scalable for multi-entity queries often seen in advanced retrieval workflows. It bridges the gap between dense retrieval techniques and structured KG lookups, aligning with the broader shift toward retrievalaugmented generation methods in IR.</p><p>Our results show that ConceptFormer achieves superior performance compared to raw LLMs and even outperforms templatebased graph RAG methods in most scenarios (cf. Table <ref type="table">3</ref>). Notably, it enhances knowledge recall with a minimal increase in context size, providing an efficient pathway for integrating large-scale knowledge bases into modern IR pipelines. The effectiveness of Concept-Former is especially notable when comparing the input token usage between ConceptFormer-1 and graph RAG: just one singular concept vector can outperform graph RAG on the T-Rex Bite dataset by 88% on Hit@10. Such savings directly benefit IR tasks that require injecting relevant knowledge for multiple entities within a single prompt, including complex queries or conversation-based searches.</p><p>Table <ref type="table">3</ref>: Performance change of GPT-2 0.1B + 15 concept vectors, compared to GPT-2 0.1B base model and GPT-2 0.1B + graph RAG (G-RAG).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Tri-REx</head><p>T-Rex Bite Model H@1 H@5 H@10 H@1 H@5 H@10 GPT-2 0.1B 1121% ↑ 457% ↑ 348% ↑ 894% ↑ 370% ↑ 271% ↑ GPT-2 0.1B + G-RAG 93% ↑ 0% ≈ 8% ↓ 612% ↑ 181% ↑ 123% ↑ Once trained, ConceptFormer can pre-generate a comprehensive lookup table that maps entities to concept vectors. Alternatively, it can be used dynamically, querying the relevant neighborhood from the source graph on the fly and embedding it into input space-compatible concept vectors, thus offering a streamlined retrieval-augmentation step in IR pipelines. Changes in the online KG are automatically reflected and made accessible to the LLM, making ConceptFormer suitable for highly dynamic retrieval scenarios with fast-changing graphs. Overall, it provides a versatile, token-efficient bridge between the structured world of KGs and the generative capabilities of LLMs, supporting more robust and up-to-date information retrieval.</p><p>ConceptFormer exhibits four key properties that make it particularly compelling for IR pipelines:</p><p>Token Efficiency Each entity's neighborhood is compressed into a handful of vectors (≈1-20 "soft tokens"), compared to hundreds of tokens required by typical text-based RAG expansions. IR scenarios often have limited context budgets, making such savings crucial for complex or multi-entity queries. No Fine-tuning of the LLM By remaining purely in the input space, ConceptFormer allows system integrators to reuse standard open-source or commercial LLMs. This is particularly valuable in contexts where re-training is infeasible, restricted for proprietary reasons, or prohibitively expensive. Adaptable to Any KG The method is agnostic to the specific knowledge graph or embedding technique used. Any star topology subgraph can be fed in, allowing IR experts to integrate specialized domain knowledge (e.g., medical or legal) seamlessly into retrieval workflows. Scalability and Dynamic Updates If the KG is large and relatively stable, precomputed concept vectors can be quickly integrated. Conversely, if the KG is dynamic or requires real-time updates, on-the-fly generation remains feasible. This flexibility is especially advantageous for domains that demand constant knowledge updates.</p><p>These features underscore ConceptFormer's suitability for retrievalbased generation, question answering, or any IR task that demands up-to-date factual grounding. By prioritizing token efficiency, modularity, and dynamic scalability, ConceptFormer fills a critical gap in bridging structured graph data with frozen Large Language Models while minimizing the burden on context budgets. Ultimately, it unifies structured graph knowledge with LLM-based generation in a manner that is practical, extensible, and highly aligned with the requirements of modern information retrieval systems.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure1: ConceptFormer enhances a prompt by extending the embedding vectors from the original prompt with learned concept vectors. Entity recognition and entity linking is used to detect an entity "Albert Einstein" (displayed in blue) in the original prompt and link it towards a large KG like Wikidata. ConceptFormer creates a vector embedding for the detected entity that is compatible with the LLMs input embedding space. The resulting concept vector (displayed in green) is shown to capture the essence of the entity far better than the original token embedding vectors alone, leading to more knowledgeable output generated by the LLM (displayed in red).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Example datapoint from Tri-REx (Synthetic) Dataset. The datapoint consists of the main sentence(s), information about the mentioned Wikidata triple, as well as boundary indications of the entity label locations within the sentences(s).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure3: The input of the ConceptFormer are three matrices, representing the central node, neighbouring nodes, and connecting edges. These embeddings can be generated with numerous text-embedding mechanisms. In our work, we generated the node and edge embeddings by simply forwarding their label through an LLM and averaged the last hidden layer. ConceptFormer trains multiple, parallel, and fully independent concept vector generator blocks, each implementing an attention mechanism in which the central node becomes the query Q, the concatenated neighbouring nodes and corresponding edges become the key K, and the neighbouring nodes become the values V. Finally, a shared dense network transforms the output of each concept vector generator block into the input embedding space of the LLM.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>( 1 )</head><label>1</label><figDesc>For each synthetic sentence of the form "[Subject] ... [Predicate] ... [Object]": We truncate the sentence right before the [Object]. (2) We retrieve the star subgraph of the [Subject] from T-REx Star, generate 𝑛 concept vectors using ConceptFormer, and insert them after the original [Subject] text embedding vectors. (3) The LLM is tasked with next-token prediction of the [Object],</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Hit@10 rate of various base models, with or without graph RAG (G-RAG), compared to GPT-2 0.1B with different ConceptFormers (CF), after pre-training on Tri-REx.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>20 Figure 5 :</head><label>205</label><figDesc>Figure 5: Hit@10 rate of GPT-2 0.1B + various ConceptFormers on the Wikipedia based T-Rex Bite Dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>Percentage of correctly predicted entities per dataset of different models using no augmentation, textified graph injection, or using different ConceptFormer-n variants, producing between 1 and 20 concept vectors.</figDesc><table><row><cell></cell><cell></cell><cell>Tri-REx</cell><cell></cell><cell>T-Rex Bite</cell></row><row><cell>Model</cell><cell cols="4">H@1 H@5 H@10 H@1 H@5 H@10</cell></row><row><cell>LLaMA-2 7B</cell><cell cols="4">4.1% 17.5% 24.5% 39.3% 65.3% 73.0%</cell></row><row><cell>LLaMA-2 3B</cell><cell cols="4">4.3% 16.4% 22.9% 34.8% 59.5% 67.5%</cell></row><row><cell>GPT-2 1.5B</cell><cell>1.7%</cell><cell>8.8%</cell><cell cols="2">12.7% 22.9% 43.8% 51.8%</cell></row><row><cell>GPT-2 0.7B</cell><cell>1.6%</cell><cell>8.8%</cell><cell cols="2">12.4% 19.7% 39.3% 47.1%</cell></row><row><cell>GPT-2 0.3B</cell><cell>0.9%</cell><cell>7.0%</cell><cell cols="2">10.3% 16.3% 36.2% 44.2%</cell></row><row><cell>GPT-2 0.1B</cell><cell>1.3%</cell><cell>5.8%</cell><cell>8.5%</cell><cell>4.7% 14.3% 19.5%</cell></row><row><cell cols="5">LLaMA-2 7B + RAG 25.6% 61.0% 72.2% 55.3% 85.1% 90.6%</cell></row><row><cell cols="5">LLaMA-2 3B + RAG 28.4% 61.5% 71.7% 52.0% 82.3% 88.4%</cell></row><row><cell>GPT-2 1.5B + RAG</cell><cell cols="4">26.0% 54.2% 63.8% 39.6% 70.3% 78.3%</cell></row><row><cell>GPT-2 0.7B + RAG</cell><cell cols="4">20.9% 48.9% 59.1% 30.9% 60.0% 69.3%</cell></row><row><cell>GPT-2 0.3B + RAG</cell><cell cols="4">21.5% 50.7% 59.9% 30.5% 62.3% 71.4%</cell></row><row><cell>GPT-2 0.1B + RAG</cell><cell cols="3">8.3% 32.1% 41.3%</cell><cell>6.6% 23.8% 32.4%</cell></row><row><cell cols="5">GPT-2 0.1B + CF-20 16.8% 31.2% 36.9% 46.1% 65.6% 70.7%</cell></row><row><cell cols="5">GPT-2 0.1B + CF-15 16.2% 32.3% 38.2% 46.7% 67.1% 72.5%</cell></row><row><cell cols="5">GPT-2 0.1B + CF-10 15.7% 31.6% 37.8% 46.4% 67.2% 72.9%</cell></row><row><cell>GPT-2 0.1B + CF-5</cell><cell cols="4">13.6% 28.6% 35.1% 42.1% 63.3% 69.3%</cell></row><row><cell>GPT-2 0.1B + CF-4</cell><cell cols="4">12.7% 27.1% 33.7% 40.1% 61.5% 68.0%</cell></row><row><cell>GPT-2 0.1B + CF-3</cell><cell cols="4">11.9% 26.6% 32.9% 40.4% 61.0% 67.1%</cell></row><row><cell>GPT-2 0.1B + CF-2</cell><cell cols="4">11.1% 25.3% 31.7% 37.6% 57.8% 64.1%</cell></row><row><cell>GPT-2 0.1B + CF-1</cell><cell cols="4">10.0% 23.2% 28.8% 33.3% 54.1% 61.1%</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 2 :</head><label>2</label><figDesc>Percentage of correctly answered questions from the WebQSP Dataset, comparison of the base models (BM), graph RAG (G-RAG), and ConceptFormer-10 (CF-10).</figDesc><table><row><cell>• Complex or Large Subgraphs that hamper text-based</cell></row><row><cell>RAG due to context saturation have less impact on Con-</cell></row><row><cell>ceptFormer, which compresses the subgraph into a fixed</cell></row><row><cell>number of vectors.</cell></row><row><cell>• General QA Scenarios like WebQSP show that Concept-</cell></row><row><cell>Former can transform a small LLM into a basic QA engine</cell></row><row><cell>for domain knowledge queries. Performance, while not</cell></row><row><cell>state-of-the-art, underscores the viability of vector-based</cell></row><row><cell>knowledge injection.</cell></row><row><cell>Overall, our experiments confirm that ConceptFormer provides a</cell></row><row><cell>robust, scalable means to infuse structured knowledge into LLMs</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>https://github.com/joelbarmettlerUZH/ConceptFormer</p></note>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Domain-specific knowledge graphs: A survey</title>
+		<author>
+			<persName><forename type="first">Bilal</forename><surname>Abu-Salih</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/J.JNCA.2021.103076</idno>
+		<ptr target="https://doi.org/10.1016/J.JNCA.2021.103076" />
+	</analytic>
+	<monogr>
+		<title level="j">J. Netw. Comput. Appl</title>
+		<imprint>
+			<biblScope unit="volume">185</biblScope>
+			<biblScope unit="page">103076</biblScope>
+			<date type="published" when="2021">2021. 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<author>
+			<persName><forename type="first">Joel</forename><surname>Barmettler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abraham</forename><surname>Bernstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Rossetto</surname></persName>
+		</author>
+		<idno type="DOI">10.5281/zenodo.15187984</idno>
+		<ptr target="https://doi.org/10.5281/zenodo.15187984" />
+		<title level="m">ConceptFormer trained on T-REx Lite</title>
+		<imprint>
+			<date type="published" when="2025">2025</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Joel</forename><surname>Barmettler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abraham</forename><surname>Bernstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Rossetto</surname></persName>
+		</author>
+		<idno type="DOI">10.5281/zenodo.15165883</idno>
+		<ptr target="https://doi.org/10.5281/zenodo.15165883" />
+		<imprint>
+			<date type="published" when="2025">2025</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Joel</forename><surname>Barmettler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abraham</forename><surname>Bernstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Rossetto</surname></persName>
+		</author>
+		<idno type="DOI">10.5281/zenodo.15165974</idno>
+		<ptr target="https://doi.org/10.5281/zenodo.15165974" />
+		<imprint>
+			<date type="published" when="2025">2025</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<author>
+			<persName><forename type="first">Joel</forename><surname>Barmettler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abraham</forename><surname>Bernstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Rossetto</surname></persName>
+		</author>
+		<idno type="DOI">10.5281/zenodo.15166163</idno>
+		<ptr target="https://doi.org/10.5281/zenodo.15166163" />
+		<title level="m">Tri-REx 1.0</title>
+		<imprint>
+			<date type="published" when="2025">2025</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Translating Embeddings for Modeling Multi-relational Data</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bordes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Usunier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>García-Durán</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oksana</forename><surname>Yakhnenko</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2013/hash/1cecc" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 26: 27th Annual Conference on Neural Information Processing Systems 2013. Proceedings of a meeting</title>
+		<editor>
+			<persName><forename type="first">J</forename><forename type="middle">C</forename><surname>Burges</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Léon</forename><surname>Bottou</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Zoubin</forename><surname>Ghahramani</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kilian</forename><forename type="middle">Q</forename><surname>Weinberger</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Lake Tahoe, Nevada, United States, Christo</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2013-12-05">2013. December 5-8, 2013</date>
+			<biblScope unit="page" from="2787" to="2795" />
+		</imprint>
+	</monogr>
+	<note>a77928ca8133fa24680a88d2f9-Abstract.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Improving Language Model Predictions via Prompts Enriched with Knowledge Graphs</title>
+		<author>
+			<persName><forename type="first">Ryan</forename><surname>Brate</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minh</forename><forename type="middle">Hoang</forename><surname>Dang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabian</forename><surname>Hoppe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Albert</forename><surname>Meroño-Peñuela</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vijay</forename><surname>Sadashivaiah</surname></persName>
+		</author>
+		<idno>CEUR-WS.org</idno>
+		<ptr target="https://ceur-ws.org/Vol-3342/paper-3.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Workshop on Deep Learning for Knowledge Graphs (DL4KG 2022) co-located with the 21th International Semantic Web Conference (ISWC 2022), Virtual Conference, online</title>
+		<title level="s">CEUR Workshop Proceedings</title>
+		<editor>
+			<persName><forename type="first">Mehwish</forename><surname>Alam</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Michael</forename><surname>Cochez</surname></persName>
+		</editor>
+		<meeting>the Workshop on Deep Learning for Knowledge Graphs (DL4KG 2022) co-located with the 21th International Semantic Web Conference (ISWC 2022), Virtual Conference, online</meeting>
+		<imprint>
+			<date type="published" when="2022-10-24">2022. October 24, 2022</date>
+			<biblScope unit="volume">3342</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Improving Language Model Predictions via Prompts Enriched with Knowledge Graphs</title>
+		<author>
+			<persName><forename type="first">Ryan</forename><surname>Brate</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minh</forename><forename type="middle">Hoang</forename><surname>Dang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabian</forename><surname>Hoppe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Albert</forename><surname>Meroño-Peñuela</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vijay</forename><surname>Sadashivaiah</surname></persName>
+		</author>
+		<idno>CEUR-WS.org</idno>
+		<ptr target="https://ceur-ws.org/Vol-3342/paper-3.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Workshop on Deep Learning for Knowledge Graphs (DL4KG 2022) co-located with the 21th International Semantic Web Conference (ISWC 2022), Virtual Conference, online</title>
+		<title level="s">CEUR Workshop Proceedings</title>
+		<editor>
+			<persName><forename type="first">Mehwish</forename><surname>Alam</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Michael</forename><surname>Cochez</surname></persName>
+		</editor>
+		<meeting>the Workshop on Deep Learning for Knowledge Graphs (DL4KG 2022) co-located with the 21th International Semantic Web Conference (ISWC 2022), Virtual Conference, online</meeting>
+		<imprint>
+			<date type="published" when="2022-10-24">2022. October 24, 2022</date>
+			<biblScope unit="volume">3342</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">T-REx: A Large Scale Alignment of Natural Language with Knowledge Base Triples</title>
+		<author>
+			<persName><forename type="first">Hady</forename><surname>Elsahar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pavlos</forename><surname>Vougiouklis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arslen</forename><surname>Remaci</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christophe</forename><surname>Gravier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathon</forename><forename type="middle">S</forename><surname>Hare</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Frédérique</forename><surname>Laforest</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elena</forename><surname>Simperl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Nicoletta Calzolari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Khalid</forename><surname>Choukri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Cieri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thierry</forename><surname>Declerck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sara</forename><surname>Goggi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kôiti</forename><surname>Hasida</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hitoshi</forename><surname>Isahara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bente</forename><surname>Maegaard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joseph</forename><surname>Mariani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hélène</forename><surname>Mazo</surname></persName>
+		</author>
+		<ptr target="http://www.lrec-conf.org/proceedings/lrec2018/summaries/632.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Eleventh International Conference on Language Resources and Evaluation</title>
+		<editor>
+			<persName><forename type="first">Stelios</forename><surname>Odijk</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Takenobu</forename><surname>Piperidis</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Tokunaga</surname></persName>
+		</editor>
+		<meeting>the Eleventh International Conference on Language Resources and Evaluation<address><addrLine>Miyazaki, Japan; Asunción Moreno</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018-01-12">2018. May 7-12, 2018. Jan</date>
+		</imprint>
+	</monogr>
+	<note>European Language Resources Association (ELRA)</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Talk like a Graph: Encoding Graphs for Large Language Models</title>
+		<author>
+			<persName><forename type="first">Bahare</forename><surname>Fatemi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Halcrow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Perozzi</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/ARXIV.2310.04560</idno>
+		<idno type="arXiv">arXiv:2310.04560</idno>
+		<ptr target="https://doi.org/10.48550/ARXIV.2310.04560" />
+		<imprint>
+			<date type="published" when="2023">2023. 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Amit Haim Bermano, Gal Chechik, and Daniel Cohen-Or. 2023. An Image is Worth One Word: Personalizing Text-to-Image Generation using Textual Inversion</title>
+		<author>
+			<persName><forename type="first">Rinon</forename><surname>Gal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuval</forename><surname>Alaluf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuval</forename><surname>Atzmon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Or</forename><surname>Patashnik</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/pdf?id=NAQvF08TcyG" />
+	</analytic>
+	<monogr>
+		<title level="m">The Eleventh International Conference on Learning Representations, ICLR 2023</title>
+		<meeting><address><addrLine>Kigali, Rwanda</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2023">May 1-5, 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Retrieval-Augmented Generation for Large Language Models: A Survey</title>
+		<author>
+			<persName><forename type="first">Yunfan</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yun</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinyu</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kangxiang</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinliu</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxi</forename><surname>Bi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiawei</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qianyu</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haofen</forename><surname>Wang</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/ARXIV.2312.10997</idno>
+		<idno type="arXiv">arXiv:2312.10997</idno>
+		<ptr target="https://doi.org/10.48550/ARXIV.2312.10997" />
+		<imprint>
+			<date type="published" when="2023">2023. 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Creating Training Corpora for NLG Micro-Planners</title>
+		<author>
+			<persName><forename type="first">Claire</forename><surname>Gardent</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anastasia</forename><surname>Shimorina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shashi</forename><surname>Narayan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laura</forename><surname>Perez-Beltrachini</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/V1/P17-1017</idno>
+		<ptr target="https://doi.org/10.18653/V1/P17-1017" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics</title>
+		<editor>
+			<persName><forename type="first">Long</forename><surname>Papers</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Regina</forename><surname>Barzilay</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Min-Yen</forename><surname>Kan</surname></persName>
+		</editor>
+		<meeting>the 55th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Vancouver, Canada</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017-07-30">2017. 2017. July 30 -August 4</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="179" to="188" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Textbooks Are All You Need</title>
+		<author>
+			<persName><forename type="first">Suriya</forename><surname>Gunasekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jyoti</forename><surname>Aneja</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Caio</forename><surname>César</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Teodoro</forename><surname>Mendes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Allie</forename><surname>Del Giorno</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sivakanth</forename><surname>Gopi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mojan</forename><surname>Javaheripi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Piero</forename><surname>Kauffmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gustavo</forename><surname>De Rosa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Olli</forename><surname>Saarikivi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adil</forename><surname>Salim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shital</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harkirat</forename><surname>Singh Behl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sébastien</forename><surname>Bubeck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronen</forename><surname>Eldan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Tauman Kalai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yin</forename><surname>Tat Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuanzhi</forename><surname>Li</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/ARXIV.2306.11644</idno>
+		<idno type="arXiv">arXiv:2306.11644</idno>
+		<ptr target="https://doi.org/10.48550/ARXIV.2306.11644" />
+		<imprint>
+			<date type="published" when="2023">2023. 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Exploring Network Structure, Dynamics, and Function using NetworkX</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Aric</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><forename type="middle">A</forename><surname>Hagberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pieter</forename><forename type="middle">J</forename><surname>Schult</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Swart</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 7th Python in Science Conference</title>
+		<editor>
+			<persName><forename type="first">Gaël</forename><surname>Varoquaux</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Travis</forename><surname>Vaught</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jarrod</forename><surname>Millman</surname></persName>
+		</editor>
+		<meeting>the 7th Python in Science Conference<address><addrLine>Pasadena, CA USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="11" to="15" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">A Survey on Knowledge Graphs: Representation, Acquisition, and Applications</title>
+		<author>
+			<persName><forename type="first">Shaoxiong</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shirui</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Erik</forename><surname>Cambria</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pekka</forename><surname>Marttinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philip</forename><forename type="middle">S</forename><surname>Yu</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/TNNLS.2021.3070843</idno>
+		<ptr target="https://doi.org/10.1109/TNNLS.2021.3070843" />
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Trans. Neural Networks Learn. Syst</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="494" to="514" />
+			<date type="published" when="2022">2022. 2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Albert</forename><forename type="middle">Q</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandre</forename><surname>Sablayrolles</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arthur</forename><surname>Mensch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Bamford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Devendra</forename><surname>Singh Chaplot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diego</forename><surname>De Las</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Florian</forename><surname>Casas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gianna</forename><surname>Bressand</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Lengyel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lucile</forename><surname>Lample</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Saulnier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Renard</forename><surname>Lélio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marie-Anne</forename><surname>Lavaud</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pierre</forename><surname>Lachaux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Teven</forename><surname>Stock</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thibaut</forename><surname>Le Scao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Lavril</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothée</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">El</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sayed</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/ARXIV.2310.06825</idno>
+		<idno type="arXiv">arXiv:2310.06825</idno>
+		<ptr target="https://doi.org/10.48550/ARXIV.2310.06825" />
+		<imprint>
+			<date type="published" when="2023">2023. 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Factuality Enhanced Language Models for Open-Ended Text Generation</title>
+		<author>
+			<persName><forename type="first">Nayeon</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Ping</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mostofa</forename><surname>Patwary</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pascale</forename><surname>Fung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohammad</forename><surname>Shoeybi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Catanzaro</surname></persName>
+		</author>
+		<ptr target="http://papers.nips.cc/paper_files/paper/2022/hash/df" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 35: Annual Conference on Neural Information Processing Systems 2022, NeurIPS 2022</title>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Sanmi Koyejo</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Mohamed</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Danielle</forename><surname>Agarwal</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Belgrave</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Cho</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Oh</surname></persName>
+		</editor>
+		<meeting><address><addrLine>New Orleans, LA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022-11-28">2022. November 28 -December 9, 2022</date>
+		</imprint>
+	</monogr>
+	<note>438caa36714f69277daa92d608dd63-Abstract-Conference.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Pytorch-BigGraph: A Large Scale Graph Embedding System</title>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ledell</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiajun</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothée</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Wehrstedt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhijit</forename><surname>Bose</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Peysakhovich</surname></persName>
+		</author>
+		<idno>mlsys.org</idno>
+		<ptr target="https://proceedings.mlsys.org/book/282.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of Machine Learning and Systems</title>
+		<editor>
+			<persName><forename type="first">Ameet</forename><surname>Talwalkar</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Virginia</forename><surname>Smith</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Matei</forename><surname>Zaharia</surname></persName>
+		</editor>
+		<meeting>Machine Learning and Systems<address><addrLine>MLSys; Stanford, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019-03-31">2019. 2019. 2019. March 31 -April 2, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">H</forename><surname>Patrick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ethan</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aleksandra</forename><surname>Perez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabio</forename><surname>Piktus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vladimir</forename><surname>Petroni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naman</forename><surname>Karpukhin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Heinrich</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Küttler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Rocktäschel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Douwe</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kiela</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2020/hash/6" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 33: Annual Conference on Neural Information Processing Systems 2020, NeurIPS 2020</title>
+		<editor>
+			<persName><forename type="first">Hugo</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Marc'aurelio</forename><surname>Ranzato</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Raia</forename><surname>Hadsell</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Maria-Florina</forename><surname>Balcan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Hsuan-Tien</forename><surname>Lin</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2020-12-06">2020. December 6-12, 2020</date>
+		</imprint>
+	</monogr>
+	<note>b493230205f780e1bc26945df7481e5-Abstract.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Pretrained Language Models for Text Generation: A Survey</title>
+		<author>
+			<persName><forename type="first">Junyi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyi</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wayne</forename><forename type="middle">Xin</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ji-Rong</forename><surname>Wen</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2105.10311</idno>
+		<ptr target="https://arxiv.org/abs/2105.10311" />
+		<imprint>
+			<date type="published" when="2021">2021. 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Graph Reasoning for Question Answering with Triplet Retrieval</title>
+		<author>
+			<persName><forename type="first">Shiyang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yifan</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haoming</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qingyu</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xifeng</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bing</forename><surname>Yin</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/V1/2023.FINDINGS-ACL.208</idno>
+		<ptr target="https://doi.org/10.18653/V1/2023.FINDINGS-ACL.208" />
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: ACL 2023</title>
+		<editor>
+			<persName><forename type="first">Anna</forename><surname>Rogers</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jordan</forename><forename type="middle">L</forename><surname>Boyd-Graber</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Naoaki</forename><surname>Okazaki</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Toronto, Canada</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2023-07-09">2023. July 9-14, 2023</date>
+			<biblScope unit="page" from="3366" to="3375" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Prefix-Tuning: Optimizing Continuous Prompts for Generation</title>
+		<author>
+			<persName><forename type="first">Lisa</forename><surname>Xiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Percy</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Liang</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/V1/2021.ACL-LONG.353</idno>
+		<ptr target="https://doi.org/10.18653/V1/2021.ACL-LONG.353" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing, ACL/IJCNLP 2021</title>
+		<editor>
+			<persName><forename type="first">Chengqing</forename><surname>Zong</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Fei</forename><surname>Xia</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Wenjie</forename><surname>Li</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Roberto</forename><surname>Navigli</surname></persName>
+		</editor>
+		<meeting>the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing, ACL/IJCNLP 2021</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2021-08-01">2021. August 1-6, 2021</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="4582" to="4597" />
+		</imprint>
+	</monogr>
+	<note>Long Papers), Virtual Event</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Modular and Parameter-Efficient Multimodal Fusion with Prompting</title>
+		<author>
+			<persName><forename type="first">Sheng</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mengjie</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hinrich</forename><surname>Schütze</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/V1/2022.FINDINGS-ACL.234</idno>
+		<ptr target="https://doi.org/10.18653/V1/2022.FINDINGS-ACL.234" />
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: ACL 2022</title>
+		<editor>
+			<persName><forename type="first">Preslav</forename><surname>Smaranda Muresan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Aline</forename><surname>Nakov</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Villavicencio</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Dublin, Ireland</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022-05-22">2022. May 22-27, 2022</date>
+			<biblScope unit="page" from="2976" to="2985" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">StreamingQA: A Benchmark for Adaptation to New Knowledge over Time in Question Answering Models</title>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Liska</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tomás</forename><surname>Kociský</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elena</forename><surname>Gribovskaya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tayfun</forename><surname>Terzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eren</forename><surname>Sezener</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Devang</forename><surname>Agrawal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cyprien</forename><surname>De Masson D'autume</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Scholtes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manzil</forename><surname>Zaheer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Susannah</forename><surname>Young</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ellen</forename><surname>Gilsenan-Mcmahon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sophia</forename><surname>Austin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Phil</forename><surname>Blunsom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Angeliki</forename><surname>Lazaridou</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+		<ptr target="https://proceedings.mlr.press/v162/liska22a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<title level="s">Proceedings of Machine Learning Research</title>
+		<editor>
+			<persName><forename type="first">Kamalika</forename><surname>Chaudhuri</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Stefanie</forename><surname>Jegelka</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Le</forename><surname>Song</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Csaba</forename><surname>Szepesvári</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Gang</forename><surname>Niu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sivan</forename><surname>Sabato</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Baltimore, Maryland, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022-07">2022. 17-23 July 2022</date>
+			<biblScope unit="volume">2022</biblScope>
+			<biblScope unit="page" from="13604" to="13622" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">K-BERT: Enabling Language Representation with Knowledge Graph</title>
+		<author>
+			<persName><forename type="first">Weijie</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhe</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiruo</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Ju</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haotang</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ping</forename><surname>Wang</surname></persName>
+		</author>
+		<idno type="DOI">10.1609/AAAI.V34I03.5681</idno>
+		<ptr target="https://doi.org/10.1609/AAAI.V34I03.5681" />
+	</analytic>
+	<monogr>
+		<title level="m">The Thirty-Fourth AAAI Conference on Artificial Intelligence, AAAI 2020, The Thirty-Second Innovative Applications of Artificial Intelligence Conference, IAAI 2020, The Tenth AAAI Symposium on Educational Advances in Artificial Intelligence</title>
+		<meeting><address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2020-02-07">2020. February 7-12, 2020</date>
+			<biblScope unit="volume">2020</biblScope>
+			<biblScope unit="page" from="2901" to="2908" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanan</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhengxiao</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yujie</forename><surname>Qian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhilin</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2103.10385</idno>
+		<ptr target="https://arxiv.org/abs/2103.10385" />
+		<title level="m">GPT Understands, Too. CoRR abs/2103</title>
+		<imprint>
+			<date type="published" when="2021">2021. 2021</date>
+			<biblScope unit="page">10385</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Time Waits for No One! Analysis and Challenges of Temporal Misalignment</title>
+		<author>
+			<persName><forename type="first">Kelvin</forename><surname>Luu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Khashabi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suchin</forename><surname>Gururangan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karishma</forename><surname>Mandyam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><forename type="middle">A</forename><surname>Smith</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/V1/2022.NAACL-MAIN.435</idno>
+		<ptr target="https://doi.org/10.18653/V1/2022.NAACL-MAIN.435" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, NAACL 2022</title>
+		<editor>
+			<persName><forename type="first">Marine</forename><surname>Carpuat</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Marie-Catherine</forename><surname>De Marneffe</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Iván</forename><surname>Vladimir</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Meza</forename><surname>Ruíz</surname></persName>
+		</editor>
+		<meeting>the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, NAACL 2022<address><addrLine>Seattle, WA, United States</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2022-07-10">2022. July 10-15, 2022</date>
+			<biblScope unit="page" from="5944" to="5958" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">FActScore: Finegrained Atomic Evaluation of Factual Precision in Long Form Text Generation</title>
+		<author>
+			<persName><forename type="first">Sewon</forename><surname>Min</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kalpesh</forename><surname>Krishna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinxi</forename><surname>Lyu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pang</forename><surname>Wei Koh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohit</forename><surname>Iyyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hannaneh</forename><surname>Hajishirzi</surname></persName>
+		</author>
+		<ptr target="https://aclanthology.org/2023.emnlp-main.741" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing, EMNLP 2023</title>
+		<editor>
+			<persName><forename type="first">Houda</forename><surname>Bouamor</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Juan</forename><surname>Pino</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kalika</forename><surname>Bali</surname></persName>
+		</editor>
+		<meeting>the 2023 Conference on Empirical Methods in Natural Language Processing, EMNLP 2023<address><addrLine>Singapore</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2023-12-06">2023. December 6-10, 2023</date>
+			<biblScope unit="page" from="12076" to="12100" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Never-ending learning</title>
+		<author>
+			<persName><forename type="first">Tom</forename><forename type="middle">M</forename><surname>Mitchell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">W</forename><surname>Cohen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Estevam</forename><forename type="middle">R</forename><surname>Hruschka</surname><genName>Jr</genName></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Partha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>Talukdar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Justin</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Betteridge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bhavana</forename><surname>Carlson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matt</forename><surname>Dalvi Mishra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Gardner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jayant</forename><surname>Kisiel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ni</forename><surname>Krishnamurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kathryn</forename><surname>Lao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thahir</forename><surname>Mazaitis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ndapandula</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emmanouil</forename><forename type="middle">A</forename><surname>Nakashole</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alan</forename><surname>Platanios</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mehdi</forename><surname>Ritter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Burr</forename><surname>Samadi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><forename type="middle">C</forename><surname>Settles</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Derry</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhinav</forename><surname>Wijaya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinlei</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abulhair</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Malcolm</forename><surname>Saparov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joel</forename><surname>Greaves</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3191513</idno>
+		<ptr target="https://doi.org/10.1145/3191513" />
+	</analytic>
+	<monogr>
+		<title level="j">Commun. ACM</title>
+		<imprint>
+			<biblScope unit="volume">61</biblScope>
+			<biblScope unit="page" from="103" to="115" />
+			<date type="published" when="2018">2018. 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Learning to Compress Prompts with Gist Tokens</title>
+		<author>
+			<persName><forename type="first">Jesse</forename><surname>Mu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><forename type="middle">D</forename><surname>Goodman</surname></persName>
+		</author>
+		<ptr target="http://papers.nips.cc/paper_files/paper/2023/hash/" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 36: Annual Conference on Neural Information Processing Systems 2023</title>
+		<editor>
+			<persName><forename type="first">Kate</forename><surname>Amir Globerson</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Moritz</forename><surname>Saenko</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sergey</forename><surname>Hardt</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Levine</surname></persName>
+		</editor>
+		<meeting><address><addrLine>NeurIPS; New Orleans, LA, USA; Alice Oh, Tristan Naumann</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2023-12-10">2023. 2023. December 10 -16, 2023</date>
+		</imprint>
+	</monogr>
+	<note>f143aa2154e7f4d5e22d68-Abstract-Conference.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Knowledge Enhanced Contextual Word Representations</title>
+		<author>
+			<persName><forename type="first">Matthew</forename><forename type="middle">E</forename><surname>Peters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Neumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><forename type="middle">L</forename><surname>Logan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><forename type="middle">V</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roy</forename><surname>Schwartz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vidur</forename><surname>Joshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sameer</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><forename type="middle">A</forename><surname>Smith</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/V1/D19-1005</idno>
+		<ptr target="https://doi.org/10.18653/V1/D19-1005" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing, EMNLP-IJCNLP 2019</title>
+		<editor>
+			<persName><forename type="first">Kentaro</forename><surname>Inui</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jing</forename><surname>Jiang</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Vincent</forename><surname>Ng</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Xiaojun</forename><surname>Wan</surname></persName>
+		</editor>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing, EMNLP-IJCNLP 2019<address><addrLine>Hong Kong, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019-11-03">2019. November 3-7, 2019</date>
+			<biblScope unit="page" from="43" to="54" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">How Context Affects Language Models&apos; Factual Predictions</title>
+		<author>
+			<persName><forename type="first">Fabio</forename><surname>Petroni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">H</forename><surname>Patrick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aleksandra</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Piktus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiang</forename><surname>Rocktäschel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><forename type="middle">H</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Miller</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Riedel</surname></persName>
+		</author>
+		<idno type="DOI">10.24432/C5201W</idno>
+		<ptr target="https://doi.org/10.24432/C5201W" />
+	</analytic>
+	<monogr>
+		<title level="m">Conference on Automated Knowledge Base Construction, AKBC 2020, Virtual</title>
+		<editor>
+			<persName><forename type="first">Dipanjan</forename><surname>Das</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Hannaneh</forename><surname>Hajishirzi</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Andrew</forename><surname>Mccallum</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sameer</forename><surname>Singh</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2020-06-22">2020. June 22-24, 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Language Models as Knowledge Bases?</title>
+		<author>
+			<persName><forename type="first">Fabio</forename><surname>Petroni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Rocktäschel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">H</forename><surname>Patrick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anton</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuxiang</forename><surname>Bakhtin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><forename type="middle">H</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Miller</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/V1/D19-1250</idno>
+		<ptr target="https://doi.org/10.18653/V1/D19-1250" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing, EMNLP-IJCNLP 2019</title>
+		<editor>
+			<persName><forename type="first">Kentaro</forename><surname>Inui</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jing</forename><surname>Jiang</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Vincent</forename><surname>Ng</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Xiaojun</forename><surname>Wan</surname></persName>
+		</editor>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing, EMNLP-IJCNLP 2019<address><addrLine>Hong Kong, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019-11-03">2019. November 3-7, 2019</date>
+			<biblScope unit="page" from="2463" to="2473" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title level="m" type="main">BERT is Not a Knowledge Base (Yet): Factual Knowledge vs. Name-Based Reasoning in Unsupervised QA</title>
+		<author>
+			<persName><forename type="first">Nina</forename><surname>Pörner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ulli</forename><surname>Waltinger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hinrich</forename><surname>Schütze</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1911.03681</idno>
+		<ptr target="http://arxiv.org/abs/1911.03681" />
+		<imprint>
+			<date type="published" when="2019">2019. 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Learning How to Ask: Querying LMs with Mixtures of Soft Prompts</title>
+		<author>
+			<persName><forename type="first">Guanghui</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Eisner</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/V1/2021.NAACL-MAIN.410</idno>
+		<ptr target="https://doi.org/10.18653/V1/2021.NAACL-MAIN.410" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, NAACL-HLT 2021</title>
+		<editor>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Anna</forename><surname>Rumshisky</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Dilek</forename><surname>Hakkani-Tür</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Iz</forename><surname>Beltagy</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Steven</forename><surname>Bethard</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Ryan</forename><surname>Cotterell</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Tanmoy</forename><surname>Chakraborty</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Yichao</forename><surname>Zhou</surname></persName>
+		</editor>
+		<meeting>the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, NAACL-HLT 2021</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2021-06-06">2021. June 6-11, 2021</date>
+			<biblScope unit="page" from="5203" to="5212" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Language models are unsupervised multitask learners</title>
+		<author>
+			<persName><forename type="first">Alec</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeff</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rewon</forename><surname>Child</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Luan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dario</forename><surname>Amodei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Sutskever</surname></persName>
+		</author>
+		<ptr target="https://www.semanticscholar.org/paper/" />
+	</analytic>
+	<monogr>
+		<title level="m">Language-Models-are-Unsupervised-Multitask-Learners-Radford-Wu/9405cc0</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note>d6169988371b2755e573cc28650d14dfe</note>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">How Much Knowledge Can You Pack Into the Parameters of a Language Model</title>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Roberts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Colin</forename><surname>Raffel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><surname>Shazeer</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/V1/2020.EMNLP-MAIN.437</idno>
+		<ptr target="https://doi.org/10.18653/V1/2020.EMNLP-MAIN.437" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing</title>
+		<editor>
+			<persName><forename type="first">Bonnie</forename><surname>Webber</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Trevor</forename><surname>Cohn</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Yulan</forename><surname>He</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Yang</forename><surname>Liu</surname></persName>
+		</editor>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Online</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2020-11-16">2020. 2020. November 16-20, 2020</date>
+			<biblScope unit="page" from="5418" to="5426" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Modeling Semantics with Gated Graph Neural Networks for Knowledge Base Question Answering</title>
+		<author>
+			<persName><forename type="first">Daniil</forename><surname>Sorokin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Iryna</forename><surname>Gurevych</surname></persName>
+		</author>
+		<ptr target="https://aclanthology.org/C18-1280/" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 27th International Conference on Computational Linguistics, COLING 2018</title>
+		<editor>
+			<persName><forename type="first">Emily</forename><forename type="middle">M</forename><surname>Bender</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Leon</forename><surname>Derczynski</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Pierre</forename><surname>Isabelle</surname></persName>
+		</editor>
+		<meeting>the 27th International Conference on Computational Linguistics, COLING 2018<address><addrLine>Santa Fe, New Mexico, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018-08-20">2018. August 20-26, 2018</date>
+			<biblScope unit="page" from="3306" to="3317" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">Head-to-Tail: How Knowledgeable are Large Language Models (LLM)? A.K.A. Will LLMs Replace Knowledge Graphs?</title>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ethan</forename><surname>Yifan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanwen</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yue</forename><surname>Zha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dong</forename><surname>Luna</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/ARXIV.2308.10168</idno>
+		<idno type="arXiv">arXiv:2308.10168</idno>
+		<ptr target="https://doi.org/10.48550/ARXIV.2308.10168" />
+		<imprint>
+			<date type="published" when="2023">2023. 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">CoLAKE: Contextualized Language and Knowledge Embedding</title>
+		<author>
+			<persName><forename type="first">Tianxiang</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunfan</forename><surname>Shao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xipeng</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qipeng</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaru</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuanjing</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/V1/2020.COLING-MAIN.327</idno>
+		<ptr target="https://doi.org/10.18653/V1/2020.COLING-MAIN.327" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th International Conference on Computational Linguistics, COLING 2020</title>
+		<editor>
+			<persName><forename type="first">Donia</forename><surname>Scott</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Núria</forename><surname>Bel</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Chengqing</forename><surname>Zong</surname></persName>
+		</editor>
+		<meeting>the 28th International Conference on Computational Linguistics, COLING 2020<address><addrLine>Barcelona, Spain (Online)</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020-12-08">2020. December 8-13, 2020</date>
+			<biblScope unit="page" from="3660" to="3670" />
+		</imprint>
+	</monogr>
+	<note>International Committee on Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Thalhammer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Achim</forename><surname>Rettinger</surname></persName>
+		</author>
+		<idno>CEUR-WS.org</idno>
+		<ptr target="https://ceur-ws.org/Vol-1586/know2.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">Joint Proceedings of the 5th Workshop on Data Mining and Knowledge Discovery meets Linked Open Data and the 1st International Workshop on Completing and Debugging the Semantic Web (Know@LOD-2016, CoDeS-2016) co-located with 13th ESWC 2016</title>
+		<title level="s">CEUR Workshop Proceedings</title>
+		<editor>
+			<persName><forename type="first">Heiko</forename><surname>Paulheim</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jens</forename><surname>Lehmann</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Vojtech</forename><surname>Svátek</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Craig</forename><forename type="middle">A</forename><surname>Knoblock</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Matthew</forename><surname>Horridge</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Patrick</forename><surname>Lambrix</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Bijan</forename><surname>Parsia</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Heraklion, Greece</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2016-05-30">2016. May 30th, 2016</date>
+			<biblScope unit="volume">1586</biblScope>
+		</imprint>
+	</monogr>
+	<note>PageRank on Wikipedia: Towards General Importance Scores for Entities</note>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<monogr>
+		<title level="m" type="main">Llama 2: Open Foundation and Fine-Tuned Chat Models</title>
+		<author>
+			<persName><forename type="first">Hugo</forename><surname>Touvron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Louis</forename><surname>Martin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Stone</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Albert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amjad</forename><surname>Almahairi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yasmine</forename><surname>Babaei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nikolay</forename><surname>Bashlykov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soumya</forename><surname>Batra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prajjwal</forename><surname>Bhargava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shruti</forename><surname>Bhosale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Bikel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lukas</forename><surname>Blecher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cristian</forename><surname>Canton-Ferrer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Moya</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillem</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Esiobu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jude</forename><surname>Fernandes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeremy</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenyin</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brian</forename><surname>Fuller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cynthia</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vedanuj</forename><surname>Goswami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naman</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anthony</forename><surname>Hartshorn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saghar</forename><surname>Hosseini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Hou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hakan</forename><surname>Inan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marcin</forename><surname>Kardas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Viktor</forename><surname>Kerkez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Madian</forename><surname>Khabsa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Isabel</forename><surname>Kloumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Artem</forename><surname>Korenev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Punit</forename><surname>Singh Koura</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marie-Anne</forename><surname>Lachaux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thibaut</forename><surname>Lavril</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jenya</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diana</forename><surname>Liskovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinghai</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuning</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xavier</forename><surname>Martinet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Todor</forename><surname>Mihaylov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pushkar</forename><surname>Mishra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Igor</forename><surname>Molybog</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixin</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Poulton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeremy</forename><surname>Reizenstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rashi</forename><surname>Rungta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kalyan</forename><surname>Saladi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alan</forename><surname>Schelten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruan</forename><surname>Silva</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/ARXIV.2307.09288</idno>
+		<idno type="arXiv">arXiv:2307.09288</idno>
+		<ptr target="https://doi.org/10.48550/ARXIV.2307.09288" />
+		<editor>Eric Michael Smith, Ranjan Subramanian, Xiaoqing Ellen Tan, Binh Tang, Ross Taylor, Adina Williams, Jian Xiang Kuan, Puxin Xu, Zheng Yan, Iliyan Zarov, Yuchen Zhang, Angela Fan, Melanie Kambadur, Sharan Narang, Aurélien Rodriguez, Robert Stojnic, Sergey Edunov, and Thomas Scialom</editor>
+		<imprint>
+			<date type="published" when="2023">2023. 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Multimodal Few-Shot Learning with Frozen Language Models</title>
+		<author>
+			<persName><forename type="first">Maria</forename><surname>Tsimpoukelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Menick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Serkan</forename><surname>Cabi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>Ali Eslami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Hill</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2021/hash/01" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 34: Annual Conference on Neural Information Processing Systems 2021, NeurIPS 2021</title>
+		<editor>
+			<persName><forename type="first">Alina</forename><surname>Ranzato</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Yann</forename><forename type="middle">N</forename><surname>Beygelzimer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Percy</forename><surname>Dauphin</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jennifer</forename><forename type="middle">Wortman</forename><surname>Liang</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Vaughan</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2021-12-06">2021. December 6-14, 2021</date>
+			<biblScope unit="page" from="200" to="212" />
+		</imprint>
+	</monogr>
+	<note>b7575c38dac42f3cfb7d500438b875-Abstract.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Wikidata: a free collaborative knowledgebase</title>
+		<author>
+			<persName><forename type="first">Denny</forename><surname>Vrandecic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Markus</forename><surname>Krötzsch</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2629489</idno>
+		<ptr target="https://doi.org/10.1145/2629489" />
+	</analytic>
+	<monogr>
+		<title level="j">Commun. ACM</title>
+		<imprint>
+			<biblScope unit="volume">57</biblScope>
+			<biblScope unit="page" from="78" to="85" />
+			<date type="published" when="2014">2014. 2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<monogr>
+		<title level="m" type="main">Revisiting Challenges in Data-to-Text Generation with Fact Grounding</title>
+		<author>
+			<persName><forename type="first">Hongmin</forename><surname>Wang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2001.03830</idno>
+		<ptr target="https://arxiv.org/abs/2001.03830" />
+		<imprint>
+			<date type="published" when="2020">2020. 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">On the Robustness of ChatGPT: An Adversarial and Out-ofdistribution Perspective</title>
+		<author>
+			<persName><forename type="first">Jindong</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xixu</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenxin</forename><surname>Hou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Runkai</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yidong</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Linyi</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haojun</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiubo</forename><surname>Geng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Binxing</forename><surname>Jiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yue</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xing</forename><surname>Xie</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/ARXIV.2302.12095</idno>
+		<idno type="arXiv">arXiv:2302.12095</idno>
+		<ptr target="https://doi.org/10.48550/ARXIV.2302.12095" />
+		<imprint>
+			<date type="published" when="2023">2023. 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Knowledge Prompting in Pre-trained Language Model for Natural Language Understanding</title>
+		<author>
+			<persName><forename type="first">Jianing</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenkang</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minghui</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qiuhui</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongbin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Gao</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/V1/2022.EMNLP-MAIN.207</idno>
+		<ptr target="https://doi.org/10.18653/V1/2022.EMNLP-MAIN.207" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing</title>
+		<editor>
+			<persName><forename type="first">Zornitsa</forename><surname>Goldberg</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Yue</forename><surname>Kozareva</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Zhang</surname></persName>
+		</editor>
+		<meeting>the 2022 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Abu Dhabi, United Arab Emirates</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2022-12-07">2022. December 7-11, 2022</date>
+			<biblScope unit="volume">2022</biblScope>
+			<biblScope unit="page" from="3164" to="3177" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<title level="m" type="main">GNN2R: Weakly-Supervised Rationale-Providing Question Answering over Knowledge Graphs</title>
+		<author>
+			<persName><forename type="first">Ruijie</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Rossetto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Cochez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abraham</forename><surname>Bernstein</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/ARXIV.2312.02317</idno>
+		<idno type="arXiv">ARXIV.2312.02317arXiv:2312.02317</idno>
+		<ptr target="https://doi.org/10.48550/" />
+		<imprint>
+			<date type="published" when="2023">2023. 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">K-Adapter: Infusing Knowledge into Pre-Trained Models with Adapters</title>
+		<author>
+			<persName><forename type="first">Ruize</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Duyu</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nan</forename><surname>Duan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhongyu</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuanjing</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianshu</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guihong</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daxin</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Zhou</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/V1/2021.FINDINGS-ACL.121</idno>
+		<ptr target="https://doi.org/10.18653/V1/2021.FINDINGS-ACL.121" />
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: ACL/IJCNLP 2021</title>
+		<editor>
+			<persName><forename type="first">Chengqing</forename><surname>Zong</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Fei</forename><surname>Xia</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Wenjie</forename><surname>Li</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Roberto</forename><surname>Navigli</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2021-08-01">2021. August 1-6, 2021</date>
+			<biblScope unit="page" from="1405" to="1418" />
+		</imprint>
+	</monogr>
+	<note>ACL/IJCNLP 2021</note>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Do PLMs Know and Understand Ontological Knowledge?</title>
+		<author>
+			<persName><forename type="first">Weiqi</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengyue</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yong</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pengjun</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kewei</forename><surname>Tu</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/V1/2023.ACL-LONG.173</idno>
+		<ptr target="https://doi.org/10.18653/V1/2023.ACL-LONG.173" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics</title>
+		<editor>
+			<persName><forename type="first">Anna</forename><surname>Rogers</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jordan</forename><forename type="middle">L</forename><surname>Boyd-Graber</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Naoaki</forename><surname>Okazaki</surname></persName>
+		</editor>
+		<meeting>the 61st Annual Meeting of the Association for Computational Linguistics<address><addrLine>Toronto, Canada</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2023-07-09">2023. July 9-14, 2023</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="3080" to="3101" />
+		</imprint>
+	</monogr>
+	<note>ACL 2023</note>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">The Value of Semantic Parse Labeling for Knowledge Base Question Answering</title>
+		<author>
+			<persName><forename type="first">Wen-Tau</forename><surname>Yih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthew</forename><surname>Richardson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Meek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jina</forename><surname>Suh</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/V1/P16-2033</idno>
+		<ptr target="https://doi.org/10.18653/V1/P16-2033" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Berlin, Germany</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2016-08-07">2016. 2016. August 7-12, 2016</date>
+			<biblScope unit="volume">2</biblScope>
+		</imprint>
+	</monogr>
+	<note>Short Papers. The Association for Computer Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">A Survey of Knowledge-enhanced Text Generation</title>
+		<author>
+			<persName><forename type="first">Wenhao</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenguang</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zaitang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiting</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qingyun</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ji</forename><surname>Heng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Jiang</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3512467</idno>
+		<ptr target="https://doi.org/10.1145/3512467" />
+	</analytic>
+	<monogr>
+		<title level="j">ACM Comput. Surv</title>
+		<imprint>
+			<biblScope unit="volume">54</biblScope>
+			<biblScope unit="page">38</biblScope>
+			<date type="published" when="2022">2022. 11s (2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">DKPLM: Decomposable Knowledge-Enhanced Pre-trained Language Model for Natural Language Understanding</title>
+		<author>
+			<persName><forename type="first">Taolin</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengyu</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nan</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minghui</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengguang</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaofeng</forename><surname>He</surname></persName>
+		</author>
+		<idno type="DOI">10.1609/AAAI.V36I10.21425</idno>
+		<ptr target="https://doi.org/10.1609/AAAI.V36I10.21425" />
+	</analytic>
+	<monogr>
+		<title level="m">Thirty-Sixth AAAI Conference on Artificial Intelligence, AAAI 2022, Thirty-Fourth Conference on Innovative Applications of Artificial Intelligence, IAAI 2022, The Twelveth Symposium on Educational Advances in Artificial Intelligence, EAAI 2022 Virtual Event</title>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2022-03-01">Jun Huang. 2022. February 22 -March 1, 2022</date>
+			<biblScope unit="page" from="11703" to="11711" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<monogr>
+		<title level="m" type="main">KS-LLM: Knowledge Selection of Large Language Models with Evidence Document for Question Answering</title>
+		<author>
+			<persName><forename type="first">Xinxin</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Feihu</forename><surname>Che</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinyang</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuai</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuai</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianhua</forename><surname>Tao</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2404.15660[cs.CL</idno>
+		<ptr target="https://arxiv.org/abs/2404.15660" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">LIMA: Less Is More for Alignment</title>
+		<author>
+			<persName><forename type="first">Chunting</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pengfei</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Puxin</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Srinivasan</forename><surname>Iyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiao</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuning</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuezhe</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Avia</forename><surname>Efrat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ping</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lili</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Susan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gargi</forename><surname>Ghosh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Omer</forename><surname>Levy</surname></persName>
+		</author>
+		<ptr target="http://papers.nips.cc/paper_files/paper/2023/hash/ac662" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 36: Annual Conference on Neural Information Processing Systems 2023, NeurIPS 2023</title>
+		<editor>
+			<persName><forename type="first">Alice</forename><surname>Oh</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Tristan</forename><surname>Naumann</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Amir</forename><surname>Globerson</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kate</forename><surname>Saenko</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Moritz</forename><surname>Hardt</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</editor>
+		<meeting><address><addrLine>New Orleans, LA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2023-12-10">2023. December 10 -16, 2023</date>
+		</imprint>
+	</monogr>
+	<note>d74829e4407ce1d126477f4a03a-Abstract-Conference.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">Commonsense Knowledge Aware Conversation Generation with Graph Attention</title>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Young</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minlie</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haizhou</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingfang</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoyan</forename><surname>Zhu</surname></persName>
+		</author>
+		<idno type="DOI">10.24963/IJCAI.2018/643</idno>
+		<ptr target="https://doi.org/10.24963/IJCAI.2018/643" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-Seventh International Joint Conference on Artificial Intelligence, IJCAI 2018</title>
+		<editor>
+			<persName><forename type="first">Jérôme</forename><surname>Lang</surname></persName>
+		</editor>
+		<meeting>the Twenty-Seventh International Joint Conference on Artificial Intelligence, IJCAI 2018<address><addrLine>Stockholm, Sweden</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018-07-13">2018. July 13-19, 2018</date>
+			<biblScope unit="page" from="4623" to="4629" />
+		</imprint>
+	</monogr>
+	<note>ijcai.org</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>
