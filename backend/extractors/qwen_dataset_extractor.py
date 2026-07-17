@@ -4,18 +4,18 @@ import time
 from ollama import Client
 import pandas as pd
 from io import StringIO
-
+from ..config import QWEN_MODEL, OLLAMA_HOST
 class QwenDatasetExtractor:
-    def __init__(self, model_name="qwen2.5", timeout=600.0, max_retries=3):
+    def __init__(self, model_name=QWEN_MODEL, timeout=600.0, max_retries=3):
         self.model_name = model_name
         self.timeout = timeout
         self.max_retries = max_retries
-        self.client = Client(timeout=self.timeout)
+        self.client = Client(host=OLLAMA_HOST, timeout=self.timeout)
         
         # Detectamos si es un modelo que usa "thinking" (como DeepSeek-R1 o Qwen3)
         self.is_thinking_model = any(x in model_name.lower() for x in ("qwen3", "qwen2.5", "deepseek-r1"))
         
-        print(f"Initializing QwenMetricExtractor ({self.model_name})...")
+        print(f"Initializing QwenDatasetExtractor ({self.model_name})...")
 
     def _clean_entity(self, value: str) -> str:
         """Limpieza adaptada de tu código original para limpiar basura de LaTeX/Citas."""

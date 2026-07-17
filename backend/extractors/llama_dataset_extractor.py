@@ -4,13 +4,14 @@ import time
 from ollama import Client
 import pandas as pd
 from io import StringIO
+from ..config import LLM_MODEL, OLLAMA_HOST
 
 class LlamaDatasetExtractor:
-    def __init__(self, model_name="llama3.1:8b", timeout=600.0, max_retries=3):
+    def __init__(self, model_name=LLM_MODEL, timeout=600.0, max_retries=3):
         self.model_name = model_name
         self.timeout = timeout
         self.max_retries = max_retries
-        self.client = Client(timeout=self.timeout)
+        self.client = Client(host=OLLAMA_HOST, timeout=self.timeout)
         print(f"Initializing LlamaDatasetExtractor ({self.model_name})...")
 
         self.kge_entity_prompt = (

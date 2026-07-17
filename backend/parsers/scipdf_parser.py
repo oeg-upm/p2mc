@@ -1,8 +1,8 @@
 import os
 import requests
-
+from ..config import GROBID_URL
 class SciPdfParser:
-    def __init__(self, grobid_url="http://localhost:8070"):
+    def __init__(self, grobid_url=GROBID_URL):
         """
         Inicializa el parser y verifica la conexión con el servidor GROBID
         al instanciar la clase.

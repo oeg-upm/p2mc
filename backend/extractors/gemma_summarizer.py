@@ -1,12 +1,12 @@
 #from ollama import chat
 from ollama import Client
-
+from ..config import OLLAMA_HOST, GEMMA_MODEL
 class GemmaSummarizer:
-    def __init__(self, model_name='gemma4:e4b', timeout=600.0 ):
+    def __init__(self, model_name=GEMMA_MODEL, timeout=600.0 ):
         self.model_name = model_name
         print(f"Initializing ({self.model_name}) for summarization...")
         self.timeout = timeout
-        self.client = Client(timeout=self.timeout)
+        self.client = Client(host=OLLAMA_HOST, timeout=self.timeout)
         print(f"Initialitation of ({self.model_name}) complete.")
 
     def summarize(self, text):
@@ -22,7 +22,7 @@ class GemmaSummarizer:
         prompt=(f"Given the following question: {question}")
         chat.append({"role":"user","content":prompt})
         try:
-            response=self.client.chat(model='gemma4:e4b', messages=chat)
+            response=self.client.chat(model=self.model_name, messages=chat)
             predictions=response['message']['content']
         except Exception as e:
             print(f"Gemma error: {type(e).__name__}: {e!r}")
