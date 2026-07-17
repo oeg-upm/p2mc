@@ -89,11 +89,11 @@ IMAGE_DIR = ASSETS_DIR / "paper_front_pages"
 
 
 ejemplos = [
-    {"title": "M-Walk", "key": "btn_ex_1", "model": "M-Walk", "json_path": JSON_DIR / "example1.json", "image_path": IMAGE_DIR / "example1.png", "xml_url": "", "json_url": ""},
-    {"title": "KBGAN", "key": "btn_ex_2", "model": "KBGAN", "json_path": JSON_DIR / "example2.json", "image_path": IMAGE_DIR / "example2.png", "xml_url": "", "json_url": ""},
-    {"title": "ParTrans-X", "key": "btn_ex_3", "model": "ParTrans-X", "json_path": JSON_DIR / "example3.json", "image_path": IMAGE_DIR / "example3.png", "xml_url": "", "json_url": ""},
-    {"title": "ConvKB", "key": "btn_ex_4", "model": "ConvKB", "json_path": JSON_DIR / "example4.json", "image_path": IMAGE_DIR / "example4.png", "xml_url": "", "json_url": ""},
-    {"title": "ConvE", "key": "btn_ex_5", "model": "ConvE", "json_path": JSON_DIR / "example5.json", "image_path": IMAGE_DIR / "example5.png", "xml_url": "", "json_url": ""},
+    {"title": "M-Walk", "key": "btn_ex_1", "model": "M-Walk", "json_path": JSON_DIR / "example1.json", "image_path": IMAGE_DIR / "example1.png", "xml_url": "https://github.com/oeg-upm/p2mc/blob/main/streamlit_front/assets/scipdf_xmls/example1.xml", "json_url": "https://github.com/oeg-upm/p2mc/blob/main/streamlit_front/assets/lightonocr_jsons/example1.json"},
+    {"title": "KBGAN", "key": "btn_ex_2", "model": "KBGAN", "json_path": JSON_DIR / "example2.json", "image_path": IMAGE_DIR / "example2.png", "xml_url": "https://github.com/oeg-upm/p2mc/blob/main/streamlit_front/assets/scipdf_xmls/example2.xml", "json_url": "https://github.com/oeg-upm/p2mc/blob/main/streamlit_front/assets/lightonocr_jsons/example2.json"},
+    {"title": "ParTrans-X", "key": "btn_ex_3", "model": "ParTrans-X", "json_path": JSON_DIR / "example3.json", "image_path": IMAGE_DIR / "example3.png", "xml_url": "https://github.com/oeg-upm/p2mc/blob/main/streamlit_front/assets/scipdf_xmls/example3.xml", "json_url": "https://github.com/oeg-upm/p2mc/blob/main/streamlit_front/assets/lightonocr_jsons/example3.json"},
+    {"title": "ConvKB", "key": "btn_ex_4", "model": "ConvKB", "json_path": JSON_DIR / "example4.json", "image_path": IMAGE_DIR / "example4.png", "xml_url": "https://github.com/oeg-upm/p2mc/blob/main/streamlit_front/assets/scipdf_xmls/example4.xml", "json_url": "https://github.com/oeg-upm/p2mc/blob/main/streamlit_front/assets/lightonocr_jsons/example4.json"},
+    {"title": "ConvE", "key": "btn_ex_5", "model": "ConvE", "json_path": JSON_DIR /"example5.json", "image_path": IMAGE_DIR /"example5.png","xml_url":"https://github.com/oeg-upm/p2mc/blob/main/streamlit_front/assets/scipdf_xmls/example5.xml","json_url":"https://github.com/oeg-upm/p2mc/blob/main/streamlit_front/assets/lightonocr_jsons/example5.json"},
 ]
 
 columnas = st.columns(5)
