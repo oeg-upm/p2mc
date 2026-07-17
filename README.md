@@ -1,4 +1,5 @@
-![P2MC Logo](https://github.com/oeg-upm/p2mc/blob/main/resources/figures/p2mc_logo.png)
+
+<img src="https://github.com/oeg-upm/p2mc/blob/main/resources/figures/p2mc_logo.png" width="100" height="100">
 
 Automated pipeline for extracting metadata, tables, and narratives from scientific papers (PDFs) oriented towards Knowledge Graph Embeddings (KGE). The system processes documents and generates structured representations in JSON-LD format, ready to be published as ModelCards.
 
