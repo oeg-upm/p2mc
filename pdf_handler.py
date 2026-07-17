@@ -2,6 +2,7 @@ import json
 import re
 from pathlib import Path
 import requests
+import traceback
 from model_card_generation_pipeline import ModelCardGenerator
 from utils.XMLParser import XMLParser
 
@@ -14,6 +15,7 @@ class PDFHandler:
         self._pdf_dir = Path("data") / "raw" / "pdfs"
         self._xml_dir = Path("data") / "interim" / "scipdf_xml"
         self._json_dir = Path("data") / "interim" / "lightocr_json"
+        self._modelcards_dir = Path("data") / "processed" / "modelcards"
 
         self._scipdf_parser = SciPdfParser()
         self._lightocr_parser = LightOcrParser()
@@ -49,13 +51,12 @@ class PDFHandler:
     def _process_with_lightocr(self, pdf_path, json_save_path):
         self._lightocr_parser.process(pdf_path, json_save_path)
 
-    def _extract_values(self, xml_path, json_path):
+    def _extract_values(self, xml_path, json_path, arxiv_id):
         if not xml_path.exists():
             raise FileNotFoundError(f"SciPDF XML not found at {xml_path}. Unable to extract values from it.")
             
         self._xml_parser = XMLParser(xml_path)
         title = self._xml_parser.get_title()
-        arxiv_id = self._xml_parser.get_arxiv_id()
         full_text = self._xml_parser.get_full_text()
         abstract = self._xml_parser.get_abstract()
         authors = self._xml_parser.get_authors()
@@ -78,6 +79,8 @@ class PDFHandler:
             "sections": sections,
             "tables": tables,
         }
+
+        
         return extracted_data
         
     def handle_pdf(self, pdf_url):
@@ -87,10 +90,10 @@ class PDFHandler:
                 print(f"Aborting process. Invalid URL: {pdf_url}")
                 return {"error": "Invalid URL or missing arXiv ID"}
             
-            paper_id = self._extract_id_from_url(pdf_url)
             pdf_path = self._pdf_dir / f"{paper_id}.pdf"
             xml_path = self._xml_dir / f"{paper_id}.xml"
             json_path = self._json_dir / f"{paper_id}.json"
+            modelcard_path = self._modelcards_dir / f"{paper_id}_modelcard.json"
     
             print(f"Downloading PDF from {pdf_url} to {pdf_path}...")
             self._download_pdf(pdf_url, pdf_path)
@@ -99,31 +102,56 @@ class PDFHandler:
             print("Processing with LightOnOCR...")
             self._process_with_lightocr(pdf_path, json_path)
             print("Generating modelcard...")
-            extracted_data = self._extract_values(xml_path, json_path)
+            extracted_data = self._extract_values(xml_path, json_path, paper_id)
             modelcard = self._mcg.generate_modelcard(extracted_data)
+            
+            print(f"Saving final modelcard to {modelcard_path}...")
+            self._modelcards_dir.mkdir(parents=True, exist_ok=True)
+            with open(modelcard_path, 'w', encoding='utf-8') as f:
+                json.dump(modelcard, f, indent=4, ensure_ascii=False)
+                
+            return modelcard
+            
+        except Exception as e:
+            print(f"\n Something went wrong when handling {pdf_url}:")
+            print(traceback.format_exc())
+            return {"error": str(e), "failed_url": pdf_url}
+
+    def test_handle_pdf(self, pdf_url):
+
+        try:
+            paper_id = self._extract_id_from_url(pdf_url)
+            if not paper_id:
+                print(f"Aborting process. Invalid URL: {pdf_url}")
+                return {"error": "Invalid URL or missing arXiv ID"}
+            
+            pdf_path = self._pdf_dir / f"{paper_id}.pdf"
+            xml_path = Path("testing_data") / "xml_outputs" / f"{paper_id}.tei.xml"
+            json_path = self._json_dir / f"{paper_id}.json"
+            modelcard_path = self._modelcards_dir / f"{paper_id}_modelcard.json"
+    
+            print(f"Downloading PDF from {pdf_url} to {pdf_path}...")
+            self._download_pdf(pdf_url, pdf_path)
+            print("Processing with sciPDF...")
+            self._process_with_scipdf(pdf_path, xml_path)
+            print("Processing with LightOnOCR...")
+            self._process_with_lightocr(pdf_path, json_path)
+            print("Generating modelcard...")
+            extracted_data = self._extract_values(xml_path, json_path, paper_id)
+
+            modelcard = self._mcg.generate_modelcard(extracted_data)
+
+            print(f"Saving final modelcard to {modelcard_path}...")
+            self._modelcards_dir.mkdir(parents=True, exist_ok=True)
+            with open(modelcard_path, 'w', encoding='utf-8') as f:
+                json.dump(modelcard, f, indent=4, ensure_ascii=False)
+                
             return modelcard
             
         except Exception as e:
             print(f"\Something went wrong when handling {pdf_url}:")
             print(traceback.format_exc())
             return {"error": str(e), "failed_url": pdf_url}
-
-    def test_handle_pdf(self, pdf_url):
-        paper_id = self._extract_id_from_url(pdf_url)
-        pdf_path = self._pdf_dir / f"{paper_id}.pdf"
-        json_path = self._json_dir / f"{paper_id}.json"
-        xml_path = Path("testing_data") / "xml_outputs" / f"{paper_id}.tei.xml"
-        # testing_data/xml_outputs/1805.12393.tei.xml
-        # BenchmarkingML4KGEmodelcards/BenchmarkingML4KGE_extraction/final_pipeline/testing_data/xml_outputs
-
-        
-        print(f"Downloading PDF from {pdf_url} to {pdf_path}")
-        self._download_pdf(pdf_url, pdf_path)
-        self._process_with_lightocr(pdf_path, json_path)
-        
-        extracted_data = self._extract_values(xml_path, json_path)
-        modelcard = self._mcg.generate_modelcard(extracted_data)
-        return modelcard
 
 
 

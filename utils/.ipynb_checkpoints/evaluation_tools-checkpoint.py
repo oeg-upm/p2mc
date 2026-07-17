@@ -129,8 +129,8 @@ def calculate_bertscore_complete(predictions, ground_truth):
     if _bert_scorer is None:
         _bert_scorer = BERTScorer(lang="en", device = device)
 
-    cands = [" ".join(str(p) for normalize_entity(p) in predictions)]
-    refs = [" ".join(str(r) for normalize_entity(r) in ground_truth)]
+    cands = [" ".join(str(normalize_entity(p)) for p in predictions)]
+    refs = [" ".join(str(normalize_entity(r)) for r in ground_truth)]
 
     # ¡Aquí ocurre la magia! Extraemos los tres valores
     P, R, F1 = _bert_scorer.score(cands, refs, verbose=False)

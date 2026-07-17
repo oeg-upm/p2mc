@@ -62,7 +62,7 @@ class QwenDatasetExtractor:
             "Based EXCLUSIVELY on the text and tables provided inside the <contexto> tags above, extract the evaluation metrics.\n"
             "Reply with exactly a Python dictionary containing a single key 'datasets' with a list of strings.\n"
             "Example: {\"datasets\": [\"FB15k\", \"WN18\"]}\n"
-            "If no metrics are found, reply exactly: {\"datasets\": []}"
+            "If no datasets are found, reply exactly: {\"datasets\": []}"
         )
         
         # 3. Retornamos la estructura exacta que pide la API
@@ -87,40 +87,14 @@ class QwenDatasetExtractor:
             kw["options"]["think"] = False 
         return kw
 
-    def _fix_tables(self,html_tables_list: list) -> str:
-        """
-        Takes a list of strings (each containing HTML tables) 
-        and returns a single string with all tables converted to TSV format,
-        ready to be injected into an LLM prompt.
-        """
+    def _fix_tables(self, tsv_tables_list: list) -> str:
+        """Simplemente une las tablas TSV con un encabezado numérico."""
         compressed_prompt_text = ""
-        table_counter = 1
-        
-        for html_fragment in html_tables_list:
-            # Ignore empty or null strings
-            if not html_fragment or not html_fragment.strip():
+        for i, tsv_table in enumerate(tsv_tables_list, start=1):
+            if not tsv_table or not tsv_table.strip():
                 continue
-                
-            try:
-                # Wrap the string in StringIO to avoid the pandas FutureWarning.
-                # read_html returns a list of DataFrames (in case there's >1 table in the string)
-                dataframes = pd.read_html(StringIO(html_fragment))
-                
-                for df in dataframes:
-                    compressed_prompt_text += f"[Table {table_counter}]:\n"
-                    # Convert to TSV (tab-separated values), dropping the pandas index
-                    compressed_prompt_text += df.to_csv(index=False, sep="\t") + "\n\n"
-                    table_counter += 1
-                    
-            except ValueError:
-                # pandas raises a ValueError if it cannot find any <table> tags in the HTML.
-                # We simply ignore it and move on to the next fragment.
-                continue
-            except Exception as e:
-                # Catch-all for any weird parsing errors with malformed HTML
-                print(f"Warning: Could not process a table. Error: {e}")
-                continue
-                
+            compressed_prompt_text += f"[Table {i}]:\n{tsv_table}\n\n"
+            
         return compressed_prompt_text
 
     def extract(self, text: str, tables: list[str] = None) -> list[str]:

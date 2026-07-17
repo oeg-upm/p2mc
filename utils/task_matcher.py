@@ -5,7 +5,7 @@ from rapidfuzz import process, fuzz
 # If a match is found then it returns the LPWC task.
 
 class TaskMatcher:
-    def __init__(self, json_path="testing_data/tasks.json"):
+    def __init__(self, json_path="resources/tasks.json"):
         with open(json_path, 'r', encoding='utf-8') as f:
             raw_tasks = json.load(f)
             

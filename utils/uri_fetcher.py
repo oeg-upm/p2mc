@@ -8,7 +8,6 @@ class UriFetcher:
     def __init__(self):
         pass
 
-
     def get_soa_data_from_arxiv_id(self, arxiv_id):
         lpwc_work = self._get_lpwc_work_arxiv_id(arxiv_id)
         if not lpwc_work:
@@ -38,18 +37,16 @@ class UriFetcher:
     def _get_lpwc_work_arxiv_id(self, arxiv_id):
         query = f"""
         SELECT * WHERE {{
-        ?sub ?pred "{arxiv_id}" .
+        ?sub ?pred {'"' + arxiv_id + '"'} .
         }} LIMIT 10
         """
+        
         bindings = self._make_sparql_request(self.LPWC_ENDPOINT, query)
         if bindings:
             return bindings[0].get("sub", {}).get("value")
         print(f"Failed to retrieve LPWC Work URI through arxiv_id {arxiv_id}")
         return None
-    
-
-
-
+        
 
     def _get_soa_uri_from_lpwc(self, lpwc_work):
         query = f"""

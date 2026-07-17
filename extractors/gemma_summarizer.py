@@ -10,7 +10,7 @@ class GemmaSummarizer:
         print(f"Initialitation of ({self.model_name}) complete.")
 
     def summarize(self, text):
-        #question="Could you summarize the following text into a couple of sentences?"
+
         question="Please make a summary of everything said about the model introduced in the following text."
         chat = [
             {"role": "system", "content":

@@ -8,20 +8,8 @@ class UriFetcher:
     def __init__(self):
         pass
 
-    def fetch_paper_data(self, url_abs):
-        lpwc_uri = self._get_lpwc_work_url_abs(url_abs)
-        lpwc_data = self._get_lpwc_data(lpwc_uri)
-        return {
-            #"title": title,
-            #"soa_work_uri": soa_uri,
-            "lpwc_work_uri": lpwc_uri,
-            "lpwc_data": lpwc_data,
-        }
-
-
-    
-    def get_soa_data_from_url_abs(self, url_abs):
-        lpwc_work = self._get_lpwc_work_url_abs(url_abs)
+    def get_soa_data_from_arxiv_id(self, arxiv_id):
+        lpwc_work = self._get_lpwc_work_arxiv_id(arxiv_id)
         if not lpwc_work:
             return None
     
@@ -30,6 +18,7 @@ class UriFetcher:
             return None
     
         return self._get_soa_data(soa_work)
+
 
     def _make_sparql_request(self, endpoint, query):
         headers = {"Accept": "application/sparql-results+json"}
@@ -42,22 +31,22 @@ class UriFetcher:
             print(f"Connection error on SPARQL request to {endpoint}: {e}")
             return []
 
-    def _get_lpwc_work_url_abs(self, url_abs):
+
+
+
+    def _get_lpwc_work_arxiv_id(self, arxiv_id):
         query = f"""
-        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
         SELECT * WHERE {{
-          ?sub ?pred {'"' + url_abs + '"'}^^xsd:anyURI .
-        }} LIMIT 100
+        ?sub ?pred {'"' + arxiv_id + '"'} .
+        }} LIMIT 10
         """
+        
         bindings = self._make_sparql_request(self.LPWC_ENDPOINT, query)
         if bindings:
             return bindings[0].get("sub", {}).get("value")
-        print(f"Failed to retrieve LPWC Work URI through url_abs {url_abs}")
+        print(f"Failed to retrieve LPWC Work URI through arxiv_id {arxiv_id}")
         return None
-
-
-
-
+        
 
     def _get_soa_uri_from_lpwc(self, lpwc_work):
         query = f"""
@@ -120,10 +109,54 @@ class UriFetcher:
             "publicationDate": self._extract_single_value_by_predicate(bindings, 'http://prismstandard.org/namespaces/basic/2.0/publicationDate'),
             "soa_uri": soa_work,
         }
+    
+    def get_author_from_work(self, soa_work, author_name):
+        query = f"""
+        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX dct: <http://purl.org/dc/terms/>
+        PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        
+        SELECT ?autorID WHERE {{
+        <{soa_work}> dct:creator ?autorID .
+        ?autorID foaf:name {'"' + author_name + '"'}^^xsd:string.
+        }} LIMIT 100
+        """
+        bindings = self._make_sparql_request(self.SOA_ENDPOINT, query)
+        if bindings:
+            return bindings[0].get("autorID", {}).get("value")
+        print(f"Failed to retrieve author based on {soa_work} and {author_name}")
+        return None
+
+    def extract_author_uri(self, author_name, arxiv_id):
+        lpwc_work = self._get_lpwc_work_arxiv_id(arxiv_id)
+        if not lpwc_work:
+            return None
+    
+        soa_work = self._get_soa_uri_from_lpwc(lpwc_work)
+        if not soa_work:
+            return None
+
+        return self.get_author_from_work(soa_work, author_name)
+
+
+
 #------------------------------------------------------------------------------------------
             
 
-
+    def _get_lpwc_work_url_abs(self, url_abs):
+        query = f"""
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        SELECT * WHERE {{
+          ?sub ?pred {'"' + url_abs + '"'}^^xsd:anyURI .
+        }} LIMIT 100
+        """
+        bindings = self._make_sparql_request(self.LPWC_ENDPOINT, query)
+        if bindings:
+            return bindings[0].get("sub", {}).get("value")
+        print(f"Failed to retrieve LPWC Work URI through url_abs {url_abs}")
+        return None
 
 
 
@@ -190,32 +223,7 @@ class UriFetcher:
         return values[0] if values else None
     
 
-    def extract_author_uri(self, author_name):
-        query = f"""
-        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        SELECT * WHERE {{
-          ?sub ?pred {'"' + author_name + '"'} .
-        }} LIMIT 10
-        """
-        headers = {
-            "Accept": "application/sparql-results+json"
-        }
-        try:
-            response = requests.get(self.SOA_ENDPOINT, params={"query": query}, headers=headers)
-            response.raise_for_status()
-        
-            data = response.json()
-            author_data = data.get("results", {}).get("bindings", [])
-            if author_data:
-                author_uri = author_data[0].get("sub", {}).get("value")
-                return author_uri
-            else:
-                print(f"Failed to retrieve SemOpenAlex Author URI with the name {author_name}")
-                return None
-        except Exception as e:
-            print(f"Connection error when trying to retrieve author URI: {author_name}: {e}")
-            return None
+
             
     def extract_dataset_uri(self, dataset_name):
         query = f"""
@@ -276,59 +284,30 @@ class UriFetcher:
 
 
 
-    def _get_soa_work_title(self, title):
-        query = f"""
-        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        SELECT * WHERE {{
-          ?sub ?pred {'"' + title + '"'} .
-        }} LIMIT 10
 
-        """
-        headers = {
-            "Accept": "application/sparql-results+json"
-        }
-        try:
-            response = requests.get(self.SOA_ENDPOINT, params={"query": query}, headers=headers)
-            response.raise_for_status()
-        
-            data = response.json()
-            soa_json_data = data.get("results", {}).get("bindings", [])
-            if soa_json_data:
-                soa_work_uri = soa_json_data[0].get("sub", {}).get("value")
-                return soa_work_uri
-            else:
-                print(f"(Step 1)Failed to retrieve SemOpenAlex Work URI trough title {title}")
-                return None
-        except Exception as e:
-            print(f"(Step 1)Connection error when trying to retrieve through title: {title}: {e}")
+"""
+    def get_soa_data_from_url_abs(self, url_abs):
+        lpwc_work = self._get_lpwc_work_url_abs(url_abs)
+        if not lpwc_work:
             return None
-            
-    def _get_lpwc_work_title(self, title):
-        query = f"""
-        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        SELECT * WHERE {{
-          ?sub ?pred {'"' + title + '"'} .
-        }} LIMIT 10
-
-        """
-        headers = {
-            "Accept": "application/sparql-results+json"
-        }
-        try:
-            response = requests.get(self.LPWC_ENDPOINT, params={"query": query}, headers=headers)
-            response.raise_for_status()
-        
-            data = response.json()
-            lpwc_json_data = data.get("results", {}).get("bindings", [])
-            if lpwc_json_data:
-                lpwc_work_uri = lpwc_json_data[0].get("sub", {}).get("value")
-                return lpwc_work_uri
-            else:
-                print(f"(Step 1)Failed to retrieve LinkedPapersWitchCode Work URI trough title {title}")
-                return None
-        except Exception as e:
-            print(f"(Step 1)Connection error when trying to retrieve through title: {title}: {e}")
+    
+        soa_work = self._get_soa_uri_from_lpwc(lpwc_work)
+        if not soa_work:
             return None
+    
+        return self._get_soa_data(soa_work)
 
+    def fetch_paper_data(self, url_abs):
+        lpwc_uri = self._get_lpwc_work_url_abs(url_abs)
+        lpwc_data = self._get_lpwc_data(lpwc_uri)
+        return {
+            #"title": title,
+            #"soa_work_uri": soa_uri,
+            "lpwc_work_uri": lpwc_uri,
+            "lpwc_data": lpwc_data,
+        }
+
+
+    
+
+"""

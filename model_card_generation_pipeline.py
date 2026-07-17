@@ -5,8 +5,6 @@ import json
 import time
 import copy
 
-
-
 import os
 from extractors.gliner_dataset_extractor import GlinerDatasetExtractor
 from extractors.gliner_metric_extractor import GlinerMetricExtractor
@@ -42,7 +40,7 @@ class ModelCardGenerator:
             self._implementation_template = json.load(f)
 
         # Load the classifier (TF-IDF + SVC)
-        pipeline_path = Path(os.getcwd()) / "utils" / TAXONOMY_CLASSIFIER_FILE
+        pipeline_path = Path(os.getcwd()) / "resources" / TAXONOMY_CLASSIFIER_FILE
         self._classification_pipeline = joblib.load(pipeline_path)
 
         # Load the URI fetcher which will help us identify different entities in SemOpenAlex and LinkedPapersWithCode by providing us with URIs.
@@ -72,13 +70,32 @@ class ModelCardGenerator:
         timestamp_string = timestamp.strftime("%Y-%m-%dT%H:%M:%S")
         return timestamp_string
         
-    def _get_html_tables(self, raw_tables):
-        html_tables = []
-        for page_data in raw_tables.get("results", []):
-            for table_dict in page_data.get("tables", []):
-                if "html" in table_dict:
-                    html_tables.append(table_dict["html"])
-        return html_tables
+    def _get_tsv_tables(self, raw_tables):
+        """Transforma el JSON de tablas directamente a formato TSV (Tab-Separated Values)"""
+        tsv_tables = []
+        if not raw_tables or not isinstance(raw_tables, dict):
+            print("Skipping table extraction: Invalid or empty raw_tables data.")
+            return tsv_tables
+        documents = raw_tables.get("documents", raw_tables.get("tables", {}).get("documents", []))
+        
+        for doc in documents:
+            for table_dict in doc.get("tables", []):
+                columns = table_dict.get("evaluation", {}).get("columns", [])
+                rows = table_dict.get("rows", [])
+                
+                if not columns and not rows:
+                    continue
+
+                tsv_lines = []
+                
+                if columns:
+                    tsv_lines.append("\t".join(str(c) for c in columns))
+                
+                for row in rows:
+                    tsv_lines.append("\t".join(str(cell) for cell in row))
+                tsv_tables.append("\n".join(tsv_lines))
+                
+        return tsv_tables
 
     def _match_tasks(self, tasks):
         clean_tasks_dict = {}
@@ -92,10 +109,7 @@ class ModelCardGenerator:
                 clean_tasks_dict[lpwc_task["uri"]] = task_data
         clean_extracted_tasks = list(clean_tasks_dict.values())
         return clean_extracted_tasks
-    
 
-
-    
     def _extract_reference_publication(self, arxiv_id):
         soa_data = self._uri_fetcher.get_soa_data_from_arxiv_id(arxiv_id)
         if not soa_data:
@@ -154,7 +168,8 @@ class ModelCardGenerator:
 
         abstract = extracted_data.get("abstract")
         full_text = extracted_data.get("full_text")
-        html_tables = self._get_html_tables(extracted_data.get("tables"))
+        ext_tables = extracted_data.get("tables")
+        tsv_tables = self._get_tsv_tables(extracted_data.get("tables"))
         arxiv_id = extracted_data.get("arxiv_id")
 
         jsonld["@id"] = self._uri_builder.build_modelcard_uri(arxiv_id)
@@ -171,7 +186,7 @@ class ModelCardGenerator:
 
         
         # Dataset extraction and identification
-        extracted_datasets = self._qwen_dataset_extractor.extract("", html_tables)
+        extracted_datasets = self._qwen_dataset_extractor.extract(tsv_tables)
         for dataset in extracted_datasets:
             
             dataset_uri = self._uri_fetcher.guess_dataset_uri(dataset)
@@ -212,72 +227,11 @@ class ModelCardGenerator:
 
         jsonld["referencePublication"]["author"] = self._order_publication_authors(jsonld["author"], jsonld["referencePublication"]["author"])
 
-        #clean_jsonld = self._clean_empty_fields(jsonld)
-        #return clean_jsonld
-        return jsonld
-
-"""
-    def evaluate_pipeline(self, pipeline_mode, paper):
-        init_time = time.time()
-        abstract = paper.get("abstract")
-        full_text = paper.get("full_text")
-        sections = paper.get("sections")
-        
+        clean_jsonld = self._clean_empty_fields(jsonld)
+        return clean_jsonld
         
 
-        
-        if pipeline_mode == "efficient": 
-            model_name_prediction = self._gliner.extract(abstract, ["model"])
-            datasets_prediction = self._gliner_dataset_extractor.extract(paper.get("full_text"))
-            metrics_prediction = self._gliner_metric_extractor.extract(paper.get("full_text"))
-        else:
-            model_name_prediction = self._llama.extract(paper.get("full_text"), question = "What is the name of the model presented in this paper?")
-            
-            metrics_text = f"{paper.get('abstract', '')}\n\n{paper.get('sections', '')}"
-            tablas_html = []
-            json_crudo_tablas = paper.get("tables", {})
 
-            for page_data in json_crudo_tablas.get("results", []):
-                for table_dict in page_data.get("tables", []):
-                    if "html" in table_dict:
-                        tablas_html.append(table_dict["html"])
-
-            
-            datasets_prediction = self._qwen_dataset_extractor.extract("", tablas_html)
-            
-            metrics_prediction = self._qwen_metric_extractor.extract("", tablas_html)
-
-            
-            
-
-        
-        tasks_prediction = self._llama.extract(abstract, question =  "What are the tasks addressed in this paper?")
-        category_prediction = self._extract_classification(abstract)
-        implementation_text =  f"{paper.get('abstract', '')}\n\n{paper.get('sections', '')}"
-        implementation_prediction = self._llama.extract(paper.get("full_text"), question = "Return the URL link for the paper implementation (like GitHub). Return an empty list if not found. DO NOT  invent links")
-        
-
-        
-        end_time = time.time()
-        total_time = end_time - init_time
-        result = {
-            "time": total_time,
-            "model_name_prediction": model_name_prediction,
-            "tasks_prediction": tasks_prediction,
-            "category_prediction": category_prediction,
-            "implementation_prediction": implementation_prediction,
-            "datasets_prediction": datasets_prediction,
-            "metrics_prediction": metrics_prediction,
-            "title": paper.get("title"),
-            "local_xml_path": paper.get("local_xml_path"),
-            "pwc_abstract": paper.get("pwc_abstract"),
-            "abstract": paper.get("abstract"),
-            "full_text": paper.get("full_text"),
-            "sections": paper.get("sections"),
-        }
-        return result, total_time
-
-"""
 
 
 
