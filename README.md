@@ -26,7 +26,7 @@ The recommended runtime flow is:
 Main services:
 
 - `p2mc-frontend`: Streamlit UI for launching jobs and browsing generated outputs.
-- `p2mc-backend`: FastAPI API for job launch, job status, job listing, and artifact downloads.
+- `p2mc-backend`: FastAPI API for job launch, job status, job listing, and viewing generated XML/OCR outputs.
 - `p2mc-worker`: RabbitMQ consumer that runs the PDF processing pipeline.
 - `rabbitmq`: queue between API and worker.
 - `grobid`: XML extraction service used by the SciPDF parser.
@@ -66,14 +66,14 @@ From the frontend:
 
 1. Open `http://localhost:5678`.
 2. Use the `Generate` page to submit an arXiv URL.
-3. Use the `Jobs` page to refresh status and download artifacts.
+3. Use the `Jobs` page to refresh status and inspect generated XML/OCR outputs.
 
 From the API:
 
 - `POST /job/launch-job`
 - `GET /job/jobs`
 - `GET /job/job-status/{job_id}`
-- `GET /job/{job_id}/artifacts/{artifact_name}`
+- `GET /job/{job_id}/artifacts/{artifact_name}` for `xml` and `lightocr_json` content previews.
 
 Direct local pipeline execution is also available for development:
 

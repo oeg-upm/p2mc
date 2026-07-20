@@ -5,13 +5,13 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
 from pydantic import ValidationError
 
 from backend import DATA_DIR
 from backend.app.schemas import (
     AskedJob,
     AskedJobResponse,
+    ArtifactContentResponse,
     JobsListResponse,
     JobSummaryResponse,
     StatusJobResponse,
@@ -22,11 +22,9 @@ from backend.rabbitmq import RabbitMQPublishError, publish_job
 
 router = APIRouter()
 PIPELINE_TOTAL_STEPS = 7
-ALLOWED_ARTIFACTS = {
-    "pdf": "application/pdf",
+VIEWABLE_ARTIFACTS = {
     "xml": "application/xml",
     "lightocr_json": "application/json",
-    "modelcard": "application/ld+json",
 }
 
 
@@ -158,7 +156,7 @@ def resolve_artifact_path(
     status: StatusJobResponse,
     artifact_name: str,
 ) -> Path:
-    if artifact_name not in ALLOWED_ARTIFACTS:
+    if artifact_name not in VIEWABLE_ARTIFACTS:
         raise HTTPException(
             status_code=404,
             detail="Artifact not found",
@@ -362,16 +360,29 @@ def list_jobs() -> JobsListResponse:
 def get_job_status(job_id: str) -> StatusJobResponse:
     return get_existing_job_status(job_id)
 
-@router.get("/{job_id}/artifacts/{artifact_name}")
-def download_artifact(
+
+@router.get(
+    "/{job_id}/artifacts/{artifact_name}",
+    response_model=ArtifactContentResponse,
+)
+def get_artifact_content(
     job_id: str,
     artifact_name: str,
-) -> FileResponse:
+) -> ArtifactContentResponse:
     status = get_existing_job_status(job_id)
     artifact_path = resolve_artifact_path(status, artifact_name)
 
-    return FileResponse(
-        artifact_path,
-        media_type=ALLOWED_ARTIFACTS[artifact_name],
-        filename=artifact_path.name,
+    try:
+        content = artifact_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Artifact could not be read",
+        ) from exc
+
+    return ArtifactContentResponse(
+        job_id=job_id,
+        artifact_name=artifact_name,
+        media_type=VIEWABLE_ARTIFACTS[artifact_name],
+        content=content,
     )

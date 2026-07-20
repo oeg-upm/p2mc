@@ -8,16 +8,14 @@ import streamlit as st
 
 from services.p2mc_api import (
     P2MCAPIError,
-    artifact_download_url,
+    get_artifact_content,
     get_job_status,
 )
 
 
-ARTIFACT_LABELS = {
-    "pdf": "PDF",
-    "xml": "SciPDF XML",
-    "lightocr_json": "LightOCR JSON",
-    "modelcard": "ModelCard JSON-LD",
+VIEWABLE_ARTIFACTS = {
+    "xml": ("SciPDF XML", "xml"),
+    "lightocr_json": ("LightOCR JSON", "json"),
 }
 ACTIVE_STATUSES = {"queued", "processing"}
 AUTO_REFRESH_SECONDS = 3
@@ -103,30 +101,53 @@ def render_artifacts(job_id: str, artifacts: dict[str, str]) -> None:
     if not artifacts:
         return
 
-    downloadable_artifacts = {
+    viewable_artifacts = {
         name: path
         for name, path in artifacts.items()
-        if name != "modelcard"
+        if name in VIEWABLE_ARTIFACTS
     }
 
-    if not downloadable_artifacts:
+    if not viewable_artifacts:
         return
 
     st.write("**Artifacts:**")
 
-    for artifact_name, artifact_path in downloadable_artifacts.items():
-        label = ARTIFACT_LABELS.get(artifact_name, artifact_name)
-        artifact_col, download_col = st.columns([3, 1])
+    for artifact_name, artifact_path in viewable_artifacts.items():
+        label, language = VIEWABLE_ARTIFACTS[artifact_name]
+        artifact_col, action_col = st.columns([3, 1])
 
         with artifact_col:
             st.write(f"**{label}:** `{artifact_path}`")
 
-        with download_col:
-            st.link_button(
-                "Download",
-                url=artifact_download_url(job_id, artifact_name),
+        show_artifact = False
+        with action_col:
+            show_artifact = st.button(
+                f"Show {label}",
+                key=f"{job_id}_{artifact_name}_show",
                 width="stretch",
             )
+
+        if show_artifact:
+            try:
+                with st.spinner(f"Loading {label}..."):
+                    artifact = get_artifact_content(job_id, artifact_name)
+            except P2MCAPIError as exc:
+                st.error(str(exc))
+                continue
+
+            content = str(artifact.get("content", ""))
+            if language == "json":
+                try:
+                    content = json.dumps(
+                        json.loads(content),
+                        indent=2,
+                        ensure_ascii=False,
+                    )
+                except ValueError:
+                    pass
+
+            with st.container(height=400):
+                st.code(content, language=language)
 
 
 def render_card(job: dict[str, Any], refresh_button_key: str) -> None:

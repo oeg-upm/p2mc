@@ -8,10 +8,6 @@ import httpx
 
 
 API_URL = os.getenv("P2MC_API_URL", "http://localhost:8000").rstrip("/")
-PUBLIC_API_URL = os.getenv(
-    "P2MC_PUBLIC_API_URL",
-    "http://localhost:8000",
-).rstrip("/")
 LAUNCH_JOB_PATH = "/job/launch-job"
 JOBS_LIST_PATH = "/job/jobs"
 JOB_STATUS_PATH = "/job/job-status/{job_id}"
@@ -87,7 +83,10 @@ def list_jobs() -> dict[str, Any]:
         ) from exc
 
 
-def artifact_download_url(job_id: str, artifact_name: str) -> str:
+def get_artifact_content(
+    job_id: str,
+    artifact_name: str,
+) -> dict[str, Any]:
     quoted_job_id = quote(job_id, safe="")
     quoted_artifact_name = quote(artifact_name, safe="")
 
@@ -96,4 +95,18 @@ def artifact_download_url(job_id: str, artifact_name: str) -> str:
         artifact_name=quoted_artifact_name,
     )
 
-    return f"{PUBLIC_API_URL}{path}"
+    try:
+        response = httpx.get(
+            f"{API_URL}{path}",
+            timeout=15.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    except httpx.HTTPStatusError as exc:
+        raise P2MCAPIError(_extract_error_detail(exc.response)) from exc
+
+    except httpx.RequestError as exc:
+        raise P2MCAPIError(
+            "Could not connect to the P2MC API."
+        ) from exc

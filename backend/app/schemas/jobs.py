@@ -71,6 +71,13 @@ class StatusError(BaseModel):
     message: str
 
 
+class ArtifactContentResponse(BaseModel):
+    job_id: str
+    artifact_name: str
+    media_type: str
+    content: str
+
+
 class StatusJobResponse(BaseModel):
     job_id: str
     arxiv_id: str

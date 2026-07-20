@@ -1,6 +1,7 @@
 from .jobs import (
     AskedJob,
     AskedJobResponse,
+    ArtifactContentResponse,
     JobsListResponse,
     JobSummaryResponse,
     StatusJobResponse,

@@ -23,8 +23,8 @@
 
 - Added a Streamlit API client configured by `P2MC_API_URL` to submit arXiv URLs to `POST /job/launch-job`
 - Connected the main Streamlit form to FastAPI job launch and display the queued job ID, arXiv ID, and initial status
-- Added manual job status refresh in Streamlit, including status metadata, errors, and generated artifact links when completed
-- Added `GET /job/jobs` and safe artifact downloads through `GET /job/{job_id}/artifacts/{artifact_name}`, plus a Streamlit Jobs page to browse previous file-backed jobs
+- Added manual job status refresh in Streamlit, including status metadata, errors, and generated XML/OCR previews when completed
+- Added `GET /job/jobs` and viewable XML/OCR content through `GET /job/{job_id}/artifacts/{artifact_name}`, plus a Streamlit Jobs page to browse previous file-backed jobs
 - Configured the frontend Compose service to call the backend through the Docker network
 
 ### Memory usage relief
