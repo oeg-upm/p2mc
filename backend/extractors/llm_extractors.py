@@ -1,4 +1,3 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM
 #from utils import llm_preprocessing
 import ast
 import json
@@ -30,6 +29,8 @@ class BaseExtractor:
 
 class QwenExtractor(BaseExtractor):
     def __init__(self, qwen_model = "Qwen/Qwen3-1.7B"):
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
         super().__init__(qwen_model)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         self.model = AutoModelForCausalLM.from_pretrained(

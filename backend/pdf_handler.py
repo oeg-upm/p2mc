@@ -1,13 +1,13 @@
+import gc
 import json
 import re
+import sys
 from collections.abc import Callable
 from pathlib import Path
 import requests
 import traceback
-from backend.model_card_generation_pipeline import ModelCardGenerator
 from backend.utils.XMLParser import XMLParser
 from backend.parsers.scipdf_parser import SciPdfParser
-from backend.parsers.lightocr_parser import LightOcrParser
 
 from backend import DATA_DIR
 
@@ -26,19 +26,24 @@ class PDFHandler:
         self._log("PDFHandler: initializing SciPdfParser")
         self._scipdf_parser = SciPdfParser()
         self._log("PDFHandler: SciPdfParser ready")
-
-        self._log("PDFHandler: initializing LightOcrParser")
-        self._lightocr_parser = LightOcrParser()
-        self._log("PDFHandler: LightOcrParser ready")
-
-        self._log("PDFHandler: initializing ModelCardGenerator")
-        self._mcg = ModelCardGenerator()
-        self._log("PDFHandler: ModelCardGenerator ready")
         
 
     @staticmethod
     def _default_log(message: str) -> None:
         print(message, flush=True)
+
+    def _release_component_memory(self, component_name: str) -> None:
+        gc.collect()
+
+        torch_module = sys.modules.get("torch")
+        if torch_module is not None:
+            try:
+                if torch_module.cuda.is_available():
+                    torch_module.cuda.empty_cache()
+            except Exception:
+                pass
+
+        self._log(f"PDFHandler: released {component_name} memory")
 
 
     def _extract_id_from_url(self, url):
@@ -73,10 +78,45 @@ class PDFHandler:
         return result
 
     def _process_with_lightocr(self, pdf_path, json_save_path):
-        result = self._lightocr_parser.process(pdf_path, json_save_path)
-        if not result or not Path(json_save_path).is_file():
-            raise RuntimeError(f"LightOCR did not generate JSON at {json_save_path}")
-        return result
+        if Path(json_save_path).is_file():
+            self._log(
+                "PDFHandler: LightOCR JSON already exists. "
+                "Skipping LightOcrParser load."
+            )
+            return json_save_path
+
+        from backend.parsers.lightocr_parser import LightOcrParser
+
+        lightocr_parser = None
+        try:
+            self._log("PDFHandler: initializing LightOcrParser")
+            lightocr_parser = LightOcrParser()
+            self._log("PDFHandler: LightOcrParser ready")
+
+            result = lightocr_parser.process(pdf_path, json_save_path)
+            if not result or not Path(json_save_path).is_file():
+                raise RuntimeError(f"LightOCR did not generate JSON at {json_save_path}")
+            return result
+        finally:
+            if lightocr_parser is not None:
+                self._log("PDFHandler: releasing LightOcrParser")
+                del lightocr_parser
+                self._release_component_memory("LightOcrParser")
+
+    def _generate_modelcard(self, extracted_data):
+        from backend.model_card_generation_pipeline import ModelCardGenerator
+
+        model_card_generator = None
+        try:
+            self._log("PDFHandler: initializing ModelCardGenerator")
+            model_card_generator = ModelCardGenerator()
+            self._log("PDFHandler: ModelCardGenerator ready")
+            return model_card_generator.generate_modelcard(extracted_data)
+        finally:
+            if model_card_generator is not None:
+                self._log("PDFHandler: releasing ModelCardGenerator")
+                del model_card_generator
+                self._release_component_memory("ModelCardGenerator")
 
     def _extract_values(self, xml_path, json_path, arxiv_id):
         if not xml_path.exists():
@@ -144,7 +184,7 @@ class PDFHandler:
             self._log("PDFHandler: extracted values ready")
 
             self._log("PDFHandler: generating modelcard")
-            modelcard = self._mcg.generate_modelcard(extracted_data)
+            modelcard = self._generate_modelcard(extracted_data)
             self._log("PDFHandler: modelcard generated")
             
             self._log(f"PDFHandler: saving final modelcard to {modelcard_path}")
@@ -182,7 +222,7 @@ class PDFHandler:
             self._log("PDFHandler: generating modelcard")
             extracted_data = self._extract_values(xml_path, json_path, paper_id)
 
-            modelcard = self._mcg.generate_modelcard(extracted_data)
+            modelcard = self._generate_modelcard(extracted_data)
 
             self._log(f"PDFHandler: saving final modelcard to {modelcard_path}")
             self._modelcards_dir.mkdir(parents=True, exist_ok=True)

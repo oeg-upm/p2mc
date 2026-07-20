@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from backend.app.routers import launchJobs
+from backend.app.routers import jobs
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -19,7 +19,7 @@ app.add_middleware(
 
 
 
-app.include_router(launchJobs.router, prefix="/launch-job", tags=["launch-job"],)
+app.include_router(jobs.router, prefix="/job", tags=["launch-job"],)
 
 @app.get("/")
 def root():

@@ -1,6 +1,10 @@
-import streamlit as st
 from pathlib import Path
+
+import streamlit as st
 from PIL import Image, ImageOps
+
+from components.job_status import render_job_status_panel
+from services.p2mc_api import P2MCAPIError, launch_job
 
 
 if "selected_example" not in st.session_state:
@@ -8,6 +12,15 @@ if "selected_example" not in st.session_state:
 
 if "selected_json_path" not in st.session_state:
     st.session_state.selected_json_path = None
+
+if "submitted_job" not in st.session_state:
+    st.session_state.submitted_job = None
+
+if "selected_job_id" not in st.session_state:
+    st.session_state.selected_job_id = None
+
+if "current_job_status" not in st.session_state:
+    st.session_state.current_job_status = None
 
 BASE_DIR = Path(__file__).parent.parent
 ASSETS_DIR = BASE_DIR / "assets"
@@ -71,7 +84,26 @@ with st.form("my_form"):
     )
     submitted = st.form_submit_button("Submit")
     if submitted:
-        st.write("URL submitted:", url)
+        if not url:
+            st.warning("Please introduce an arXiv URL.")
+        else:
+            try:
+                with st.spinner("Submitting job..."):
+                    job = launch_job(url)
+
+                st.session_state.submitted_job = job
+                st.session_state.selected_job_id = job["job_id"]
+                st.session_state.current_job_status = job
+
+            except P2MCAPIError as exc:
+                st.error(str(exc))
+
+if st.session_state.selected_job_id:
+    job = st.session_state.current_job_status or st.session_state.submitted_job
+    st.session_state.current_job_status = render_job_status_panel(
+        job,
+        refresh_button_key="main_job_refresh",
+    )
 
 st.divider()
 st.subheader("Examples", anchor=False)

@@ -4,13 +4,14 @@ import json
 import copy
 
 from backend import BASE_DIR
-from backend.extractors.gliner_dataset_extractor import GlinerDatasetExtractor
-from backend.extractors.gliner_metric_extractor import GlinerMetricExtractor
-from backend.extractors.qwen_metric_extractor import QwenMetricExtractor
-from backend.extractors.llama_dataset_extractor import LlamaDatasetExtractor
+# from backend.extractors.gliner_dataset_extractor import GlinerDatasetExtractor
+# from backend.extractors.gliner_metric_extractor import GlinerMetricExtractor
+# from backend.extractors.qwen_metric_extractor import QwenMetricExtractor
+# from backend.extractors.llama_dataset_extractor import LlamaDatasetExtractor
 from backend.extractors.qwen_dataset_extractor import QwenDatasetExtractor
-from backend.extractors.gliner_extractor import GlinerExtractor
-from backend.extractors.llm_extractors import LlamaExtractor, QwenExtractor
+# from backend.extractors.gliner_extractor import GlinerExtractor
+from backend.extractors.llm_extractors import LlamaExtractor
+# from backend.extractors.llm_extractors import QwenExtractor
 from backend.extractors.gemma_summarizer import GemmaSummarizer
 from backend.utils.category_mapper import CategoryMapper
 from backend.utils.task_matcher import TaskMatcher
@@ -45,13 +46,13 @@ class ModelCardGenerator:
         self._uri_builder = UriBuilder()
 
         # Load llama, qwen and gliner
-        self._gliner = GlinerExtractor()
-        self._qwen = QwenExtractor()
+        # self._gliner = GlinerExtractor()
+        # self._qwen = QwenExtractor()
         self._llama = LlamaExtractor()
-        self._gliner_dataset_extractor = GlinerDatasetExtractor()
-        self._gliner_metric_extractor = GlinerMetricExtractor()
-        self._qwen_metric_extractor = QwenMetricExtractor()
-        self._llama_dataset_extractor = LlamaDatasetExtractor()
+        # self._gliner_dataset_extractor = GlinerDatasetExtractor()
+        # self._gliner_metric_extractor = GlinerMetricExtractor()
+        # self._qwen_metric_extractor = QwenMetricExtractor()
+        # self._llama_dataset_extractor = LlamaDatasetExtractor()
         self._qwen_dataset_extractor = QwenDatasetExtractor()
         
         self._summarizer = GemmaSummarizer()

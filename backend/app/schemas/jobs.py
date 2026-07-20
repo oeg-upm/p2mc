@@ -67,3 +67,19 @@ class StatusJobResponse(BaseModel):
     error: StatusError | None = None
     artifacts: dict[str, str] | None = None
     card: dict[str, Any] | None = None
+
+
+class JobSummaryResponse(BaseModel):
+    job_id: str
+    arxiv_id: str
+    url: HttpUrl
+    status: str
+    created_at: str
+    started_at: str | None = None
+    updated_at: str
+    completed_at: str | None = None
+    error: StatusError | None = None
+
+
+class JobsListResponse(BaseModel):
+    jobs: list[JobSummaryResponse]
