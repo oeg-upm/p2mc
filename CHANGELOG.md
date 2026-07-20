@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## General
 
 - Split the original local pipeline into `backend/` and `frontend/` projects while preserving the PDF -> GROBID/LightOCR -> JSON-LD ModelCard flow
 - Added Poetry environments, Dockerfiles, `.dockerignore` files, and Docker Compose services for Ollama/model init, GROBID, RabbitMQ, backend, worker, and frontend
