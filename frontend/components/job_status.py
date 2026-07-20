@@ -150,12 +150,17 @@ def render_artifacts(job_id: str, artifacts: dict[str, str]) -> None:
                 st.code(content, language=language)
 
 
-def render_card(job: dict[str, Any], refresh_button_key: str) -> None:
-    del refresh_button_key
-
+def render_card(job: dict[str, Any], card_button_key: str) -> None:
     card = job.get("card")
 
     if not card:
+        return
+
+    if not st.button(
+        "Show ModelCard",
+        key=card_button_key,
+        width="stretch",
+    ):
         return
 
     card_json = json.dumps(card, indent=2, ensure_ascii=False)
@@ -223,8 +228,9 @@ def render_job_status_panel(
                 st.caption(f"{label}: {value}")
 
         render_error(current_job.get("error"))
-        render_artifacts(job_id, current_job.get("artifacts") or {})
-        render_card(current_job, refresh_button_key)
+        if str(current_job.get("status", "unknown")) == "completed":
+            render_artifacts(job_id, current_job.get("artifacts") or {})
+            render_card(current_job, f"{job_id}_modelcard_show")
 
         if (
             auto_refresh_enabled
