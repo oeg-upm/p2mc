@@ -27,6 +27,7 @@ USE_DUMMY_WORKER = os.getenv(
     "P2MC_USE_DUMMY_WORKER",
     "true",
 ).lower() in {"1", "true", "yes"}
+PIPELINE_TOTAL_STEPS = 7
 
 
 def timestamp(message: str) -> None:
@@ -36,6 +37,36 @@ def timestamp(message: str) -> None:
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def build_pipeline_stage(
+    key: str,
+    label: str,
+    step: int | None = None,
+    *,
+    detail: str | None = None,
+    item_current: int | None = None,
+    item_total: int | None = None,
+) -> dict[str, Any]:
+    stage: dict[str, Any] = {
+        "key": key,
+        "label": label,
+    }
+
+    if step is not None:
+        stage["step"] = step
+        stage["total"] = PIPELINE_TOTAL_STEPS
+
+    if detail is not None:
+        stage["detail"] = detail
+
+    if item_current is not None:
+        stage["item_current"] = item_current
+
+    if item_total is not None:
+        stage["item_total"] = item_total
+
+    return stage
 
 
 def get_status_path(job_id: str) -> Path:
@@ -137,6 +168,36 @@ def serialize_artifact_paths(
     }
 
 
+def serialize_existing_artifact_paths(
+    artifact_paths: dict[str, Path],
+) -> dict[str, str]:
+    return {
+        name: path.relative_to(DATA_ROOT).as_posix()
+        for name, path in artifact_paths.items()
+        if path.is_file()
+    }
+
+
+def read_existing_modelcard(
+    artifact_paths: dict[str, Path],
+) -> dict[str, Any] | None:
+    modelcard_path = artifact_paths["modelcard"]
+
+    if not modelcard_path.is_file():
+        return None
+
+    try:
+        with modelcard_path.open("r", encoding="utf-8") as file:
+            card = json.load(file)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(card, dict):
+        return None
+
+    return card
+
+
 def verify_artifacts(
     artifact_paths: dict[str, Path],
 ) -> None:
@@ -182,13 +243,58 @@ def process_job(message: dict[str, Any], pdf_handler: PDFHandler) -> None:
         "error": None,
         "artifacts": None,
         "card": None,
+        "pipeline_stage": build_pipeline_stage(
+            "initializing",
+            "Preparing paper processing",
+            1,
+        ),
     }
     write_status_atomic(status_path, processing_status)
 
     timestamp(f"Processing job {job_id} for arXiv {arxiv_id}")
 
     try:
-        card = pdf_handler.handle_pdf(url)
+        artifact_paths = get_artifact_paths(arxiv_id)
+        cached_card = read_existing_modelcard(artifact_paths)
+
+        if cached_card is not None:
+            completed_at = utc_now()
+            completed_status = {
+                **processing_status,
+                "status": "completed",
+                "updated_at": completed_at,
+                "completed_at": completed_at,
+                "error": None,
+                "artifacts": serialize_existing_artifact_paths(
+                    artifact_paths
+                ),
+                "card": cached_card,
+                "pipeline_stage": build_pipeline_stage(
+                    "completed",
+                    "Using existing ModelCard",
+                    PIPELINE_TOTAL_STEPS,
+                    detail="Paper already processed.",
+                ),
+            }
+            write_status_atomic(status_path, completed_status)
+            timestamp(
+                f"Job {job_id} reused existing ModelCard for {arxiv_id}"
+            )
+            return
+
+        def update_stage(stage: dict[str, Any]) -> None:
+            current_status = read_status(status_path) or processing_status
+            write_status_atomic(
+                status_path,
+                {
+                    **current_status,
+                    "status": "processing",
+                    "updated_at": utc_now(),
+                    "pipeline_stage": stage,
+                },
+            )
+
+        card = pdf_handler.handle_pdf(url, on_stage=update_stage)
 
         if not isinstance(card, dict):
             raise RuntimeError(
@@ -200,13 +306,24 @@ def process_job(message: dict[str, Any], pdf_handler: PDFHandler) -> None:
         if card.get("error"):
             raise RuntimeError(str(card["error"]))
 
-        artifact_paths = get_artifact_paths(arxiv_id)
         verify_artifacts(artifact_paths)
 
     except Exception as exc:
         failed_at = utc_now()
+        current_status = read_status(status_path) or processing_status
+        previous_stage = current_status.get("pipeline_stage")
+        failed_step = PIPELINE_TOTAL_STEPS
+        failed_detail = None
+
+        if isinstance(previous_stage, dict):
+            failed_step = previous_stage.get("step") or failed_step
+            failed_detail = (
+                previous_stage.get("detail")
+                or previous_stage.get("label")
+            )
+
         failed_status = {
-            **processing_status,
+            **current_status,
             "status": "failed",
             "updated_at": failed_at,
             "completed_at": failed_at,
@@ -214,6 +331,12 @@ def process_job(message: dict[str, Any], pdf_handler: PDFHandler) -> None:
                 "type": type(exc).__name__,
                 "message": str(exc),
             },
+            "pipeline_stage": build_pipeline_stage(
+                "failed",
+                "Failed",
+                failed_step,
+                detail=failed_detail,
+            ),
         }
         write_status_atomic(status_path, failed_status)
 
@@ -222,14 +345,20 @@ def process_job(message: dict[str, Any], pdf_handler: PDFHandler) -> None:
         return
 
     completed_at = utc_now()
+    current_status = read_status(status_path) or processing_status
     completed_status = {
-        **processing_status,
+        **current_status,
         "status": "completed",
         "updated_at": completed_at,
         "completed_at": completed_at,
         "error": None,
         "artifacts": serialize_artifact_paths(artifact_paths),
         "card": card,
+        "pipeline_stage": build_pipeline_stage(
+            "completed",
+            "Completed",
+            PIPELINE_TOTAL_STEPS,
+        ),
     }
     write_status_atomic(status_path, completed_status)
 
@@ -374,6 +503,11 @@ def process_job_dummy(message: dict[str, Any]) -> None:
         "error": None,
         "artifacts": None,
         "card": None,
+        "pipeline_stage": build_pipeline_stage(
+            "processing_dummy",
+            "Running dummy processor",
+            1,
+        ),
     }
 
     write_status_atomic(
@@ -482,6 +616,12 @@ def process_job_dummy(message: dict[str, Any]) -> None:
                 "type": type(exc).__name__,
                 "message": str(exc),
             },
+            "pipeline_stage": build_pipeline_stage(
+                "failed",
+                "Failed",
+                1,
+                detail="Running dummy processor",
+            ),
         }
 
         write_status_atomic(
@@ -507,6 +647,11 @@ def process_job_dummy(message: dict[str, Any]) -> None:
             artifact_paths
         ),
         "card": card,
+        "pipeline_stage": build_pipeline_stage(
+            "completed",
+            "Completed",
+            PIPELINE_TOTAL_STEPS,
+        ),
     }
 
     write_status_atomic(

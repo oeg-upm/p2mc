@@ -8,10 +8,13 @@ import requests
 import traceback
 from backend.utils.XMLParser import XMLParser
 from backend.parsers.scipdf_parser import SciPdfParser
+from typing import Any
 
 from backend import DATA_DIR
 
 REQUEST_TIMEOUT_SECONDS = 600
+PIPELINE_TOTAL_STEPS = 7
+StageCallback = Callable[[dict[str, Any]], None]
 
 
 class PDFHandler:
@@ -31,6 +34,32 @@ class PDFHandler:
     @staticmethod
     def _default_log(message: str) -> None:
         print(message, flush=True)
+
+    @staticmethod
+    def _emit_stage(
+        on_stage: StageCallback | None,
+        key: str,
+        label: str,
+        step: int,
+        **extra: Any,
+    ) -> None:
+        if on_stage is None:
+            return
+
+        stage = {
+            "key": key,
+            "label": label,
+            "step": step,
+            "total": PIPELINE_TOTAL_STEPS,
+        }
+        stage.update(
+            {
+                name: value
+                for name, value in extra.items()
+                if value is not None
+            }
+        )
+        on_stage(stage)
 
     def _release_component_memory(self, component_name: str) -> None:
         gc.collect()
@@ -77,7 +106,12 @@ class PDFHandler:
             raise RuntimeError(f"SciPDF did not generate XML at {xml_save_path}")
         return result
 
-    def _process_with_lightocr(self, pdf_path, json_save_path):
+    def _process_with_lightocr(
+        self,
+        pdf_path,
+        json_save_path,
+        on_progress: StageCallback | None = None,
+    ):
         if Path(json_save_path).is_file():
             self._log(
                 "PDFHandler: LightOCR JSON already exists. "
@@ -90,7 +124,10 @@ class PDFHandler:
         lightocr_parser = None
         try:
             self._log("PDFHandler: initializing LightOcrParser")
-            lightocr_parser = LightOcrParser(logger=self._log)
+            lightocr_parser = LightOcrParser(
+                logger=self._log,
+                progress_callback=on_progress,
+            )
             self._log("PDFHandler: LightOcrParser ready")
 
             result = lightocr_parser.process(pdf_path, json_save_path)
@@ -153,9 +190,19 @@ class PDFHandler:
         
         return extracted_data
         
-    def handle_pdf(self, pdf_url):
+    def handle_pdf(
+        self,
+        pdf_url,
+        on_stage: StageCallback | None = None,
+    ):
         try:
             self._log(f"PDFHandler: starting PDF handling for {pdf_url}")
+            self._emit_stage(
+                on_stage,
+                "initializing",
+                "Preparing paper processing",
+                1,
+            )
             paper_id = self._extract_id_from_url(pdf_url)
             if not paper_id:
                 self._log(f"PDFHandler: aborting process. Invalid URL: {pdf_url}")
@@ -167,26 +214,66 @@ class PDFHandler:
             json_path = self._json_dir / f"{paper_id}.json"
             modelcard_path = self._modelcards_dir / f"{paper_id}_modelcard.json"
     
+            self._emit_stage(
+                on_stage,
+                "downloading_pdf",
+                "Downloading PDF",
+                2,
+            )
             self._log(f"PDFHandler: downloading PDF to {pdf_path}")
             self._download_pdf(pdf_url, pdf_path)
             self._log(f"PDFHandler: PDF downloaded at {pdf_path}")
 
+            self._emit_stage(
+                on_stage,
+                "extracting_xml",
+                "Extracting XML with GROBID",
+                3,
+            )
             self._log(f"PDFHandler: processing with SciPDF into {xml_path}")
             self._process_with_scipdf(pdf_path, xml_path)
             self._log(f"PDFHandler: SciPDF XML ready at {xml_path}")
 
+            self._emit_stage(
+                on_stage,
+                "extracting_tables",
+                "Extracting tables with LightOCR",
+                4,
+            )
             self._log(f"PDFHandler: processing with LightOnOCR into {json_path}")
-            self._process_with_lightocr(pdf_path, json_path)
+            self._process_with_lightocr(
+                pdf_path,
+                json_path,
+                on_progress=on_stage,
+            )
             self._log(f"PDFHandler: LightOCR JSON ready at {json_path}")
 
+            self._emit_stage(
+                on_stage,
+                "extracting_values",
+                "Reading extracted PDF data",
+                5,
+            )
             self._log("PDFHandler: extracting values from generated artifacts")
             extracted_data = self._extract_values(xml_path, json_path, paper_id)
             self._log("PDFHandler: extracted values ready")
 
+            self._emit_stage(
+                on_stage,
+                "generating_modelcard",
+                "Generating ModelCard",
+                6,
+            )
             self._log("PDFHandler: generating modelcard")
             modelcard = self._generate_modelcard(extracted_data)
             self._log("PDFHandler: modelcard generated")
             
+            self._emit_stage(
+                on_stage,
+                "saving_modelcard",
+                "Saving ModelCard",
+                7,
+            )
             self._log(f"PDFHandler: saving final modelcard to {modelcard_path}")
             self._modelcards_dir.mkdir(parents=True, exist_ok=True)
             with open(modelcard_path, 'w', encoding='utf-8') as f:

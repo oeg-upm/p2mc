@@ -23,9 +23,14 @@ def load_jobs() -> None:
 
 def job_label(job: dict) -> str:
     status = job.get("status", "unknown")
+    stage = job.get("pipeline_stage") or {}
+    stage_label = stage.get("label") if isinstance(stage, dict) else None
     arxiv_id = job.get("arxiv_id", "-")
     updated_at = job.get("updated_at", "-")
     job_id = str(job.get("job_id", ""))
+
+    if stage_label:
+        return f"{status} | {stage_label} | {arxiv_id} | {job_id[:8]}"
 
     return f"{status} | {arxiv_id} | {updated_at} | {job_id[:8]}"
 
@@ -57,6 +62,11 @@ if not jobs:
 st.dataframe(
     [
         {
+            "Stage": (
+                job.get("pipeline_stage", {}).get("label")
+                if isinstance(job.get("pipeline_stage"), dict)
+                else None
+            ),
             "Status": job.get("status"),
             "arXiv ID": job.get("arxiv_id"),
             "Updated": job.get("updated_at"),

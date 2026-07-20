@@ -21,6 +21,7 @@ from backend.rabbitmq import RabbitMQPublishError, publish_job
 
 
 router = APIRouter()
+PIPELINE_TOTAL_STEPS = 7
 ALLOWED_ARTIFACTS = {
     "pdf": "application/pdf",
     "xml": "application/xml",
@@ -33,12 +34,92 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def build_pipeline_stage(
+    key: str,
+    label: str,
+    step: int | None = None,
+    *,
+    detail: str | None = None,
+) -> dict:
+    stage = {
+        "key": key,
+        "label": label,
+    }
+
+    if step is not None:
+        stage["step"] = step
+        stage["total"] = PIPELINE_TOTAL_STEPS
+
+    if detail is not None:
+        stage["detail"] = detail
+
+    return stage
+
+
 def get_status_path(job_id: str) -> Path:
     return DATA_DIR / "jobs" / job_id / "status.json"
 
 
 def get_jobs_dir() -> Path:
     return DATA_DIR / "jobs"
+
+
+def get_artifact_paths(arxiv_id: str) -> dict[str, Path]:
+    return {
+        "pdf": DATA_DIR / "raw" / "pdfs" / f"{arxiv_id}.pdf",
+        "xml": (
+            DATA_DIR
+            / "interim"
+            / "scipdf_xml"
+            / f"{arxiv_id}.xml"
+        ),
+        "lightocr_json": (
+            DATA_DIR
+            / "interim"
+            / "lightocr_json"
+            / f"{arxiv_id}.json"
+        ),
+        "modelcard": (
+            DATA_DIR
+            / "processed"
+            / "modelcards"
+            / f"{arxiv_id}_modelcard.json"
+        ),
+    }
+
+
+def serialize_existing_artifact_paths(
+    artifact_paths: dict[str, Path],
+) -> dict[str, str]:
+    data_root = DATA_DIR.resolve()
+    return {
+        name: path.relative_to(data_root).as_posix()
+        for name, path in artifact_paths.items()
+        if path.is_file()
+    }
+
+
+def read_existing_modelcard(
+    artifact_paths: dict[str, Path],
+) -> dict | None:
+    modelcard_path = artifact_paths["modelcard"]
+
+    if not modelcard_path.is_file():
+        return None
+
+    try:
+        with modelcard_path.open("r", encoding="utf-8") as file:
+            card = json.load(file)
+    except (
+        OSError,
+        json.JSONDecodeError,
+    ):
+        return None
+
+    if not isinstance(card, dict):
+        return None
+
+    return card
 
 
 def read_status_file(status_path: Path) -> StatusJobResponse:
@@ -69,6 +150,7 @@ def build_job_summary(status: StatusJobResponse) -> JobSummaryResponse:
         updated_at=status.updated_at,
         completed_at=status.completed_at,
         error=status.error,
+        pipeline_stage=status.pipeline_stage,
     )
 
 
@@ -157,6 +239,40 @@ def build_queued_status(
         "error": None,
         "artifacts": None,
         "card": None,
+        "pipeline_stage": build_pipeline_stage(
+            "queued",
+            "Queued",
+        ),
+    }
+
+
+def build_cached_completed_status(
+    job_id: str,
+    arxiv_id: str,
+    pdf_url: str,
+    card: dict,
+    artifact_paths: dict[str, Path],
+) -> dict:
+    completed_at = utc_now()
+
+    return {
+        "job_id": job_id,
+        "arxiv_id": arxiv_id,
+        "url": pdf_url,
+        "status": "completed",
+        "created_at": completed_at,
+        "started_at": None,
+        "updated_at": completed_at,
+        "completed_at": completed_at,
+        "error": None,
+        "artifacts": serialize_existing_artifact_paths(artifact_paths),
+        "card": card,
+        "pipeline_stage": build_pipeline_stage(
+            "completed",
+            "Using existing ModelCard",
+            PIPELINE_TOTAL_STEPS,
+            detail="Paper already processed.",
+        ),
     }
 
 
@@ -165,8 +281,21 @@ def launch_job(asked_job: AskedJob):
     arxiv_id, pdf_url = parse_arxiv_url(str(asked_job.url))
     job_id = str(uuid4())
     status_path = get_status_path(job_id)
-    queued_status = build_queued_status(job_id, arxiv_id, pdf_url)
+    artifact_paths = get_artifact_paths(arxiv_id)
+    cached_card = read_existing_modelcard(artifact_paths)
 
+    if cached_card is not None:
+        completed_status = build_cached_completed_status(
+            job_id,
+            arxiv_id,
+            pdf_url,
+            cached_card,
+            artifact_paths,
+        )
+        write_status_atomic(status_path, completed_status)
+        return AskedJobResponse(**completed_status)
+
+    queued_status = build_queued_status(job_id, arxiv_id, pdf_url)
     write_status_atomic(status_path, queued_status)
 
     try:
@@ -185,6 +314,11 @@ def launch_job(asked_job: AskedJob):
                     "type": type(exc).__name__,
                     "message": str(exc),
                 },
+                "pipeline_stage": build_pipeline_stage(
+                    "failed",
+                    "Failed to enqueue job",
+                    detail=str(exc),
+                ),
             },
         )
         raise HTTPException(
@@ -192,12 +326,7 @@ def launch_job(asked_job: AskedJob):
             detail=str(exc),
         ) from exc
 
-    return AskedJobResponse(
-        job_id=job_id,
-        arxiv_id=arxiv_id,
-        url=pdf_url,
-        status=queued_status["status"],
-    )
+    return AskedJobResponse(**queued_status)
 
 
 @router.get("/jobs", response_model=JobsListResponse)

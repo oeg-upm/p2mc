@@ -60,6 +60,7 @@ class LightOcrParser:
         self,
         model_id: str | None = None,
         logger: Callable[[str], None] | None = None,
+        progress_callback: Callable[[dict], None] | None = None,
     ):
         settings = get_lightocr_settings()
         model_id = model_id or settings.model_id
@@ -79,6 +80,7 @@ class LightOcrParser:
             target_longest=settings.target_longest,
             max_new_tokens=settings.max_new_tokens,
             progress_logger=self._log,
+            progress_callback=progress_callback,
         )
         self._extractor.load_models()
         self._log("LightOnOCR model loaded.")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 import streamlit as st
@@ -18,6 +19,8 @@ ARTIFACT_LABELS = {
     "lightocr_json": "LightOCR JSON",
     "modelcard": "ModelCard JSON-LD",
 }
+ACTIVE_STATUSES = {"queued", "processing"}
+AUTO_REFRESH_SECONDS = 3
 
 
 def render_status(status: str) -> None:
@@ -47,13 +50,71 @@ def render_error(error: Any) -> None:
     st.error(f"{error_type}: {error_message}")
 
 
+def _progress_ratio(
+    current: Any,
+    total: Any,
+) -> float | None:
+    try:
+        current_number = float(current)
+        total_number = float(total)
+    except (
+        TypeError,
+        ValueError,
+    ):
+        return None
+
+    if total_number <= 0:
+        return None
+
+    return min(
+        max(current_number / total_number, 0.0),
+        1.0,
+    )
+
+
+def render_pipeline_stage(stage: Any) -> None:
+    if not isinstance(stage, dict):
+        return
+
+    label = stage.get("label") or stage.get("key")
+    step = stage.get("step")
+    total = stage.get("total")
+    step_ratio = _progress_ratio(step, total)
+
+    if step_ratio is None:
+        st.write(f"**Pipeline:** {label}")
+    else:
+        st.write(f"**Pipeline:** Step {step}/{total}: {label}")
+        st.progress(step_ratio)
+
+    detail = stage.get("detail")
+    if detail:
+        st.caption(str(detail))
+
+    item_ratio = _progress_ratio(
+        stage.get("item_current"),
+        stage.get("item_total"),
+    )
+    if item_ratio is not None:
+        st.progress(item_ratio)
+
+
 def render_artifacts(job_id: str, artifacts: dict[str, str]) -> None:
     if not artifacts:
         return
 
+    downloadable_artifacts = {
+        name: path
+        for name, path in artifacts.items()
+        if name != "modelcard"
+    }
+
+    if not downloadable_artifacts:
+        return
+
     st.write("**Artifacts:**")
 
-    for artifact_name, artifact_path in artifacts.items():
+    for artifact_name, artifact_path in downloadable_artifacts.items():
         label = ARTIFACT_LABELS.get(artifact_name, artifact_name)
         artifact_col, download_col = st.columns([3, 1])
 
@@ -69,22 +130,16 @@ def render_artifacts(job_id: str, artifacts: dict[str, str]) -> None:
 
 
 def render_card(job: dict[str, Any], refresh_button_key: str) -> None:
+    del refresh_button_key
+
     card = job.get("card")
 
     if not card:
         return
 
     card_json = json.dumps(card, indent=2, ensure_ascii=False)
-    file_name = f"{job.get('arxiv_id', 'modelcard')}_modelcard.json"
 
-    st.download_button(
-        "Download returned ModelCard",
-        data=card_json,
-        file_name=file_name,
-        mime="application/ld+json",
-        key=f"{refresh_button_key}_returned_card",
-    )
-
+    st.write("**ModelCard JSON-LD:**")
     with st.container(height=400):
         st.code(card_json, language="json")
 
@@ -99,6 +154,17 @@ def render_job_status_panel(
 
     with st.container(border=True):
         st.subheader("Job status", anchor=False)
+        auto_refresh_enabled = True
+
+        if (
+            str(current_job.get("status", "unknown")) in ACTIVE_STATUSES
+            and job_id
+        ):
+            try:
+                current_job = get_job_status(job_id)
+            except P2MCAPIError as exc:
+                auto_refresh_enabled = False
+                st.error(str(exc))
 
         job_col, refresh_col = st.columns([3, 1])
 
@@ -120,6 +186,7 @@ def render_job_status_panel(
                     st.error(str(exc))
 
         render_status(str(current_job.get("status", "unknown")))
+        render_pipeline_stage(current_job.get("pipeline_stage"))
 
         st.write(f"**arXiv ID:** {current_job.get('arxiv_id', '-')}")
         st.write(f"**PDF URL:** {current_job.get('url', '-')}")
@@ -137,5 +204,12 @@ def render_job_status_panel(
         render_error(current_job.get("error"))
         render_artifacts(job_id, current_job.get("artifacts") or {})
         render_card(current_job, refresh_button_key)
+
+        if (
+            auto_refresh_enabled
+            and str(current_job.get("status", "unknown")) in ACTIVE_STATUSES
+        ):
+            time.sleep(AUTO_REFRESH_SECONDS)
+            st.rerun()
 
     return current_job

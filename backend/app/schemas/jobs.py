@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import re
 from typing import Any
 
@@ -39,15 +41,29 @@ class AskedJob(BaseModel):
 
         return HttpUrl(pdf_url)
     
-    
-    
-    
+class PipelineStage(BaseModel):
+    key: str
+    label: str
+    step: int | None = None
+    total: int | None = None
+    detail: str | None = None
+    item_current: int | None = None
+    item_total: int | None = None
+
 
 class AskedJobResponse(BaseModel):
     job_id: str
     arxiv_id: str
     url: HttpUrl
     status: str
+    created_at: str | None = None
+    started_at: str | None = None
+    updated_at: str | None = None
+    completed_at: str | None = None
+    error: StatusError | None = None
+    artifacts: dict[str, str] | None = None
+    card: dict[str, Any] | None = None
+    pipeline_stage: PipelineStage | None = None
 
 
 class StatusError(BaseModel):
@@ -67,6 +83,7 @@ class StatusJobResponse(BaseModel):
     error: StatusError | None = None
     artifacts: dict[str, str] | None = None
     card: dict[str, Any] | None = None
+    pipeline_stage: PipelineStage | None = None
 
 
 class JobSummaryResponse(BaseModel):
@@ -79,6 +96,7 @@ class JobSummaryResponse(BaseModel):
     updated_at: str
     completed_at: str | None = None
     error: StatusError | None = None
+    pipeline_stage: PipelineStage | None = None
 
 
 class JobsListResponse(BaseModel):

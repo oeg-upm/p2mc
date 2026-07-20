@@ -61,16 +61,30 @@ st.divider()
 
 # Aquí se muestra el abstract del paper.
 st.subheader("Abstract", anchor=False)
-texto_abstract = "Since their introduction in 2019, model cards have been widely adopted by the research community, since they provide a human-centered, clear summarization of machine learning approaches. In HuggingFace, these cards are manually filled by the authors when uploading their models, thus leading to missing or inaccurate information. Moreover, these cards are not semantically interoperable, since they are not compliant with any ontology or data model. This paper presents Paper2ModelCard, or P2MC, a framework for end-to-end generation of model cards from research papers. This framework integrates processing tools for correctly parsing the input PDF into a structured format (SciPDF and LightOnOCR-1B), which is then processed by an ensemble of models, each targeted towards efficiently extracting specific information from the input. The FAIR4ML ontology is used as the backbone to generate the model cards, in order to ensure their interoperability. Moreover, P2MC links the generated model cards to existing research knowledge graphs, such as SemOpenAlex or LinkedPapersWithCode."
+texto_abstract = "This demo shows Paper2ModelCard, a framework for end-to-end generation of model cards from research papers. P2MC integrates processing tools forparsing the input PDF into a structured format (SciPDF and LightOnOCR-1B), which is then processed by an ensemble of models, each targeted towards efficiently extracting specific information from the input pdf."
 st.markdown(
     f'<div style="text-align: justify;">{texto_abstract}</div>', 
     unsafe_allow_html=True
+)
+
+st.markdown(
+    """
+    **References**
+
+    - [Model Cards for Model Reporting](https://dl.acm.org/doi/10.1145/3287560.3287596)
+    - [SciPDF Parser](https://github.com/titipata/scipdf_parser)
+    - [LightOnOCR-2-1B](https://huggingface.co/lightonai/LightOnOCR-2-1B)
+    """
 )
 
 
 st.divider()
 st.subheader("Execution Demo", anchor=False)
 st.write("For executing the pipeline introduce a paper URL and click the button.")
+st.warning(
+    "This demo may run on a machine without a GPU. Real pipeline jobs can "
+    "take a long time, especially during LightOCR and ModelCard generation."
+)
 
 
 with st.form("my_form"):

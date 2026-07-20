@@ -289,17 +289,27 @@ class UriFetcher:
         headers = {
             "Accept": "application/sparql-results+json"
         }
-    
-        response = requests.get(
-            self.LPWC_ENDPOINT,
-            params={"query": query},
-            headers=headers,
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-    
-        data = response.json()
-        exists = data.get("boolean", False) 
+
+        try:
+            response = requests.get(
+                self.LPWC_ENDPOINT,
+                params={"query": query},
+                headers=headers,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except (
+            requests.exceptions.RequestException,
+            ValueError,
+        ) as e:
+            print(
+                "Connection error when trying to check guessed dataset URI "
+                f"for {dataset_name}: {e}"
+            )
+            return None
+
+        exists = data.get("boolean", False)
         
         if exists:
             return predicted_uri

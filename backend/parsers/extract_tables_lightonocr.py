@@ -80,6 +80,7 @@ class LightOnOcrTableExtractor:
         max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS,
         verbose: bool = False,
         progress_logger: Callable[[str], None] | None = None,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         self.pdf_dir = Path(pdf_dir).resolve()
         self.output_path = (
@@ -92,6 +93,7 @@ class LightOnOcrTableExtractor:
         self.max_new_tokens = max_new_tokens
         self.verbose = verbose
         self._progress_logger = progress_logger
+        self._progress_callback = progress_callback
 
         self._processor = None
         self._model = None
@@ -103,6 +105,26 @@ class LightOnOcrTableExtractor:
             self._progress_logger(message)
         else:
             print(message, flush=True)
+
+    def _emit_progress(self, stage: dict[str, Any]) -> None:
+        if self._progress_callback is not None:
+            self._progress_callback(stage)
+
+    @staticmethod
+    def _lightocr_stage(
+        detail: str,
+        page_num: int,
+        num_pages: int,
+    ) -> dict[str, Any]:
+        return {
+            "key": "extracting_tables",
+            "label": "Extracting tables with LightOCR",
+            "step": 4,
+            "total": 7,
+            "detail": detail,
+            "item_current": page_num,
+            "item_total": num_pages,
+        }
 
     # ------------------------------------------------------------------
     # Paths
@@ -515,6 +537,13 @@ class LightOnOcrTableExtractor:
         try:
             for page_idx in range(num_pages):
                 page_num = page_idx + 1
+                self._emit_progress(
+                    self._lightocr_stage(
+                        f"Processing page {page_num}/{num_pages}",
+                        page_num,
+                        num_pages,
+                    )
+                )
                 self._progress(
                     f"LightOCR: page {page_num}/{num_pages} render started"
                 )
