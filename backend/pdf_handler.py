@@ -90,7 +90,7 @@ class PDFHandler:
         lightocr_parser = None
         try:
             self._log("PDFHandler: initializing LightOcrParser")
-            lightocr_parser = LightOcrParser()
+            lightocr_parser = LightOcrParser(logger=self._log)
             self._log("PDFHandler: LightOcrParser ready")
 
             result = lightocr_parser.process(pdf_path, json_save_path)
@@ -109,7 +109,7 @@ class PDFHandler:
         model_card_generator = None
         try:
             self._log("PDFHandler: initializing ModelCardGenerator")
-            model_card_generator = ModelCardGenerator()
+            model_card_generator = ModelCardGenerator(logger=self._log)
             self._log("PDFHandler: ModelCardGenerator ready")
             return model_card_generator.generate_modelcard(extracted_data)
         finally:

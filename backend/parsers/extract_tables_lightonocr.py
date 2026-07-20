@@ -20,6 +20,7 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pypdfium2 as pdfium
@@ -78,6 +79,7 @@ class LightOnOcrTableExtractor:
         target_longest: int = DEFAULT_TARGET_LONGEST,
         max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS,
         verbose: bool = False,
+        progress_logger: Callable[[str], None] | None = None,
     ) -> None:
         self.pdf_dir = Path(pdf_dir).resolve()
         self.output_path = (
@@ -89,11 +91,18 @@ class LightOnOcrTableExtractor:
         self.target_longest = target_longest
         self.max_new_tokens = max_new_tokens
         self.verbose = verbose
+        self._progress_logger = progress_logger
 
         self._processor = None
         self._model = None
         self._device: str = "cpu"
         self._dtype = torch.float32
+
+    def _progress(self, message: str) -> None:
+        if self._progress_logger is not None:
+            self._progress_logger(message)
+        else:
+            print(message, flush=True)
 
     # ------------------------------------------------------------------
     # Paths
@@ -150,7 +159,9 @@ class LightOnOcrTableExtractor:
             self._device = "cpu"
             self._dtype = torch.float32
 
-        log.info("OCR device: %s, dtype: %s", self._device, self._dtype)
+        self._progress(
+            f"LightOCR: using device={self._device}, dtype={self._dtype}"
+        )
         self._processor = LightOnOcrProcessor.from_pretrained(self.model_id)
         self._model = LightOnOcrForConditionalGeneration.from_pretrained(
             self.model_id,
@@ -159,7 +170,7 @@ class LightOnOcrTableExtractor:
             low_cpu_mem_usage=True,
         ).to(self._device)
         self._model.eval()
-        log.info("OCR model loaded: %s", self.model_id)
+        self._progress(f"LightOCR: model loaded: {self.model_id}")
 
     # ------------------------------------------------------------------
     # OCR
@@ -496,21 +507,38 @@ class LightOnOcrTableExtractor:
 
         pdf_doc = pdfium.PdfDocument(str(pdf_path))
         num_pages = len(pdf_doc)
+        self._progress(
+            f"LightOCR: processing {paper_title} with {num_pages} pages"
+        )
         all_tables: List[Tuple[int, List[str], List[List[Any]], str]] = []
 
         try:
             for page_idx in range(num_pages):
                 page_num = page_idx + 1
-                log.info("  Page %d/%d", page_num, num_pages)
+                self._progress(
+                    f"LightOCR: page {page_num}/{num_pages} render started"
+                )
 
                 pil_image = self.render_pdf_page(pdf_doc, page_idx)
                 try:
+                    self._progress(
+                        f"LightOCR: page {page_num}/{num_pages} OCR started"
+                    )
                     ocr_text = self.ocr_page(pil_image)
                 finally:
                     pil_image.close()
+                self._progress(
+                    f"LightOCR: page {page_num}/{num_pages} OCR finished"
+                )
 
                 html_tables = self.extract_html_tables(ocr_text)
                 md_tables = self.extract_markdown_tables(ocr_text) if not html_tables else []
+                self._progress(
+                    "LightOCR: "
+                    f"page {page_num}/{num_pages} detected "
+                    f"{len(html_tables)} HTML tables and {len(md_tables)} "
+                    "Markdown tables"
+                )
 
                 for html_tbl in html_tables:
                     columns, data_rows = self.parse_html_table(html_tbl)
@@ -531,6 +559,9 @@ class LightOnOcrTableExtractor:
                             len(data_rows),
                             len(columns),
                         )
+                self._progress(
+                    f"LightOCR: page {page_num}/{num_pages} finished"
+                )
         finally:
             pdf_doc.close()
 
@@ -555,7 +586,9 @@ class LightOnOcrTableExtractor:
             "num_tables": len(tables_json),
             "tables": tables_json,
         }
-        log.info("  Total tables: %d", len(tables_json))
+        self._progress(
+            f"LightOCR: finished {paper_title}; total tables={len(tables_json)}"
+        )
         return document
 
     def extract(

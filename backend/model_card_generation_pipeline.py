@@ -1,4 +1,5 @@
 from datetime import datetime
+from collections.abc import Callable
 import joblib
 import json
 import copy
@@ -26,8 +27,11 @@ TAXONOMY_CLASSIFIER_FILE = "taxonomy_classifier.joblib"
 
 
 class ModelCardGenerator:
-    def __init__(self):
+    def __init__(self, logger: Callable[[str], None] | None = None):
+        self._log = logger or self._default_log
+
         # First we load both templates, starting with the base model template.
+        self._log("ModelCardGenerator: loading templates")
         model_template_path = BASE_DIR / "templates" / MODEL_TEMPLATE_FILE
         with open(model_template_path, "r", encoding="utf-8") as f:
             self._model_template = json.load(f)
@@ -37,30 +41,40 @@ class ModelCardGenerator:
             self._implementation_template = json.load(f)
 
         # Load the classifier (TF-IDF + SVC)
+        self._log("ModelCardGenerator: loading taxonomy classifier")
         pipeline_path = BASE_DIR / "resources" / TAXONOMY_CLASSIFIER_FILE
         self._classification_pipeline = joblib.load(pipeline_path)
 
         # Load the URI fetcher which will help us identify different entities in SemOpenAlex and LinkedPapersWithCode by providing us with URIs.
         # On the other hand the URI builder will help creating URIs for those elements we failed to identify or which need our identification.
+        self._log("ModelCardGenerator: initializing URI helpers")
         self._uri_fetcher = UriFetcher()
         self._uri_builder = UriBuilder()
 
         # Load llama, qwen and gliner
         # self._gliner = GlinerExtractor()
         # self._qwen = QwenExtractor()
+        self._log("ModelCardGenerator: initializing Llama extractor")
         self._llama = LlamaExtractor()
         # self._gliner_dataset_extractor = GlinerDatasetExtractor()
         # self._gliner_metric_extractor = GlinerMetricExtractor()
         # self._qwen_metric_extractor = QwenMetricExtractor()
         # self._llama_dataset_extractor = LlamaDatasetExtractor()
+        self._log("ModelCardGenerator: initializing Qwen dataset extractor")
         self._qwen_dataset_extractor = QwenDatasetExtractor()
-        
+
+        self._log("ModelCardGenerator: initializing summarizer")
         self._summarizer = GemmaSummarizer()
+        self._log("ModelCardGenerator: initializing task/category helpers")
         self._task_matcher = TaskMatcher()
         self._category_mapper = CategoryMapper()
 
-        print("Generator ready!")
-        
+        self._log("ModelCardGenerator: ready")
+
+    @staticmethod
+    def _default_log(message: str) -> None:
+        print(message, flush=True)
+
 
     def _get_timestamp(self):
         timestamp = datetime.now()
@@ -159,6 +173,7 @@ class ModelCardGenerator:
             return {k: v for k, v in cleaned_dict.items() if v not in (None, "", [], {})}
         
     def generate_modelcard(self, extracted_data):
+        self._log("ModelCardGenerator: starting ModelCard generation")
         jsonld = copy.deepcopy(self._model_template)
         
         jsonld["dateCreated"] = self._get_timestamp()
@@ -168,27 +183,45 @@ class ModelCardGenerator:
         sections = extracted_data.get("sections")
         tsv_tables = self._get_tsv_tables(extracted_data.get("tables"))
         arxiv_id = extracted_data.get("arxiv_id")
+        self._log(
+            "ModelCardGenerator: "
+            f"arxiv_id={arxiv_id}, tsv_tables={len(tsv_tables)}"
+        )
 
         jsonld["@id"] = self._uri_builder.build_modelcard_uri(arxiv_id)
         
+        self._log("ModelCardGenerator: extracting model name")
         extracted_names = self._llama.extract(full_text, question = "What is the name of the model presented in this paper?")
         if extracted_names:
             jsonld["name"] = extracted_names[0]
         else:
             jsonld["name"] = "Unknown Model"
+        self._log(f"ModelCardGenerator: model name={jsonld['name']}")
 
             
+        self._log("ModelCardGenerator: summarizing abstract")
         jsonld["description"] = self._summarizer.summarize(abstract)
+        self._log("ModelCardGenerator: extracting keywords")
         jsonld["keywords"] = self._summarizer.get_keywords(abstract)
+        self._log(
+            "ModelCardGenerator: "
+            f"keywords extracted={len(jsonld.get('keywords', []))}"
+        )
 
         
         # Dataset extraction and identification
+        self._log("ModelCardGenerator: extracting datasets")
         dataset_context = sections or full_text or abstract or ""
         extracted_datasets = self._qwen_dataset_extractor.extract(
             dataset_context,
             tsv_tables,
         )
+        self._log(
+            "ModelCardGenerator: "
+            f"datasets extracted={len(extracted_datasets)}"
+        )
         for dataset in extracted_datasets:
+            self._log(f"ModelCardGenerator: resolving dataset URI for {dataset}")
             
             dataset_uri = self._uri_fetcher.guess_dataset_uri(dataset)
             if not dataset_uri:
@@ -200,12 +233,17 @@ class ModelCardGenerator:
             }
             jsonld["evaluatedOn"].append(dataset_data)
 
+        self._log("ModelCardGenerator: classifying model category")
         extracted_category = self._extract_classification(abstract)
         category_object = self._category_mapper.get_category_object(extracted_category)
         jsonld["modelCategory"] = category_object
+        self._log(f"ModelCardGenerator: category={extracted_category}")
         
         # Author identification
-        for author in extracted_data.get("authors"):
+        authors = extracted_data.get("authors")
+        self._log(f"ModelCardGenerator: resolving authors={len(authors or [])}")
+        for author in authors:
+            self._log(f"ModelCardGenerator: resolving author URI for {author}")
             author_uri = self._uri_fetcher.extract_author_uri(author, arxiv_id)
             if not author_uri:
                 author_uri = self._uri_builder.build_author_uri(author)
@@ -216,19 +254,36 @@ class ModelCardGenerator:
             jsonld["author"].append(author_data)
 
         # Task extraction and identification
+        self._log("ModelCardGenerator: extracting tasks")
         tasks_prediction = self._llama.extract(abstract, question =  "What are the tasks addressed in this paper?")
         jsonld["mlTask"] = self._match_tasks(tasks_prediction)
+        self._log(
+            "ModelCardGenerator: "
+            f"tasks matched={len(jsonld.get('mlTask', []))}"
+        )
         
+        self._log("ModelCardGenerator: extracting code repository")
         extracted_repo = self._llama.extract(full_text, question = "Return the URL link for the paper implementation (like GitHub). Return an empty list if not found. DO NOT  invent links")
         jsonld["codeRepository"] = list(set(extracted_repo))
+        self._log(
+            "ModelCardGenerator: "
+            f"code repositories extracted={len(jsonld['codeRepository'])}"
+        )
 
+        self._log("ModelCardGenerator: extracting reference publication")
         reference_publication = self._extract_reference_publication(arxiv_id)
         if(reference_publication):
             jsonld["referencePublication"] = reference_publication
+            self._log("ModelCardGenerator: reference publication found")
+        else:
+            self._log("ModelCardGenerator: reference publication not found")
 
+        self._log("ModelCardGenerator: ordering publication authors")
         jsonld["referencePublication"]["author"] = self._order_publication_authors(jsonld["author"], jsonld["referencePublication"]["author"])
 
+        self._log("ModelCardGenerator: cleaning final JSON-LD")
         clean_jsonld = self._clean_empty_fields(jsonld)
+        self._log("ModelCardGenerator: finished")
         return clean_jsonld
         
 

@@ -1,5 +1,6 @@
 import json
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -55,12 +56,17 @@ def get_lightocr_settings() -> LightOcrSettings:
 
 
 class LightOcrParser:
-    def __init__(self, model_id: str | None = None):
+    def __init__(
+        self,
+        model_id: str | None = None,
+        logger: Callable[[str], None] | None = None,
+    ):
         settings = get_lightocr_settings()
         model_id = model_id or settings.model_id
+        self._log = logger or self._default_log
 
-        print("LightOcrParser: loading LightOnOCR model...")
-        print(
+        self._log("LightOcrParser: loading LightOnOCR model...")
+        self._log(
             "LightOcrParser: "
             f"model={model_id}, "
             f"target_longest={settings.target_longest}, "
@@ -72,9 +78,14 @@ class LightOcrParser:
             model_id=model_id,
             target_longest=settings.target_longest,
             max_new_tokens=settings.max_new_tokens,
+            progress_logger=self._log,
         )
         self._extractor.load_models()
-        print("LightOnOCR model loaded.")
+        self._log("LightOnOCR model loaded.")
+
+    @staticmethod
+    def _default_log(message: str) -> None:
+        print(message, flush=True)
 
     def process(self, pdf_path, json_output_path):
         """
@@ -84,13 +95,14 @@ class LightOcrParser:
             raise FileNotFoundError(f"PDF file not found for OCR: {pdf_path}")
 
         if os.path.exists(json_output_path):
-            print(
+            self._log(
                 "OCR JSON already exists. Skipping extraction for: "
                 f"{os.path.basename(json_output_path)}"
             )
             return json_output_path
 
         try:
+            self._log(f"LightOcrParser: extracting tables from {pdf_path}")
             document_data = self._extractor.extract_tables_from_pdf(
                 Path(pdf_path)
             )
@@ -101,6 +113,7 @@ class LightOcrParser:
             with open(json_output_path, "w", encoding="utf-8") as file:
                 json.dump(final_result, file, indent=2, ensure_ascii=False)
 
+            self._log(f"LightOcrParser: saved OCR JSON at {json_output_path}")
             return json_output_path
 
         except Exception as exc:

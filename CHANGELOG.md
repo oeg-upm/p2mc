@@ -22,7 +22,11 @@
 
 - Reduced worker peak memory by keeping `PDFHandler` initialized with `SciPdfParser` only, instead of holding LightOCR and ModelCard generation models for the whole worker lifetime.
 - Changed LightOCR processing to load `LightOcrParser` only during OCR, skip loading it when the OCR JSON already exists, and release it before ModelCard generation starts.
-- Reduced LightOCR inference memory pressure with lower default image/token budgets, explicit tensor cleanup, model eval/inference mode, and configurable `P2MC_LIGHTOCR_TARGET_LONGEST`/`P2MC_LIGHTOCR_MAX_NEW_TOKENS`.
+- Reduced LightOCR's default image budget from `1540` to `1024` and token budget from `8192` to `1024` to avoid Docker OOM kills during local real-worker runs.
+- Added `P2MC_LIGHTOCR_TARGET_LONGEST`, `P2MC_LIGHTOCR_MAX_NEW_TOKENS`, and `P2MC_LIGHTOCR_MODEL_ID` so LightOCR quality/memory can be tuned per machine without rebuilding the image.
+- Logged the active LightOCR model and budgets at startup so worker logs show which memory profile is actually running.
+- Routed LightOCR page progress through the worker logger so `docker compose logs -f p2mc-worker` shows render/OCR start, finish, detected table counts, and total tables per PDF.
+- Loaded LightOCR with `low_cpu_mem_usage=True`, switched it to `eval()`/`torch.inference_mode()`, and explicitly released per-page tensors/images to reduce inference-time memory spikes.
 - Changed ModelCard generation to instantiate `ModelCardGenerator` only after PDF/XML/OCR artifacts have been extracted, then release it after the ModelCard is produced.
 - Stopped active initialization of unused ModelCard extractors while leaving their imports and constructor lines commented for future reactivation.
 - Deferred the `transformers` import used by `QwenExtractor` so importing the shared LLM extractor module does not load Transformers unless that extractor is instantiated.
