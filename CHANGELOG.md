@@ -22,6 +22,7 @@
 
 - Reduced worker peak memory by keeping `PDFHandler` initialized with `SciPdfParser` only, instead of holding LightOCR and ModelCard generation models for the whole worker lifetime.
 - Changed LightOCR processing to load `LightOcrParser` only during OCR, skip loading it when the OCR JSON already exists, and release it before ModelCard generation starts.
+- Reduced LightOCR inference memory pressure with lower default image/token budgets, explicit tensor cleanup, model eval/inference mode, and configurable `P2MC_LIGHTOCR_TARGET_LONGEST`/`P2MC_LIGHTOCR_MAX_NEW_TOKENS`.
 - Changed ModelCard generation to instantiate `ModelCardGenerator` only after PDF/XML/OCR artifacts have been extracted, then release it after the ModelCard is produced.
 - Stopped active initialization of unused ModelCard extractors while leaving their imports and constructor lines commented for future reactivation.
 - Deferred the `transformers` import used by `QwenExtractor` so importing the shared LLM extractor module does not load Transformers unless that extractor is instantiated.

@@ -11,6 +11,7 @@ Custom output path:
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import logging
 import os
@@ -155,7 +156,9 @@ class LightOnOcrTableExtractor:
             self.model_id,
             torch_dtype=self._dtype,
             attn_implementation="eager",
+            low_cpu_mem_usage=True,
         ).to(self._device)
+        self._model.eval()
         log.info("OCR model loaded: %s", self.model_id)
 
     # ------------------------------------------------------------------
@@ -197,12 +200,30 @@ class LightOnOcrTableExtractor:
                 else v.to(self._device)
                 for k, v in inputs.items()
             }
-            with torch.no_grad():
+            with torch.inference_mode():
                 output_ids = self._model.generate(**inputs, max_new_tokens=tokens)
             generated_ids = output_ids[0, inputs["input_ids"].shape[1] :]
-            return self._processor.decode(generated_ids, skip_special_tokens=True)
+            return self._processor.decode(
+                generated_ids,
+                skip_special_tokens=True,
+            )
         finally:
             os.unlink(tmp.name)
+            try:
+                del inputs
+            except UnboundLocalError:
+                pass
+            try:
+                del output_ids
+            except UnboundLocalError:
+                pass
+            try:
+                del generated_ids
+            except UnboundLocalError:
+                pass
+            gc.collect()
+            if self._device == "cuda":
+                torch.cuda.empty_cache()
 
     # ------------------------------------------------------------------
     # Markdown table parsing
@@ -483,7 +504,10 @@ class LightOnOcrTableExtractor:
                 log.info("  Page %d/%d", page_num, num_pages)
 
                 pil_image = self.render_pdf_page(pdf_doc, page_idx)
-                ocr_text = self.ocr_page(pil_image)
+                try:
+                    ocr_text = self.ocr_page(pil_image)
+                finally:
+                    pil_image.close()
 
                 html_tables = self.extract_html_tables(ocr_text)
                 md_tables = self.extract_markdown_tables(ocr_text) if not html_tables else []
