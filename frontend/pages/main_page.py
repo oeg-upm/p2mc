@@ -2,6 +2,9 @@ import streamlit as st
 from pathlib import Path
 from PIL import Image, ImageOps
 
+from components.job_status import render_job_status_panel
+from services.p2mc_api import P2MCAPIError, launch_job
+
 
 if "selected_example" not in st.session_state:
     st.session_state.selected_example = None
@@ -17,6 +20,9 @@ if "selected_artifact_path" not in st.session_state:
 
 if "selected_artifact_language" not in st.session_state:
     st.session_state.selected_artifact_language = None
+
+if "current_job" not in st.session_state:
+    st.session_state.current_job = None
 
 BASE_DIR = Path(__file__).parent.parent
 ASSETS_DIR = BASE_DIR / "assets"
@@ -74,17 +80,26 @@ st.write("For executing the pipeline introduce a paper URL and click the button.
 
 
 with st.form("my_form"):
-    st.write("Inside the form")
-    url = st.selectbox(
-        "Choose or introduce a PDF URL",
-        ["https://arxiv.org/abs/1802.04394", "https://arxiv.org/abs/1711.04071", "https://arxiv.org/abs/1703.10316", "https://arxiv.org/abs/1712.02121", "https://arxiv.org/abs/1707.01476"],
-        index=None,
-        placeholder="Select one of the proposed PDFs below or introduce a new one by typing in the box and clicking add or pressing enter.",
-        accept_new_options=True,
+    url = st.text_input(
+        "Paper URL",
+        placeholder="https://arxiv.org/abs/...",
     )
     submitted = st.form_submit_button("Submit")
     if submitted:
-        st.write("URL submitted:", url)
+        if not url:
+            st.warning("Please enter a PDF URL.")
+        else:
+            try:
+                with st.spinner("Launching job..."):
+                    st.session_state.current_job = launch_job(url)
+            except P2MCAPIError as exc:
+                st.error(str(exc))
+
+if st.session_state.current_job:
+    st.session_state.current_job = render_job_status_panel(
+        st.session_state.current_job,
+        refresh_button_key="main_page_refresh_status",
+    )
 
 st.divider()
 st.subheader("Examples", anchor=False)
