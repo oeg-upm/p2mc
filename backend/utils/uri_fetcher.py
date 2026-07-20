@@ -1,6 +1,10 @@
 import requests
 import re
 
+
+REQUEST_TIMEOUT_SECONDS = 600
+
+
 class UriFetcher:
     SOA_ENDPOINT = "https://semopenalex.org/sparql"
     LPWC_ENDPOINT = "https://linkedpaperswithcode.com/sparql"
@@ -23,7 +27,12 @@ class UriFetcher:
     def _make_sparql_request(self, endpoint, query):
         headers = {"Accept": "application/sparql-results+json"}
         try:
-            response = requests.get(endpoint, params={"query": query}, headers=headers)
+            response = requests.get(
+                endpoint,
+                params={"query": query},
+                headers=headers,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
             response.raise_for_status()
             data = response.json()
             return data.get("results", {}).get("bindings", [])
@@ -76,7 +85,12 @@ class UriFetcher:
             "Accept": "application/sparql-results+json"
         }
         try:
-            response = requests.get(self.LPWC_ENDPOINT, params={"query": query}, headers=headers)
+            response = requests.get(
+                self.LPWC_ENDPOINT,
+                params={"query": query},
+                headers=headers,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
             response.raise_for_status()
         
             data = response.json()
@@ -172,7 +186,12 @@ class UriFetcher:
             "Accept": "application/sparql-results+json"
         }
         try:
-            response = requests.get(self.LPWC_ENDPOINT, params={"query": query}, headers=headers)
+            response = requests.get(
+                self.LPWC_ENDPOINT,
+                params={"query": query},
+                headers=headers,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
             response.raise_for_status()
         
             data = response.json()
@@ -237,7 +256,12 @@ class UriFetcher:
             "Accept": "application/sparql-results+json"
         }
         try:
-            response = requests.get(self.LPWC_ENDPOINT, params={"query": query}, headers=headers)
+            response = requests.get(
+                self.LPWC_ENDPOINT,
+                params={"query": query},
+                headers=headers,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
             response.raise_for_status()
         
             data = response.json()
@@ -266,7 +290,12 @@ class UriFetcher:
             "Accept": "application/sparql-results+json"
         }
     
-        response = requests.get(self.LPWC_ENDPOINT, params={"query": query}, headers=headers)
+        response = requests.get(
+            self.LPWC_ENDPOINT,
+            params={"query": query},
+            headers=headers,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
         response.raise_for_status()
     
         data = response.json()

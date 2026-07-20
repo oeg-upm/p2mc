@@ -1,69 +1,124 @@
 import os
+import time
+
 import requests
+
 from ..config import GROBID_URL
+
+
+REQUEST_TIMEOUT_SECONDS = 600
+GROBID_STARTUP_TIMEOUT_SECONDS = int(
+    os.getenv("GROBID_STARTUP_TIMEOUT_SECONDS", str(REQUEST_TIMEOUT_SECONDS))
+)
+GROBID_HEALTHCHECK_TIMEOUT_SECONDS = int(
+    os.getenv("GROBID_HEALTHCHECK_TIMEOUT_SECONDS", "5")
+)
+GROBID_RETRY_DELAY_SECONDS = int(
+    os.getenv("GROBID_RETRY_DELAY_SECONDS", "5")
+)
+
+
 class SciPdfParser:
     def __init__(self, grobid_url=GROBID_URL):
         """
-        Inicializa el parser y verifica la conexión con el servidor GROBID
+        Inicializa el parser y verifica la conexion con el servidor GROBID
         al instanciar la clase.
         """
-        print("SciPdfParser: Inicializando y verificando conexión con GROBID...")
+        print("SciPdfParser: initializing and checking GROBID connection...")
         self.grobid_url = grobid_url
         self._check_connection()
 
     def _check_connection(self):
-        """Verifica si el servidor GROBID está activo."""
-        try:
-            response = requests.get(f"{self.grobid_url}/api/isalive")
-            if response.status_code != 200:
-                print(f"⚠️ Advertencia: GROBID en {self.grobid_url} no devolvió un estado 200.")
-            else:
-                print(f"🔌 Conectado exitosamente a GROBID en {self.grobid_url}")
-        except requests.exceptions.ConnectionError:
-            print(f"❌ Error crítico: No se pudo conectar a GROBID en {self.grobid_url}. ¿Está la imagen Docker corriendo?")
+        """Verifica si el servidor GROBID esta activo."""
+        deadline = time.monotonic() + GROBID_STARTUP_TIMEOUT_SECONDS
+        last_error: Exception | None = None
+
+        while True:
+            try:
+                remaining_seconds = max(1.0, deadline - time.monotonic())
+                response = requests.get(
+                    f"{self.grobid_url}/api/isalive",
+                    timeout=min(
+                        GROBID_HEALTHCHECK_TIMEOUT_SECONDS,
+                        remaining_seconds,
+                    ),
+                )
+                if response.status_code == 200:
+                    print(f"Connected to GROBID at {self.grobid_url}")
+                    return
+
+                last_error = RuntimeError(
+                    f"GROBID at {self.grobid_url} returned status "
+                    f"{response.status_code}"
+                )
+
+            except requests.exceptions.RequestException as exc:
+                last_error = exc
+
+            remaining_seconds = deadline - time.monotonic()
+            if remaining_seconds <= 0:
+                raise RuntimeError(
+                    f"Could not connect to GROBID at {self.grobid_url}"
+                ) from last_error
+
+            sleep_seconds = min(
+                GROBID_RETRY_DELAY_SECONDS,
+                remaining_seconds,
+            )
+            print(
+                "GROBID not ready at "
+                f"{self.grobid_url}; retrying in "
+                f"{sleep_seconds:.0f}s..."
+            )
+            time.sleep(sleep_seconds)
 
     def process(self, pdf_path, xml_output_path):
         """
-        Procesa un único PDF usando el backend de SciPDF (GROBID) 
+        Procesa un unico PDF usando el backend de SciPDF (GROBID)
         y guarda el XML resultante.
-        
-        Devuelve la ruta del XML si es exitoso, o None si hay un error.
         """
         if not pdf_path or not os.path.exists(pdf_path):
-            print(f"⚠️ Archivo PDF no encontrado: {pdf_path}")
-            return None
+            raise FileNotFoundError(f"PDF file not found: {pdf_path}")
 
-        # Si el archivo XML ya existe de una ejecución previa, saltamos el procesamiento
         if os.path.exists(xml_output_path):
-            print(f"✅ El XML ya existe. Saltando extracción para: {os.path.basename(xml_output_path)}")
+            print(
+                "XML already exists. Skipping extraction for: "
+                f"{os.path.basename(xml_output_path)}"
+            )
             return xml_output_path
 
         endpoint = f"{self.grobid_url}/api/processFulltextDocument"
-        
+
         try:
-            with open(pdf_path, 'rb') as f:
-                files = {'input': f}
-                # Opciones de extracción habituales de SciPDF
+            with open(pdf_path, "rb") as file:
+                files = {"input": file}
                 data = {
-                    'generateTeiIds': '1',
-                    'consolidateHeader': '1',
-                    'consolidateConclusion': '1'
+                    "generateTeiIds": "1",
+                    "consolidateHeader": "1",
+                    "consolidateConclusion": "1",
                 }
-                
-                res = requests.post(endpoint, files=files, data=data, timeout=120)
 
-            if res.status_code == 200:
-                # Nos aseguramos de que el directorio destino existe
-                os.makedirs(os.path.dirname(xml_output_path), exist_ok=True)
-                
-                with open(xml_output_path, 'w', encoding='utf-8') as xml_file:
-                    xml_file.write(res.text)
-                
-                return xml_output_path
-            else:
-                print(f"⚠️ Error al procesar {pdf_path}: Código HTTP {res.status_code}")
-                return None
+                response = requests.post(
+                    endpoint,
+                    files=files,
+                    data=data,
+                    timeout=REQUEST_TIMEOUT_SECONDS,
+                )
 
-        except Exception as e:
-            print(f"⚠️ Error crítico procesando {pdf_path}: {str(e)}")
-            return None
+            if response.status_code != 200:
+                raise RuntimeError(
+                    f"GROBID failed to process {pdf_path}: "
+                    f"HTTP {response.status_code}"
+                )
+
+            os.makedirs(os.path.dirname(xml_output_path), exist_ok=True)
+
+            with open(xml_output_path, "w", encoding="utf-8") as xml_file:
+                xml_file.write(response.text)
+
+            return xml_output_path
+
+        except Exception as exc:
+            raise RuntimeError(
+                f"Critical error processing {pdf_path} with GROBID: {exc}"
+            ) from exc

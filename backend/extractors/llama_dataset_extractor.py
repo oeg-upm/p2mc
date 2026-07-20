@@ -4,10 +4,10 @@ import time
 from ollama import Client
 import pandas as pd
 from io import StringIO
-from ..config import LLM_MODEL, OLLAMA_HOST
+from ..config import LLAMA_MODEL, OLLAMA_HOST
 
 class LlamaDatasetExtractor:
-    def __init__(self, model_name=LLM_MODEL, timeout=600.0, max_retries=3):
+    def __init__(self, model_name=LLAMA_MODEL, timeout=600.0, max_retries=3):
         self.model_name = model_name
         self.timeout = timeout
         self.max_retries = max_retries

@@ -1,25 +1,21 @@
-from pathlib import Path
 from datetime import datetime
 import joblib
 import json
-import time
 import copy
 
-import os
-from extractors.gliner_dataset_extractor import GlinerDatasetExtractor
-from extractors.gliner_metric_extractor import GlinerMetricExtractor
-from extractors.qwen_metric_extractor import QwenMetricExtractor
-from extractors.llama_dataset_extractor import LlamaDatasetExtractor
-from extractors.qwen_dataset_extractor import QwenDatasetExtractor
-from extractors.gliner_extractor import GlinerExtractor
-from extractors.llm_extractors import LlamaExtractor, QwenExtractor
-from extractors.gemma_summarizer import GemmaSummarizer
-
-from utils.uri_fetcher import UriFetcher
-from utils.uri_builder import UriBuilder
-from utils.task_matcher import TaskMatcher
-from utils.category_mapper import CategoryMapper
-
+from backend import BASE_DIR
+from backend.extractors.gliner_dataset_extractor import GlinerDatasetExtractor
+from backend.extractors.gliner_metric_extractor import GlinerMetricExtractor
+from backend.extractors.qwen_metric_extractor import QwenMetricExtractor
+from backend.extractors.llama_dataset_extractor import LlamaDatasetExtractor
+from backend.extractors.qwen_dataset_extractor import QwenDatasetExtractor
+from backend.extractors.gliner_extractor import GlinerExtractor
+from backend.extractors.llm_extractors import LlamaExtractor, QwenExtractor
+from backend.extractors.gemma_summarizer import GemmaSummarizer
+from backend.utils.category_mapper import CategoryMapper
+from backend.utils.task_matcher import TaskMatcher
+from backend.utils.uri_builder import UriBuilder
+from backend.utils.uri_fetcher import UriFetcher
 
 MODEL_TEMPLATE_FILE = "template_1.jsonld"
 IMPLEMENTATION_TEMPLATE_FILE = "implementation_template_1.jsonld"
@@ -31,16 +27,16 @@ TAXONOMY_CLASSIFIER_FILE = "taxonomy_classifier.joblib"
 class ModelCardGenerator:
     def __init__(self):
         # First we load both templates, starting with the base model template.
-        model_template_path = Path("templates") / MODEL_TEMPLATE_FILE
+        model_template_path = BASE_DIR / "templates" / MODEL_TEMPLATE_FILE
         with open(model_template_path, "r", encoding="utf-8") as f:
             self._model_template = json.load(f)
 
-        implementation_template_path = Path("templates") / IMPLEMENTATION_TEMPLATE_FILE
+        implementation_template_path = BASE_DIR / "templates" / IMPLEMENTATION_TEMPLATE_FILE
         with open(implementation_template_path, "r", encoding="utf-8") as f:
             self._implementation_template = json.load(f)
 
         # Load the classifier (TF-IDF + SVC)
-        pipeline_path = Path(os.getcwd()) / "resources" / TAXONOMY_CLASSIFIER_FILE
+        pipeline_path = BASE_DIR / "resources" / TAXONOMY_CLASSIFIER_FILE
         self._classification_pipeline = joblib.load(pipeline_path)
 
         # Load the URI fetcher which will help us identify different entities in SemOpenAlex and LinkedPapersWithCode by providing us with URIs.
@@ -168,7 +164,7 @@ class ModelCardGenerator:
 
         abstract = extracted_data.get("abstract")
         full_text = extracted_data.get("full_text")
-        ext_tables = extracted_data.get("tables")
+        sections = extracted_data.get("sections")
         tsv_tables = self._get_tsv_tables(extracted_data.get("tables"))
         arxiv_id = extracted_data.get("arxiv_id")
 
@@ -186,7 +182,11 @@ class ModelCardGenerator:
 
         
         # Dataset extraction and identification
-        extracted_datasets = self._qwen_dataset_extractor.extract(tsv_tables)
+        dataset_context = sections or full_text or abstract or ""
+        extracted_datasets = self._qwen_dataset_extractor.extract(
+            dataset_context,
+            tsv_tables,
+        )
         for dataset in extracted_datasets:
             
             dataset_uri = self._uri_fetcher.guess_dataset_uri(dataset)

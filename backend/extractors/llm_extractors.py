@@ -3,7 +3,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import ast
 import json
 from ollama import Client
-from ..config import LLM_MODEL, OLLAMA_HOST
+from ..config import LLAMA_MODEL, OLLAMA_HOST
 class BaseExtractor:
     def __init__(self, model_name):
         self.model_name = model_name
@@ -59,7 +59,7 @@ class QwenExtractor(BaseExtractor):
 
 
 class LlamaExtractor(BaseExtractor):
-    def __init__(self, llama_model = LLM_MODEL):
+    def __init__(self, llama_model = LLAMA_MODEL):
         super().__init__(llama_model)
         self.client = Client(host=OLLAMA_HOST, timeout=600.0)
         

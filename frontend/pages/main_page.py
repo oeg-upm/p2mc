@@ -42,6 +42,7 @@ author_container.write("Mateo Campaya Pinto")
 author_container.write("Elvira Amador Dominguez")
 author_container.write("Erick Cedeño")
 author_container.write("Daniel Garijo")
+author_container.write("Sergio Zaballos")
 
 st.divider()
 

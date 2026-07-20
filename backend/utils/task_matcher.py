@@ -1,12 +1,17 @@
 import json
+from pathlib import Path
+
 from rapidfuzz import process, fuzz
 
-# TaskMatcher recieves the name of a task found in the text and tries to relate it to a task from the list found at testing_data/tasks.json which contains the LPWC tasks and their URIs.
-# If a match is found then it returns the LPWC task.
+
+DEFAULT_TASKS_PATH = (
+    Path(__file__).resolve().parents[1] / "resources" / "tasks.json"
+)
+
 
 class TaskMatcher:
-    def __init__(self, json_path="resources/tasks.json"):
-        with open(json_path, 'r', encoding='utf-8') as f:
+    def __init__(self, json_path=DEFAULT_TASKS_PATH):
+        with open(json_path, "r", encoding="utf-8") as f:
             raw_tasks = json.load(f)
             
         self.master_tasks = {

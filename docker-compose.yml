@@ -21,8 +21,9 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+
   ollama-init:
-    image: ollama/ollama:${OLLAMA_VERSION:-0.32.0}
+    image: ollama/ollama:0.32.0
     environment:
       OLLAMA_HOST: ollama:11434
       QWEN_MODEL: ${QWEN_MODEL:-qwen2.5}
@@ -41,20 +42,21 @@ services:
           "$$GEMMA_MODEL"
         do
           if ollama show "$$model" >/dev/null 2>&1; then
-            echo "Modelo ya disponible: $$model"
+            echo "Model available: $$model"
           else
-            echo "Descargando modelo: $$model"
+            echo "Downloading model: $$model"
             ollama pull "$$model"
           fi
         done
 
-        echo "Todos los modelos de P2MC están disponibles."
+        echo "All P2MC models are available."
     depends_on:
       ollama:
         condition: service_healthy
     networks:
       - p2mc-network
     restart: "no"
+
 
   grobid:
     image: grobid/grobid:0.9.0-full
@@ -64,31 +66,107 @@ services:
       - p2mc-network
     restart: unless-stopped
 
-  # backend:
-  #   build:
-  #     context: ./backend
-  #   depends_on:
-  #     ollama-init:
-  #       condition: service_completed_successfully
-  #     grobid:
-  #       condition: service_started
-  #   networks:
-  #     - p2mc-network
-  #   restart: unless-stopped
 
-  # frontend:
-  #   build:
-  #     context: ./frontend
-  #   depends_on:
-  #     ollama-init:
-  #       condition: service_completed_successfully
-  #     grobid:
-  #       condition: service_started
-  #   networks:
-  #     - p2mc-network
-  #   restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+    - "5672:5672"
+    - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: password123
+    volumes:
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    networks:
+      - p2mc-network
+
+
+  p2mc-worker:
+    image: p2mc-backend
+    working_dir: /app
+    command: ["python", "-m", "backend.worker"]
+
+    environment:
+      DATA_DIR: /app/data
+      P2MC_USE_DUMMY_WORKER: "false"
+
+      OLLAMA_HOST: http://ollama:11434
+      GROBID_URL: http://grobid:8070
+
+      QWEN_MODEL: ${QWEN_MODEL:-qwen2.5}
+      LLAMA_MODEL: ${LLAMA_MODEL:-llama3.1:8b}
+      GEMMA_MODEL: ${GEMMA_MODEL:-gemma4:e4b}
+
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASSWORD: password123
+
+      HF_TOKEN: ${HF_TOKEN:-}
+
+    volumes:
+      - ./backend/data:/app/data
+      - huggingface-cache:/root/.cache/huggingface
+
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
+      grobid:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+
+    restart: unless-stopped
+
+    networks:
+      - p2mc-network
+
+    
+
+  p2mc-backend:
+    image: p2mc-backend
+    environment:
+      - DATA_DIR=/app/data
+      - OLLAMA_HOST=http://ollama:11434
+      - GROBID_URL=http://grobid:8070
+      - QWEN_MODEL=${QWEN_MODEL:-qwen2.5}
+      - LLAMA_MODEL=${LLAMA_MODEL:-llama3.1:8b}
+      - GEMMA_MODEL=${GEMMA_MODEL:-gemma4:e4b}
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_USER=admin
+      - RABBITMQ_PASSWORD=password123
+      - HF_TOKEN=${HF_TOKEN}
+    volumes:
+      - ./backend/data:/app/data
+      - huggingface-cache:/root/.cache/huggingface
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
+      grobid:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    networks:
+      - p2mc-network
+
+
+  p2mc-frontend:
+    image: p2mc-frontend
+    build:
+      context: ./frontend
+    ports:
+      - "5678:8501"
+    networks:
+      - p2mc-network
+    restart: unless-stopped
+
+
+
 volumes:
   ollama-data:
+  huggingface-cache:
 
 networks:
   p2mc-network:
