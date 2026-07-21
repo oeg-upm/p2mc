@@ -1,0 +1,182 @@
+services:
+  ollama:
+    image: ollama/ollama:0.32.0
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - p2mc-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "OLLAMA_HOST=127.0.0.1:11434 ollama list >/dev/null 2>&1"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+
+  ollama-init:
+    image: ollama/ollama:0.32.0
+    environment:
+      OLLAMA_HOST: ollama:11434
+      QWEN_MODEL: ${QWEN_MODEL:-qwen2.5}
+      LLAMA_MODEL: ${LLAMA_MODEL:-llama3.1:8b}
+      GEMMA_MODEL: ${GEMMA_MODEL:-gemma4:e4b}
+    entrypoint:
+      - /bin/sh
+      - -c
+    command:
+      - |
+        set -eu
+
+        for model in \
+          "$$QWEN_MODEL" \
+          "$$LLAMA_MODEL" \
+          "$$GEMMA_MODEL"
+        do
+          if ollama show "$$model" >/dev/null 2>&1; then
+            echo "Model available: $$model"
+          else
+            echo "Downloading model: $$model"
+            ollama pull "$$model"
+          fi
+        done
+
+        echo "All P2MC models are available."
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - p2mc-network
+    restart: "no"
+
+
+  grobid:
+  # image: grobid/grobid:0.9.0-full (when more disk space & gpu)
+    image: grobid/grobid:0.9.0-crf
+    ports:
+      - "127.0.0.1:8070:8070"
+    networks:
+      - p2mc-network
+    restart: unless-stopped
+
+
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+    - "5672:5672"
+    - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: password123
+    volumes:
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    networks:
+      - p2mc-network
+
+
+  p2mc-worker:
+    image: p2mc-backend
+    working_dir: /app
+    command: ["python", "-m", "backend.worker"]
+
+    environment:
+      DATA_DIR: /app/data
+      P2MC_USE_DUMMY_WORKER: "false"
+
+      OLLAMA_HOST: http://ollama:11434
+      GROBID_URL: http://grobid:8070
+
+      QWEN_MODEL: ${QWEN_MODEL:-qwen2.5}
+      LLAMA_MODEL: ${LLAMA_MODEL:-llama3.1:8b}
+      GEMMA_MODEL: ${GEMMA_MODEL:-gemma4:e4b}
+
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASSWORD: password123
+
+      HF_TOKEN: ${HF_TOKEN:-}
+      P2MC_LIGHTOCR_TARGET_LONGEST: ${P2MC_LIGHTOCR_TARGET_LONGEST:-1024}
+      P2MC_LIGHTOCR_MAX_NEW_TOKENS: ${P2MC_LIGHTOCR_MAX_NEW_TOKENS:-1024}
+
+    volumes:
+      - ./backend/data:/app/data
+      - huggingface-cache:/root/.cache/huggingface
+
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
+      grobid:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+
+    restart: unless-stopped
+
+    networks:
+      - p2mc-network
+
+    
+
+  p2mc-backend:
+    image: p2mc-backend
+    environment:
+      - DATA_DIR=/app/data
+      - OLLAMA_HOST=http://ollama:11434
+      - GROBID_URL=http://grobid:8070
+      - QWEN_MODEL=${QWEN_MODEL:-qwen2.5}
+      - LLAMA_MODEL=${LLAMA_MODEL:-llama3.1:8b}
+      - GEMMA_MODEL=${GEMMA_MODEL:-gemma4:e4b}
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_USER=admin
+      - RABBITMQ_PASSWORD=password123
+      - HF_TOKEN=${HF_TOKEN}
+    volumes:
+      - ./backend/data:/app/data
+      - huggingface-cache:/root/.cache/huggingface
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
+      grobid:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    networks:
+      - p2mc-network
+
+
+  p2mc-frontend:
+    image: p2mc-frontend
+    build:
+      context: ./frontend
+    environment:
+      P2MC_API_URL: http://p2mc-backend:8000
+    depends_on:
+      p2mc-backend:
+        condition: service_started
+    ports:
+      - "5678:8501"
+    networks:
+      - p2mc-network
+    restart: unless-stopped
+
+
+
+
+volumes:
+  ollama-data:
+  huggingface-cache:
+
+networks:
+  p2mc-network:
+    driver: bridge
