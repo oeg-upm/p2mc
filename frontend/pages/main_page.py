@@ -10,6 +10,16 @@ from services.p2mc_api import (
     upload_pdf,
 )
 
+import base64
+from io import BytesIO
+
+def get_image_base64(img):
+    """Convierte un objeto PIL Image a string Base64"""
+    buffered = BytesIO()
+    # Si standardize_image devuelve un array de numpy, conviértelo a PIL primero con Image.fromarray(img)
+    img.save(buffered, format="PNG") 
+    return base64.b64encode(buffered.getvalue()).decode()
+
 
 if "selected_example" not in st.session_state:
     st.session_state.selected_example = None
@@ -180,11 +190,11 @@ IMAGE_DIR = ASSETS_DIR / "paper_front_pages"
 
 
 ejemplos = [
-    {"title": "M-Walk", "key": "btn_ex_1", "model": "M-Walk", "json_path": JSON_DIR / "example1.json", "xml_path": XML_DIR / "example1.xml", "ocr_path": OCR_DIR / "example1.json", "image_path": IMAGE_DIR / "example1.png"},
-    {"title": "KBGAN", "key": "btn_ex_2", "model": "KBGAN", "json_path": JSON_DIR / "example2.json", "xml_path": XML_DIR / "example2.xml", "ocr_path": OCR_DIR / "example2.json", "image_path": IMAGE_DIR / "example2.png"},
-    {"title": "ParTrans-X", "key": "btn_ex_3", "model": "ParTrans-X", "json_path": JSON_DIR / "example3.json", "xml_path": XML_DIR / "example3.xml", "ocr_path": OCR_DIR / "example3.json", "image_path": IMAGE_DIR / "example3.png"},
-    {"title": "ConvKB", "key": "btn_ex_4", "model": "ConvKB", "json_path": JSON_DIR / "example4.json", "xml_path": XML_DIR / "example4.xml", "ocr_path": OCR_DIR / "example4.json", "image_path": IMAGE_DIR / "example4.png"},
-    {"title": "ConvE", "key": "btn_ex_5", "model": "ConvE", "json_path": JSON_DIR / "example5.json", "xml_path": XML_DIR / "example5.xml", "ocr_path": OCR_DIR / "example5.json", "image_path": IMAGE_DIR / "example5.png"},
+    {"title": "M-Walk", "key": "btn_ex_1", "model": "M-Walk", "url":"https://arxiv.org/pdf/1802.04394" , "json_path": JSON_DIR / "example1.json", "xml_path": XML_DIR / "example1.xml", "ocr_path": OCR_DIR / "example1.json", "image_path": IMAGE_DIR / "example1.png"},
+    {"title": "KBGAN", "key": "btn_ex_2", "model": "KBGAN", "url":"https://arxiv.org/pdf/1711.04071","json_path": JSON_DIR / "example2.json", "xml_path": XML_DIR / "example2.xml", "ocr_path": OCR_DIR / "example2.json", "image_path": IMAGE_DIR / "example2.png"},
+    {"title": "ParTrans-X", "key": "btn_ex_3","url":"https://arxiv.org/pdf/1703.10316", "model": "ParTrans-X", "json_path": JSON_DIR / "example3.json", "xml_path": XML_DIR / "example3.xml", "ocr_path": OCR_DIR / "example3.json", "image_path": IMAGE_DIR / "example3.png"},
+    {"title": "ConvKB", "key": "btn_ex_4", "url":"https://arxiv.org/pdf/1712.02121", "model": "ConvKB", "json_path": JSON_DIR / "example4.json", "xml_path": XML_DIR / "example4.xml", "ocr_path": OCR_DIR / "example4.json", "image_path": IMAGE_DIR / "example4.png"},
+    {"title": "ConvE", "key": "btn_ex_5", "url":"https://arxiv.org/pdf/1707.01476", "model": "ConvE", "json_path": JSON_DIR / "example5.json", "xml_path": XML_DIR / "example5.xml", "ocr_path": OCR_DIR / "example5.json", "image_path": IMAGE_DIR / "example5.png"},
 ]
 
 columnas = st.columns(5)
@@ -194,8 +204,19 @@ for col, ej in zip(columnas, ejemplos):
         st.write(f"**{ej['model']}**")
         
         img_uniforme = standardize_image(ej["image_path"])
-        st.image(img_uniforme, width='stretch')
-
+        
+        # 1. Convertimos la imagen a base64
+        img_b64 = get_image_base64(img_uniforme)
+        
+        # 2. Creamos el HTML con el enlace (target="_blank" para abrir en pestaña nueva)
+        html_code = f"""
+            <a href="{ej['url']}" target="_blank">
+                <img src="data:image/png;base64,{img_b64}" style="width: 100%; border-radius: 5px; cursor: pointer; margin-bottom: 15px;">
+            </a>
+        """
+        
+        # 3. Lo pintamos permitiendo HTML inseguro
+        st.markdown(html_code, unsafe_allow_html=True)
         if st.button("Show ModelCard", key=ej["key"], type="primary", width='stretch'):
             st.session_state.selected_example = ej["model"]
             st.session_state.selected_json_path = ej["json_path"]
