@@ -175,6 +175,17 @@ def render_card(
         st.code(card_json, language="json")
 
 
+def job_label(job: dict[str, Any]) -> str:
+    if job.get("source_type") == "upload":
+        return str(
+            job.get("original_filename")
+            or job.get("document_id")
+            or "-"
+        )
+
+    return str(job.get("arxiv_id") or "-")
+
+
 def render_job_status_panel(
     job: dict[str, Any],
     *,
@@ -220,7 +231,20 @@ def render_job_status_panel(
         render_status(str(current_job.get("status", "unknown")))
         render_pipeline_stage(current_job.get("pipeline_stage"))
 
-        st.write(f"**arXiv ID:** {current_job.get('arxiv_id', '-')}")
+        source_type = current_job.get("source_type")
+        original_filename = current_job.get("original_filename")
+        document_id = current_job.get("document_id")
+
+        if source_type:
+            st.write(f"**Source:** {source_type}")
+
+        if original_filename:
+            st.write(f"**Original filename:** {original_filename}")
+
+        if document_id and source_type == "upload":
+            st.write(f"**Document ID:** `{document_id}`")
+
+        st.write(f"**arXiv ID/Filename:** {job_label(current_job)}")
         st.write(f"**PDF URL:** {current_job.get('url', '-')}")
 
         for label, key in [

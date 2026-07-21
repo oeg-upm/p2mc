@@ -3,7 +3,12 @@ from pathlib import Path
 from PIL import Image, ImageOps
 
 from components.job_status import render_job_status_panel
-from services.p2mc_api import P2MCAPIError, launch_job
+from services.p2mc_api import (
+    P2MCAPIError,
+    get_job_status,
+    launch_job,
+    upload_pdf,
+)
 
 
 if "selected_example" not in st.session_state:
@@ -23,6 +28,10 @@ if "selected_artifact_language" not in st.session_state:
 
 if "current_job" not in st.session_state:
     st.session_state.current_job = None
+
+if "last_pdf_upload" not in st.session_state:
+    st.session_state.last_pdf_upload = None
+
 
 BASE_DIR = Path(__file__).parent.parent
 ASSETS_DIR = BASE_DIR / "assets"
@@ -73,9 +82,13 @@ st.markdown(
     f'<div style="text-align: justify;">{texto_abstract}</div>', 
     unsafe_allow_html=True
 )
-
-
 st.divider()
+
+st.info(
+    "We do not keep pdfs uploaded to P2MC."
+)
+
+
 st.subheader("Execution Demo", anchor=False)
 st.write("For executing the pipeline introduce a paper URL and click the button.")
 
@@ -96,6 +109,52 @@ with st.form("my_form"):
             except P2MCAPIError as exc:
                 st.error(str(exc))
 
+
+st.write("Or upload a PDF from your computer.")
+
+
+with st.form(
+    "pdf_upload_form",
+    clear_on_submit=True,
+):
+    uploaded_pdf = st.file_uploader(
+        "Upload PDF",
+        type=["pdf"],
+        accept_multiple_files=False,
+    )
+
+    upload_submitted = st.form_submit_button(
+        "Upload PDF"
+    )
+
+    if upload_submitted:
+        if uploaded_pdf is None:
+            st.warning("Please select a PDF file.")
+        else:
+            try:
+                with st.spinner("Uploading PDF..."):
+                    st.session_state.last_pdf_upload = (
+                        upload_pdf(uploaded_pdf)
+                    )
+                    st.session_state.current_job = get_job_status(
+                        st.session_state.last_pdf_upload["job_id"]
+                    )
+
+            except P2MCAPIError as exc:
+                st.error(str(exc))
+
+if st.session_state.last_pdf_upload:
+    uploaded = st.session_state.last_pdf_upload
+
+    st.success(
+        f"PDF uploaded: "
+        f"{uploaded['original_filename']} "
+        f"({uploaded['size_bytes']} bytes)"
+    )
+
+    st.write("**Document ID:**")
+
+    st.code(uploaded["document_id"])
 if st.session_state.current_job:
     st.session_state.current_job = render_job_status_panel(
         st.session_state.current_job,

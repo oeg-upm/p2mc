@@ -9,6 +9,7 @@ import httpx
 
 API_URL = os.getenv("P2MC_API_URL", "http://localhost:8000").rstrip("/")
 LAUNCH_JOB_PATH = "/job/launch-job"
+UPLOAD_PDF_PATH = "/job/upload-pdf"
 JOBS_LIST_PATH = "/job/jobs"
 JOB_STATUS_PATH = "/job/job-status/{job_id}"
 ARTIFACT_PATH = "/job/{job_id}/artifacts/{artifact_name}"
@@ -40,6 +41,49 @@ def launch_job(url: str) -> dict[str, Any]:
 
     except httpx.HTTPStatusError as exc:
         raise P2MCAPIError(_extract_error_detail(exc.response)) from exc
+
+    except httpx.RequestError as exc:
+        raise P2MCAPIError(
+            "Could not connect to the P2MC API."
+        ) from exc
+
+def upload_pdf(
+    uploaded_file: Any,
+) -> dict[str, Any]:
+    filename = getattr(
+        uploaded_file,
+        "name",
+        "uploaded.pdf",
+    )
+
+    content_type = (
+        getattr(uploaded_file, "type", None)
+        or "application/pdf"
+    )
+
+    files = {
+        "file": (
+            filename,
+            uploaded_file.getvalue(),
+            content_type,
+        ),
+    }
+
+    try:
+        response = httpx.post(
+            f"{API_URL}{UPLOAD_PDF_PATH}",
+            files=files,
+            timeout=60.0,
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    except httpx.HTTPStatusError as exc:
+        raise P2MCAPIError(
+            _extract_error_detail(exc.response)
+        ) from exc
 
     except httpx.RequestError as exc:
         raise P2MCAPIError(

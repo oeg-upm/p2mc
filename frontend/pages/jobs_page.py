@@ -27,16 +27,25 @@ def load_jobs() -> None:
         st.session_state.jobs_list = list_jobs().get("jobs", [])
 
 
+def job_label(job: dict) -> str | None:
+    if job.get("source_type") == "upload":
+        return job.get("original_filename") or job.get("document_id")
+
+    return job.get("arxiv_id")
+
+
 def build_job_table_rows(jobs: list[dict]) -> list[dict]:
     return [
         {
+            "Source": job.get("source_type"),
+            "Document ID": job.get("document_id"),
+            "arXiv ID/Filename": job_label(job),
             "Stage": (
                 job.get("pipeline_stage", {}).get("label")
                 if isinstance(job.get("pipeline_stage"), dict)
                 else None
             ),
             "Status": job.get("status"),
-            "arXiv ID": job.get("arxiv_id"),
             "Updated": job.get("updated_at"),
             "Completed": job.get("completed_at"),
             "Job ID": job.get("job_id"),

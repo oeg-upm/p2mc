@@ -213,16 +213,30 @@ class PDFHandler:
             xml_path = self._xml_dir / f"{paper_id}.xml"
             json_path = self._json_dir / f"{paper_id}.json"
             modelcard_path = self._modelcards_dir / f"{paper_id}_modelcard.json"
-    
-            self._emit_stage(
-                on_stage,
-                "downloading_pdf",
-                "Downloading PDF",
-                2,
-            )
-            self._log(f"PDFHandler: downloading PDF to {pdf_path}")
-            self._download_pdf(pdf_url, pdf_path)
-            self._log(f"PDFHandler: PDF downloaded at {pdf_path}")
+            if pdf_path.is_file():
+                self._emit_stage(
+                    on_stage,
+                    "using_existing_pdf",
+                    "Using existing PDF",
+                    2,
+                )
+
+                self._log(
+                    f"PDFHandler: PDF already exists at {pdf_path}. "
+                    "Skipping download."
+                )
+                
+            
+            else:
+                self._emit_stage(
+                    on_stage,
+                    "downloading_pdf",
+                    "Downloading PDF",
+                    2,
+                )
+                self._log(f"PDFHandler: downloading PDF to {pdf_path}")
+                self._download_pdf(pdf_url, pdf_path)
+                self._log(f"PDFHandler: PDF downloaded at {pdf_path}")
 
             self._emit_stage(
                 on_stage,
