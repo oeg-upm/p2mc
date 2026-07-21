@@ -1,10 +1,11 @@
 import json
 import os
+import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, File, UploadFile
 from pydantic import ValidationError
 
 from backend import DATA_DIR
@@ -15,6 +16,7 @@ from backend.app.schemas import (
     JobsListResponse,
     JobSummaryResponse,
     StatusJobResponse,
+    UploadedPDFResponse,
     parse_arxiv_url,
 )
 from backend.rabbitmq import RabbitMQPublishError, publish_job
@@ -22,6 +24,10 @@ from backend.rabbitmq import RabbitMQPublishError, publish_job
 
 router = APIRouter()
 PIPELINE_TOTAL_STEPS = 7
+
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+UPLOAD_CHUNK_SIZE = 1024 * 1024
+
 VIEWABLE_ARTIFACTS = {
     "xml": "application/xml",
     "lightocr_json": "application/json",
@@ -140,8 +146,14 @@ def get_existing_job_status(job_id: str) -> StatusJobResponse:
 def build_job_summary(status: StatusJobResponse) -> JobSummaryResponse:
     return JobSummaryResponse(
         job_id=status.job_id,
+        source_type=status.source_type,
+        document_id=status.document_id,
         arxiv_id=status.arxiv_id,
         url=status.url,
+        original_filename=status.original_filename,
+        stored_filename=status.stored_filename,
+        pdf_path=status.pdf_path,
+        size_bytes=status.size_bytes,
         status=status.status,
         created_at=status.created_at,
         started_at=status.started_at,
@@ -218,18 +230,38 @@ def write_status_atomic(
         temporary_path.unlink(missing_ok=True)
 
 
-def build_queued_status(
+def create_initial_status_json(
     job_id: str,
-    arxiv_id: str,
-    pdf_url: str,
+    source_type: str,
+    status: str,
+    *,
+    document_id: str | None = None,
+    arxiv_id: str | None = None,
+    url: str | None = None,
+    original_filename: str | None = None,
+    stored_filename: str | None = None,
+    pdf_path: str | None = None,
 ) -> dict:
     created_at = utc_now()
 
-    return {
+    stage_label = {
+        "queued": "Queued",
+        "uploaded": "PDF uploaded",
+    }.get(
+        status,
+        status.replace("_", " ").title(),
+    )
+
+    status_data = {
         "job_id": job_id,
+        "source_type": source_type,
+        "document_id": document_id,
         "arxiv_id": arxiv_id,
-        "url": pdf_url,
-        "status": "queued",
+        "url": url,
+        "original_filename": original_filename,
+        "stored_filename": stored_filename,
+        "pdf_path": pdf_path,
+        "status": status,
         "created_at": created_at,
         "started_at": None,
         "updated_at": created_at,
@@ -238,10 +270,17 @@ def build_queued_status(
         "artifacts": None,
         "card": None,
         "pipeline_stage": build_pipeline_stage(
-            "queued",
-            "Queued",
+            status,
+            stage_label,
         ),
     }
+
+    write_status_atomic(
+        get_status_path(job_id),
+        status_data,
+    )
+
+    return status_data
 
 
 def build_cached_completed_status(
@@ -293,8 +332,14 @@ def launch_job(asked_job: AskedJob):
         write_status_atomic(status_path, completed_status)
         return AskedJobResponse(**completed_status)
 
-    queued_status = build_queued_status(job_id, arxiv_id, pdf_url)
-    write_status_atomic(status_path, queued_status)
+    queued_status = create_initial_status_json(
+    job_id,
+    "arxiv",
+    "queued",
+    document_id=arxiv_id,
+    arxiv_id=arxiv_id,
+    url=pdf_url,
+)
 
     try:
         publish_job(pdf_url, job_id, arxiv_id)
@@ -325,6 +370,128 @@ def launch_job(asked_job: AskedJob):
         ) from exc
 
     return AskedJobResponse(**queued_status)
+
+
+
+@router.post("/upload-pdf",response_model=UploadedPDFResponse,status_code=201)
+async def upload_pdf(file: UploadFile = File(...),) -> UploadedPDFResponse:
+
+    original_filename = Path(file.filename or "uploaded.pdf").name
+
+    if not original_filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400,detail="Only PDF files are accepted.",)
+
+    upload_dir = DATA_DIR / "raw" / "pdfs"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    job_id = str(uuid4())
+    temporary_path = upload_dir / f".{job_id}.upload"
+
+    digest = hashlib.sha256()
+    size_bytes = 0
+    first_chunk = True
+
+    try:
+        with temporary_path.open("wb") as output_file:
+            while chunk := await file.read(UPLOAD_CHUNK_SIZE):
+                if first_chunk:
+                    first_chunk = False
+
+                    if not chunk.startswith(b"%PDF-"):
+                        raise HTTPException(status_code=400,detail=(
+                            "The uploaded file is not ""a valid PDF."
+                            )
+                        )
+
+                size_bytes += len(chunk)
+
+                if size_bytes > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413,detail=(
+                            "The PDF exceeds the ""50 MB upload limit."
+                        )
+                    )
+
+                digest.update(chunk)
+                output_file.write(chunk)
+
+        if size_bytes == 0:
+            raise HTTPException(status_code=400,
+                                detail="The uploaded PDF is empty."
+            )
+
+        document_id = f"upload-{digest.hexdigest()}"
+        numeric_id = int(digest.hexdigest(), 16) % 100_000_000
+
+        paper_id = (
+            f"{9000 + numeric_id // 100_000:04d}."
+            f"{numeric_id % 100_000:05d}"
+        )
+
+        pdf_url = f"https://upload.p2mc.local/{paper_id}"
+
+        final_filename = f"{paper_id}.pdf"
+        final_path = upload_dir / final_filename
+
+        os.replace(temporary_path, final_path)
+
+        pdf_path = str(final_path.relative_to(DATA_DIR))
+
+        queued_status = create_initial_status_json(
+            job_id,
+            "upload",
+            "queued",
+            document_id=document_id,
+            arxiv_id=paper_id,
+            url=pdf_url,
+            original_filename=original_filename,
+            stored_filename=final_filename,
+            pdf_path=pdf_path,
+        )
+
+        try:
+            publish_job(pdf_url, job_id, paper_id)
+
+        except RabbitMQPublishError as exc:
+            failed_at = utc_now()
+
+            write_status_atomic(
+                get_status_path(job_id),
+                {
+                    **queued_status,
+                    "status": "failed",
+                    "updated_at": failed_at,
+                    "completed_at": failed_at,
+                    "error": {
+                        "type": type(exc).__name__,
+                        "message": str(exc),
+                    },
+                    "pipeline_stage": build_pipeline_stage(
+                        "failed",
+                        "Failed to enqueue job",
+                        detail=str(exc),
+                    ),
+                },
+            )
+
+            raise HTTPException(
+                status_code=503,
+                detail=str(exc),
+            ) from exc
+
+
+    finally:
+        temporary_path.unlink(missing_ok=True)
+        await file.close()
+
+    return UploadedPDFResponse(
+    job_id=job_id,
+    document_id=document_id,
+    original_filename=original_filename,
+    stored_filename=final_filename,
+    pdf_path=str(final_path.relative_to(DATA_DIR)),
+    size_bytes=size_bytes,
+    status=queued_status["status"]
+)
 
 
 @router.get("/jobs", response_model=JobsListResponse)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, HttpUrl, field_validator
 
@@ -80,13 +80,23 @@ class ArtifactContentResponse(BaseModel):
 
 class StatusJobResponse(BaseModel):
     job_id: str
-    arxiv_id: str
-    url: HttpUrl
+    source_type: Literal["arxiv", "upload"] = "arxiv"
+    document_id: str | None = None
+
+    arxiv_id: str | None = None
+    url: HttpUrl | None = None
+
+    original_filename: str | None = None
+    stored_filename: str | None = None
+    pdf_path: str | None = None
+    size_bytes: int | None = None
+
     status: str
     created_at: str
     started_at: str | None = None
     updated_at: str
     completed_at: str | None = None
+
     error: StatusError | None = None
     artifacts: dict[str, str] | None = None
     card: dict[str, Any] | None = None
@@ -95,16 +105,36 @@ class StatusJobResponse(BaseModel):
 
 class JobSummaryResponse(BaseModel):
     job_id: str
-    arxiv_id: str
-    url: HttpUrl
+    source_type: Literal["arxiv", "upload"] = "arxiv"
+    document_id: str | None = None
+
+    arxiv_id: str | None = None
+    url: HttpUrl | None = None
+
+    original_filename: str | None = None
+    stored_filename: str | None = None
+    pdf_path: str | None = None
+    size_bytes: int | None = None
+
     status: str
     created_at: str
     started_at: str | None = None
     updated_at: str
     completed_at: str | None = None
+
     error: StatusError | None = None
     pipeline_stage: PipelineStage | None = None
 
 
 class JobsListResponse(BaseModel):
     jobs: list[JobSummaryResponse]
+
+
+class UploadedPDFResponse(BaseModel):
+    job_id: str
+    document_id: str
+    original_filename: str
+    stored_filename: str
+    pdf_path: str
+    size_bytes: int
+    status: str

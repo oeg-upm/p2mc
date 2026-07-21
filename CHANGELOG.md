@@ -41,5 +41,8 @@
 - Deferred the `transformers` import used by `QwenExtractor` so importing the shared LLM extractor module does not load Transformers unless that extractor is instantiated
 
 
-## Issues fixed
+## Issues fixed (more details on the pr)
+https://github.com/oeg-upm/p2mc/issues/2
 https://github.com/oeg-upm/p2mc/issues/4
+https://github.com/oeg-upm/p2mc/issues/5
+https://github.com/oeg-upm/p2mc/issues/6

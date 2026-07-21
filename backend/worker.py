@@ -232,6 +232,7 @@ def process_job(message: dict[str, Any], pdf_handler: PDFHandler) -> None:
     started_at = utc_now()
 
     processing_status = {
+        **previous_status,
         "job_id": job_id,
         "arxiv_id": arxiv_id,
         "url": url,
@@ -492,6 +493,7 @@ def process_job_dummy(message: dict[str, Any]) -> None:
     started_at = utc_now()
 
     processing_status = {
+        **previous_status,
         "job_id": job_id,
         "arxiv_id": arxiv_id,
         "url": url,
@@ -535,11 +537,12 @@ def process_job_dummy(message: dict[str, Any]) -> None:
 
         # PDF ficticio. No es un PDF real, solo sirve para comprobar
         # que el worker crea el archivo y registra su ruta.
-        artifact_paths["pdf"].write_bytes(
-            b"%PDF-1.4\n"
-            b"% Dummy P2MC PDF\n"
-            b"%%EOF\n"
-        )
+        if not artifact_paths["pdf"].is_file():
+            artifact_paths["pdf"].write_bytes(
+                b"%PDF-1.4\n"
+                b"% Dummy P2MC PDF\n"
+                b"%%EOF\n"
+            )
 
         artifact_paths["xml"].write_text(
             (

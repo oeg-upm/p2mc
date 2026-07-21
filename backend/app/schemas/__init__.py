@@ -5,5 +5,6 @@ from .jobs import (
     JobsListResponse,
     JobSummaryResponse,
     StatusJobResponse,
+    UploadedPDFResponse,
     parse_arxiv_url,
 )
