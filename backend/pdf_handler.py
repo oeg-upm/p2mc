@@ -31,7 +31,6 @@ class PDFHandler:
         self._log("PDFHandler: initializing SciPdfParser")
         self._scipdf_parser = SciPdfParser()
         self._llama = LlamaExtractor()
-        self._xml_parser = XMLParser(xml_path)
         self._log("PDFHandler: SciPdfParser ready")
         
 
@@ -163,11 +162,13 @@ class PDFHandler:
         if not xml_path.exists():
             raise FileNotFoundError(f"SciPDF XML not found at {xml_path}. Unable to extract values from it.")
 
-        title = self._xml_parser.get_title()
-        full_text = self._xml_parser.get_full_text()
-        abstract = self._xml_parser.get_abstract()
-        authors = self._xml_parser.get_authors()
-        section_dict = self._xml_parser.get_sections(target_sections=['Experiments','Evaluation','Results'])
+        xml_parser = XMLParser(xml_path)
+
+        title = xml_parser.get_title()
+        full_text = xml_parser.get_full_text()
+        abstract = xml_parser.get_abstract()
+        authors = xml_parser.get_authors()
+        section_dict = xml_parser.get_sections(target_sections=['Experiments','Evaluation','Results'])
         sections = "\n\n".join(section_dict.values())
         
         tables = []
@@ -252,7 +253,8 @@ class PDFHandler:
             self._log(f"PDFHandler: SciPDF XML ready at {xml_path}")
 
             self._log(f"PDFHandler: Checking model name")
-            extracted_names = self._llama.extract(self._xml_parser.get_full_text(),
+            xml_parser = XMLParser(xml_path)
+            extracted_names = self._llama.extract(xml_parser.get_full_text(),
                                                   question="What is the name of the model presented in this paper?")
             if extracted_names:
                 self._emit_stage(
