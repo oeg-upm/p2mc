@@ -58,7 +58,8 @@ class ModelCardGenerator:
         self._llama = LlamaExtractor()
         # self._gliner_dataset_extractor = GlinerDatasetExtractor()
         # self._gliner_metric_extractor = GlinerMetricExtractor()
-        # self._qwen_metric_extractor = QwenMetricExtractor()
+        self._log("ModelCardGenerator: initializing Qwen metrics extractor")
+        self._qwen_metric_extractor = QwenMetricExtractor()
         # self._llama_dataset_extractor = LlamaDatasetExtractor()
         self._log("ModelCardGenerator: initializing Qwen dataset extractor")
         self._qwen_dataset_extractor = QwenDatasetExtractor()
@@ -232,6 +233,30 @@ class ModelCardGenerator:
                 "name": dataset,
             }
             jsonld["evaluatedOn"].append(dataset_data)
+
+        # Metric extraction and identification
+        self._log("ModelCardGenerator: extracting metrics")
+        dataset_context = sections or full_text or abstract or ""
+        extracted_metrics = self._qwen_metric_extractor.extract(
+            dataset_context,
+            tsv_tables,
+        )
+        self._log(
+            "ModelCardGenerator: "
+            f"metrics extracted={len(extracted_metrics)}"
+        )
+        for metric in extracted_metrics:
+            self._log(f"ModelCardGenerator: resolving dataset URI for {metric}")
+
+            metric_uri = self._uri_fetcher.guess_metric_uri(metric)
+            if not metric_uri:
+                metric_uri = self._uri_builder.build_dataset_uri(metric)
+
+            metric_data = {
+                "@id": metric_uri,
+                "name": metric,
+            }
+            jsonld["evaluatedOn"].append(metric_data)
 
         self._log("ModelCardGenerator: classifying model category")
         extracted_category = self._extract_classification(abstract)

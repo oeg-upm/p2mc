@@ -53,7 +53,7 @@ st.title(
 
 # Este es el contenedor para los autores, cada uno enlazado a su ORCID.
 autores = [
-    {"name": "Mateo Campaya-Pinto", "orcid": ""},
+    {"name": "Mateo Campaya-Pinto", "orcid": "https://orcid.org/0009-0001-0901-5562"},
     {"name": "Elvira Amador-Dominguez", "orcid": "https://orcid.org/0000-0001-6838-1266"},
     {"name": "Erick Cedeño", "orcid": "https://orcid.org/0009-0004-4478-6890"},
     {"name": "Daniel Garijo", "orcid": "https://orcid.org/0000-0003-0454-7145"},

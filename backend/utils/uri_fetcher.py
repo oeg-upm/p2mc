@@ -316,12 +316,45 @@ class UriFetcher:
         else:
             return None
 
+    import re
 
+    def guess_metric_uri(self, metric_name):
 
+        # Given that LPWC follows an easily predictable way of naming its URIs for datasets we use the same format to "guess" the URI, which we then check with LPWC
+        slug = re.sub(r'[^a-z0-9]+', '-', metric_name.lower()).strip('-')
 
+        predicted_uri = f"https://linkedpaperswithcode.com/metric/{slug}"
 
+        query = f"ASK {{ <{predicted_uri}> ?p ?o }}"
+        headers = {
+            "Accept": "application/sparql-results+json"
+        }
 
+        try:
+            response = requests.get(
+                self.LPWC_ENDPOINT,
+                params={"query": query},
+                headers=headers,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except (
+                requests.exceptions.RequestException,
+                ValueError,
+        ) as e:
+            print(
+                "Connection error when trying to check guessed metric URI "
+                f"for {metric_name}: {e}"
+            )
+            return None
 
+        exists = data.get("boolean", False)
+
+        if exists:
+            return predicted_uri
+        else:
+            return None
 
 
 """
