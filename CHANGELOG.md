@@ -39,3 +39,7 @@
 - Changed ModelCard generation to instantiate `ModelCardGenerator` only after PDF/XML/OCR artifacts have been extracted, then release it after the ModelCard is produced.
 - Stopped active initialization of unused ModelCard extractors while leaving their imports and constructor lines commented for future reactivation
 - Deferred the `transformers` import used by `QwenExtractor` so importing the shared LLM extractor module does not load Transformers unless that extractor is instantiated
+
+
+## Issues fixed
+https://github.com/oeg-upm/p2mc/issues/4

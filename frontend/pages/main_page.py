@@ -57,6 +57,7 @@ autores = [
     {"name": "Elvira Amador-Dominguez", "orcid": "https://orcid.org/0000-0001-6838-1266"},
     {"name": "Erick Cedeño", "orcid": "https://orcid.org/0009-0004-4478-6890"},
     {"name": "Daniel Garijo", "orcid": "https://orcid.org/0000-0003-0454-7145"},
+    {"name": "Sergio Zaballos", "orcid": "https://orcid.org/0009-0000-3795-2767"}
 ]
 
 author_container = st.container(horizontal=True, horizontal_alignment="center")
