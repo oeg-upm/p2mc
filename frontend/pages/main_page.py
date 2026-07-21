@@ -62,7 +62,7 @@ st.title(
 
 # Este es el contenedor para los autores, cada uno enlazado a su ORCID.
 autores = [
-    {"name": "Mateo Campaya-Pinto", "orcid": ""},
+    {"name": "Mateo Campaya-Pinto", "orcid": "https://orcid.org/0009-0001-0901-5562"},
     {"name": "Elvira Amador-Dominguez", "orcid": "https://orcid.org/0000-0001-6838-1266"},
     {"name": "Erick Cedeño", "orcid": "https://orcid.org/0009-0004-4478-6890"},
     {"name": "Daniel Garijo", "orcid": "https://orcid.org/0000-0003-0454-7145"},
@@ -249,11 +249,9 @@ st.subheader("Acknowledgements", anchor=False)
 
 texto_agradecimientos = (
 
-    "This work has been partially supported by [NOMBRE DEL PROYECTO/AYUDA], "
+    "This work is part of the GAP-KGE project (M230020126A-EAD), which has been funded by the Comunidad de Madrid, as part of the Project Grant Línea de Actuación A, Doctores Emergentes.. The authors also acknowledge the support "
 
-    "funded by [ENTIDAD FINANCIADORA]. The authors also acknowledge the support "
-
-    "of the Ontology Engineering Group (OEG) at Universidad Politécnica de Madrid."
+    "of the Ontology Engineering Group (OEG), and the Escuela Técnica Superior de Ingenieros de Sistemas Informáticos at Universidad Politécnica de Madrid."
 
 )
 

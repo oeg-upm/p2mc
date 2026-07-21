@@ -8,6 +8,7 @@ import requests
 import traceback
 from backend.utils.XMLParser import XMLParser
 from backend.parsers.scipdf_parser import SciPdfParser
+from backend.extractors.llm_extractors import LlamaExtractor
 from typing import Any
 
 from backend import DATA_DIR
@@ -15,6 +16,7 @@ from backend import DATA_DIR
 REQUEST_TIMEOUT_SECONDS = 600
 PIPELINE_TOTAL_STEPS = 7
 StageCallback = Callable[[dict[str, Any]], None]
+
 
 
 class PDFHandler:
@@ -28,6 +30,8 @@ class PDFHandler:
 
         self._log("PDFHandler: initializing SciPdfParser")
         self._scipdf_parser = SciPdfParser()
+        self._llama = LlamaExtractor()
+        self._xml_parser = XMLParser(xml_path)
         self._log("PDFHandler: SciPdfParser ready")
         
 
@@ -158,8 +162,7 @@ class PDFHandler:
     def _extract_values(self, xml_path, json_path, arxiv_id):
         if not xml_path.exists():
             raise FileNotFoundError(f"SciPDF XML not found at {xml_path}. Unable to extract values from it.")
-            
-        self._xml_parser = XMLParser(xml_path)
+
         title = self._xml_parser.get_title()
         full_text = self._xml_parser.get_full_text()
         abstract = self._xml_parser.get_abstract()
@@ -248,19 +251,25 @@ class PDFHandler:
             self._process_with_scipdf(pdf_path, xml_path)
             self._log(f"PDFHandler: SciPDF XML ready at {xml_path}")
 
-            self._emit_stage(
-                on_stage,
-                "extracting_tables",
-                "Extracting tables with LightOCR",
-                4,
-            )
-            self._log(f"PDFHandler: processing with LightOnOCR into {json_path}")
-            self._process_with_lightocr(
-                pdf_path,
-                json_path,
-                on_progress=on_stage,
-            )
-            self._log(f"PDFHandler: LightOCR JSON ready at {json_path}")
+            self._log(f"PDFHandler: Checking model name")
+            extracted_names = self._llama.extract(self._xml_parser.get_full_text(),
+                                                  question="What is the name of the model presented in this paper?")
+            if extracted_names:
+                self._emit_stage(
+                    on_stage,
+                    "extracting_tables",
+                    "Extracting tables with LightOCR",
+                    4,
+                )
+                self._log(f"PDFHandler: processing with LightOnOCR into {json_path}")
+                self._process_with_lightocr(
+                    pdf_path,
+                    json_path,
+                    on_progress=on_stage,
+                )
+                self._log(f"PDFHandler: LightOCR JSON ready at {json_path}")
+            else:
+                open(json_path,'w+').close()
 
             self._emit_stage(
                 on_stage,
