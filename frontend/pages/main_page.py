@@ -190,11 +190,9 @@ st.subheader("Acknowledgements", anchor=False)
 
 texto_agradecimientos = (
 
-    "This work has been partially supported by [NOMBRE DEL PROYECTO/AYUDA], "
+    "This work is part of the GAP-KGE project (M230020126A-EAD), which has been funded by the Comunidad de Madrid, as part of the Project Grant Línea de Actuación A, Doctores Emergentes.. The authors also acknowledge the support "
 
-    "funded by [ENTIDAD FINANCIADORA]. The authors also acknowledge the support "
-
-    "of the Ontology Engineering Group (OEG) at Universidad Politécnica de Madrid."
+    "of the Ontology Engineering Group (OEG), and the Escuela Técnica Superior de Ingenieros de Sistemas Informáticos at Universidad Politécnica de Madrid."
 
 )
 
