@@ -236,27 +236,35 @@ class ModelCardGenerator:
 
         # Metric extraction and identification
         self._log("ModelCardGenerator: extracting metrics")
-        dataset_context = sections or full_text or abstract or ""
+        metric_context = sections or full_text or abstract or ""
         extracted_metrics = self._qwen_metric_extractor.extract(
-            dataset_context,
+            metric_context,
             tsv_tables,
         )
         self._log(
             "ModelCardGenerator: "
             f"metrics extracted={len(extracted_metrics)}"
         )
+        evaluation_metrics = []
         for metric in extracted_metrics:
-            self._log(f"ModelCardGenerator: resolving dataset URI for {metric}")
+            self._log(f"ModelCardGenerator: resolving metric URI for {metric}")
 
             metric_uri = self._uri_fetcher.guess_metric_uri(metric)
             if not metric_uri:
-                metric_uri = self._uri_builder.build_dataset_uri(metric)
+                metric_uri = self._uri_builder.build_metric_uri(metric)
 
-            metric_data = {
+            evaluation_metrics.append({
                 "@id": metric_uri,
                 "name": metric,
+            })
+
+        if evaluation_metrics:
+            jsonld["hasEvaluation"] = {
+                "@type": "fair4ml:MLModelEvaluation",
+                "evaluationMetrics": evaluation_metrics,
             }
-            jsonld["evaluatedOn"].append(metric_data)
+        else:
+            jsonld.pop("hasEvaluation", None)
 
         self._log("ModelCardGenerator: classifying model category")
         extracted_category = self._extract_classification(abstract)
@@ -311,10 +319,3 @@ class ModelCardGenerator:
         self._log("ModelCardGenerator: finished")
         return clean_jsonld
         
-
-
-
-
-
-
-
