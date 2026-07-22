@@ -270,11 +270,12 @@ st.divider()
 st.subheader("Acknowledgements", anchor=False)
 
 texto_agradecimientos = (
-
-    "This work is part of the GAP-KGE project (M230020126A-EAD), which has been funded by the Comunidad de Madrid, as part of the Project Grant Línea de Actuación A, Doctores Emergentes.. The authors also acknowledge the support "
-
-    "of the Ontology Engineering Group (OEG), and the Escuela Técnica Superior de Ingenieros de Sistemas Informáticos at Universidad Politécnica de Madrid."
-
+    "This work is part of the GAP-KGE project (M230020126A-EAD), which has been funded by the Comunidad de Madrid, "
+    "as part of the Project Grant Línea de Actuación A, Doctores Emergentes. "
+    "The work was also supported by the Predoctoral Grant PIPF-2024/COM-35132 of the Consejería de Educación, "
+    "Ciencia y Universidades de la Comunidad de Madrid, Spain. "
+    "The authors also acknowledge the support of the Ontology Engineering Group (OEG), and the Escuela Técnica "
+    "Superior de Ingenieros de Sistemas Informáticos at Universidad Politécnica de Madrid."
 )
 
 st.markdown(
