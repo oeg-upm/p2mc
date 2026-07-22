@@ -7,7 +7,7 @@ import copy
 from backend import BASE_DIR
 # from backend.extractors.gliner_dataset_extractor import GlinerDatasetExtractor
 # from backend.extractors.gliner_metric_extractor import GlinerMetricExtractor
-# from backend.extractors.qwen_metric_extractor import QwenMetricExtractor
+from backend.extractors.qwen_metric_extractor import QwenMetricExtractor
 # from backend.extractors.llama_dataset_extractor import LlamaDatasetExtractor
 from backend.extractors.qwen_dataset_extractor import QwenDatasetExtractor
 # from backend.extractors.gliner_extractor import GlinerExtractor
