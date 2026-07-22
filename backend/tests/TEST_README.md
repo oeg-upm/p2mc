@@ -64,8 +64,11 @@ Tests should not call real GROBID, LightOCR, Ollama, Hugging Face, arXiv, LPWC, 
 - `test_get_tsv_tables_accepts_nested_tables_documents_shape`: checks the alternative LightOCR shape where documents live under tables.
 - `test_clean_empty_fields_removes_nested_empty_values`: checks that empty JSON-LD values are removed recursively.
 - `test_match_tasks_deduplicates_tasks_by_matched_uri`: checks that repeated task predictions produce one JSON-LD task object.
+- `test_clean_code_repositories_keeps_only_real_repository_urls`: checks that generic domains are removed from `codeRepository` values.
 - `test_generate_modelcard_puts_metrics_under_has_evaluation`: checks that generated metrics use `hasEvaluation`, not `evaluatedOn`.
 - `test_generate_modelcard_populates_core_fields_from_fixture_data`: checks the final ModelCard core fields without loading real models.
+- `test_generate_modelcard_omits_code_repository_when_only_generic_urls_are_found`: checks generic LLM repository answers are not exported in JSON-LD.
+- `test_generate_modelcard_adds_semopenalex_link_to_reference_publication`: checks SemOpenAlex links enrich the local reference publication metadata.
 - `test_generate_modelcard_uses_sections_as_dataset_and_metric_context`: checks that target XML sections are preferred as extractor context.
 - `test_generate_modelcard_uses_full_text_when_sections_are_empty`: checks fallback context when XML has no Experiments/Evaluation/Results.
 - `test_generate_modelcard_uses_abstract_when_sections_and_full_text_are_empty`: checks the final text fallback used for dataset and metric extraction.

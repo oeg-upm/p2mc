@@ -3,6 +3,7 @@ from collections.abc import Callable
 import joblib
 import json
 import copy
+from urllib.parse import urlparse
 
 from backend import BASE_DIR
 # from backend.extractors.gliner_dataset_extractor import GlinerDatasetExtractor
@@ -137,10 +138,47 @@ class ModelCardGenerator:
         reference_publication = {
             "@type": "ScholarlyArticle",
             "@id": arxiv_id,
+            "name": soa_data.get("title"),
             "author": publication_authors,
             "schema:sameAs": soa_data.get("soa_uri"),
             "url": f"https://arxiv.org/abs/{arxiv_id}",
         }
+
+        return reference_publication
+
+    def _build_reference_publication(
+        self,
+        arxiv_id,
+        title,
+        authors,
+        external_reference=None,
+    ):
+        reference_publication = {
+            "@type": "ScholarlyArticle",
+            "@id": arxiv_id,
+            "name": title,
+            "author": [
+                {
+                    "@type": "Person",
+                    "name": author,
+                }
+                for author in authors or []
+            ],
+            "url": f"https://arxiv.org/abs/{arxiv_id}" if arxiv_id else "",
+        }
+
+        if not external_reference:
+            return reference_publication
+
+        for field in ("name", "schema:sameAs", "url"):
+            if external_reference.get(field):
+                reference_publication[field] = external_reference[field]
+
+        if external_reference.get("@id"):
+            reference_publication["@id"] = external_reference["@id"]
+
+        if external_reference.get("author"):
+            reference_publication["author"] = external_reference["author"]
 
         return reference_publication
         
@@ -173,6 +211,43 @@ class ModelCardGenerator:
             # Devuelve el diccionario sin las claves cuyos valores acabaron vacíos
             return {k: v for k, v in cleaned_dict.items() if v not in (None, "", [], {})}
         
+    def _clean_code_repositories(self, repositories):
+        clean_repositories = []
+        seen_repositories = set()
+
+        for repository in repositories or []:
+            if not isinstance(repository, str):
+                continue
+
+            clean_repository = repository.strip()
+            if not clean_repository:
+                continue
+
+            parsed_repository = urlparse(clean_repository)
+            if not parsed_repository.scheme:
+                clean_repository = f"https://{clean_repository}"
+                parsed_repository = urlparse(clean_repository)
+
+            hostname = (parsed_repository.hostname or "").lower()
+            path_parts = [
+                part
+                for part in parsed_repository.path.split("/")
+                if part
+            ]
+
+            if hostname in {"github.com", "gitlab.com", "bitbucket.org"}:
+                if len(path_parts) < 2:
+                    continue
+            elif not parsed_repository.scheme or not hostname or not path_parts:
+                continue
+
+            clean_repository = parsed_repository.geturl().rstrip("/")
+            if clean_repository not in seen_repositories:
+                seen_repositories.add(clean_repository)
+                clean_repositories.append(clean_repository)
+
+        return clean_repositories
+
     def generate_modelcard(self, extracted_data):
         self._log("ModelCardGenerator: starting ModelCard generation")
         jsonld = copy.deepcopy(self._model_template)
@@ -182,6 +257,7 @@ class ModelCardGenerator:
         abstract = extracted_data.get("abstract")
         full_text = extracted_data.get("full_text")
         sections = extracted_data.get("sections")
+        title = extracted_data.get("title")
         tsv_tables = self._get_tsv_tables(extracted_data.get("tables"))
         arxiv_id = extracted_data.get("arxiv_id")
         self._log(
@@ -297,7 +373,7 @@ class ModelCardGenerator:
         
         self._log("ModelCardGenerator: extracting code repository")
         extracted_repo = self._llama.extract(full_text, question = "Return the URL link for the paper implementation (like GitHub). Return an empty list if not found. DO NOT  invent links")
-        jsonld["codeRepository"] = list(set(extracted_repo))
+        jsonld["codeRepository"] = self._clean_code_repositories(extracted_repo)
         self._log(
             "ModelCardGenerator: "
             f"code repositories extracted={len(jsonld['codeRepository'])}"
@@ -306,16 +382,17 @@ class ModelCardGenerator:
         self._log("ModelCardGenerator: extracting reference publication")
         reference_publication = self._extract_reference_publication(arxiv_id)
         if(reference_publication):
-            jsonld["referencePublication"] = reference_publication
             self._log("ModelCardGenerator: reference publication found")
         else:
             self._log("ModelCardGenerator: reference publication not found")
-
-        self._log("ModelCardGenerator: ordering publication authors")
-        jsonld["referencePublication"]["author"] = self._order_publication_authors(jsonld["author"], jsonld["referencePublication"]["author"])
+        jsonld["referencePublication"] = self._build_reference_publication(
+            arxiv_id,
+            title,
+            authors,
+            reference_publication,
+        )
 
         self._log("ModelCardGenerator: cleaning final JSON-LD")
         clean_jsonld = self._clean_empty_fields(jsonld)
         self._log("ModelCardGenerator: finished")
         return clean_jsonld
-        
