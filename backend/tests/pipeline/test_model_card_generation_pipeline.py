@@ -25,6 +25,11 @@ def build_generator_without_init() -> ModelCardGenerator:
 
 
 class FakeLlamaExtractor:
+    def __init__(self, repositories: list[str] | None = None) -> None:
+        self.repositories = repositories or [
+            "https://github.com/example/fixture-model"
+        ]
+
     def extract(self, text: str, question: str) -> list[str]:
         if "name of the model" in question:
             return ["FixtureModel"]
@@ -33,7 +38,7 @@ class FakeLlamaExtractor:
             return ["link prediction"]
 
         if "paper implementation" in question:
-            return ["https://github.com/example/fixture-model"]
+            return self.repositories
 
         return []
 
@@ -100,6 +105,7 @@ def build_generator_for_generate_modelcard(
     *,
     datasets: list[str] | None = None,
     metrics: list[str] | None = None,
+    repositories: list[str] | None = None,
 ) -> ModelCardGenerator:
     generator = build_generator_without_init()
     generator._log = lambda message: None
@@ -131,7 +137,7 @@ def build_generator_for_generate_modelcard(
     }
     generator._uri_builder = UriBuilder()
     generator._uri_fetcher = FakeUriFetcher()
-    generator._llama = FakeLlamaExtractor()
+    generator._llama = FakeLlamaExtractor(repositories)
     generator._qwen_dataset_extractor = FakeDatasetExtractor(datasets or [])
     generator._qwen_metric_extractor = FakeMetricExtractor(metrics or [])
     generator._summarizer = FakeSummarizer()
@@ -145,6 +151,7 @@ def build_generator_for_generate_modelcard(
 def build_extracted_data() -> dict:
     return {
         "arxiv_id": "1802.09691",
+        "title": "Fixture Model Paper",
         "abstract": "Fixture abstract.",
         "full_text": "FixtureModel reports MRR and Hits@10 on WN18RR.",
         "sections": "Experiments report MRR and Hits@10 on WN18RR.",
@@ -282,6 +289,26 @@ def test_match_tasks_deduplicates_tasks_by_matched_uri() -> None:
     ]
 
 
+def test_clean_code_repositories_keeps_only_real_repository_urls() -> None:
+    """Checks that generic domains are removed from codeRepository values."""
+    generator = build_generator_without_init()
+
+    assert generator._clean_code_repositories(
+        [
+            "https://github.com/",
+            "https://github.com",
+            "github.com",
+            "https://gitlab.com/",
+            "https://github.com/example/fixture-model",
+            " https://github.com/example/fixture-model ",
+            "",
+            None,
+        ]
+    ) == [
+        "https://github.com/example/fixture-model",
+    ]
+
+
 def test_generate_modelcard_puts_metrics_under_has_evaluation() -> None:
     """Checks that generated metrics use hasEvaluation, not evaluatedOn."""
     generator = build_generator_for_generate_modelcard(
@@ -351,6 +378,71 @@ def test_generate_modelcard_populates_core_fields_from_fixture_data() -> None:
     assert card["codeRepository"] == ["https://github.com/example/fixture-model"]
     assert card["referencePublication"] == {
         "@type": "ScholarlyArticle",
+        "@id": "1802.09691",
+        "name": "Fixture Model Paper",
+        "author": [
+            {
+                "@type": "Person",
+                "name": "Jane Doe",
+            }
+        ],
+        "url": "https://arxiv.org/abs/1802.09691",
+    }
+
+
+def test_generate_modelcard_omits_code_repository_when_only_generic_urls_are_found() -> None:
+    """Checks generic LLM repository answers are not exported in JSON-LD."""
+    generator = build_generator_for_generate_modelcard(
+        datasets=["WN18RR"],
+        metrics=["MRR"],
+        repositories=[
+            "https://github.com/",
+            "github.com",
+            "",
+        ],
+    )
+
+    card = generator.generate_modelcard(build_extracted_data())
+
+    assert "codeRepository" not in card
+
+
+def test_generate_modelcard_adds_semopenalex_link_to_reference_publication() -> None:
+    """Checks SemOpenAlex data enriches the local reference publication metadata."""
+    generator = build_generator_for_generate_modelcard(
+        datasets=["WN18RR"],
+        metrics=["MRR"],
+    )
+    generator._extract_reference_publication = lambda arxiv_id: {
+        "@type": "ScholarlyArticle",
+        "@id": arxiv_id,
+        "name": "SemOpenAlex Fixture Title",
+        "author": [
+            {
+                "@type": "Person",
+                "@id": "https://semopenalex.org/authors/A1",
+                "name": "Jane Doe",
+            }
+        ],
+        "schema:sameAs": "https://semopenalex.org/works/W1",
+        "url": "https://arxiv.org/abs/1802.09691",
+    }
+
+    card = generator.generate_modelcard(build_extracted_data())
+
+    assert card["referencePublication"] == {
+        "@type": "ScholarlyArticle",
+        "@id": "1802.09691",
+        "name": "SemOpenAlex Fixture Title",
+        "author": [
+            {
+                "@type": "Person",
+                "@id": "https://semopenalex.org/authors/A1",
+                "name": "Jane Doe",
+            }
+        ],
+        "schema:sameAs": "https://semopenalex.org/works/W1",
+        "url": "https://arxiv.org/abs/1802.09691",
     }
 
 
