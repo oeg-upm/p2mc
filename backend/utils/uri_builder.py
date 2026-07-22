@@ -37,3 +37,11 @@ class UriBuilder():
             return f"{self.BASE_URI}/dataset/unknown-dataset"
             
         return f"{self.BASE_URI}/dataset/{slug}"
+
+    def build_metric_uri(self, metric_name):
+        slug = self._slugify(metric_name)
+
+        if not slug:
+            return f"{self.BASE_URI}/metric/unknown-metric"
+
+        return f"{self.BASE_URI}/metric/{slug}"
