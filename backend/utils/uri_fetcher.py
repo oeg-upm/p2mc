@@ -13,8 +13,16 @@ class UriFetcher:
     def __init__(self):
         pass
 
-    def get_soa_data_from_arxiv_id(self, arxiv_id, lpwc=False):
-        if lpwc:
+    def _test_lpwc(self):
+        try:
+            response = requests.get(self.LPWC_ENDPOINT, timeout=5)
+            return response.status_code==200
+
+        except requests.exceptions.RequestException:
+            return False
+
+    def get_soa_data_from_arxiv_id(self, arxiv_id):
+        if self._test_lpwc():
             lpwc_work = self._get_lpwc_work_arxiv_id(arxiv_id)
             if not lpwc_work:
                 return None
@@ -182,8 +190,8 @@ class UriFetcher:
         print(f"Failed to retrieve author based on {url_doi}")
         return None
 
-    def extract_author_uri(self, author_name, arxiv_id,lpwc=False):
-        if lpwc:
+    def extract_author_uri(self, author_name, arxiv_id):
+        if self._test_lpwc():
             lpwc_work = self._get_lpwc_work_arxiv_id(arxiv_id)
             if not lpwc_work:
                 return None
