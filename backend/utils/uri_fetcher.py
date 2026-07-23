@@ -32,6 +32,7 @@ class UriFetcher:
                 params={"query": query},
                 headers=headers,
                 timeout=REQUEST_TIMEOUT_SECONDS,
+                verify=False
             )
             response.raise_for_status()
             data = response.json()
@@ -90,6 +91,7 @@ class UriFetcher:
                 params={"query": query},
                 headers=headers,
                 timeout=REQUEST_TIMEOUT_SECONDS,
+                verify=False
             )
             response.raise_for_status()
         
@@ -191,6 +193,7 @@ class UriFetcher:
                 params={"query": query},
                 headers=headers,
                 timeout=REQUEST_TIMEOUT_SECONDS,
+                verify=False
             )
             response.raise_for_status()
         
@@ -261,6 +264,7 @@ class UriFetcher:
                 params={"query": query},
                 headers=headers,
                 timeout=REQUEST_TIMEOUT_SECONDS,
+                verify=False
             )
             response.raise_for_status()
         
@@ -296,6 +300,7 @@ class UriFetcher:
                 params={"query": query},
                 headers=headers,
                 timeout=REQUEST_TIMEOUT_SECONDS,
+                verify=False
             )
             response.raise_for_status()
             data = response.json()
@@ -336,6 +341,7 @@ class UriFetcher:
                 params={"query": query},
                 headers=headers,
                 timeout=REQUEST_TIMEOUT_SECONDS,
+                verify=False
             )
             response.raise_for_status()
             data = response.json()
