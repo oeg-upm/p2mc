@@ -1,5 +1,6 @@
 import requests
 import re
+import xml.etree.ElementTree as ET
 
 
 REQUEST_TIMEOUT_SECONDS = 600
@@ -12,17 +13,39 @@ class UriFetcher:
     def __init__(self):
         pass
 
-    def get_soa_data_from_arxiv_id(self, arxiv_id):
-        lpwc_work = self._get_lpwc_work_arxiv_id(arxiv_id)
-        if not lpwc_work:
-            return None
-    
-        soa_work = self._get_soa_uri_from_lpwc(lpwc_work)
-        if not soa_work:
-            return None
+    def get_soa_data_from_arxiv_id(self, arxiv_id, lpwc=False):
+        if lpwc:
+            lpwc_work = self._get_lpwc_work_arxiv_id(arxiv_id)
+            if not lpwc_work:
+                return None
+
+            soa_work = self._get_soa_uri_from_lpwc(lpwc_work)
+            if not soa_work:
+                return None
+        else:
+            doi = self._get_doi_from_arxiv_id(arxiv_id)
+            soa_work = self._find_soa_work_from_doi(doi)
+            if not soa_work:
+                return None
     
         return self._get_soa_data(soa_work)
 
+    def _get_doi_from_arxiv_id(self,arxiv_id):
+
+        try:
+            match = re.search(r'(\d{4}\.\d{4,5})', arxiv_id)
+
+            if match:
+                clean_id = match.group(1)
+
+                url_doi = f"https://doi.org/10.48550/arxiv.{clean_id}"
+                return url_doi
+            else:
+                return ""
+
+        except Exception as e:
+            print("No valid DOI could be found")
+            return ""
 
     def _make_sparql_request(self, endpoint, query):
         headers = {"Accept": "application/sparql-results+json"}
@@ -32,7 +55,6 @@ class UriFetcher:
                 params={"query": query},
                 headers=headers,
                 timeout=REQUEST_TIMEOUT_SECONDS,
-                verify=False
             )
             response.raise_for_status()
             data = response.json()
@@ -91,7 +113,6 @@ class UriFetcher:
                 params={"query": query},
                 headers=headers,
                 timeout=REQUEST_TIMEOUT_SECONDS,
-                verify=False
             )
             response.raise_for_status()
         
@@ -145,15 +166,36 @@ class UriFetcher:
         print(f"Failed to retrieve author based on {soa_work} and {author_name}")
         return None
 
-    def extract_author_uri(self, author_name, arxiv_id):
-        lpwc_work = self._get_lpwc_work_arxiv_id(arxiv_id)
-        if not lpwc_work:
-            return None
+    def _find_soa_work_from_doi(self, url_doi):
+        query = f"""
+        PREFIX dct: <http://purl.org/spar/datacite/>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
     
-        soa_work = self._get_soa_uri_from_lpwc(lpwc_work)
-        if not soa_work:
-            return None
+        SELECT ?paper WHERE {{
+           ?paper dct:doi "{url_doi}"^^xsd:string .
+        }} LIMIT 1
+        """
 
+        bindings = self._make_sparql_request(self.SOA_ENDPOINT, query)
+        if bindings:
+            return bindings[0].get("paper", {}).get("value")
+        print(f"Failed to retrieve author based on {url_doi}")
+        return None
+
+    def extract_author_uri(self, author_name, arxiv_id,lpwc=False):
+        if lpwc:
+            lpwc_work = self._get_lpwc_work_arxiv_id(arxiv_id)
+            if not lpwc_work:
+                return None
+
+            soa_work = self._get_soa_uri_from_lpwc(lpwc_work)
+            if not soa_work:
+                return None
+        else:
+            doi=self._get_doi_from_arxiv_id(arxiv_id)
+            soa_work = self._find_soa_work_from_doi(doi)
+            if not soa_work:
+                return None
         return self.get_author_from_work(soa_work, author_name)
 
 
@@ -193,7 +235,6 @@ class UriFetcher:
                 params={"query": query},
                 headers=headers,
                 timeout=REQUEST_TIMEOUT_SECONDS,
-                verify=False
             )
             response.raise_for_status()
         
@@ -264,7 +305,6 @@ class UriFetcher:
                 params={"query": query},
                 headers=headers,
                 timeout=REQUEST_TIMEOUT_SECONDS,
-                verify=False
             )
             response.raise_for_status()
         
@@ -300,7 +340,6 @@ class UriFetcher:
                 params={"query": query},
                 headers=headers,
                 timeout=REQUEST_TIMEOUT_SECONDS,
-                verify=False
             )
             response.raise_for_status()
             data = response.json()
@@ -341,7 +380,6 @@ class UriFetcher:
                 params={"query": query},
                 headers=headers,
                 timeout=REQUEST_TIMEOUT_SECONDS,
-                verify=False
             )
             response.raise_for_status()
             data = response.json()
@@ -361,7 +399,6 @@ class UriFetcher:
             return predicted_uri
         else:
             return None
-
 
 """
     def get_soa_data_from_url_abs(self, url_abs):
